@@ -1,6 +1,6 @@
-# MealQuest 商户端产品全景需求文档 (Master Merchant PRD V3.0)
+# 有戏掌柜 产品全景需求文档 (Master Merchant PRD V3.0)
 
-> **项目名称**：MealQuest Merchant (餐餐有戏商户版)
+> **项目名称**：有戏掌柜 (MealQuest Merchant)
 > **核心定义**：餐饮老板的移动经营指挥部，与用户端“入席令”资产体系完美对接。
 > **交互模型**：中心化 Tab 导航 (Center Tab Navigation)。
 > **设计原则**：极简决策，数据可视化，操作傻瓜化，算法严谨。

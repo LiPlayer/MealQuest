@@ -1,14 +1,14 @@
 # “餐餐有戏/MealQuest”平台产品全景定义白皮书 (V11.0 - 全量深度整合版)
 
 > **关联文档**: 
-> *   [顾客端产品全景需求 (Master Customer Spec)](./MealQuest_Customer_Spec.md)
-> *   [商户端产品全景需求 (Master Merchant Spec)](./MealQuest_Merchant_Spec.md)
+> *   [餐餐有戏 - 顾客端产品全景需求 (Master Customer Spec)](./MealQuest_Customer_Spec.md)
+> *   [有戏掌柜 - 商户端产品全景需求 (Master Merchant Spec)](./MealQuest_Merchant_Spec.md)
 
 
 ## 一、 项目愿景与核心治理原则
 
 ### 1. 核心定位
-“餐餐有戏”旗下包含两款核心产品：**Gourmet Wallet (寻味钱包)** 面向 C 端顾客，**Gourmet Partner (寻味掌柜)** 面向 B 端商户。这不仅是一个餐饮 SaaS 平台，更是一个由 AI 驱动、以“独占感”为核心的 **品牌私域操作系统**。
+“餐餐有戏”旗下包含两款核心产品：**餐餐有戏** C 端顾客版，**有戏掌柜** B 端商户版。这不仅是一个餐饮 SaaS 平台，更是一个由 AI 驱动、以“独占感”为核心的 **品牌私域操作系统**。
 
 *   **去平台化**：弱化平台存在感，强化商家品牌主权。
 *   **资产化**：利用 AI 叙事能力将营销工具转化为具有故事厚度的数字资产。
