@@ -67,8 +67,8 @@ $$E_{final} = (\sum P_i \cdot (V_i - C_i)) \cdot \gamma_{risk} - C_{churn\_cost}
 ### 2. AI 与商家的交互全链路 (Interaction Workflow)
 1.  **感知层（巡检）**：AI 发现问题（如暴雨预测、闲时客流低）。
 2.  **建议层（处方）**：推送“策略卡片”，包含诊断、处方及预期收益。
-3.  **决策层（判定）**：老板在“决策收件箱”进行“三秒决策”。
-4.  **执行层（部署）**：AI 生成 TCA 元数据并瞬间生效。
+3.  **决策层（判定）**：老板在“决策收件箱”进行“三秒决策”，确认活动建议。
+4.  **执行层（部署）**：AI 生成 TCA 元数据并瞬间生效，注入用户首页列表或发送推送。
 5.  **反馈层（复盘）**：自动生成执行周报，量化 ROI。
 
 ---
@@ -95,8 +95,8 @@ $$E_{final} = (\sum P_i \cdot (V_i - C_i)) \cdot \gamma_{risk} - C_{churn\_cost}
 *   **分支五：AI 策略建议**：审阅策略卡片并一键部署。
 
 ### 2. 顾客端：五大场景数字旅程
-*   **场景一：扫码即达**：叙事化欢迎与品牌感知。
-*   **场景二：候餐互动**：玩《神厨飞刀》赢碎银，浏览具有材质感的 AI 2D 资产墙。
+*   **场景一：扫码即达**：叙事化欢迎与品牌感知。首页底部展示由商家确认的实时策略建议。
+*   **场景二：候餐互动**：玩《神厨飞刀》赢碎银，浏览具有材质感的 AI 2D 资产墙或查看竖向滑动的活动卡片。
 *   **场景三：智能支付**：AI 自动匹配“碎银+余额+入席令”的最省组合。
 *   **场景四：资产沉淀**：蔡格尼克效应驱动的进度条刺激。
 *   **场景五：社交裂变**：入席令转赠产生的“人情礼券”拉新。
@@ -108,7 +108,7 @@ $$E_{final} = (\sum P_i \cdot (V_i - C_i)) \cdot \gamma_{risk} - C_{churn\_cost}
 ### 1. TCA 原子规则引擎库
 *   **触发器 (Trigger)**：`ON_SCAN`, `ON_PAY`, `ON_STEP_REACH`, `ON_GAME_FINISH`, `ON_DORMANT`。
 *   **条件 (Condition)**：`CHECK_AMOUNT`, `CHECK_WEATHER`, `CHECK_NEW_USER`, `CHECK_STOCK`。
-*   **动作 (Action)**：`GIVE_ASSET`, `GIVE_BUFF`, `UI_MOD`, `INSTANT_REDEEM`, `SOCIAL_TRANSFER`。
+*   **动作 (Action)**：`GIVE_ASSET`, `GIVE_BUFF`, `PUSH_NOTIFY`, `INJECT_HOME_LIST`, `SOCIAL_TRANSFER`。
 
 ### 2. 资产生成流与渲染
 *   **AI Pipeline**：利用 AI 绘图模型根据菜品照生成高清等轴测 (Isometric) 插画。
