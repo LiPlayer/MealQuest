@@ -21,6 +21,26 @@ App 采用底部 5-Tab 结构，确保所有高频功能一触即达：
 
 ## 二、 页面详细规范 (Page Specifications)
 
+### P0. 聚合进件 (Unified Onboarding) [Tab 0 - One Time]
+*   **定位**：商户入驻的第一道门槛，核心目标是“极简”与“合规”。
+*   **核心策略**：**一次提交，双通道分发 (One Submission, Dual Channel)**。
+    *   商户只需提交一套资料，系统自动分别向 **微信支付 (WeChat Pay)** 与 **支付宝 (Alipay)** 发起进件申请。
+*   **交互流程 (The 4-Step Flow)**：
+    1.  **资质 OCR (Identity)**：
+        *   拍摄营业执照 $\rightarrow$ 系统自动识别通过 `OCR` 填入：商户全称、证件号、注册地址。
+        *   拍摄法人身份证 (人像面/国徽面) $\rightarrow$ 自动识别填入：法人姓名、身份证号、有效期。
+    2.  **店铺信息 (Shop Info)**：
+        *   **基础信息**：门头照片 (必须清晰)、店内环境照 (2张)、经营类目 (MCC 映射)。
+        *   **LBS 定位**：自动获取当前 GPS，允许微调门店实际位置。
+    3.  **商户认证 (Auth)**：
+        *   **微信侧**：生成“微信支付商家助手”小程序码 $\rightarrow$ 法人扫码完成人脸核身 $\rightarrow$ 绑定特约商户号。
+        *   **支付宝侧**：生成支付宝授权二维码 $\rightarrow$ 法人扫码授权 $\rightarrow$ 绑定间连/直连商户号。
+    4.  **签约与费率 (Signing)**：
+        *   电子签约确认：微信支付费率 (0.6% / 0.38%)、支付宝费率。
+        *   **入驻完成**：状态变更为 `Pending` (审核中)。
+*   **状态机 (State Machine)**：
+    *   `Unverified` (未认证) $\rightarrow$ `Auditing` (双通道审核中) $\rightarrow$ `Partially Active` (单通道通过) / `Active` (双通道通过) $\rightarrow$ `Rejected` (需补全资料)。
+
 ### P1. 经营仪表盘 (Business Dashboard) [Tab 1]
 *   **定位**：老板的“飞行员座舱”，实时监控资产流动。
 *   **功能模块**：
