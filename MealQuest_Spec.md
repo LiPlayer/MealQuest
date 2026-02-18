@@ -3,6 +3,8 @@
 > **关联文档**: 
 > *   [餐餐有戏 - 顾客端产品全景需求 (Master Customer Spec)](./MealQuest_Customer_Spec.md)
 > *   [有戏掌柜 - 商户端产品全景需求 (Master Merchant Spec)](./MealQuest_Merchant_Spec.md)
+> *   [餐餐有戏 - 服务端技术架构规范 (Master Server Spec)](./MealQuest_Server_Spec.md)
+> *   [餐餐有戏 - 游戏化全景需求 (Master Game Spec)](./MealQuest_Game_Spec.md)
 
 
 ## 一、 项目愿景与核心治理原则 (Vision & Principles)
@@ -351,11 +353,12 @@ Story JSON 是连接 AI 决策大脑与小程序盲渲染层的**可移植内容
     *   *系统风控*：**召回频次**（月限1次）。
 
 ### 5. 社交裂变 (Social Viral)
-*   **入席令转赠 (Asset Transfer)**：
+*   **入席令转赠 (Asset Transfer) [Phase 3]**：
     *   **分支 A：直接转赠** - 点对点转移。我减你增，**总量守恒**。
     *   **分支 B：拼手气红包 (Red Packet)** - 发送者打包 1000 碎银发群里，好友随机瓜分。**总量守恒**。
     *   *核心原则*：**严禁增发**。转赠行为不产生新资产。
-*   **请客买单 (Treat Paying)**：
+    *   *(注：V1 版本本功能入口隐藏，仅在底层跑通逻辑)*
+*   **请客买单 (Treat Paying) [Phase 3]**：
     *   **分支 A：群买单** - 原价众筹。
     *   **分支 B：老板请客** - 群友抢单享折扣（商户补贴）。
     *   *商家配置*：
