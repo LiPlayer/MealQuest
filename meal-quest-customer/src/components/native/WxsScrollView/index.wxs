@@ -1,0 +1,65 @@
+var BRAND_COLLAPSE_HEIGHT = 110;
+var FOLD_HEIGHT = 360;
+
+function onScroll(e, ownerInstance) {
+  var scrollTop = e.detail.scrollTop;
+
+
+  // 1. Select elements
+  var brandEl = ownerInstance.selectComponent('.wxs-shop-brand-scroll-wrapper');
+  var titleEl = ownerInstance.selectComponent('.wxs-header-store-name');
+  var cardEl = ownerInstance.selectComponent('.wxs-card-stack-section');
+
+  if (!brandEl) console.log('WXS Error: .wxs-shop-brand-scroll-wrapper not found');
+  if (!titleEl) console.log('WXS Error: .wxs-header-store-name not found');
+  if (!cardEl) console.log('WXS Error: .wxs-card-stack-section not found');
+
+  // 2. ShopBrand Animation
+  if (brandEl) {
+    var p1 = Math.min(1, Math.max(0, scrollTop / BRAND_COLLAPSE_HEIGHT));
+    // Increased shrink from 0.15 to 0.3 for more dramatic effect
+    var scale = (1 - p1 * 0.3).toFixed(4);
+    var opacity = (p1 > 0.7 ? 1 - (p1 - 0.7) / 0.3 : 1).toFixed(2);
+
+    // console.log('Brand Style:', parallax, scale, opacity);
+    
+    // Optimized: Scale + Opacity Only (No Parallax to prevent jitter)
+    brandEl.setStyle({
+      'transform': 'scale(' + scale + ')',
+      'opacity': opacity
+    });
+  }
+
+  // 3. Header Title Animation
+  if (titleEl) {
+    var tp = Math.min(1, Math.max(0,
+      (scrollTop - BRAND_COLLAPSE_HEIGHT * 0.7) / (BRAND_COLLAPSE_HEIGHT * 0.3)
+    ));
+    var tx = Math.floor((1 - tp) * -8);
+    
+    titleEl.setStyle({
+      'opacity': tp.toFixed(2),
+      'transform': 'translate3d(' + tx + 'px, 0, 0)'
+    });
+  }
+
+  // 4. Card Stack Animation (Scale + Opacity)
+  if (cardEl) {
+    var phase2 = Math.max(0, scrollTop - BRAND_COLLAPSE_HEIGHT);
+    var p2 = Math.min(1, phase2 / FOLD_HEIGHT);
+    
+    // Increased shrink from 0.12 to 0.2
+    var scaleCard = (1 - p2 * 0.2).toFixed(4);
+    var opacityCard = (1 - p2 * 0.5).toFixed(2);
+
+    cardEl.setStyle({
+      'transform': 'scale(' + scaleCard + ')',
+      'opacity': opacityCard
+    });
+  }
+}
+
+
+module.exports = {
+  onScroll: onScroll
+};

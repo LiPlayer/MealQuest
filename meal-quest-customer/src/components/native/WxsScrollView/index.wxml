@@ -1,0 +1,49 @@
+<scroll-view
+  class="wxs-scroll-view"
+  scroll-y
+  bindscroll="{{scroll.onScroll}}"
+  show-scrollbar="{{false}}"
+  show-scrollbar="{{false}}"
+  enhanced="{{false}}"
+  bounces="{{false}}"
+  style="height: 100vh; width: 100vw;"
+>
+  <view class="scroll-content-wrapper">
+    <!-- Sticky Header Wrapper -->
+    <view class="sticky-header">
+      <view class="header-nav">
+        <!-- Left: Avatar -->
+        <view class="header-left">
+           <slot name="header-left"></slot>
+        </view>
+        
+        <!-- Middle: Title (Animated) -->
+        <view class="header-store-name wxs-header-store-name">
+           <slot name="header-title"></slot>
+        </view>
+
+        <!-- Right: Capsule (Optional) -->
+        <view class="header-right">
+           <slot name="header-right"></slot>
+        </view>
+      </view>
+    </view>
+
+    <!-- Brand (Animated) -->
+    <view class="shop-brand-scroll-wrapper wxs-shop-brand-scroll-wrapper">
+      <slot name="brand"></slot>
+    </view>
+
+    <!-- Cards (Animated) -->
+    <view class="card-stack-section wxs-card-stack-section">
+      <slot name="cards"></slot>
+    </view>
+
+    <!-- Activity Area -->
+    <view class="activity-area-container">
+      <slot name="activity"></slot>
+    </view>
+  </view>
+</scroll-view>
+
+<wxs module="scroll" src="./index.wxs"></wxs>
