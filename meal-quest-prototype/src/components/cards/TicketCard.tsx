@@ -38,14 +38,14 @@ export default function TicketCard({ expanded, onExpand, onReference, style }: T
         >
             {/* Header Area */}
             <div
-                className="h-[60px] px-5 flex items-center justify-between shrink-0 cursor-pointer active:scale-[0.99] transition-transform"
+                className="h-[30px] px-5 flex items-center justify-between shrink-0 cursor-pointer active:scale-[0.99] transition-transform"
                 onClick={onExpand}
             >
-                <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center text-orange-600">
-                        <Ticket size={16} />
+                <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-full bg-orange-100 flex items-center justify-center text-orange-600">
+                        <Ticket size={14} />
                     </div>
-                    <span className="font-bold text-gray-800 text-lg">入席令</span>
+                    <span className="font-bold text-gray-800 text-[15px]">口福红包</span>
                 </div>
 
                 {/* Isometric Flow Preview (Mini) */}
@@ -87,7 +87,7 @@ export default function TicketCard({ expanded, onExpand, onReference, style }: T
                             <div className="h-2 bg-gray-100 rounded w-full"></div>
                         </div>
                     </div>
-                    <p className="text-xs text-center mt-2 text-gray-500">跳转碎片卡查看详情</p>
+                    <p className="text-xs text-center mt-2 text-gray-500">跳转食福碎片卡查看详情</p>
                 </div>
 
             </div>

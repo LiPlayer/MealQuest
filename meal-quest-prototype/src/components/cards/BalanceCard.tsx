@@ -17,16 +17,16 @@ export default function BalanceCard({ expanded, onExpand, onReference, style }: 
         >
             {/* Header Area */}
             <div
-                className="h-[60px] px-5 flex items-center justify-between shrink-0 cursor-pointer active:scale-[0.99] transition-transform"
+                className="h-[30px] px-5 flex items-center justify-between shrink-0 cursor-pointer active:scale-[0.99] transition-transform"
                 onClick={onExpand}
             >
-                <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-900">
-                        <CreditCard size={16} />
+                <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-gray-900">
+                        <CreditCard size={14} />
                     </div>
-                    <span className="font-bold text-gray-800 text-lg">储值</span>
+                    <span className="font-bold text-gray-800 text-[15px]">聚宝金库</span>
                 </div>
-                <div className="text-2xl font-black text-gray-900 tracking-tight font-mono">
+                <div className="text-xl font-black text-gray-900 tracking-tight font-mono">
                     ¥120.00
                 </div>
             </div>

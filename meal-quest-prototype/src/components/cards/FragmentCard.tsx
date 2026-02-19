@@ -17,20 +17,20 @@ export default function FragmentCard({ expanded, onExpand, onReference, style }:
         >
             {/* Header Area */}
             <div
-                className="h-[60px] px-5 flex items-center justify-between shrink-0 cursor-pointer active:scale-[0.99] transition-transform"
+                className="h-[30px] px-5 flex items-center justify-between shrink-0 cursor-pointer active:scale-[0.99] transition-transform"
                 onClick={onExpand}
             >
-                <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
-                        <Layers size={16} />
+                <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
+                        <Layers size={14} />
                     </div>
-                    <span className="font-bold text-gray-800 text-lg">碎片</span>
+                    <span className="font-bold text-gray-800 text-[15px]">食福碎片</span>
                 </div>
 
                 {/* Simple count preview */}
                 <div className="flex items-center gap-1">
-                    <Puzzle size={14} className="text-gray-400" />
-                    <span className="text-gray-600 font-bold">12</span>
+                    <Puzzle size={12} className="text-gray-400" />
+                    <span className="text-gray-600 font-bold text-sm">12</span>
                 </div>
             </div>
 
@@ -54,7 +54,7 @@ export default function FragmentCard({ expanded, onExpand, onReference, style }:
                             <Lock size={8} className="text-gray-300" />
                         </div>
                     </div>
-                    <div className="absolute top-4 left-[50%] -translate-x-1/2 text-[10px] text-blue-500 font-bold mt-1">📦 碎片奖励</div>
+                    <div className="absolute top-4 left-[50%] -translate-x-1/2 text-[10px] text-blue-500 font-bold mt-1">📦 食福碎片奖励</div>
                 </div>
 
                 {/* Synthesis Workbench */}

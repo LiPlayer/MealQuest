@@ -17,23 +17,23 @@ export default function SilverCard({ expanded, onExpand, onReference, style }: S
         >
             {/* Header Area (Always Visible) */}
             <div
-                className="h-[60px] px-5 flex items-center justify-between shrink-0 cursor-pointer active:scale-[0.99] transition-transform"
+                className="h-[30px] px-5 flex items-center justify-between shrink-0 cursor-pointer active:scale-[0.99] transition-transform"
                 onClick={onExpand}
             >
-                <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
-                        <Coins size={16} />
+                <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
+                        <Coins size={14} />
                     </div>
-                    <span className="font-bold text-gray-800 text-lg">碎银</span>
+                    <span className="font-bold text-gray-800 text-[15px]">寻味碎银</span>
 
                     {/* Step Counter Capsule */}
-                    <div className="px-2 py-0.5 rounded-full bg-black/5 flex items-center gap-1.5 ml-1">
-                        <Activity size={12} className="text-orange-500" />
-                        <span className="text-xs font-mono font-bold text-gray-600">8,420</span>
+                    <div className="px-1.5 py-0.5 rounded-full bg-black/5 flex items-center gap-1 ml-0.5">
+                        <Activity size={10} className="text-orange-500" />
+                        <span className="text-[10px] font-mono font-bold text-gray-600">8,420</span>
                     </div>
                 </div>
-                <div className="text-2xl font-black text-gray-900 tracking-tight font-mono">
-                    12,850 <span className="text-sm font-normal text-gray-500 ml-0.5">两</span>
+                <div className="text-xl font-black text-gray-900 tracking-tight font-mono">
+                    12,850 <span className="text-xs font-normal text-gray-500 ml-0.5">两</span>
                 </div>
             </div>
 
@@ -51,7 +51,7 @@ export default function SilverCard({ expanded, onExpand, onReference, style }: S
                         </div>
                         <div className="text-center">
                             <div className="font-bold text-gray-900">逛集市</div>
-                            <div className="text-[10px] text-gray-500 mt-1">采购/出售碎片</div>
+                            <div className="text-[10px] text-gray-500 mt-1">采购/出售食福碎片</div>
                         </div>
                     </button>
 
@@ -100,7 +100,7 @@ export default function SilverCard({ expanded, onExpand, onReference, style }: S
                         <div className="w-full h-px bg-gray-100"></div>
                         <div className="flex justify-between items-center">
                             <div className="flex flex-col">
-                                <span className="text-sm font-bold text-gray-800">集市购买 - 葱花碎片</span>
+                                <span className="text-sm font-bold text-gray-800">集市购买 - 葱花食福碎片</span>
                                 <span className="text-xs text-gray-400">昨天</span>
                             </div>
                             <span className="font-mono font-bold text-black">- 300</span>
