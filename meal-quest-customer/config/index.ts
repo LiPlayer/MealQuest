@@ -4,11 +4,16 @@ import devConfig from './dev'
 import prodConfig from './prod'
 
 // https://taro-docs.jd.com/docs/next/config#defineconfig-辅助函数
-export default defineConfig<'webpack5'>(async (merge, { command, mode }) => {
+export default defineConfig<'webpack5'>(async (merge, { command: _command, mode: _mode }) => {
   const baseConfig: UserConfigExport<'webpack5'> = {
     projectName: 'meal-quest-customer',
     date: '2026-2-15',
-    designWidth: 750,
+    /**
+     * Design reference: 375px (iPhone X, as per spec).
+     * Mini-program: px values convert to rpx at 2:1 ratio (2rpx per 1px).
+     * H5: uses vw units via pxtransform so everything scales to viewport width.
+     */
+    designWidth: 375,
     deviceRatio: {
       640: 2.34 / 2,
       750: 1,

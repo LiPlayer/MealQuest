@@ -1,0 +1,197 @@
+.index-container {
+    display: flex;
+    flex-direction: column;
+    width: 100vw;
+    height: 100vh;
+    margin: 0;
+    padding: 0;
+    background-color: #f8f9fa;
+    position: relative;
+    overflow: hidden;
+
+    .main-scroll-view {
+        width: 100vw;
+        flex: 1;
+        box-sizing: border-box;
+        -ms-overflow-style: none;
+        /* IE and Edge */
+        scrollbar-width: none;
+
+        /* Firefox */
+        &::-webkit-scrollbar {
+            display: none;
+            /* Chrome, Safari and Opera */
+        }
+
+        // ── Sticky Navigation Bar ──────────────────────────────────────────
+        .sticky-header {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background-color: #f8f9fa;
+            width: 100%;
+            // Downward shadow visually marks the "cover edge" — the line where
+            // the header occludes the brand below it.
+            box-shadow: 0 6px 20px rgba(248, 249, 250, 0.95),
+                0 2px 0px rgba(0, 0, 0, 0.04);
+
+            &::after {
+                content: "";
+                position: absolute;
+                bottom: -20px;
+                left: 0;
+                right: 0;
+                height: 20px;
+                background: linear-gradient(to bottom, #f8f9fa, rgba(248, 249, 250, 0));
+                pointer-events: none;
+            }
+
+            .header-nav {
+                height: 110px;
+                padding: 56px 0 0;
+                display: flex;
+                flex-direction: row;
+                align-items: center;
+                justify-content: space-between;
+                pointer-events: none;
+
+                .avatar-wrapper {
+                    pointer-events: auto;
+                    flex-shrink: 0;
+
+                    .avatar-circle {
+                        width: 56px;
+                        height: 56px;
+                        border-radius: 50%;
+                        background-color: white;
+                        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        border: 2px solid rgba(0, 0, 0, 0.05);
+
+                        .avatar-emoji {
+                            font-size: 32px;
+                        }
+                    }
+                }
+
+                // Compact store name — imperatively fades in via JS ref
+                .header-store-name {
+                    flex: 1;
+                    display: flex;
+                    flex-direction: row;
+                    align-items: center;
+                    gap: 6px;
+                    padding-left: 12px;
+                    // start hidden; opacity/transform driven imperatively
+                    opacity: 0;
+                    transform: translateX(-8px);
+                    pointer-events: none;
+                    overflow: hidden;
+
+                    &__emoji {
+                        font-size: 18px;
+                        flex-shrink: 0;
+                    }
+
+                    &__text {
+                        font-size: 17px;
+                        font-weight: 700;
+                        color: #1a1a1a;
+                        letter-spacing: -0.3px;
+                        white-space: nowrap;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                    }
+                }
+
+                .navigation-capsule {
+                    width: 108px;
+                    height: 44px;
+                    background: rgba(255, 255, 255, 0.7);
+                    backdrop-filter: blur(15px);
+                    border-radius: 22px;
+                    border: 2px solid rgba(0, 0, 0, 0.15);
+                    display: flex;
+                    flex-direction: row;
+                    align-items: center;
+                    justify-content: space-evenly;
+                    pointer-events: auto;
+                    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+                    flex-shrink: 0;
+
+                    .capsule-dots {
+                        color: #000;
+                        font-size: 20px;
+                        letter-spacing: -1px;
+                        font-weight: bold;
+                    }
+
+                    .capsule-divider {
+                        width: 2px;
+                        height: 24px;
+                        background: rgba(0, 0, 0, 0.2);
+                    }
+
+                    .capsule-circle {
+                        width: 24px;
+                        height: 24px;
+                        border: 3px solid #000;
+                        border-radius: 50%;
+                        position: relative;
+
+                        &::after {
+                            content: "";
+                            width: 12px;
+                            height: 12px;
+                            border-radius: 50%;
+                            background: #000;
+                            position: absolute;
+                            top: 50%;
+                            left: 50%;
+                            transform: translate(-50%, -50%);
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Shop Brand — scrollable, collapses first ───────────────────────
+        .shop-brand-scroll-wrapper {
+            // will-change set inline for perf; keep overflow visible for scale
+            overflow: visible;
+        }
+
+        // ── Shared horizontal margins for all scrollable content ──────────
+        .shop-brand-scroll-wrapper,
+        .card-stack-section,
+        .activity-area-container {
+            padding-left: 16px;
+            padding-right: 16px;
+        }
+
+        // ── Card Stack ────────────────────────────────────────────────────
+        .card-stack-section {
+            z-index: 10;
+            will-change: transform;
+            margin-top: 20px;
+        }
+
+        // ── Activity Area ─────────────────────────────────────────────────
+        .activity-area-container {
+            position: relative;
+            z-index: 20;
+            background-color: #f8f9fa;
+            margin-top: 20px;
+            padding-top: 4px;
+        }
+    }
+}
+
+// Global base
+page {
+    background-color: #f8f9fa;
+    height: 100vh;
+    overflow: hidden;
+}
