@@ -131,24 +131,36 @@ export default function CustomerCardStack() {
             // Tap → toggle focus
             setFocusedIndex(prev => (prev === cardIndex ? null : cardIndex));
         } else if (wasDrag && cardIndex !== null) {
-            // Smart commit: if dragged past COMMIT_THRESHOLD, commit new position
-            if (maxDelta.current >= COMMIT_THRESHOLD) {
-                const expandingDown = dragDir.current > 0;
-                if (focusedIndex === null && expandingDown) {
-                    // Stacked state, dragged down → expand that card
-                    setFocusedIndex(cardIndex);
-                } else if (focusedIndex !== null && !expandingDown) {
-                    // Expanded state, dragged up → collapse
-                    setFocusedIndex(null);
+            // Smart commit: use the current offset to determine direction
+            const isPastThreshold = maxDelta.current >= COMMIT_THRESHOLD;
+            const isMovingDown = dragOffset > 0;
+
+            if (isPastThreshold) {
+                if (focusedIndex === null && isMovingDown) {
+                    // Stacked -> Expand.
+                    // User wants to see the card *below* the one they are dragging.
+                    // So if dragging Card N, we focus Card N-1.
+                    if (cardIndex > 0) {
+                        setFocusedIndex(cardIndex - 1);
+                    }
+                } else if (focusedIndex !== null) {
+                    if (!isMovingDown) {
+                        // Expanded -> Drag UP -> Collapse fully to stack
+                        setFocusedIndex(null);
+                    } else {
+                        // Expanded -> Drag DOWN -> Peel current card to show the one below
+                        if (focusedIndex > 0) {
+                            setFocusedIndex(focusedIndex - 1);
+                        }
+                    }
                 }
             }
-            // else: spring back (do nothing, offset resets to 0 below)
         }
 
         dragCardIndex.current = null;
         setIsDragging(false);
         setDragOffset(0);
-    }, [focusedIndex]);
+    }, [focusedIndex, dragOffset]);
 
     // ── Style builder ─────────────────────────────────────────────────────────
 
