@@ -40,4 +40,4 @@ You must strictly adhere to the following **"De-Platforming"** rules to protect 
 
 ## 6. 🛠️ TESTING PROTOCOL
 *   **NO AUTO-TESTING**: Do NOT initiate automated browser testing unless explicitly requested by the user.
-
+*   **COMPLY WITH TESTING SPECS**: Strictly adhere to the **Testing Pyramid** strategy defined in `MealQuest_Customer_Spec.md`.

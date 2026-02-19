@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, ScrollView, Text } from '@tarojs/components';
 import { useLoad } from '@tarojs/taro';
 
@@ -6,6 +6,8 @@ import ShopBrand from '../../components/ShopBrand';
 import CustomerCardStack from '../../components/CustomerCardStack';
 import ActivityArea from '../../components/ActivityArea';
 import CustomerBottomDock from '../../components/CustomerBottomDock';
+import { storage } from '../../utils/storage';
+import { MockDataService, StoreData } from '../../services/MockDataService';
 
 import './index.scss';
 
@@ -19,8 +21,19 @@ export default function Index() {
     const cardStackRef = React.useRef<any>(null);
     const headerTitleRef = React.useRef<any>(null);
 
-    useLoad(() => {
+    const [storeData, setStoreData] = useState<StoreData | null>(null);
+
+    useLoad(async () => {
         console.log('Page loaded.');
+        const storeId = storage.getLastStoreId();
+        if (storeId) {
+            const data = await MockDataService.getStoreById(storeId);
+            setStoreData(data);
+        } else {
+            // Fallback or redirect if reached without storeId (shouldn't happen with correct flow)
+            const defaultData = await MockDataService.getStoreById('store_a');
+            setStoreData(defaultData);
+        }
     });
 
     /**
@@ -38,6 +51,12 @@ export default function Index() {
         // ── Phase 1: ShopBrand — parallax slower scroll ───────────────────
         // Brand scrolls at ~35% of scroll speed by counteracting 65% with translateY.
         // The card stack (z-index above brand) scrolls at full speed → slides over brand.
+        /* 
+           DISABLE PARALLAX TO FIX JITTER IN WEBVIEW MODE
+           The imperative JS animation causes jitter due to async communication.
+           WXS is required for smooth parallax, but for now we prioritize smooth scrolling.
+        */
+        /*
         const brandEl = shopBrandRef.current?.$el ?? shopBrandRef.current;
         if (brandEl) {
             const p1 = Math.min(1, Math.max(0, scrollTop / BRAND_COLLAPSE_HEIGHT));
@@ -49,6 +68,7 @@ export default function Index() {
             // Opacity: stay visible until near-end so the occlusion is visible
             brandEl.style.opacity = p1 > 0.7 ? String(1 - (p1 - 0.7) / 0.3) : '1';
         }
+        */
 
         // ── Header compact title reveal ──────────────────────────────────
         const titleEl = headerTitleRef.current?.$el ?? headerTitleRef.current;
@@ -62,6 +82,7 @@ export default function Index() {
 
         // ── Phase 2: Card stack — parallax slower scroll ─────────────────
         // Card stack slows to ~50% speed in its phase so the activity area covers it.
+        /*
         const cardEl = cardStackRef.current?.$el ?? cardStackRef.current;
         if (cardEl) {
             const phase2 = Math.max(0, scrollTop - BRAND_COLLAPSE_HEIGHT);
@@ -72,6 +93,7 @@ export default function Index() {
             cardEl.style.transform = `translateY(${parallax}px) scale(${scale})`;
             cardEl.style.opacity = String(1 - p2 * 0.5);
         }
+        */
     };
 
     return (
@@ -79,64 +101,74 @@ export default function Index() {
             <ScrollView
                 scrollY
                 className='main-scroll-view'
-                enhanced
                 showScrollbar={false}
                 onScroll={onScroll}
+                style={{ boxSizing: 'content-box' }}
             >
-                {/* ── Sticky Navigation Bar ── */}
-                <View className='sticky-header'>
-                    <View className='header-nav'>
-                        <View className="avatar-wrapper transition-transform">
-                            <View className='avatar-circle'>
-                                <Text className='avatar-emoji'>👤</Text>
+                <View className='scroll-content-wrapper'>
+                    {/* ── Sticky Navigation Bar ── */}
+                    <View className='sticky-header'>
+                        <View className='header-nav'>
+                            <View className="avatar-wrapper transition-transform">
+                                <View className='avatar-circle'>
+                                    <Text className='avatar-emoji'>👤</Text>
+                                </View>
+                            </View>
+
+                            {/* Compact store name — fades in when ShopBrand scrolls away */}
+                            <View ref={headerTitleRef} className='header-store-name'>
+                                <Text className='header-store-name__text'>
+                                    {storeData?.name || 'Loading...'}
+                                </Text>
+                            </View>
+
+                            <View className='navigation-capsule'>
+                                <View className='capsule-dots'>•••</View>
+                                <View className='capsule-divider' />
+                                <View className='capsule-circle' />
                             </View>
                         </View>
-
-                        {/* Compact store name — fades in when ShopBrand scrolls away */}
-                        <View ref={headerTitleRef} className='header-store-name'>
-                            <Text className='header-store-name__text'>探味轩</Text>
-                        </View>
-
-                        <View className='navigation-capsule'>
-                            <View className='capsule-dots'>•••</View>
-                            <View className='capsule-divider' />
-                            <View className='capsule-circle' />
-                        </View>
                     </View>
-                </View>
 
-                {/* ── ShopBrand — in scroll flow, collapses first ── */}
-                <View
-                    ref={shopBrandRef}
-                    className='shop-brand-scroll-wrapper'
-                    style={{
-                        transformOrigin: 'bottom center',
-                        willChange: 'transform, opacity',
-                        transform: 'scale(1)',
-                        opacity: '1',
-                    }}
-                >
-                    <ShopBrand />
-                </View>
+                    {/* ── ShopBrand — in scroll flow, collapses first ── */}
+                    <View
+                        ref={shopBrandRef}
+                        className='shop-brand-scroll-wrapper'
+                        style={{
+                            transformOrigin: 'bottom center',
+                            willChange: 'transform, opacity',
+                            transform: 'scale(1)',
+                            opacity: '1',
+                        }}
+                    >
+                        <ShopBrand
+                            name={storeData?.name}
+                            branchName={storeData?.branchName}
+                            slogan={storeData?.slogan}
+                            logo={storeData?.logo}
+                            isOpen={storeData?.isOpen}
+                        />
+                    </View>
 
-                {/* ── Card Stack — collapses after brand ── */}
-                <View
-                    ref={cardStackRef}
-                    className='card-stack-section'
-                    style={{
-                        transformOrigin: 'bottom center',
-                        zIndex: 10,
-                        position: 'relative',
-                        transform: 'scale(1)',
-                        willChange: 'transform, opacity',
-                    }}
-                >
-                    <CustomerCardStack />
-                </View>
+                    {/* ── Card Stack — collapses after brand ── */}
+                    <View
+                        ref={cardStackRef}
+                        className='card-stack-section'
+                        style={{
+                            transformOrigin: 'bottom center',
+                            zIndex: 10,
+                            position: 'relative',
+                            transform: 'scale(1)',
+                            willChange: 'transform, opacity',
+                        }}
+                    >
+                        <CustomerCardStack />
+                    </View>
 
-                {/* ── Activity Area ── */}
-                <View className='activity-area-container'>
-                    <ActivityArea />
+                    {/* ── Activity Area ── */}
+                    <View className='activity-area-container'>
+                        <ActivityArea />
+                    </View>
                 </View>
             </ScrollView>
 

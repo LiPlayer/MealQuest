@@ -11,8 +11,16 @@
 
     .main-scroll-view {
         width: 100vw;
-        flex: 1;
-        box-sizing: border-box;
+        height: 100vh;
+        background: transparent;
+
+        .scroll-content-wrapper {
+            width: 100%;
+            /* Ensure content can overflow for scrolling */
+            padding-bottom: 120px;
+            /* Space for bottom dock */
+        }
+
         -ms-overflow-style: none;
         /* IE and Edge */
         scrollbar-width: none;
