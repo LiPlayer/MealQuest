@@ -89,7 +89,6 @@ export default function Index() {
 
                         {/* Compact store name — fades in when ShopBrand scrolls away */}
                         <View ref={headerTitleRef} className="header-store-name">
-                            <Text className="header-store-name__emoji">🏮</Text>
                             <Text className="header-store-name__text">探味轩</Text>
                         </View>
 

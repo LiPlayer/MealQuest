@@ -5,7 +5,7 @@ export default function ShopBrand() {
         <View className="px-0 py-5 flex flex-row items-center gap-4">
             {/* Shop Logo - Using a high-quality placeholder for now */}
             <View className="w-16 h-16 rounded-2xl overflow-hidden shadow-lg border-2 border-white flex-shrink-0 bg-orange-100 flex items-center justify-center">
-                <Text className="text-3xl">🏮</Text>
+                <Text className="text-3xl font-bold text-orange-400">探</Text>
             </View>
 
             {/* Shop Info */}
