@@ -21,8 +21,8 @@ Component({
             // We implement the SAME logic as index.wxs but via setData
 
             const scrollTop = e.detail.scrollTop;
-            const BRAND_COLLAPSE_HEIGHT = 110;
-            const FOLD_HEIGHT = 360;
+            const BRAND_COLLAPSE_HEIGHT = 220;
+            const FOLD_HEIGHT = 720;
 
             // 1. ShopBrand
             let p1 = Math.min(1, Math.max(0, scrollTop / BRAND_COLLAPSE_HEIGHT));

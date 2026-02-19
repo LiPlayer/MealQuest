@@ -13,16 +13,16 @@ export default function P04_FragmentCard({ style }: FragmentCardProps) {
         >
             <View className='h-full flex flex-col box-border'>
                 {/* 3.4.1 Header (Fixed) */}
-                <View className='flex flex-row items-center justify-between p-6 box-border shrink-0' style={{ height: '60px' }}>
-                    <Text className='font-bold text-base'>食福碎片</Text>
-                    <View className='flex flex-row items-center gap-3'>
-                        <View className='flex flex-row items-center gap-1'>
-                            <Text className='opacity-40' style={{ fontSize: '10px' }}>📦</Text>
-                            <Text className='font-bold' style={{ fontSize: '10px' }}>12</Text>
+                <View className='card-header'>
+                    <Text className='card-title'>食福碎片</Text>
+                    <View className='flex flex-row items-center space-x-4'>
+                        <View className='card-fragment-stat'>
+                            <Text className='card-fragment-emoji'>📦</Text>
+                            <Text className='card-fragment-count'>12</Text>
                         </View>
-                        <View className='flex flex-row items-center gap-1'>
-                            <Text className='opacity-40' style={{ fontSize: '10px' }}>💎</Text>
-                            <Text className='font-bold' style={{ fontSize: '10px' }}>2</Text>
+                        <View className='card-fragment-stat'>
+                            <Text className='card-fragment-emoji'>💎</Text>
+                            <Text className='card-fragment-count'>2</Text>
                         </View>
                     </View>
                 </View>

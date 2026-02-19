@@ -9,15 +9,15 @@ export default defineConfig<'webpack5'>(async (merge, { command: _command, mode:
     projectName: 'meal-quest-customer',
     date: '2026-2-15',
     /**
-     * Design reference: 375px (iPhone X, as per spec).
-     * Mini-program: px values convert to rpx at 2:1 ratio (2rpx per 1px).
+     * Design reference: 750px (Standard / Retina).
+     * Mini-program: px values convert to rpx at 1:1 ratio (1rpx per 1px).
      * H5: uses vw units via pxtransform so everything scales to viewport width.
      */
-    designWidth: 375,
+    designWidth: 750,
     deviceRatio: {
       640: 2.34 / 2,
       750: 1,
-      375: 2,
+      375: 1 / 2,
       828: 1.81 / 2
     },
     sourceRoot: 'src',

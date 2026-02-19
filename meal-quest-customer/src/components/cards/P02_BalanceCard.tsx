@@ -13,9 +13,9 @@ export default function P02_BalanceCard({ style }: BalanceCardProps) {
         >
             <View className='h-full flex flex-col box-border'>
                 {/* 3.2.1 Header (Fixed) */}
-                <View className='flex flex-row items-center justify-between p-6 box-border shrink-0' style={{ height: '60px' }}>
-                    <Text className='font-bold text-base'>聚宝金库</Text>
-                    <Text className='text-xl font-black italic tracking-tight'>¥120.00</Text>
+                <View className='card-header'>
+                    <Text className='card-title'>聚宝金库</Text>
+                    <Text className='italic tracking-tight card-amount-value'>¥120.00</Text>
                 </View>
             </View>
         </View>

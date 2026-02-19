@@ -5,7 +5,7 @@
     justify-content: space-between;
     height: 100vh;
     background-color: #ffffff;
-    padding: 80px 40px;
+    padding: 160px 80px;
 }
 
 .startup-content {
@@ -18,59 +18,67 @@
 }
 
 .logo-placeholder {
-    width: 80px;
-    height: 80px;
+    width: 200px;
+    height: 200px;
     background-color: #f3f4f6;
-    border-radius: 20px;
-    margin-bottom: 24px;
+    border-radius: 48px;
+    margin-bottom: 48px;
     display: flex;
     align-items: center;
     justify-content: center;
 
     .logo-inner {
-        width: 40px;
-        height: 40px;
+        width: 100px;
+        height: 100px;
         background: linear-gradient(135deg, #ff6b6b, #ff8787);
-        border-radius: 10px;
+        border-radius: 24px;
     }
 }
 
 .startup-title {
-    font-size: 24px;
-    font-weight: 700;
+    font-size: 64px;
+    font-weight: 800;
     color: #1a1a1b;
-    margin-bottom: 12px;
+    margin-bottom: 24px;
+    letter-spacing: -1px;
 }
 
 .startup-description {
-    font-size: 16px;
+    font-size: 32px;
     color: #6b7280;
     text-align: center;
-    line-height: 1.5;
-    margin-bottom: 48px;
-    max-width: 240px;
+    line-height: 1.6;
+    margin-bottom: 120px;
+    max-width: 560px;
 }
 
 .scan-button {
-    width: 200px;
-    height: 56px;
+    width: 600px;
+    height: 112px;
     background-color: #000000;
-    border-radius: 28px;
+    border-radius: 56px;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 24px 60px -10px rgba(0, 0, 0, 0.2), 0 16px 20px -12px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+
+    &:active {
+        transform: scale(0.96);
+        box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.15);
+    }
 
     .scan-button-text {
         color: #ffffff;
-        font-size: 18px;
+        font-size: 36px;
         font-weight: 600;
+        letter-spacing: 2px;
     }
 }
 
 .startup-footer {
     .footer-text {
-        font-size: 12px;
+        font-size: 24px;
         color: #9ca3af;
     }
 }
@@ -84,17 +92,17 @@
     background-color: #ffffff;
 
     .loading-spinner {
-        width: 32px;
-        height: 32px;
-        border: 3px solid rgba(0, 0, 0, 0.05);
+        width: 64px;
+        height: 64px;
+        border: 6px solid rgba(0, 0, 0, 0.05);
         border-top-color: #000000;
         border-radius: 50%;
         animation: spin 0.8s linear infinite;
-        margin-bottom: 16px;
+        margin-bottom: 32px;
     }
 
     .loading-text {
-        font-size: 14px;
+        font-size: 28px;
         color: #6b7280;
     }
 }

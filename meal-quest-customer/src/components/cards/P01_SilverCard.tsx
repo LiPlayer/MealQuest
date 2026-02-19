@@ -1,4 +1,5 @@
 import { View, Text } from '@tarojs/components'
+import Taro from '@tarojs/taro'
 import React from 'react'
 
 interface SilverCardProps {
@@ -12,28 +13,36 @@ export default function P01_SilverCard({ style }: SilverCardProps) {
             className='relative w-full rounded-3xl overflow-hidden bg-gradient-to-br from-indigo-50 to-white border border-indigo-100 box-border text-indigo-900'
         >
             <View className='h-full flex flex-col box-border'>
-                {/* 3.1.1 Header (Summary Area / Fixed) */}
-                <View className='flex flex-row items-center justify-between p-6 box-border shrink-0' style={{ height: '60px' }}>
-                    <View className='flex flex-row items-center gap-2'>
-                        <Text className='text-base font-bold'>寻味碎银</Text>
+                <View className='card-header'>
+                    <View className='flex flex-row items-center space-x-2'>
+                        <Text className='card-title'>寻味碎银</Text>
                     </View>
 
                     {/* Middle: Step Capsule */}
-                    <View className="bg-gradient-to-r from-gray-900 to-black px-2 py-1 rounded-full flex flex-row items-center gap-1">
-                        <Text style={{ fontSize: '10px' }}>👟</Text>
-                        <Text className='font-bold' style={{ fontSize: '10px' }}>8,420</Text>
+                    <View className="card-step-capsule bg-gradient-to-r from-gray-900 to-black">
+                        <Text className='card-step-emoji'>👟</Text>
+                        <Text className='card-step-value' style={{ color: 'white' }}>8,420</Text>
                     </View>
 
                     {/* Right: Amount */}
-                    <View className='flex flex-row items-baseline gap-1'>
-                        <Text className='text-xl font-black'>12,850</Text>
-                        <Text className='font-bold opacity-60' style={{ fontSize: '10px' }}>两</Text>
+                    <View className='flex flex-row items-baseline space-x-2'>
+                        <Text className='card-amount-value'>12,850</Text>
+                        <Text className='card-amount-unit'>两</Text>
                     </View>
                 </View>
             </View>
 
             {/* Background Decor */}
-            <View className='absolute -bottom-12 -right-12 w-48 h-48 rounded-full blur-3xl pointer-events-none' style={{ backgroundColor: 'rgba(99,102,241,0.05)' }}></View>
+            <View
+                className='absolute rounded-full blur-3xl pointer-events-none'
+                style={{
+                    bottom: Taro.pxTransform(-48),
+                    right: Taro.pxTransform(-48),
+                    width: Taro.pxTransform(192),
+                    height: Taro.pxTransform(192),
+                    backgroundColor: 'rgba(99,102,241,0.05)'
+                }}
+            />
         </View>
     )
 }

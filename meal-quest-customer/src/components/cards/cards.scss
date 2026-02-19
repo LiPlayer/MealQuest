@@ -1,0 +1,78 @@
+.card-header {
+    height: 120px;
+    padding: 0 40px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    box-sizing: border-box;
+    flex-shrink: 0;
+}
+
+.card-title {
+    font-size: 28px;
+    font-weight: bold;
+}
+
+.card-step-capsule {
+    padding: 12px 32px;
+    gap: 8px;
+    border-radius: 9999px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.card-step-emoji {
+    font-size: 32px;
+    line-height: 1.2;
+}
+
+.card-step-value {
+    font-size: 32rpx; // Reduced from 36
+    line-height: 1.2;
+    font-weight: bold;
+}
+
+.card-amount-value {
+    font-size: 28rpx; // Reduced from 32
+    font-weight: 900;
+}
+
+.card-amount-unit {
+    font-size: 32rpx; // Reduced from 36
+    font-weight: bold;
+    opacity: 0.6;
+}
+
+.card-badge {
+    padding: 8px 24px;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.card-badge-text {
+    font-size: 32rpx; // Reduced from 36
+    line-height: 1.2;
+    font-weight: 900;
+    letter-spacing: 0.05em;
+}
+
+.card-fragment-stat {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+}
+
+.card-fragment-emoji {
+    font-size: 36px;
+    opacity: 0.4;
+}
+
+.card-fragment-count {
+    font-size: 36px;
+    font-weight: bold;
+}

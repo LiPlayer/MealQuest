@@ -1,5 +1,5 @@
-var BRAND_COLLAPSE_HEIGHT = 110;
-var FOLD_HEIGHT = 360;
+var BRAND_COLLAPSE_HEIGHT = 220;
+var FOLD_HEIGHT = 720;
 
 function onScroll(e, ownerInstance) {
   var scrollTop = e.detail.scrollTop;
@@ -35,7 +35,7 @@ function onScroll(e, ownerInstance) {
     var tp = Math.min(1, Math.max(0,
       (scrollTop - BRAND_COLLAPSE_HEIGHT * 0.7) / (BRAND_COLLAPSE_HEIGHT * 0.3)
     ));
-    var tx = Math.floor((1 - tp) * -8);
+    var tx = Math.floor((1 - tp) * -16);
     
     titleEl.setStyle({
       'opacity': tp.toFixed(2),

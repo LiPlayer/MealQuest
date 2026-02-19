@@ -1,4 +1,5 @@
 import { View, Text } from '@tarojs/components';
+import './ActivityArea.scss';
 
 const ACTIVITIES = [
     {
@@ -32,47 +33,47 @@ const ACTIVITIES = [
 
 export default function ActivityArea() {
     return (
-        <View className='px-0 pt-2 pb-6 flex flex-col gap-6'>
+        <View className='activity-area flex flex-col box-border'>
             {/* Header */}
-            <View className='px-4 flex flex-row items-center justify-between'>
-                <Text className='text-lg font-bold text-gray-800'>精选特惠</Text>
-                <Text className='text-xs text-gray-400 font-medium'>查看全部</Text>
+            <View className='activity-area__header'>
+                <Text className='activity-area__header-title'>精选特惠</Text>
+                <Text className='activity-area__header-more'>查看全部</Text>
             </View>
 
             {/* Activities List */}
-            <View className='px-4 flex flex-col gap-4'>
+            <View className='activity-area__list'>
                 {ACTIVITIES.map((activity) => (
                     <View
                         key={activity.id}
-                        className='relative overflow-hidden transition-all duration-200 rounded-2xl bg-white border border-gray-100 p-5 flex flex-row items-center gap-5 shadow-sm'
+                        className='activity-area__item'
                     >
                         {/* Decorative Background Element */}
-                        <View className={`absolute -right-4 -bottom-4 w-24 h-24 ${activity.color} rounded-full opacity-50 blur-2xl`} />
+                        <View className={`activity-area__decor ${activity.color}`} />
 
                         {/* Icon Container */}
-                        <View className={`w-14 h-14 rounded-2xl ${activity.color} flex-shrink-0 flex items-center justify-center text-3xl shadow-inner relative z-10`}>
+                        <View className={`activity-area__icon-container ${activity.color}`}>
                             {activity.icon}
                         </View>
 
                         {/* Content */}
-                        <View className='flex-1 flex flex-col gap-1 relative z-10 text-ellipsis whitespace-nowrap overflow-hidden'>
-                            <View className='flex flex-row items-center gap-2'>
-                                <Text className='text-base font-bold text-gray-900'>{activity.title}</Text>
-                                <View className={`px-1 py-1 rounded font-black tracking-tighter ${activity.color} ${activity.textColor}`} style={{ fontSize: '10px' }}>
+                        <View className='activity-area__content'>
+                            <View className='activity-area__title-row'>
+                                <Text className='activity-area__title'>{activity.title}</Text>
+                                <View className={`activity-area__tag ${activity.color} ${activity.textColor}`}>
                                     {activity.tag}
                                 </View>
                             </View>
-                            <Text className='text-xs text-gray-500 font-medium'>{activity.desc}</Text>
+                            <Text className='activity-area__desc text-ellipsis whitespace-nowrap overflow-hidden'>{activity.desc}</Text>
                         </View>
 
                         {/* Arrow */}
-                        <View className='text-gray-300 relative z-10 mr-1'>→</View>
+                        <View className='activity-area__arrow'>→</View>
                     </View>
                 ))}
             </View>
 
             {/* Safety space for the bottom dock and to ensure scrollability */}
-            <View style={{ height: '400px' }} />
+            <View style={{ height: '320rpx' }} />
         </View>
     );
 }
