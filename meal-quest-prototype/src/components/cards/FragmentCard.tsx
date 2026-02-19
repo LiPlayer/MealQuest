@@ -17,7 +17,7 @@ export default function FragmentCard({ expanded, onExpand, onReference, style }:
         >
             {/* Header Area */}
             <div
-                className="h-[30px] px-5 flex items-center justify-between shrink-0 cursor-pointer active:scale-[0.99] transition-transform"
+                className="card-header h-[30px] px-5 flex items-center justify-between shrink-0 cursor-pointer active:scale-[0.99] transition-transform"
                 onClick={onExpand}
             >
                 <div className="flex items-center gap-2.5">
