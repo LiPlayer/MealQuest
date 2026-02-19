@@ -3,12 +3,6 @@
 @tailwind utilities;
 
 @layer base {
-
-    /**
-     * KEY FIX: Taro H5 runtime sets html font-size dynamically (e.g. 37.5px at 375px viewport)
-     * to drive its internal rem scaling. But Tailwind also uses rem units for all spacing/text.
-     * Locking to 16px gives Tailwind its standard baseline so w-16=64px, text-xl=20px, etc.
-     */
     html {
         font-size: 16px !important;
     }
@@ -24,10 +18,6 @@
         background-color: #f8f9fa;
     }
 
-    /**
-     * H5 app shell: removed max-width to allow content to fully fill the screen
-     * as per user request ("使得内容完全填充手机").
-     */
     #app {
         width: 100%;
         margin: 0 auto;

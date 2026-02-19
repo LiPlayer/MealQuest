@@ -27,7 +27,12 @@ export default function Index() {
      * All scroll-driven animations are imperative (direct DOM mutations)
      * so we get native 60fps without React re-renders.
      */
-    const onScroll = (e) => {
+    interface ScrollEvent {
+        detail: {
+            scrollTop: number;
+        }
+    }
+    const onScroll = (e: ScrollEvent) => {
         const scrollTop = e.detail.scrollTop;
 
         // ── Phase 1: ShopBrand — parallax slower scroll ───────────────────
@@ -70,32 +75,32 @@ export default function Index() {
     };
 
     return (
-        <View className="index-container">
+        <View className='index-container'>
             <ScrollView
                 scrollY
-                className="main-scroll-view"
+                className='main-scroll-view'
                 enhanced
                 showScrollbar={false}
                 onScroll={onScroll}
             >
                 {/* ── Sticky Navigation Bar ── */}
-                <View className="sticky-header">
-                    <View className="header-nav">
-                        <View className="avatar-wrapper active:scale-95 transition-transform">
-                            <View className="avatar-circle">
-                                <Text className="avatar-emoji">👤</Text>
+                <View className='sticky-header'>
+                    <View className='header-nav'>
+                        <View className="avatar-wrapper transition-transform">
+                            <View className='avatar-circle'>
+                                <Text className='avatar-emoji'>👤</Text>
                             </View>
                         </View>
 
                         {/* Compact store name — fades in when ShopBrand scrolls away */}
-                        <View ref={headerTitleRef} className="header-store-name">
-                            <Text className="header-store-name__text">探味轩</Text>
+                        <View ref={headerTitleRef} className='header-store-name'>
+                            <Text className='header-store-name__text'>探味轩</Text>
                         </View>
 
-                        <View className="navigation-capsule">
-                            <View className="capsule-dots">•••</View>
-                            <View className="capsule-divider" />
-                            <View className="capsule-circle" />
+                        <View className='navigation-capsule'>
+                            <View className='capsule-dots'>•••</View>
+                            <View className='capsule-divider' />
+                            <View className='capsule-circle' />
                         </View>
                     </View>
                 </View>
@@ -103,7 +108,7 @@ export default function Index() {
                 {/* ── ShopBrand — in scroll flow, collapses first ── */}
                 <View
                     ref={shopBrandRef}
-                    className="shop-brand-scroll-wrapper"
+                    className='shop-brand-scroll-wrapper'
                     style={{
                         transformOrigin: 'bottom center',
                         willChange: 'transform, opacity',
@@ -117,7 +122,7 @@ export default function Index() {
                 {/* ── Card Stack — collapses after brand ── */}
                 <View
                     ref={cardStackRef}
-                    className="card-stack-section"
+                    className='card-stack-section'
                     style={{
                         transformOrigin: 'bottom center',
                         zIndex: 10,
@@ -130,7 +135,7 @@ export default function Index() {
                 </View>
 
                 {/* ── Activity Area ── */}
-                <View className="activity-area-container">
+                <View className='activity-area-container'>
                     <ActivityArea />
                 </View>
             </ScrollView>

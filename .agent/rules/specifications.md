@@ -40,3 +40,4 @@ You must strictly adhere to the following **"De-Platforming"** rules to protect 
 
 ## 6. 🛠️ TESTING PROTOCOL
 *   **NO AUTO-TESTING**: Do NOT initiate automated browser testing unless explicitly requested by the user.
+

@@ -16,13 +16,13 @@ export default function CustomerCardStack() {
 
     return (
         <View
-            className="relative select-none box-border"
-            style={{ height: `${containerHeight + 8}px`, paddingBottom: '8px' }}
+          className='relative select-none box-border'
+          style={{ height: `${containerHeight + 8}px`, paddingBottom: '8px' }}
         >
             {CARDS.map((Component, index) => (
                 <View
-                    key={index}
-                    style={{
+                  key={index}
+                  style={{
                         position: 'absolute',
                         top: `${index * HEADER_H}px`,
                         left: 0,

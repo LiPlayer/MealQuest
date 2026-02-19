@@ -1,0 +1,15 @@
+﻿
+D:\Projects\MealQuest\meal-quest-customer\test\__mocks__\taro-components.js
+  1:1  error  Expected "export" or "export default"  import/no-commonjs
+
+D:\Projects\MealQuest\meal-quest-customer\test\__mocks__\taro.js
+   2:21  error    'jest' is not defined                                                                                                                                                                                                            no-undef
+   3:21  error    'jest' is not defined                                                                                                                                                                                                            no-undef
+   4:24  error    'jest' is not defined                                                                                                                                                                                                            no-undef
+   5:15  error    'jest' is not defined                                                                                                                                                                                                            no-undef
+   6:15  error    'jest' is not defined                                                                                                                                                                                                            no-undef
+  14:12  warning  React Hook useEffect has a missing dependency: 'callback'. Either include it or remove the dependency array. If 'callback' changes too often, find the parent component that defines it and wrap that definition in useCallback  react-hooks/exhaustive-deps
+  19:1   error    Expected "export" or "export default"                                                                                                                                                                                            import/no-commonjs
+
+Γ£û 8 problems (7 errors, 1 warning)
+

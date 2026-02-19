@@ -8,7 +8,7 @@
 
 *   **开发框架**: Taro (React) + Tailwind CSS.
 *   **分辨率**: 375 x 812 (iPhone X).
-*   **H5 适配**: `width: 100%` 全填充，边缘留白由组件内 `px-4` (16px) 控制。
+*   **H5 适配**: **已废弃 (Deprecated)**。本项目仅针对 **微信小程序 (WeChat Mini Program)** 进行开发与测试，不再兼容 H5 端。所有 H5 或跨平台兼容性代码应被移除。
 
 ### 0.1 关键开发约束 (Critical Constraints)
 
@@ -18,6 +18,37 @@
     *   布局/间距使用 Tailwind 类名 (使用 `rem`)。
     *   固定尺寸在 SCSS 中使用 `px`。
     *   **禁手**: 禁止在 SCSS 或 JS 中手动写入 `rem` 或 `rpx` 单位。
+
+### 0.2 WXSS 兼容性与 Tailwind 安全规范 (WXSS Safety Rules)
+
+由于微信小程序 (WXSS) 编译器不支持 CSS 选择器中的转义字符（反斜杠 `\`），必须严格限制 Tailwind 的使用方式：
+
+1.  **禁手区 (禁止使用会触发转义的写法)**:
+    *   **任意值 (Arbitrary Values)**: 禁止使用中括号，如 `h-[60px]`。
+    *   **小数刻度 (Decimals)**: 禁止使用小数，如 `m-1.5`。
+    *   **透明度斜杠 (Opacity Slashes)**: 禁止使用斜杠透明度，如 `bg-white/20`。
+    *   **伪类/变体 (Variants)**: 禁止在类名中使用 `active:`, `hover:`, `group-active:` 等。
+    *   **!important**: 禁止使用 `!p-4` 这种开头带感叹号的写法。
+2.  **替代方案**:
+    *   非 Token 尺寸、透明度、变体样式等，**必须**使用 React 行内样式 (`style={{ ... }}`)。
+    *   复杂伪类或重要的样式覆盖，应写在 `.scss` 文件中。
+3.  **基础设施保护**:
+    *   **全局选择器禁令**: WXSS 不支持 `*`。底层已通过 PostCSS 插件将其全量替换为 `page, view, text`。
+
+### 0.3 测试规范 (Testing Specifications)
+
+*   **测试策略**: 采用 **测试金字塔 (Testing Pyramid)** 策略。
+    *   **Tier 1: 静态分析 (Static Analysis)** [100% 覆盖]
+        *   **TypeScript**: 严格模式 (Strict Mode)，禁止隐式 Any。
+        *   **ESLint/Prettier**: 零警告提交。
+    *   **Tier 2: 单元与集成 (Unit & Integration)** [核心逻辑 80% 覆盖]
+        *   **工具**: Jest + React Testing Library + Taro Mocks.
+        *   **对象**: `utils/`, `hooks/`, 关键业务组件 (`Startup`, `Payment`).
+        *   **快照测试 (Snapshot)**: 针对复杂且稳定的 UI 组件（如订单卡片）开启快照，防止意外布局崩坏。
+    *   **Tier 3: 端到端与视觉 (E2E & Visual)** [关键路径覆盖]
+        *   **工具**: 微信官方 `miniprogram-automator` (规划中).
+        *   **对象**: 核心赚钱流程 (扫码 -> 点单 -> 支付)。
+        *   **视觉回归**: 针对设计还原度要求极高的组件（如首页卡片堆叠）进行像素级对比测试。
 
 ---
 
