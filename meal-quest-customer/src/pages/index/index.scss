@@ -14,58 +14,72 @@
     // The wxs-scroll-view component adds these classes
     .scroll-content-wrapper {
         width: 100%;
-        padding-bottom: 240px;
+        padding-bottom: 240rpx;
     }
 
     // ── Sticky Navigation Bar ──────────────────────────────────────────
     .sticky-header {
-        position: sticky;
+        position: fixed;
         top: 0;
-        z-index: 100;
-        background-color: #f8f9fa;
-        width: 100%;
-        box-shadow: 0 6px 20px rgba(248, 249, 250, 0.95),
-            0 2px 0px rgba(0, 0, 0, 0.04);
+        left: 0;
+        right: 0;
+        height: var(--header-height, 180rpx);
+        z-index: 1000;
+        pointer-events: none;
+        overflow: visible;
 
-        &::after {
-            content: "";
+        // The background that fades in
+        &__bg {
             position: absolute;
-            bottom: -40px;
+            top: 0;
             left: 0;
             right: 0;
-            height: 40px;
-            background: linear-gradient(to bottom, #f8f9fa, rgba(248, 249, 250, 0));
-            pointer-events: none;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20rpx);
+            opacity: 0; // Managed by WXS
+            z-index: -1;
+            box-shadow: 0 4rpx 24rpx rgba(0, 0, 0, 0.05);
         }
 
         .header-nav {
-            height: 320px;
-            padding: 160px 48px 0;
+            margin-top: var(--nav-top, 88rpx);
+            height: var(--nav-height, 64rpx);
             display: flex;
             flex-direction: row;
             align-items: center;
-            justify-content: space-between; // Ensure spacing
-            pointer-events: none;
+            justify-content: space-between;
+            padding: 0 48rpx;
+            pointer-events: auto;
+            position: relative;
+            box-sizing: border-box;
+            overflow: visible;
 
             .header-left {
-                pointer-events: auto;
-                flex-shrink: 0;
+                display: flex;
+                align-items: center;
+                height: 100%;
 
                 // Avatar wrapper styles
                 .avatar-wrapper {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+
                     .avatar-circle {
-                        width: 160px;
-                        height: 160px;
+                        width: 100rpx; // Increased as requested
+                        height: 100rpx;
                         border-radius: 50%;
                         background-color: white;
-                        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.1);
+                        box-shadow: 0 16rpx 48rpx rgba(0, 0, 0, 0.1);
                         display: flex;
                         align-items: center;
                         justify-content: center;
-                        border: 4px solid rgba(0, 0, 0, 0.05);
+                        border: 4rpx solid rgba(0, 0, 0, 0.05);
+                        flex-shrink: 0;
 
                         .avatar-emoji {
-                            font-size: 64rpx; // Reduced from 80
+                            font-size: 52rpx; // Increased from 44
                         }
                     }
                 }
@@ -77,8 +91,8 @@
                 display: flex;
                 flex-direction: row;
                 align-items: center;
-                gap: 16px;
-                padding-left: 32px;
+                gap: 16rpx;
+                padding-left: 32rpx;
                 opacity: 0; // WXS controls this
                 transform: translateX(-24px); // WXS controls this
                 pointer-events: none;

@@ -26,6 +26,10 @@
     *   **单位规范 (Mature Practice)**:
         *   **SCSS 优先**: 所有静态尺寸（字号、宽高、间距）必须写在 SCSS 文件中。Taro 会在编译阶段将 `px` 自动换算为 `rpx`。
         *   **动态计算**: 若必须在 React `style` 中使用动态数值，**严禁直接写 px 字符串**。必须使用 `Taro.pxTransform(number)` 函数进行转换（例：`style={{ height: Taro.pxTransform(240) }}`）。
+        *   **严禁硬编码 (Anti-Hardcoding)**: **除非万不得已，严禁在所有编码环节（逻辑、样式、配置）中出现硬编码行为。**
+            *   **布局尺寸**：禁止在 WXS/JS 中硬编码高度、间距或偏移量（magic offsets）。必须优先通过 API (如 `getMenuButtonBoundingClientRect`) 或 `createSelectorQuery` 动态获取。
+            *   **业务逻辑**：禁止使用魔法数字 (Magic Numbers) 或硬编码的 ID/枚举。所有此类值必须定义为常量或从配置接口获取。
+            *   **极致鲁棒性**：编码必须允许“内容撑开”，确保在不同机型、不同文案长度下 UI 不崩坏。
         *   **物理像素**: 需要不随分辨率缩放的线条时，使用大写 `PX` 单位（例：`border: 1PX solid #000`）。
     *   **禁止手动 rem/rpx**: 禁止在 SCSS 或 JS 中手动写入 `rem` 或 `rpx` 后缀（Tailwind 自动生成的除外）。
     *   **禁止环境依赖**: 严禁引入 `window`, `document` 等浏览器对象。在处理微信与支付宝的差异时，**必须优先使用 Taro 提供的抽象接口**，保证双端兼容性。

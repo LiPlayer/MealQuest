@@ -5,6 +5,10 @@ Component({
     },
     properties: {},
     data: {
+        // Dynamic heights for WXS
+        brandHeight: 200, // Default fallback
+        cardHeight: 800,  // Default fallback
+
         // For Alipay (JS-based animation fallback)
         brandStyle: '',
         titleStyle: 'opacity: 0; transform: translate3d(-8px, 0, 0);',
@@ -13,9 +17,26 @@ Component({
     lifetimes: {
         attached() {
             console.log('WxsScrollView Component Attached!');
+        },
+        ready() {
+            this.updateMeasurements();
         }
     },
     methods: {
+        updateMeasurements: function () {
+            const query = this.createSelectorQuery();
+            query.select('.wxs-shop-brand-scroll-wrapper').boundingClientRect();
+            query.select('.wxs-card-stack-section').boundingClientRect();
+            query.exec((res) => {
+                if (res && res[0] && res[1]) {
+                    console.log('Measurements updated:', res[0].height, res[1].height);
+                    this.setData({
+                        brandHeight: res[0].height,
+                        cardHeight: res[1].height
+                    });
+                }
+            });
+        },
         onScroll: function (e) {
             // This method is called by Alipay's onScroll (or WeChat if WXS fails/is not used)
             // We implement the SAME logic as index.wxs but via setData

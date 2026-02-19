@@ -1,16 +1,6 @@
-<scroll-view
-  class="wxs-scroll-view"
-  scroll-y
-  bindscroll="{{scroll.onScroll}}"
-  show-scrollbar="{{false}}"
-  show-scrollbar="{{false}}"
-  enhanced="{{false}}"
-  bounces="{{false}}"
-  style="height: 100vh; width: 100vw;"
->
-  <view class="scroll-content-wrapper">
-    <!-- Sticky Header Wrapper -->
+    <!-- Sticky Header Wrapper (Moved outside for fixed stability) -->
     <view class="sticky-header">
+      <view class="sticky-header__bg wxs-header-bg"></view>
       <view class="header-nav">
         <!-- Left: Avatar -->
         <view class="header-left">
@@ -28,6 +18,20 @@
         </view>
       </view>
     </view>
+
+<scroll-view
+  class="wxs-scroll-view"
+  scroll-y
+  bindscroll="{{scroll.onScroll}}"
+  show-scrollbar="{{false}}"
+  show-scrollbar="{{false}}"
+  enhanced="{{false}}"
+  bounces="{{false}}"
+  style="height: 100vh; width: 100vw;"
+  data-brand-h="{{brandHeight}}"
+  data-card-h="{{cardHeight}}"
+>
+  <view class="scroll-content-wrapper" style="padding-top: var(--header-height, 180rpx);">
 
     <!-- Brand (Animated) -->
     <view class="shop-brand-scroll-wrapper wxs-shop-brand-scroll-wrapper">
