@@ -10,7 +10,7 @@ export default function P01_SilverCard({ style }: SilverCardProps) {
     return (
         <View
             style={style}
-            className='relative w-full rounded-3xl overflow-hidden bg-gradient-to-br from-indigo-50 to-white border border-indigo-100 box-border text-indigo-900'
+            className='relative w-full rounded-3xl overflow-hidden bg-gradient-to-br from-indigo-50/50 to-white border border-indigo-100/50 box-border text-slate-900'
         >
             <View className='h-full flex flex-col box-border'>
                 <View className='card-header'>

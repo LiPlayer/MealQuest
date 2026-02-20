@@ -9,7 +9,7 @@ export default function P02_BalanceCard({ style }: BalanceCardProps) {
     return (
         <View
             style={style}
-            className='relative w-full rounded-3xl overflow-hidden bg-white border border-gray-100 box-border text-gray-900'
+            className='relative w-full rounded-3xl overflow-hidden bg-gradient-to-br from-slate-50/50 to-white border border-slate-100 box-border text-slate-900'
         >
             <View className='h-full flex flex-col box-border'>
                 {/* 3.2.1 Header (Fixed) */}

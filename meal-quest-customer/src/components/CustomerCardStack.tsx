@@ -6,7 +6,7 @@ import P02_BalanceCard from './cards/P02_BalanceCard';
 import P03_TicketCard from './cards/P03_TicketCard';
 import P04_FragmentCard from './cards/P04_FragmentCard';
 
-const HEADER_H = 120; // Visible "Forehead" in stacked state (rpx)
+const HEADER_H = 60; // Visible "Forehead" in stacked state (rpx)
 const TOTAL_CARDS = 4;
 
 export default function CustomerCardStack() {

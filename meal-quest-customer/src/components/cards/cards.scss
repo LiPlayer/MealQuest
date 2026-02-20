@@ -1,5 +1,5 @@
 .card-header {
-    height: 120px;
+    height: 60px;
     padding: 0 40px;
     display: flex;
     flex-direction: row;
@@ -11,7 +11,8 @@
 
 .card-title {
     font-size: 28px;
-    font-weight: bold;
+    font-weight: 700;
+    color: #0f172a; // slate-900
 }
 
 .card-step-capsule {
@@ -35,14 +36,16 @@
 }
 
 .card-amount-value {
-    font-size: 28rpx; // Reduced from 32
-    font-weight: 900;
+    font-size: 28rpx;
+    font-weight: 800;
+    color: #0f172a; // slate-900
 }
 
 .card-amount-unit {
-    font-size: 32rpx; // Reduced from 36
-    font-weight: bold;
-    opacity: 0.6;
+    font-size: 32rpx;
+    font-weight: 700;
+    color: #475569; // slate-600
+    margin-left: 4px;
 }
 
 .card-badge {
