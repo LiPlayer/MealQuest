@@ -1,7 +1,7 @@
+@use "./components/cards/cards.scss" as *;
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-@import "./components/cards/cards.scss";
 
 @layer base {
     html {
