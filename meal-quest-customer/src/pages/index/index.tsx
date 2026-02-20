@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, Block, Slot } from '@tarojs/components';
+import { View, Text, Slot } from '@tarojs/components';
 import Taro, { useLoad } from '@tarojs/taro';
 
 import ShopBrand from '../../components/ShopBrand';
