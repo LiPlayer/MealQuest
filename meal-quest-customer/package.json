@@ -33,6 +33,7 @@
     "test": "jest --config jest.config.js",
     "test:e2e": "jest --config jest.e2e.config.js --runInBand",
     "test:e2e:weapp": "npm run build:weapp && npm run test:e2e",
+    "test:e2e:doctor": "node ./test/e2e/doctor.js",
     "test:watch": "jest --watch"
   },
   "browserslist": [
