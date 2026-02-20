@@ -9,8 +9,12 @@ interface SilverCardProps {
 export default function P01_SilverCard({ style }: SilverCardProps) {
     return (
         <View
-            style={style}
-            className='relative w-full rounded-3xl overflow-hidden bg-gradient-to-br from-indigo-50/50 to-white border border-indigo-100/50 box-border text-slate-900'
+            style={{
+                ...style,
+                backgroundImage: 'linear-gradient(to bottom right, rgba(238,242,255,0.5), #ffffff)',
+                borderColor: 'rgba(224,231,255,0.5)'
+            }}
+            className='relative w-full rounded-3xl overflow-hidden bg-gradient-to-br to-white border box-border text-slate-900'
         >
             <View className='h-full flex flex-col box-border'>
                 <View className='card-header'>

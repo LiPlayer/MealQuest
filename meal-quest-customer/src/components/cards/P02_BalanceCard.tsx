@@ -8,8 +8,11 @@ interface BalanceCardProps {
 export default function P02_BalanceCard({ style }: BalanceCardProps) {
     return (
         <View
-            style={style}
-            className='relative w-full rounded-3xl overflow-hidden bg-gradient-to-br from-slate-50/50 to-white border border-slate-100 box-border text-slate-900'
+            style={{
+                ...style,
+                backgroundImage: 'linear-gradient(to bottom right, rgba(248,250,252,0.5), #ffffff)'
+            }}
+            className='relative w-full rounded-3xl overflow-hidden bg-gradient-to-br to-white border border-slate-100 box-border text-slate-900'
         >
             <View className='h-full flex flex-col box-border'>
                 {/* 3.2.1 Header (Fixed) */}
