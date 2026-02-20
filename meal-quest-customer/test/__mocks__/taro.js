@@ -4,6 +4,8 @@ const taroMock = {
     removeStorageSync: jest.fn(),
     reLaunch: jest.fn(),
     scanCode: jest.fn(),
+    pxTransform: jest.fn((value) => `${value}px`),
+    vibrateShort: jest.fn(),
     // Mock useLoad hook to execute the callback immediately but only once
     useLoad: (callback) => {
         const { useEffect } = require('react');
@@ -22,3 +24,5 @@ export const getStorageSync = taroMock.getStorageSync;
 export const removeStorageSync = taroMock.removeStorageSync;
 export const reLaunch = taroMock.reLaunch;
 export const scanCode = taroMock.scanCode;
+export const pxTransform = taroMock.pxTransform;
+export const vibrateShort = taroMock.vibrateShort;
