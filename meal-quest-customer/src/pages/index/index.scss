@@ -67,8 +67,8 @@
                     justify-content: center;
 
                     .avatar-circle {
-                        width: 100rpx; // Increased as requested
-                        height: 100rpx;
+                        width: var(--nav-height, 64rpx);
+                        height: var(--nav-height, 64rpx);
                         border-radius: 50%;
                         background-color: white;
                         box-shadow: 0 16rpx 48rpx rgba(0, 0, 0, 0.1);
@@ -79,7 +79,7 @@
                         flex-shrink: 0;
 
                         .avatar-emoji {
-                            font-size: 52rpx; // Increased from 44
+                            font-size: calc(var(--nav-height, 64rpx) * 0.6);
                         }
                     }
                 }
@@ -101,7 +101,7 @@
                 transition: none !important;
 
                 &__text {
-                    font-size: 48rpx; // Reduced from 56
+                    font-size: calc(var(--nav-height, 64rpx) * 0.75); // Scaled based on capsule
                     font-weight: 800;
                     color: #1a1a1a;
                     letter-spacing: -1rpx;

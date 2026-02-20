@@ -19,7 +19,9 @@ function onScroll(e, ownerInstance) {
   if (brandEl) {
     var brandRange = brandH - OCCLUSION_BUFFER;
     var p1 = Math.min(1, Math.max(0, scrollTop / brandRange));
-    var scale = (1 - p1 * UNIFIED_SHRINK_FACTOR).toFixed(4);
+    
+    // Scale standard: use card's displacement rate (0.3 / cardH)
+    var scale = (1 - (scrollTop / cardH) * UNIFIED_SHRINK_FACTOR).toFixed(4);
     var opacity = (p1 > 0.8 ? 1 - (p1 - 0.8) / 0.2 : 1).toFixed(2);
 
     brandEl.setStyle({
@@ -46,15 +48,16 @@ function onScroll(e, ownerInstance) {
 
   // 4. Card Stack Animation
   if (cardEl) {
-    var cardStart = brandH - OCCLUSION_BUFFER;
-    var phase2 = Math.max(0, scrollTop - cardStart);
-    var p2 = Math.min(1, phase2 / cardH);
+    // Standardized scaling: both start from scrollTop 0 for a unified "speed"
+    // but Card Stack only starts taking effect after brand starts folding
+    var cardScale = (1 - (scrollTop / cardH) * UNIFIED_SHRINK_FACTOR).toFixed(4);
     
-    var scaleCard = (1 - p2 * UNIFIED_SHRINK_FACTOR).toFixed(4);
-    var opacityCard = (1 - p2 * 0.5).toFixed(2);
+    var cardStart = brandH - OCCLUSION_BUFFER;
+    var phase2p = Math.min(1, Math.max(0, (scrollTop - cardStart) / cardH));
+    var opacityCard = (1 - phase2p * 0.5).toFixed(2);
 
     cardEl.setStyle({
-      'transform': 'scale(' + scaleCard + ')',
+      'transform': 'scale(' + cardScale + ')',
       'opacity': opacityCard
     });
   }

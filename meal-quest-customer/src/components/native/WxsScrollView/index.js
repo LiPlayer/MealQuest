@@ -46,8 +46,11 @@ Component({
             const FOLD_HEIGHT = 720;
 
             // 1. ShopBrand
-            let p1 = Math.min(1, Math.max(0, scrollTop / BRAND_COLLAPSE_HEIGHT));
-            let scale = (1 - p1 * 0.3).toFixed(4); // Match WXS 0.3 shrink
+            const brandRange = BRAND_COLLAPSE_HEIGHT; // Approximate fallback
+            let p1 = Math.min(1, Math.max(0, scrollTop / brandRange));
+
+            // Standardized scaling: use FOLD_HEIGHT (the "cardH" equivalent) as denominator
+            let scale = (1 - (scrollTop / FOLD_HEIGHT) * 0.3).toFixed(4);
             let opacity = (p1 > 0.7 ? 1 - (p1 - 0.7) / 0.3 : 1).toFixed(2);
 
             const brandStyle = `transform: scale(${scale}); opacity: ${opacity}; transition: none;`;
@@ -61,7 +64,9 @@ Component({
             // 3. Cards
             let phase2 = Math.max(0, scrollTop - BRAND_COLLAPSE_HEIGHT);
             let p2 = Math.min(1, phase2 / FOLD_HEIGHT);
-            let scaleCard = (1 - p2 * 0.2).toFixed(4); // Match WXS 0.2 shrink
+
+            // Standardized scaling: matching brand logic
+            let scaleCard = (1 - (scrollTop / FOLD_HEIGHT) * 0.3).toFixed(4);
             let opacityCard = (1 - p2 * 0.5).toFixed(2);
 
             const cardStyle = `transform: scale(${scaleCard}); opacity: ${opacityCard}; transition: none;`;
