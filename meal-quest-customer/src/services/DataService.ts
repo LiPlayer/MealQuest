@@ -2,7 +2,7 @@ import { CheckoutQuote } from '@/domain/smartCheckout';
 import { storage } from '@/utils/storage';
 
 import { ApiDataService } from './ApiDataService';
-import { HomeSnapshot, MockDataService } from './MockDataService';
+import { HomeSnapshot, InvoiceItem, MockDataService, PaymentLedgerItem } from './MockDataService';
 
 const shouldUseRemote = () => {
     const envFlag = typeof process !== 'undefined'
@@ -54,5 +54,52 @@ export const DataService = {
             }
         }
         return MockDataService.executeCheckout(storeId, orderAmount, userId);
+    },
+
+    getPaymentLedger: async (
+        storeId: string,
+        userId = 'u_demo',
+        limit = 20
+    ): Promise<PaymentLedgerItem[]> => {
+        if (shouldUseRemote()) {
+            try {
+                return await ApiDataService.getPaymentLedger(storeId, userId, limit);
+            } catch (error) {
+                console.warn('Remote getPaymentLedger failed, fallback to mock:', error);
+                storage.setApiToken('');
+            }
+        }
+        return MockDataService.getPaymentLedger(storeId, userId, limit);
+    },
+
+    getInvoices: async (
+        storeId: string,
+        userId = 'u_demo',
+        limit = 20
+    ): Promise<InvoiceItem[]> => {
+        if (shouldUseRemote()) {
+            try {
+                return await ApiDataService.getInvoices(storeId, userId, limit);
+            } catch (error) {
+                console.warn('Remote getInvoices failed, fallback to mock:', error);
+                storage.setApiToken('');
+            }
+        }
+        return MockDataService.getInvoices(storeId, userId, limit);
+    },
+
+    cancelAccount: async (
+        storeId: string,
+        userId = 'u_demo'
+    ): Promise<{ deleted: boolean; deletedAt: string; anonymizedUserId: string }> => {
+        if (shouldUseRemote()) {
+            try {
+                return await ApiDataService.cancelAccount(storeId, userId);
+            } catch (error) {
+                console.warn('Remote cancelAccount failed, fallback to mock:', error);
+                storage.setApiToken('');
+            }
+        }
+        return MockDataService.cancelAccount(storeId, userId);
     }
 };

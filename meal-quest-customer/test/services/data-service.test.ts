@@ -8,7 +8,10 @@ jest.mock('@/services/ApiDataService', () => ({
         isConfigured: jest.fn(),
         getHomeSnapshot: jest.fn(),
         getCheckoutQuote: jest.fn(),
-        executeCheckout: jest.fn()
+        executeCheckout: jest.fn(),
+        getPaymentLedger: jest.fn(),
+        getInvoices: jest.fn(),
+        cancelAccount: jest.fn()
     }
 }));
 
@@ -16,7 +19,10 @@ jest.mock('@/services/MockDataService', () => ({
     MockDataService: {
         getHomeSnapshot: jest.fn(),
         getCheckoutQuote: jest.fn(),
-        executeCheckout: jest.fn()
+        executeCheckout: jest.fn(),
+        getPaymentLedger: jest.fn(),
+        getInvoices: jest.fn(),
+        cancelAccount: jest.fn()
     }
 }));
 
@@ -122,6 +128,28 @@ describe('DataService remote fallback', () => {
 
         expect(result).toBe(cached);
         expect(mock.getHomeSnapshot).not.toHaveBeenCalled();
+        expect(storageMock.setApiToken).toHaveBeenCalledWith('');
+    });
+
+    it('falls back to mock ledger query when remote ledger fails', async () => {
+        process.env.TARO_APP_USE_REMOTE_API = 'true';
+        api.isConfigured.mockReturnValue(true);
+        api.getPaymentLedger.mockRejectedValue(new Error('remote failed'));
+        mock.getPaymentLedger.mockResolvedValue([
+            {
+                txnId: 'txn_local_1',
+                merchantId: 'store_a',
+                userId: 'u_demo',
+                type: 'PAYMENT',
+                amount: 10,
+                timestamp: new Date().toISOString()
+            }
+        ] as any);
+
+        const result = await DataService.getPaymentLedger('store_a', 'u_demo', 10);
+
+        expect(result.length).toBe(1);
+        expect(mock.getPaymentLedger).toHaveBeenCalledWith('store_a', 'u_demo', 10);
         expect(storageMock.setApiToken).toHaveBeenCalledWith('');
     });
 });

@@ -30,6 +30,27 @@ export interface HomeSnapshot {
     lastPaymentId?: string;
 }
 
+export interface PaymentLedgerItem {
+    txnId: string;
+    merchantId: string;
+    userId: string;
+    type: 'PAYMENT' | 'REFUND' | 'PAYMENT_PENDING';
+    amount: number;
+    timestamp: string;
+    paymentTxnId?: string;
+}
+
+export interface InvoiceItem {
+    invoiceNo: string;
+    merchantId: string;
+    userId: string;
+    paymentTxnId: string;
+    amount: number;
+    status: string;
+    issuedAt: string;
+    title: string;
+}
+
 const MOCK_STORES: Record<string, StoreData> = {
     'store_a': {
         id: 'store_a',
@@ -133,6 +154,10 @@ const CUSTOMER_STATE: Record<string, Omit<HomeSnapshot, 'store'>> = {
     }
 };
 
+const CUSTOMER_LEDGER: Record<string, PaymentLedgerItem[]> = {};
+const CUSTOMER_INVOICES: Record<string, InvoiceItem[]> = {};
+const CANCELED_USERS = new Set<string>();
+
 const cloneSnapshotState = (state: Omit<HomeSnapshot, 'store'>): Omit<HomeSnapshot, 'store'> => ({
     wallet: { ...state.wallet },
     fragments: { ...state.fragments },
@@ -158,6 +183,9 @@ export const MockDataService = {
     getHomeSnapshot: async (storeId: string, userId = 'u_demo'): Promise<HomeSnapshot> => {
         const store = await MockDataService.getStoreById(storeId) ?? MOCK_STORES['store_a'];
         const key = getStateKey(store.id, userId);
+        if (CANCELED_USERS.has(key)) {
+            throw new Error('account canceled');
+        }
         const state = CUSTOMER_STATE[key] ?? cloneSnapshotState(CUSTOMER_STATE['store_a:u_demo']);
         CUSTOMER_STATE[key] = state;
 
@@ -190,8 +218,34 @@ export const MockDataService = {
         }
 
         const paymentId = `pay_${Date.now()}`;
+        const now = new Date().toISOString();
         current.lastPaymentId = paymentId;
         CUSTOMER_STATE[key] = current;
+
+        const ledger = CUSTOMER_LEDGER[key] ?? [];
+        ledger.unshift({
+            txnId: `txn_${Date.now()}`,
+            merchantId: storeId,
+            userId,
+            type: 'PAYMENT',
+            amount: Number(orderAmount),
+            paymentTxnId: paymentId,
+            timestamp: now
+        });
+        CUSTOMER_LEDGER[key] = ledger.slice(0, 100);
+
+        const invoices = CUSTOMER_INVOICES[key] ?? [];
+        invoices.unshift({
+            invoiceNo: `INV_DEMO_${Date.now()}`,
+            merchantId: storeId,
+            userId,
+            paymentTxnId: paymentId,
+            amount: Number(orderAmount),
+            status: 'ISSUED',
+            issuedAt: now,
+            title: 'MealQuest Demo Invoice'
+        });
+        CUSTOMER_INVOICES[key] = invoices.slice(0, 100);
 
         return {
             paymentId,
@@ -200,6 +254,51 @@ export const MockDataService = {
                 store: snapshot.store,
                 ...cloneSnapshotState(current)
             }
+        };
+    },
+
+    getPaymentLedger: async (
+        storeId: string,
+        userId = 'u_demo',
+        limit = 20
+    ): Promise<PaymentLedgerItem[]> => {
+        const key = getStateKey(storeId, userId);
+        if (CANCELED_USERS.has(key)) {
+            return [];
+        }
+        const rows = CUSTOMER_LEDGER[key] ?? [];
+        const max = Math.min(Math.max(Number(limit) || 20, 1), 100);
+        return rows.slice(0, max).map(item => ({ ...item }));
+    },
+
+    getInvoices: async (
+        storeId: string,
+        userId = 'u_demo',
+        limit = 20
+    ): Promise<InvoiceItem[]> => {
+        const key = getStateKey(storeId, userId);
+        if (CANCELED_USERS.has(key)) {
+            return [];
+        }
+        const rows = CUSTOMER_INVOICES[key] ?? [];
+        const max = Math.min(Math.max(Number(limit) || 20, 1), 100);
+        return rows.slice(0, max).map(item => ({ ...item }));
+    },
+
+    cancelAccount: async (
+        storeId: string,
+        userId = 'u_demo'
+    ): Promise<{ deleted: boolean; deletedAt: string; anonymizedUserId: string }> => {
+        const key = getStateKey(storeId, userId);
+        const deletedAt = new Date().toISOString();
+        CANCELED_USERS.add(key);
+        delete CUSTOMER_STATE[key];
+        delete CUSTOMER_LEDGER[key];
+        delete CUSTOMER_INVOICES[key];
+        return {
+            deleted: true,
+            deletedAt,
+            anonymizedUserId: `DELETED_${storeId}_${userId}`
         };
     }
 };

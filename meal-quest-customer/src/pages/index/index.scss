@@ -151,3 +151,20 @@
         padding-top: 8px;
     }
 }
+
+.account-entry {
+    position: absolute;
+    top: 32rpx;
+    right: 24rpx;
+    z-index: 1200;
+    padding: 12rpx 20rpx;
+    border-radius: 999rpx;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 8rpx 20rpx rgba(15, 23, 42, 0.1);
+}
+
+.account-entry__text {
+    font-size: 22rpx;
+    color: #334155;
+    font-weight: 600;
+}

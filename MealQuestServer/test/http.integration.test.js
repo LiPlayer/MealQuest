@@ -1221,6 +1221,88 @@ test("external callback signature settles pending payment and enables invoice/re
   }
 });
 
+test("customer can query own payment ledger and invoices with strict scope", async () => {
+  const app = createAppServer({ persist: false });
+  const port = await app.start(0);
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const customerToken = await mockLogin(baseUrl, "CUSTOMER", {
+      merchantId: "m_demo",
+      userId: "u_demo"
+    });
+    const ownerToken = await mockLogin(baseUrl, "OWNER", {
+      merchantId: "m_demo"
+    });
+
+    const verify = await postJson(
+      baseUrl,
+      "/api/payment/verify",
+      {
+        merchantId: "m_demo",
+        userId: "u_demo",
+        orderAmount: 1
+      },
+      {
+        Authorization: `Bearer ${customerToken}`,
+        "Idempotency-Key": "customer_center_pay_1"
+      }
+    );
+    assert.equal(verify.status, 200);
+    assert.equal(verify.data.status, "PAID");
+
+    const issueInvoice = await postJson(
+      baseUrl,
+      "/api/invoice/issue",
+      {
+        merchantId: "m_demo",
+        paymentTxnId: verify.data.paymentTxnId,
+        title: "Customer Center Invoice"
+      },
+      { Authorization: `Bearer ${ownerToken}` }
+    );
+    assert.equal(issueInvoice.status, 200);
+    assert.ok(issueInvoice.data.invoiceNo);
+
+    const customerLedger = await getJson(
+      baseUrl,
+      "/api/payment/ledger?merchantId=m_demo&limit=10",
+      { Authorization: `Bearer ${customerToken}` }
+    );
+    assert.equal(customerLedger.status, 200);
+    assert.ok(Array.isArray(customerLedger.data.items));
+    assert.ok(customerLedger.data.items.length >= 1);
+    assert.ok(customerLedger.data.items.every((row) => row.userId === "u_demo"));
+
+    const customerInvoices = await getJson(
+      baseUrl,
+      "/api/invoice/list?merchantId=m_demo&limit=10",
+      { Authorization: `Bearer ${customerToken}` }
+    );
+    assert.equal(customerInvoices.status, 200);
+    assert.ok(Array.isArray(customerInvoices.data.items));
+    assert.ok(customerInvoices.data.items.some((item) => item.invoiceNo === issueInvoice.data.invoiceNo));
+
+    const customerInvoiceDeniedByUserScope = await getJson(
+      baseUrl,
+      "/api/invoice/list?merchantId=m_demo&userId=u_friend",
+      { Authorization: `Bearer ${customerToken}` }
+    );
+    assert.equal(customerInvoiceDeniedByUserScope.status, 403);
+    assert.equal(customerInvoiceDeniedByUserScope.data.error, "user scope denied");
+
+    const customerLedgerDeniedByMerchantScope = await getJson(
+      baseUrl,
+      "/api/payment/ledger?merchantId=m_bistro",
+      { Authorization: `Bearer ${customerToken}` }
+    );
+    assert.equal(customerLedgerDeniedByMerchantScope.status, 403);
+    assert.equal(customerLedgerDeniedByMerchantScope.data.error, "merchant scope denied");
+  } finally {
+    await app.stop();
+  }
+});
+
 test("privacy export and delete are owner-only and scoped", async () => {
   const app = createAppServer({ persist: false });
   const port = await app.start(0);

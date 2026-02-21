@@ -31,6 +31,7 @@
     "dev:jd": "npm run build:jd -- --watch",
     "dev:harmony-hybrid": "npm run build:harmony-hybrid -- --watch",
     "test": "jest --config jest.config.js",
+    "test:regression:ui": "jest test/pages/startup.test.tsx test/pages/account.test.tsx --runInBand",
     "test:e2e": "jest --config jest.e2e.config.js --runInBand",
     "test:e2e:weapp": "npm run build:weapp && npm run test:e2e",
     "test:e2e:doctor": "node ./test/e2e/doctor.js",

@@ -22,7 +22,8 @@ node .\scripts\release-local.js
 2. `MealQuestServer` 本地 smoke 场景回归。
 3. `MealQuestMerchant` 测试 + TypeScript 类型检查。
 4. `MealQuestMerchant` UI 可复现回归（可单独执行：`npm run test:regression:ui`）。
-5. `meal-quest-customer` 测试 + `build:weapp` 构建。
+5. `meal-quest-customer` 测试 + UI 可复现回归（`npm run test:regression:ui`）。
+6. `meal-quest-customer` `build:weapp` 构建。
 
 输出报告：
 
@@ -81,5 +82,6 @@ node .\scripts\smoke-local-server.js --external --base-url http://127.0.0.1:3030
    - 连锁联盟共享钱包（跨店支付命中）；
    - 社交裂变账务（转赠/红包分账总量守恒）；
    - 请客买单会话（群买单/老板补贴结算与上限校验）；
+   - 顾客账户中心（本人流水/本人发票 scope 校验）；
    - 隐私合规（Owner 导出/删除 + Customer 自助注销）；
    - 顾客端构建可通过。

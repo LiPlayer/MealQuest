@@ -3,7 +3,7 @@ import Taro from '@tarojs/taro';
 import { CheckoutQuote } from '@/domain/smartCheckout';
 import { storage } from '@/utils/storage';
 
-import { HomeSnapshot, StoreData } from './MockDataService';
+import { HomeSnapshot, InvoiceItem, PaymentLedgerItem, StoreData } from './MockDataService';
 
 interface RequestOptions {
     method: 'GET' | 'POST';
@@ -189,5 +189,67 @@ export const ApiDataService = {
             quote: quote.quote,
             snapshot
         };
+    },
+
+    getPaymentLedger: async (
+        storeId: string,
+        userId = 'u_demo',
+        limit = 20
+    ): Promise<PaymentLedgerItem[]> => {
+        const token = await ensureCustomerToken(storeId, userId);
+        const result = await requestJson({
+            method: 'GET',
+            path: `/api/payment/ledger?merchantId=${encodeURIComponent(storeId)}&userId=${encodeURIComponent(userId)}&limit=${encodeURIComponent(String(limit))}`,
+            token
+        });
+        const items = Array.isArray(result.items) ? result.items : [];
+        return items.map((item: any) => ({
+            txnId: String(item.txnId || ''),
+            merchantId: String(item.merchantId || storeId),
+            userId: String(item.userId || userId),
+            type: item.type || 'PAYMENT',
+            amount: Number(item.amount || 0),
+            timestamp: item.timestamp || new Date().toISOString(),
+            paymentTxnId: item.details?.paymentTxnId || item.paymentTxnId
+        }));
+    },
+
+    getInvoices: async (
+        storeId: string,
+        userId = 'u_demo',
+        limit = 20
+    ): Promise<InvoiceItem[]> => {
+        const token = await ensureCustomerToken(storeId, userId);
+        const result = await requestJson({
+            method: 'GET',
+            path: `/api/invoice/list?merchantId=${encodeURIComponent(storeId)}&userId=${encodeURIComponent(userId)}&limit=${encodeURIComponent(String(limit))}`,
+            token
+        });
+        const items = Array.isArray(result.items) ? result.items : [];
+        return items.map((item: any) => ({
+            invoiceNo: String(item.invoiceNo || ''),
+            merchantId: String(item.merchantId || storeId),
+            userId: String(item.userId || userId),
+            paymentTxnId: String(item.paymentTxnId || ''),
+            amount: Number(item.amount || 0),
+            status: String(item.status || 'ISSUED'),
+            issuedAt: item.issuedAt || new Date().toISOString(),
+            title: String(item.title || 'MealQuest Invoice')
+        }));
+    },
+
+    cancelAccount: async (
+        storeId: string,
+        userId = 'u_demo'
+    ): Promise<{ deleted: boolean; deletedAt: string; anonymizedUserId: string }> => {
+        const token = await ensureCustomerToken(storeId, userId);
+        return requestJson({
+            method: 'POST',
+            path: '/api/privacy/cancel-account',
+            token,
+            data: {
+                merchantId: storeId
+            }
+        });
     }
 };

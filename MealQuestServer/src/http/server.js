@@ -215,6 +215,14 @@ function toPolicyPositiveInt(value, label) {
   return Math.floor(num);
 }
 
+function toListLimit(value, fallback = 20, max = 100) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return Math.min(Math.floor(parsed), max);
+}
+
 function sanitizeLimitInput(limitInput) {
   if (!limitInput || typeof limitInput !== "object") {
     throw new Error("limits must be an object");
@@ -1157,6 +1165,41 @@ function createAppServer({
         return;
       }
 
+      if (method === "GET" && url.pathname === "/api/payment/ledger") {
+        ensureRole(auth, [...MERCHANT_ROLES, "CUSTOMER"]);
+        const merchantId = url.searchParams.get("merchantId") || auth.merchantId;
+        if (!merchantId) {
+          sendJson(res, 400, { error: "merchantId is required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+
+        const scopedDb = tenantRouter.getDbForMerchant(merchantId);
+        const limit = toListLimit(url.searchParams.get("limit"), 20, 100);
+        const requestedUserId = url.searchParams.get("userId") || "";
+        const userId = auth.role === "CUSTOMER" ? auth.userId : requestedUserId;
+        if (auth.role === "CUSTOMER" && requestedUserId && requestedUserId !== auth.userId) {
+          sendJson(res, 403, { error: "user scope denied" });
+          return;
+        }
+
+        const items = (scopedDb.ledger || [])
+          .filter((row) => row.merchantId === merchantId)
+          .filter((row) => (userId ? row.userId === userId : true))
+          .sort((a, b) => String(b.timestamp || "").localeCompare(String(a.timestamp || "")))
+          .slice(0, limit);
+
+        sendJson(res, 200, {
+          merchantId,
+          userId: userId || null,
+          items
+        });
+        return;
+      }
+
       if (method === "POST" && url.pathname === "/api/invoice/issue") {
         ensureRole(auth, MERCHANT_ROLES);
         const body = await readJsonBody(req);
@@ -1200,7 +1243,7 @@ function createAppServer({
       }
 
       if (method === "GET" && url.pathname === "/api/invoice/list") {
-        ensureRole(auth, MERCHANT_ROLES);
+        ensureRole(auth, [...MERCHANT_ROLES, "CUSTOMER"]);
         const merchantId = url.searchParams.get("merchantId") || auth.merchantId;
         if (!merchantId) {
           sendJson(res, 400, { error: "merchantId is required" });
@@ -1210,10 +1253,16 @@ function createAppServer({
           sendJson(res, 403, { error: "merchant scope denied" });
           return;
         }
+        const requestedUserId = url.searchParams.get("userId") || "";
+        const userId = auth.role === "CUSTOMER" ? auth.userId : requestedUserId;
+        if (auth.role === "CUSTOMER" && requestedUserId && requestedUserId !== auth.userId) {
+          sendJson(res, 403, { error: "user scope denied" });
+          return;
+        }
         const { invoiceService } = getServicesForMerchant(merchantId);
         const result = invoiceService.listInvoices({
           merchantId,
-          userId: url.searchParams.get("userId") || "",
+          userId,
           limit: url.searchParams.get("limit")
         });
         sendJson(res, 200, result);

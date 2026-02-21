@@ -150,11 +150,12 @@
 2. `POST /api/payment/verify`（要求 `Idempotency-Key`）
 3. `POST /api/payment/refund`（要求 `Idempotency-Key`）
 4. `POST /api/payment/callback`（外部支付回调，HMAC 验签）
+5. `GET /api/payment/ledger?merchantId=&userId=&limit=`（顾客/商户账务查询）
 
 ## 5.2.1 发票与隐私合规
 
 1. `POST /api/invoice/issue`（已结算支付开票）
-2. `GET /api/invoice/list?merchantId=&userId=&limit=`
+2. `GET /api/invoice/list?merchantId=&userId=&limit=`（顾客仅可查询本人，商户可按 scope 查询）
 3. `POST /api/privacy/export-user`（Owner，租户范围导出）
 4. `POST /api/privacy/delete-user`（Owner，租户范围匿名化）
 5. `POST /api/privacy/cancel-account`（Customer，自助注销并物理删除非交易档案）
@@ -208,6 +209,7 @@
 19. 供应商核验必须可追溯并写审计日志，避免跨店伪造联盟交易。
 20. 社交裂变链路必须保证资产总量守恒，不允许增发。
 21. 社交操作必须具备幂等与频控，防止脚本刷量。
+22. 顾客侧账务查询接口（`payment/ledger`、`invoice/list`）必须执行 `merchantId + userId` 双 scope 校验。
 
 ---
 
@@ -253,6 +255,7 @@
 29. 社交裂变：支持用户转赠与拼手气红包，校验总量守恒
 30. 请客买单：支持群买单与老板补贴，补贴受日上限约束
 31. 顾客自助注销：注销后账号不可再次登录，交易记录匿名保留
+32. 顾客账务中心：顾客可查询本人流水与发票，跨用户/跨商户查询拒绝
 
 ---
 
@@ -322,6 +325,7 @@
 22. 发票助手：`/api/invoice/*` 已支持开票与查询。
 23. 隐私合规接口：`/api/privacy/*` 已支持导出与匿名化删除。
 24. 指标接口：`/metrics` 已可供 Prometheus 抓取。
+25. 顾客账务查询接口：`/api/payment/ledger` 与顾客可读 `/api/invoice/list` 已上线并完成 scope 防护。
 
 后续（保持总规范一致）：
 1. 内存仓储替换为持久化数据库。

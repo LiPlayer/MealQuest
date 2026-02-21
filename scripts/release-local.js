@@ -65,6 +65,12 @@ function main() {
       args: ["test", "--", "--runInBand"]
     },
     {
+      name: "Customer UI Regression",
+      cwd: path.join(repoRoot, "meal-quest-customer"),
+      command: "npm",
+      args: ["run", "test:regression:ui"]
+    },
+    {
       name: "Customer Build Weapp",
       cwd: path.join(repoRoot, "meal-quest-customer"),
       command: "npm",

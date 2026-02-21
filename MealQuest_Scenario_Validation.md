@@ -53,6 +53,25 @@
 
 结论：满足。
 
+## 1.4 场景 U4：顾客账户中心查账与注销
+
+1. 顾客从首页进入账户中心，查看钱包、支付流水、发票列表。
+2. 顾客端查询仅允许本人数据，跨用户 scope 必须拒绝。
+3. 顾客二次确认后执行注销，成功后回到启动页并清理会话。
+
+反推：
+1. 文档：`MealQuest_Customer_Spec.md` 2.1、2.3、4.1、6.1。
+2. 代码：
+   - `meal-quest-customer/src/pages/account/index.tsx`
+   - `meal-quest-customer/src/services/DataService.ts`
+   - `meal-quest-customer/src/services/ApiDataService.ts`
+3. 测试：
+   - `meal-quest-customer/test/pages/account.test.tsx`
+   - `meal-quest-customer/test/services/api-data-service-customer-center.test.ts`
+   - `MealQuestServer/test/http.integration.test.js`（customer ledger/invoice scope 用例）
+
+结论：满足。
+
 ---
 
 ## 2. 商户角色推演
@@ -501,13 +520,28 @@
 
 结论：满足。
 
+## 3.25 场景 S25：顾客账务查询 scope 防护
+
+1. 顾客可读取本人支付流水与发票列表。
+2. 顾客跨用户查询（`userId != auth.userId`）应返回拒绝。
+3. 顾客跨商户查询应返回 `merchant scope denied`。
+
+反推：
+1. 文档：`MealQuest_Server_Spec.md` 5.2、5.2.1、6；`MealQuest_Customer_Spec.md` 4.1、6.1。
+2. 代码：
+   - `MealQuestServer/src/http/server.js`
+   - `meal-quest-customer/src/services/ApiDataService.ts`
+3. 测试：`MealQuestServer/test/http.integration.test.js`（customer ledger/invoice scope 用例）。
+
+结论：满足。
+
 ---
 
 ## 4. 测试回归结果（本轮）
 
-1. `MealQuestServer`: 32/32 通过。
+1. `MealQuestServer`: 33/33 通过。
 2. `MealQuestMerchant`: 24/24 通过。
-3. `meal-quest-customer`: 23/23 通过。
+3. `meal-quest-customer`: 33/33 通过。
 
 ---
 

@@ -32,6 +32,11 @@ describe('Storage Utils', () => {
         expect(result).toBeNull();
     });
 
+    it('should remove store ID correctly', () => {
+        storage.removeLastStoreId();
+        expect(Taro.removeStorageSync).toHaveBeenCalledWith('mq_last_store_id');
+    });
+
     it('should cache and load home snapshot by store/user key', () => {
         const snapshot = {wallet: {principal: 1, bonus: 2, silver: 3}};
         storage.setCachedHomeSnapshot('m_demo', 'u_demo', snapshot);
@@ -50,5 +55,12 @@ describe('Storage Utils', () => {
         (Taro.getStorageSync as jest.Mock).mockReturnValue('{bad-json');
         const loaded = storage.getCachedHomeSnapshot('m_demo', 'u_demo');
         expect(loaded).toBeNull();
+    });
+
+    it('should clear customer session keys', () => {
+        storage.clearCustomerSession('m_demo', 'u_demo');
+        expect(Taro.removeStorageSync).toHaveBeenCalledWith('mq_home_snapshot:m_demo:u_demo');
+        expect(Taro.setStorageSync).toHaveBeenCalledWith('mq_api_token', '');
+        expect(Taro.removeStorageSync).toHaveBeenCalledWith('mq_last_store_id');
     });
 });

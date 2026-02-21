@@ -38,6 +38,7 @@
 - [ ] 连锁联盟链路通过（集群配置 -> 共享钱包 -> 跨店支付命中）。
 - [ ] 社交裂变链路通过（转赠/红包创建/红包领取，守恒校验通过）。
 - [ ] 请客买单链路通过（会话创建 -> 多人出资 -> 结算/退款 -> 补贴上限校验）。
+- [ ] 顾客账户中心链路通过（本人流水/本人发票可读，跨用户与跨商户查询拒绝）。
 
 ## 5. 稳定性与可观测性
 
@@ -50,8 +51,9 @@
 
 - [ ] 执行 `node .\scripts\release-local.js`，全部 PASS。
 - [ ] 执行 `cd .\MealQuestMerchant && npm run test:regression:ui`，商户端 UI 回归脚本 PASS。
+- [ ] 执行 `cd .\meal-quest-customer && npm run test:regression:ui`，顾客端 UI 回归脚本 PASS。
 - [ ] `artifacts/release-local-report.json` 中 `allPassed=true`。
-- [ ] CI 工作流通过（server test + smoke、merchant test + typecheck、customer test + build）。
+- [ ] CI 工作流通过（server test + smoke、merchant test + typecheck、customer test + customer ui regression + build）。
 
 ## 7. 发布与回滚
 

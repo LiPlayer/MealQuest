@@ -103,8 +103,15 @@ export default function Index() {
         }
     };
 
+    const handleOpenAccount = () => {
+        Taro.navigateTo({ url: '/pages/account/index' });
+    };
+
     return (
         <View className='index-container' style={headerStyle}>
+            <View className='account-entry' onClick={handleOpenAccount}>
+                <Text className='account-entry__text'>账户中心</Text>
+            </View>
             {/* @ts-ignore */}
             <wxs-scroll-view refresh-trigger={refreshTrigger}>
                 {/* ── Header Slots ── */}

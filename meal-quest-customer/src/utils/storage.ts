@@ -23,6 +23,10 @@ export const storage = {
         return Taro.getStorageSync(LAST_STORE_ID_KEY) || null;
     },
 
+    removeLastStoreId: () => {
+        Taro.removeStorageSync(LAST_STORE_ID_KEY);
+    },
+
     setApiToken: (token: string) => {
         Taro.setStorageSync(API_TOKEN_KEY, token);
     },
@@ -57,6 +61,12 @@ export const storage = {
 
     clearCachedHomeSnapshot: (storeId: string, userId: string) => {
         Taro.removeStorageSync(buildHomeSnapshotKey(storeId, userId));
+    },
+
+    clearCustomerSession: (storeId: string, userId: string) => {
+        storage.clearCachedHomeSnapshot(storeId, userId);
+        storage.setApiToken('');
+        storage.removeLastStoreId();
     },
 
     /**

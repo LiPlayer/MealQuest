@@ -677,8 +677,51 @@ async function runSmoke(baseUrl, options = {}) {
   expectStatus(treatClose, 200, "treat session close");
   assert.equal(treatClose.data.status, "SETTLED");
 
+  console.log("[smoke] scenario L: customer center ledger + invoice list");
+  const customerCenterPay = await postJson(
+    baseUrl,
+    "/api/payment/verify",
+    { merchantId: "m_demo", userId: "u_demo", orderAmount: 1 },
+    {
+      Authorization: `Bearer ${customerToken}`,
+      "Idempotency-Key": uniqueKey("smoke_customer_center_pay")
+    }
+  );
+  expectStatus(customerCenterPay, 200, "customer center payment");
+  assert.equal(customerCenterPay.data.status, "PAID");
+
+  const customerCenterInvoice = await postJson(
+    baseUrl,
+    "/api/invoice/issue",
+    {
+      merchantId: "m_demo",
+      paymentTxnId: customerCenterPay.data.paymentTxnId,
+      title: "Smoke Invoice"
+    },
+    { Authorization: `Bearer ${ownerToken}` }
+  );
+  expectStatus(customerCenterInvoice, 200, "customer center issue invoice");
+  assert.ok(customerCenterInvoice.data.invoiceNo);
+
+  const customerLedger = await getJson(
+    baseUrl,
+    "/api/payment/ledger?merchantId=m_demo&limit=10",
+    { Authorization: `Bearer ${customerToken}` }
+  );
+  expectStatus(customerLedger, 200, "customer ledger");
+  assert.ok(Array.isArray(customerLedger.data.items));
+  assert.ok(customerLedger.data.items.length >= 1);
+
+  const customerInvoices = await getJson(
+    baseUrl,
+    "/api/invoice/list?merchantId=m_demo&limit=10",
+    { Authorization: `Bearer ${customerToken}` }
+  );
+  expectStatus(customerInvoices, 200, "customer invoices");
+  assert.ok(Array.isArray(customerInvoices.data.items));
+
   if (managedMode) {
-    console.log("[smoke] scenario L: customer self-service cancel-account");
+    console.log("[smoke] scenario M: customer self-service cancel-account");
     const cancelToken = await login(baseUrl, "CUSTOMER", "m_demo", "u_friend");
     const cancelResult = await postJson(
       baseUrl,
@@ -689,7 +732,7 @@ async function runSmoke(baseUrl, options = {}) {
     expectStatus(cancelResult, 200, "privacy cancel-account");
     assert.equal(cancelResult.data.deleted, true);
   } else {
-    console.log("[smoke] scenario L skipped in external mode: cancel-account is destructive.");
+    console.log("[smoke] scenario M skipped in external mode: cancel-account is destructive.");
   }
 
   console.log("[smoke] PASS: all local server smoke scenarios completed.");
