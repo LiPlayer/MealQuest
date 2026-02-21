@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text } from '@tarojs/components';
-import Taro, { useLoad } from '@tarojs/taro';
+import Taro, { useRouter } from '@tarojs/taro';
 import { storage } from '../../utils/storage';
 import './index.scss';
 
@@ -15,29 +15,34 @@ export default function Startup() {
         });
     };
 
-    useLoad((options) => {
-        console.log('Startup useLoad fired with options:', options);
-        const storeId = options.id || options.scene; // Handle normal param or scene value from QR
+    const router = useRouter();
 
-        if (storeId) {
-            console.log('Found storeId in options:', storeId);
-            // 1. URL/QR param priority: Load the store directly
-            storage.setLastStoreId(storeId);
-            redirectToHome();
-        } else {
-            // 2. Check storage for last visited store
-            const lastId = storage.getLastStoreId();
-            console.log('Checking storage for lastId:', lastId);
-            if (lastId) {
-                console.log('Redirecting to home with lastId...');
+    useEffect(() => {
+        const handleStartup = () => {
+            console.log('Startup [useEffect] firing...');
+            const options = router.params;
+            console.log('Startup options:', options);
+            const storeId = options.id || options.scene;
+
+            if (storeId) {
+                console.log('Found storeId in options:', storeId);
+                storage.setLastStoreId(storeId);
                 redirectToHome();
             } else {
-                // 3. True new user: Show QR scan UI
-                console.log('No storeId found, setting isNewUser=true');
-                setIsNewUser(true);
+                const lastId = storage.getLastStoreId();
+                console.log('Checking storage for lastId:', lastId);
+                if (lastId) {
+                    console.log('Redirecting to home with lastId...');
+                    redirectToHome();
+                } else {
+                    console.log('No storeId found, setting isNewUser=true');
+                    setIsNewUser(true);
+                }
             }
-        }
-    });
+        };
+
+        handleStartup();
+    }, [router.params]);
 
     const handleScanQR = () => {
         Taro.scanCode({

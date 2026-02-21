@@ -40,7 +40,10 @@ Component({
                 query.select('.wxs-card-stack-section').boundingClientRect();
                 query.exec((res) => {
                     if (res && res[0] && res[1]) {
-                        console.log('Measurements updated (Native):', res[0].height, res[1].height);
+                        console.log('--- WxsScrollView Measurements [V2] ---',
+                            'Brand:', res[0].height,
+                            'Cards:', res[1].height
+                        );
                         this.setData({
                             brandHeight: res[0].height,
                             cardHeight: res[1].height
