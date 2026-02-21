@@ -136,6 +136,14 @@
 1. `POST /api/payment/quote`
 2. `POST /api/payment/verify`（要求 `Idempotency-Key`）
 3. `POST /api/payment/refund`（要求 `Idempotency-Key`）
+4. `POST /api/payment/callback`（外部支付回调，HMAC 验签）
+
+## 5.2.1 发票与隐私合规
+
+1. `POST /api/invoice/issue`（已结算支付开票）
+2. `GET /api/invoice/list?merchantId=&userId=&limit=`
+3. `POST /api/privacy/export-user`（Owner，租户范围导出）
+4. `POST /api/privacy/delete-user`（Owner，租户范围匿名化）
 
 ## 5.3 策略与风控
 
@@ -165,6 +173,10 @@
 10. 多租户策略层必须支持“写冻结（read-only）+ 每商户配额限流”双闸门。
 11. 租户策略管理接口必须仅 `OWNER` 可写，且受商户 scope 限制。
 12. 切库后路由元数据必须持久化，防止重启后商户流量回流共享库。
+13. 外部支付回调必须通过签名校验后才可入账。
+14. 发票接口必须只允许对已结算支付开票，防止未收款先开票。
+15. 隐私导出/删除必须限定 Owner 且受租户 scope 约束。
+16. 必须提供基础指标接口（请求数/错误数）用于上线监控接入。
 
 ---
 
@@ -198,6 +210,14 @@
 17. 迁移编排：冻结/解冻步骤可在线执行并驱动租户策略联动
 18. 自动切库：`migration/cutover` 执行后写流量进入专库且重启可恢复
 19. 自动回滚：`migration/rollback` 后商户路由回共享库并恢复写流量
+20. 外部支付回调：签名非法拒绝，合法回调可完成异步结算
+21. 发票助手：未结算订单拒绝开票，已结算订单可成功开票
+22. 隐私合规：Owner 可导出与匿名化删除，非 Owner 拒绝
+23. 指标接口：`/metrics` 可读并输出请求/错误计数
+20. 外部支付：大额订单进入 `PENDING_EXTERNAL`，回调验签后落 `PAID`
+21. 电子发票助手：已结算订单可开票并可按商户查询
+22. 隐私合规：支持用户数据导出与匿名化删除
+23. 可观测性：`/metrics` 输出基础请求与错误计数
 
 ---
 
@@ -263,6 +283,10 @@
 18. 迁移编排 API（`/api/merchant/migration/*`）：支持 Owner 查询状态并执行冻结/解冻步骤。
 19. 自动切库能力：`/api/merchant/migration/cutover` 可在线切换商户到专库并持久化路由。
 20. 自动回滚能力：`/api/merchant/migration/rollback` 可在线回流共享库并清理专库路由绑定。
+21. 外部支付回调链路：`/api/payment/callback` 已接入 HMAC 验签与异步入账。
+22. 发票助手：`/api/invoice/*` 已支持开票与查询。
+23. 隐私合规接口：`/api/privacy/*` 已支持导出与匿名化删除。
+24. 指标接口：`/metrics` 已可供 Prometheus 抓取。
 
 后续（保持总规范一致）：
 1. 内存仓储替换为持久化数据库。

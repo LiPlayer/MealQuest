@@ -1,5 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -65,6 +66,10 @@ function waitForWebSocketMessage(ws, timeoutMs = 2000) {
       reject(new Error("websocket error"));
     };
   });
+}
+
+function signCallback(payload, secret) {
+  return crypto.createHmac("sha256", secret).update(JSON.stringify(payload)).digest("hex");
 }
 
 test("http flow: quote -> verify -> refund -> confirm proposal -> trigger", async () => {
@@ -1104,6 +1109,180 @@ test("tenant policy: per-merchant write rate limit returns 429", async () => {
       }
     );
     assert.equal(bistroVerify.status, 200);
+  } finally {
+    await app.stop();
+  }
+});
+
+test("external callback signature settles pending payment and enables invoice/refund", async () => {
+  const callbackSecret = "test-callback-secret";
+  const app = createAppServer({
+    persist: false,
+    paymentCallbackSecret: callbackSecret
+  });
+  const port = await app.start(0);
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const customerToken = await mockLogin(baseUrl, "CUSTOMER");
+    const ownerToken = await mockLogin(baseUrl, "OWNER");
+
+    const verifyPending = await postJson(
+      baseUrl,
+      "/api/payment/verify",
+      { merchantId: "m_demo", userId: "u_demo", orderAmount: 500 },
+      {
+        Authorization: `Bearer ${customerToken}`,
+        "Idempotency-Key": "external_pending_pay_1"
+      }
+    );
+    assert.equal(verifyPending.status, 200);
+    assert.equal(verifyPending.data.status, "PENDING_EXTERNAL");
+    assert.ok(verifyPending.data.externalPayment.paymentIntentId);
+
+    const invoiceDeniedBeforeSettle = await postJson(
+      baseUrl,
+      "/api/invoice/issue",
+      { merchantId: "m_demo", paymentTxnId: verifyPending.data.paymentTxnId },
+      { Authorization: `Bearer ${ownerToken}` }
+    );
+    assert.equal(invoiceDeniedBeforeSettle.status, 400);
+    assert.equal(invoiceDeniedBeforeSettle.data.error, "payment is not settled");
+
+    const invalidCallback = await postJson(
+      baseUrl,
+      "/api/payment/callback",
+      {
+        merchantId: "m_demo",
+        paymentTxnId: verifyPending.data.paymentTxnId,
+        externalTxnId: "wxpay_1001",
+        status: "SUCCESS",
+        paidAmount: verifyPending.data.quote.payable,
+        callbackId: "cb_invalid_1"
+      },
+      {
+        "X-Payment-Signature": "invalid-signature"
+      }
+    );
+    assert.equal(invalidCallback.status, 401);
+    assert.equal(invalidCallback.data.error, "invalid callback signature");
+
+    const callbackBody = {
+      merchantId: "m_demo",
+      paymentTxnId: verifyPending.data.paymentTxnId,
+      externalTxnId: "wxpay_1001",
+      status: "SUCCESS",
+      paidAmount: verifyPending.data.quote.payable,
+      callbackId: "cb_ok_1"
+    };
+    const callback = await postJson(
+      baseUrl,
+      "/api/payment/callback",
+      callbackBody,
+      {
+        "X-Payment-Signature": signCallback(callbackBody, callbackSecret)
+      }
+    );
+    assert.equal(callback.status, 200);
+    assert.equal(callback.data.status, "PAID");
+
+    const invoiceIssued = await postJson(
+      baseUrl,
+      "/api/invoice/issue",
+      {
+        merchantId: "m_demo",
+        paymentTxnId: verifyPending.data.paymentTxnId,
+        title: "MealQuest Invoice",
+        taxNo: "91330100TEST",
+        email: "user@example.com"
+      },
+      { Authorization: `Bearer ${ownerToken}` }
+    );
+    assert.equal(invoiceIssued.status, 200);
+    assert.ok(invoiceIssued.data.invoiceNo);
+
+    const refundAfterSettle = await postJson(
+      baseUrl,
+      "/api/payment/refund",
+      {
+        merchantId: "m_demo",
+        userId: "u_demo",
+        paymentTxnId: verifyPending.data.paymentTxnId,
+        refundAmount: 10
+      },
+      {
+        Authorization: `Bearer ${ownerToken}`,
+        "Idempotency-Key": "external_refund_after_callback_1"
+      }
+    );
+    assert.equal(refundAfterSettle.status, 200);
+  } finally {
+    await app.stop();
+  }
+});
+
+test("privacy export and delete are owner-only and scoped", async () => {
+  const app = createAppServer({ persist: false });
+  const port = await app.start(0);
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const ownerToken = await mockLogin(baseUrl, "OWNER", { merchantId: "m_demo" });
+    const managerToken = await mockLogin(baseUrl, "MANAGER", { merchantId: "m_demo" });
+
+    const managerDenied = await postJson(
+      baseUrl,
+      "/api/privacy/export-user",
+      { merchantId: "m_demo", userId: "u_demo" },
+      { Authorization: `Bearer ${managerToken}` }
+    );
+    assert.equal(managerDenied.status, 403);
+    assert.equal(managerDenied.data.error, "permission denied");
+
+    const exported = await postJson(
+      baseUrl,
+      "/api/privacy/export-user",
+      { merchantId: "m_demo", userId: "u_demo" },
+      { Authorization: `Bearer ${ownerToken}` }
+    );
+    assert.equal(exported.status, 200);
+    assert.equal(exported.data.user.uid, "u_demo");
+
+    const deleted = await postJson(
+      baseUrl,
+      "/api/privacy/delete-user",
+      { merchantId: "m_demo", userId: "u_demo" },
+      { Authorization: `Bearer ${ownerToken}` }
+    );
+    assert.equal(deleted.status, 200);
+    assert.equal(deleted.data.deleted, true);
+
+    const exportedAfterDelete = await postJson(
+      baseUrl,
+      "/api/privacy/export-user",
+      { merchantId: "m_demo", userId: "u_demo" },
+      { Authorization: `Bearer ${ownerToken}` }
+    );
+    assert.equal(exportedAfterDelete.status, 200);
+    assert.equal(exportedAfterDelete.data.user.isDeleted, true);
+    assert.deepEqual(exportedAfterDelete.data.user.tags, []);
+  } finally {
+    await app.stop();
+  }
+});
+
+test("metrics endpoint is publicly readable", async () => {
+  const app = createAppServer({ persist: false });
+  const port = await app.start(0);
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    await fetch(`${baseUrl}/health`);
+    const metricsRes = await fetch(`${baseUrl}/metrics`);
+    assert.equal(metricsRes.status, 200);
+    const body = await metricsRes.text();
+    assert.ok(body.includes("mealquest_requests_total"));
+    assert.ok(body.includes("mealquest_errors_total"));
   } finally {
     await app.stop();
   }

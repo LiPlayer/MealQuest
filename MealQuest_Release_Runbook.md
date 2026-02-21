@@ -27,6 +27,27 @@ node .\scripts\release-local.js
 
 - `artifacts/release-local-report.json`
 
+## 1.1 环境化启动（dev/staging/prod）
+
+已生成脚本：
+
+1. `scripts/start-server-dev.ps1`
+2. `scripts/start-server-staging.ps1`
+3. `scripts/start-server-prod.ps1`
+
+默认读取顺序：
+
+1. `MealQuestServer/.env.<profile>.local`（优先）
+2. `MealQuestServer/.env.<profile>.example`
+
+示例：
+
+```powershell
+.\scripts\start-server-dev.ps1
+.\scripts\start-server-staging.ps1
+.\scripts\start-server-prod.ps1
+```
+
 ## 2. 仅验收本地运行中的服务端（可选）
 
 先启动服务端（默认 `http://127.0.0.1:3030`）：

@@ -21,6 +21,20 @@ $env:MQ_JWT_SECRET='mealquest-dev-secret'
 npm start
 ```
 
+也可使用仓库根目录脚本按环境启动：
+
+```powershell
+.\scripts\start-server-dev.ps1
+.\scripts\start-server-staging.ps1
+.\scripts\start-server-prod.ps1
+```
+
+环境模板：
+
+1. `.env.dev.example`
+2. `.env.staging.example`
+3. `.env.prod.example`
+
 ## 租户路由（开发）
 
 `createAppServer` 支持传入 `tenantDbMap`，按 `merchantId` 将热点商户路由到独立数据源（当前用于测试与演练）。
@@ -99,6 +113,51 @@ curl -X POST http://127.0.0.1:3030/api/auth/mock-login `
 ```text
 ws://127.0.0.1:3030/ws?merchantId=m_demo&token=<JWT>
 ```
+
+## External Payment Callback (Commercial Path)
+
+Configure callback signature secret:
+
+```powershell
+$env:MQ_PAYMENT_CALLBACK_SECRET='mealquest-payment-callback-secret'
+```
+
+Callback endpoint (gateway -> server):
+
+```text
+POST /api/payment/callback
+Header: X-Payment-Signature: <hmac-sha256(JSON(body), secret)>
+Body: { merchantId, paymentTxnId, externalTxnId, status, paidAmount, callbackId }
+```
+
+When an order has external payable amount, `/api/payment/verify` returns `status=PENDING_EXTERNAL`.
+After callback is verified, payment becomes `PAID` and wallet settlement is finalized.
+
+## E-Invoice Assistant
+
+```text
+POST /api/invoice/issue
+GET /api/invoice/list?merchantId=<id>&userId=<optional>&limit=<optional>
+```
+
+`invoice/issue` requires a settled payment (`status=PAID`), and writes invoice records for audit.
+
+## Privacy Compliance APIs
+
+```text
+POST /api/privacy/export-user
+POST /api/privacy/delete-user
+```
+
+Owner-only endpoints for tenant-scoped personal data export and anonymization.
+
+## Metrics
+
+```text
+GET /metrics
+```
+
+Prometheus-style text output with request/error counters.
 
 ## 测试
 

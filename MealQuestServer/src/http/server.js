@@ -1,4 +1,5 @@
 const http = require("node:http");
+const crypto = require("node:crypto");
 const path = require("node:path");
 const { URL } = require("node:url");
 
@@ -7,8 +8,10 @@ const { createTenantPolicyManager } = require("../core/tenantPolicy");
 const { createTenantRouter } = require("../core/tenantRouter");
 const { createWebSocketHub } = require("../core/websocketHub");
 const { createCampaignService } = require("../services/campaignService");
+const { createInvoiceService } = require("../services/invoiceService");
 const { createMerchantService } = require("../services/merchantService");
 const { createPaymentService } = require("../services/paymentService");
+const { createPrivacyService } = require("../services/privacyService");
 const { createInMemoryDb } = require("../store/inMemoryDb");
 const { createPersistentDb } = require("../store/persistentDb");
 const { createTenantRepository } = require("../store/tenantRepository");
@@ -18,6 +21,7 @@ const CASHIER_ROLES = ["CUSTOMER", "CLERK", "MANAGER", "OWNER"];
 const TENANT_LIMIT_OPERATIONS = [
   "PAYMENT_VERIFY",
   "PAYMENT_REFUND",
+  "INVOICE_ISSUE",
   "PROPOSAL_CONFIRM",
   "KILL_SWITCH_SET",
   "TCA_TRIGGER",
@@ -111,6 +115,18 @@ function resolveAuditAction(method, pathname) {
   if (method === "POST" && pathname === "/api/payment/refund") {
     return "PAYMENT_REFUND";
   }
+  if (method === "POST" && pathname === "/api/payment/callback") {
+    return "PAYMENT_CALLBACK";
+  }
+  if (method === "POST" && pathname === "/api/invoice/issue") {
+    return "INVOICE_ISSUE";
+  }
+  if (method === "POST" && pathname === "/api/privacy/export-user") {
+    return "PRIVACY_EXPORT";
+  }
+  if (method === "POST" && pathname === "/api/privacy/delete-user") {
+    return "PRIVACY_DELETE";
+  }
   if (method === "POST" && pathname === "/api/merchant/kill-switch") {
     return "KILL_SWITCH_SET";
   }
@@ -196,6 +212,22 @@ function buildTenantPolicyPatch(body = {}) {
   return patch;
 }
 
+function verifyHmacSignature(payload, signature, secret) {
+  if (!signature || !secret) {
+    return false;
+  }
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(JSON.stringify(payload))
+    .digest("hex");
+  const actualBuffer = Buffer.from(String(signature));
+  const expectedBuffer = Buffer.from(expected);
+  if (actualBuffer.length !== expectedBuffer.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(expectedBuffer, actualBuffer);
+}
+
 const MIGRATION_STEPS = new Set([
   "FREEZE_WRITE",
   "UNFREEZE_WRITE",
@@ -249,6 +281,7 @@ function buildDedicatedDbFilePath(baseFilePath, merchantId) {
 function buildMerchantSnapshotSummary(db, merchantId) {
   const users = (db.merchantUsers && db.merchantUsers[merchantId]) || {};
   const payments = (db.paymentsByMerchant && db.paymentsByMerchant[merchantId]) || {};
+  const invoices = (db.invoicesByMerchant && db.invoicesByMerchant[merchantId]) || {};
   const campaigns = (db.campaigns || []).filter((item) => item.merchantId === merchantId);
   const proposals = (db.proposals || []).filter((item) => item.merchantId === merchantId);
   const ledger = (db.ledger || []).filter((item) => item.merchantId === merchantId);
@@ -265,6 +298,7 @@ function buildMerchantSnapshotSummary(db, merchantId) {
     merchantExists: Boolean(merchant),
     usersCount: Object.keys(users).length,
     paymentsCount: Object.keys(payments).length,
+    invoicesCount: Object.keys(invoices).length,
     campaignsCount: campaigns.length,
     proposalsCount: proposals.length,
     ledgerCount: ledger.length,
@@ -290,6 +324,12 @@ function copyMerchantSlice({ sourceDb, targetDb, merchantId }) {
   );
   targetDb.paymentsByMerchant[merchantId] = jsonClone(
     (sourceDb.paymentsByMerchant && sourceDb.paymentsByMerchant[merchantId]) || {}
+  );
+  if (!targetDb.invoicesByMerchant || typeof targetDb.invoicesByMerchant !== "object") {
+    targetDb.invoicesByMerchant = {};
+  }
+  targetDb.invoicesByMerchant[merchantId] = jsonClone(
+    (sourceDb.invoicesByMerchant && sourceDb.invoicesByMerchant[merchantId]) || {}
   );
 
   targetDb.campaigns = upsertMerchantRows(
@@ -527,7 +567,10 @@ function createAppServer({
   tenantPolicyMap = {},
   defaultTenantPolicy = {},
   dbFilePath = path.resolve(process.cwd(), "data/db.json"),
-  jwtSecret = process.env.MQ_JWT_SECRET || "mealquest-dev-secret"
+  jwtSecret = process.env.MQ_JWT_SECRET || "mealquest-dev-secret",
+  paymentCallbackSecret =
+    process.env.MQ_PAYMENT_CALLBACK_SECRET || "mealquest-payment-callback-secret",
+  paymentProvider = null
 } = {}) {
   const actualDb = db || (persist ? createPersistentDb(dbFilePath) : createInMemoryDb());
   if (typeof actualDb.save !== "function") {
@@ -576,9 +619,11 @@ function createAppServer({
     let services = serviceCache.get(scopedDb);
     if (!services) {
       services = {
-        paymentService: createPaymentService(scopedDb),
+        paymentService: createPaymentService(scopedDb, { paymentProvider }),
         campaignService: createCampaignService(scopedDb),
-        merchantService: createMerchantService(scopedDb)
+        merchantService: createMerchantService(scopedDb),
+        invoiceService: createInvoiceService(scopedDb),
+        privacyService: createPrivacyService(scopedDb)
       };
       serviceCache.set(scopedDb, services);
     }
@@ -591,6 +636,12 @@ function createAppServer({
   const services = getServicesForDb(actualDb);
   const wsHub = createWebSocketHub();
   const allSockets = new Set();
+  const metrics = {
+    startedAt: new Date().toISOString(),
+    requestsTotal: 0,
+    requestsByPath: {},
+    errorsTotal: 0
+  };
   const appendAuditLog = ({ merchantId, action, status, auth, details }) => {
     tenantRepository.appendAuditLog({
       merchantId,
@@ -606,10 +657,31 @@ function createAppServer({
     const method = req.method || "GET";
     const url = new URL(req.url || "/", "http://localhost");
     const auditAction = resolveAuditAction(method, url.pathname);
+    metrics.requestsTotal += 1;
+    metrics.requestsByPath[url.pathname] = (metrics.requestsByPath[url.pathname] || 0) + 1;
     let auth = null;
     try {
       if (method === "GET" && url.pathname === "/health") {
         sendJson(res, 200, { ok: true, now: new Date().toISOString() });
+        return;
+      }
+
+      if (method === "GET" && url.pathname === "/metrics") {
+        const lines = [
+          "# TYPE mealquest_requests_total counter",
+          `mealquest_requests_total ${metrics.requestsTotal}`,
+          "# TYPE mealquest_errors_total counter",
+          `mealquest_errors_total ${metrics.errorsTotal}`
+        ];
+        for (const [pathName, count] of Object.entries(metrics.requestsByPath)) {
+          lines.push(
+            `mealquest_requests_by_path_total{path="${String(pathName).replace(/"/g, '\\"')}"} ${count}`
+          );
+        }
+        res.writeHead(200, {
+          "Content-Type": "text/plain; version=0.0.4; charset=utf-8"
+        });
+        res.end(`${lines.join("\n")}\n`);
         return;
       }
 
@@ -647,6 +719,47 @@ function createAppServer({
             operatorId: operatorForRole(role)
           }
         });
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/payment/callback") {
+        const body = await readJsonBody(req);
+        const merchantId = body.merchantId;
+        const signature = req.headers["x-payment-signature"];
+        if (!merchantId) {
+          sendJson(res, 400, { error: "merchantId is required" });
+          return;
+        }
+        if (!verifyHmacSignature(body, signature, paymentCallbackSecret)) {
+          sendJson(res, 401, { error: "invalid callback signature" });
+          return;
+        }
+
+        const { paymentService } = getServicesForMerchant(merchantId);
+        const result = paymentService.confirmExternalPayment({
+          merchantId,
+          paymentTxnId: body.paymentTxnId,
+          externalTxnId: body.externalTxnId,
+          callbackStatus: body.status,
+          paidAmount: body.paidAmount,
+          idempotencyKey: body.callbackId || body.externalTxnId || body.paymentTxnId
+        });
+        appendAuditLog({
+          merchantId,
+          action: "PAYMENT_CALLBACK",
+          status: result.status === "PAID" ? "SUCCESS" : "FAILED",
+          auth: {
+            role: "SYSTEM",
+            operatorId: "payment_gateway"
+          },
+          details: {
+            paymentTxnId: body.paymentTxnId,
+            externalTxnId: body.externalTxnId,
+            callbackStatus: body.status
+          }
+        });
+        wsHub.broadcast(merchantId, "PAYMENT_VERIFIED", result);
+        sendJson(res, 200, result);
         return;
       }
 
@@ -834,6 +947,129 @@ function createAppServer({
           }
         });
         wsHub.broadcast(body.merchantId, "PAYMENT_REFUNDED", result);
+        sendJson(res, 200, result);
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/invoice/issue") {
+        ensureRole(auth, MERCHANT_ROLES);
+        const body = await readJsonBody(req);
+        const merchantId = auth.merchantId || body.merchantId;
+        if (!merchantId) {
+          sendJson(res, 400, { error: "merchantId is required" });
+          return;
+        }
+        if (
+          !enforceTenantPolicyForHttp({
+            tenantPolicyManager,
+            merchantId,
+            operation: "INVOICE_ISSUE",
+            res,
+            auth,
+            appendAuditLog
+          })
+        ) {
+          return;
+        }
+        const { invoiceService } = getServicesForMerchant(merchantId);
+        const result = invoiceService.issueInvoice({
+          merchantId,
+          paymentTxnId: body.paymentTxnId,
+          title: body.title,
+          taxNo: body.taxNo,
+          email: body.email
+        });
+        appendAuditLog({
+          merchantId,
+          action: "INVOICE_ISSUE",
+          status: "SUCCESS",
+          auth,
+          details: {
+            paymentTxnId: body.paymentTxnId,
+            invoiceNo: result.invoiceNo
+          }
+        });
+        sendJson(res, 200, result);
+        return;
+      }
+
+      if (method === "GET" && url.pathname === "/api/invoice/list") {
+        ensureRole(auth, MERCHANT_ROLES);
+        const merchantId = url.searchParams.get("merchantId") || auth.merchantId;
+        if (!merchantId) {
+          sendJson(res, 400, { error: "merchantId is required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        const { invoiceService } = getServicesForMerchant(merchantId);
+        const result = invoiceService.listInvoices({
+          merchantId,
+          userId: url.searchParams.get("userId") || "",
+          limit: url.searchParams.get("limit")
+        });
+        sendJson(res, 200, result);
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/privacy/export-user") {
+        ensureRole(auth, ["OWNER"]);
+        const body = await readJsonBody(req);
+        const merchantId = auth.merchantId || body.merchantId;
+        if (!merchantId || !body.userId) {
+          sendJson(res, 400, { error: "merchantId and userId are required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        const { privacyService } = getServicesForMerchant(merchantId);
+        const result = privacyService.exportUserData({
+          merchantId,
+          userId: body.userId
+        });
+        appendAuditLog({
+          merchantId,
+          action: "PRIVACY_EXPORT",
+          status: "SUCCESS",
+          auth,
+          details: {
+            userId: body.userId
+          }
+        });
+        sendJson(res, 200, result);
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/privacy/delete-user") {
+        ensureRole(auth, ["OWNER"]);
+        const body = await readJsonBody(req);
+        const merchantId = auth.merchantId || body.merchantId;
+        if (!merchantId || !body.userId) {
+          sendJson(res, 400, { error: "merchantId and userId are required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        const { privacyService } = getServicesForMerchant(merchantId);
+        const result = privacyService.deleteUserData({
+          merchantId,
+          userId: body.userId
+        });
+        appendAuditLog({
+          merchantId,
+          action: "PRIVACY_DELETE",
+          status: "SUCCESS",
+          auth,
+          details: {
+            userId: body.userId
+          }
+        });
         sendJson(res, 200, result);
         return;
       }
@@ -1265,6 +1501,7 @@ function createAppServer({
 
       sendJson(res, 404, { error: "Not Found" });
     } catch (error) {
+      metrics.errorsTotal += 1;
       const message = error.message || "Request failed";
       const statusCode =
         message === "permission denied" || message.includes("scope denied")

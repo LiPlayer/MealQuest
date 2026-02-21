@@ -2,7 +2,7 @@ const { buildCheckoutQuote } = require("../core/smartCheckout");
 const { applyRefundClawback } = require("../core/clawback");
 
 function roundMoney(value) {
-  return Math.round(value * 100) / 100;
+  return Math.round(Number(value || 0) * 100) / 100;
 }
 
 function assertEntity(entity, label) {
@@ -11,7 +11,26 @@ function assertEntity(entity, label) {
   }
 }
 
-function createPaymentService(db) {
+function createDefaultPaymentProvider() {
+  return {
+    name: "MOCK_GATEWAY",
+    createPaymentIntent({ merchantId, userId, orderAmount, payableAmount }) {
+      return {
+        provider: "MOCK_GATEWAY",
+        merchantId,
+        userId,
+        orderAmount: roundMoney(orderAmount),
+        payableAmount: roundMoney(payableAmount),
+        paymentIntentId: `pi_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        status: "REQUIRES_CALLBACK"
+      };
+    }
+  };
+}
+
+function createPaymentService(db, options = {}) {
+  const paymentProvider = options.paymentProvider || createDefaultPaymentProvider();
+
   function getMerchantAndUser({ merchantId, userId }) {
     const merchant = db.merchants[merchantId];
     const user = db.getMerchantUser(merchantId, userId);
@@ -43,6 +62,19 @@ function createPaymentService(db) {
     return ledgerRecord;
   }
 
+  function applyQuoteToUser(user, quote) {
+    user.wallet = {
+      ...quote.remainingWallet
+    };
+    if (quote.selectedVoucher) {
+      const voucher = user.vouchers.find((item) => item.id === quote.selectedVoucher.id);
+      if (voucher) {
+        voucher.status = "USED";
+      }
+    }
+    return user.wallet;
+  }
+
   function verifyPayment({ merchantId, userId, orderAmount, idempotencyKey }) {
     if (!idempotencyKey) {
       throw new Error("Idempotency-Key is required");
@@ -55,18 +87,60 @@ function createPaymentService(db) {
 
     const { user, merchant } = getMerchantAndUser({ merchantId, userId });
     const quote = getQuote({ merchantId, userId, orderAmount });
+    const payable = roundMoney(quote.payable);
 
-    user.wallet = {
-      ...quote.remainingWallet
-    };
+    if (payable > 0) {
+      const externalPayment = paymentProvider.createPaymentIntent({
+        merchantId,
+        userId,
+        orderAmount: Number(orderAmount),
+        payableAmount: payable
+      });
+      const paymentTxnId = db.nextLedgerId();
+      const paymentRecord = {
+        paymentTxnId,
+        merchantId,
+        userId,
+        status: "PENDING_EXTERNAL",
+        orderAmount: Number(orderAmount),
+        deduction: quote.deduction,
+        quote,
+        refundedAmount: 0,
+        externalPayment: {
+          provider: externalPayment.provider || paymentProvider.name || "GATEWAY",
+          paymentIntentId: externalPayment.paymentIntentId,
+          payableAmount: payable,
+          status: "PENDING",
+          externalTxnId: null,
+          confirmedAt: null
+        },
+        createdAt: new Date().toISOString()
+      };
 
-    if (quote.selectedVoucher) {
-      const voucher = user.vouchers.find((item) => item.id === quote.selectedVoucher.id);
-      if (voucher) {
-        voucher.status = "USED";
-      }
+      db.setPayment(merchantId, paymentTxnId, paymentRecord);
+      appendLedger({
+        merchantId,
+        userId,
+        type: "PAYMENT_PENDING",
+        amount: Number(orderAmount),
+        details: {
+          quote,
+          externalPayment: paymentRecord.externalPayment
+        }
+      });
+
+      const result = {
+        paymentTxnId,
+        status: paymentRecord.status,
+        quote,
+        externalPayment: paymentRecord.externalPayment
+      };
+      db.idempotencyMap.set(idemKey, result);
+      db.save();
+      return result;
     }
 
+    applyQuoteToUser(user, quote);
     const paymentLedger = appendLedger({
       merchantId,
       userId,
@@ -81,9 +155,12 @@ function createPaymentService(db) {
       paymentTxnId: paymentLedger.txnId,
       merchantId,
       userId,
+      status: "PAID",
       orderAmount: Number(orderAmount),
       deduction: quote.deduction,
+      quote,
       refundedAmount: 0,
+      externalPayment: null,
       createdAt: paymentLedger.timestamp
     });
 
@@ -91,7 +168,101 @@ function createPaymentService(db) {
 
     const result = {
       paymentTxnId: paymentLedger.txnId,
+      status: "PAID",
       quote,
+      wallet: user.wallet
+    };
+    db.idempotencyMap.set(idemKey, result);
+    db.save();
+    return result;
+  }
+
+  function confirmExternalPayment({
+    merchantId,
+    paymentTxnId,
+    externalTxnId,
+    callbackStatus,
+    paidAmount,
+    idempotencyKey
+  }) {
+    if (!idempotencyKey) {
+      throw new Error("callback idempotencyKey is required");
+    }
+
+    const idemKey = `callback:${merchantId}:${idempotencyKey}`;
+    if (db.idempotencyMap.has(idemKey)) {
+      return db.idempotencyMap.get(idemKey);
+    }
+
+    const merchant = db.merchants[merchantId];
+    assertEntity(merchant, "merchant");
+    const payment = db.getPayment(merchantId, paymentTxnId);
+    assertEntity(payment, "payment");
+
+    if (payment.status === "PAID") {
+      const settled = {
+        paymentTxnId: payment.paymentTxnId,
+        status: payment.status,
+        externalPayment: payment.externalPayment,
+        wallet: db.getMerchantUser(merchantId, payment.userId).wallet
+      };
+      db.idempotencyMap.set(idemKey, settled);
+      return settled;
+    }
+
+    if (payment.status !== "PENDING_EXTERNAL") {
+      throw new Error("payment is not waiting for external callback");
+    }
+
+    if (String(callbackStatus || "").toUpperCase() !== "SUCCESS") {
+      payment.status = "EXTERNAL_FAILED";
+      payment.externalPayment.status = "FAILED";
+      payment.externalPayment.externalTxnId = externalTxnId || null;
+      payment.externalPayment.confirmedAt = new Date().toISOString();
+      db.save();
+      const failedResult = {
+        paymentTxnId: payment.paymentTxnId,
+        status: payment.status,
+        externalPayment: payment.externalPayment
+      };
+      db.idempotencyMap.set(idemKey, failedResult);
+      return failedResult;
+    }
+
+    const normalizedPaid = roundMoney(paidAmount);
+    const expectedPaid = roundMoney(payment.externalPayment.payableAmount);
+    if (normalizedPaid !== expectedPaid) {
+      throw new Error("paidAmount mismatch");
+    }
+
+    const user = db.getMerchantUser(merchantId, payment.userId);
+    assertEntity(user, "user");
+    applyQuoteToUser(user, payment.quote);
+
+    payment.status = "PAID";
+    payment.externalPayment.status = "CONFIRMED";
+    payment.externalPayment.externalTxnId = externalTxnId || null;
+    payment.externalPayment.confirmedAt = new Date().toISOString();
+
+    appendLedger({
+      merchantId,
+      userId: payment.userId,
+      type: "PAYMENT_EXTERNAL_CONFIRM",
+      amount: normalizedPaid,
+      details: {
+        paymentTxnId: payment.paymentTxnId,
+        externalTxnId: payment.externalPayment.externalTxnId
+      }
+    });
+
+    merchant.budgetUsed = roundMoney(
+      merchant.budgetUsed + Number(payment.deduction && payment.deduction.voucher ? payment.deduction.voucher : 0)
+    );
+
+    const result = {
+      paymentTxnId: payment.paymentTxnId,
+      status: payment.status,
+      externalPayment: payment.externalPayment,
       wallet: user.wallet
     };
     db.idempotencyMap.set(idemKey, result);
@@ -118,6 +289,9 @@ function createPaymentService(db) {
     assertEntity(merchant, "merchant");
     const payment = db.getPayment(merchantId, paymentTxnId);
     assertEntity(payment, "payment");
+    if (payment.status !== "PAID") {
+      throw new Error("payment is not settled");
+    }
     if (userId && payment.userId !== userId) {
       throw new Error("payment user mismatch");
     }
@@ -125,7 +299,6 @@ function createPaymentService(db) {
     assertEntity(user, "user");
 
     const normalizedRefundAmount = Number(refundAmount);
-
     const availableRefund = roundMoney(payment.orderAmount - payment.refundedAmount);
     if (normalizedRefundAmount > availableRefund) {
       throw new Error("refundAmount exceeds available amount");
@@ -169,6 +342,7 @@ function createPaymentService(db) {
   return {
     getQuote,
     verifyPayment,
+    confirmExternalPayment,
     refundPayment
   };
 }

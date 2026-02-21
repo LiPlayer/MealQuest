@@ -345,11 +345,56 @@
 
 结论：满足。
 
+## 3.15 场景 S15：外部支付回调验签与异步入账
+
+1. 大额订单进入 `PENDING_EXTERNAL` 状态，等待回调确认。
+2. 非法签名回调应拒绝（`invalid callback signature`）。
+3. 合法签名回调后订单状态转为 `PAID`，并可继续退款与开票流程。
+
+反推：
+1. 文档：`MealQuest_Server_Spec.md` 5.2、6、10。
+2. 代码：
+   - `MealQuestServer/src/services/paymentService.js`
+   - `MealQuestServer/src/http/server.js`
+3. 测试：`MealQuestServer/test/http.integration.test.js`（external callback 用例）。
+
+结论：满足。
+
+## 3.16 场景 S16：电子发票助手
+
+1. 未结算订单不允许开票。
+2. 已结算订单可开票并返回 `invoiceNo`。
+3. 发票可按商户/用户查询。
+
+反推：
+1. 文档：`MealQuest_Server_Spec.md` 5.2.1、6、10。
+2. 代码：
+   - `MealQuestServer/src/services/invoiceService.js`
+   - `MealQuestServer/src/http/server.js`
+3. 测试：`MealQuestServer/test/http.integration.test.js`（invoice 链路用例）。
+
+结论：满足。
+
+## 3.17 场景 S17：隐私导出与匿名化删除
+
+1. 仅 `OWNER` 可导出/删除用户数据。
+2. 导出内容包含用户、支付、发票、流水快照。
+3. 删除动作执行后用户进入匿名化状态（`isDeleted=true`）。
+
+反推：
+1. 文档：`MealQuest_Server_Spec.md` 5.2.1、6、10。
+2. 代码：
+   - `MealQuestServer/src/services/privacyService.js`
+   - `MealQuestServer/src/http/server.js`
+3. 测试：`MealQuestServer/test/http.integration.test.js`（privacy 用例）。
+
+结论：满足。
+
 ---
 
 ## 4. 测试回归结果（本轮）
 
-1. `MealQuestServer`: 22/22 通过。
+1. `MealQuestServer`: 25/25 通过。
 2. `MealQuestMerchant`: 14/14 通过。
 3. `meal-quest-customer`: 19/19 通过。
 

@@ -99,6 +99,10 @@ function createDefaultState(now = new Date()) {
       m_demo: {},
       m_bistro: {}
     },
+    invoicesByMerchant: {
+      m_demo: {},
+      m_bistro: {}
+    },
     tenantPolicies: {},
     tenantMigrations: {},
     tenantRouteFiles: {},
@@ -195,6 +199,10 @@ function migrateLegacyShape(state) {
     }
   }
 
+  if (!next.invoicesByMerchant || typeof next.invoicesByMerchant !== "object") {
+    next.invoicesByMerchant = {};
+  }
+
   if (!next.tenantPolicies || typeof next.tenantPolicies !== "object") {
     next.tenantPolicies = {};
   }
@@ -215,6 +223,9 @@ function ensureMerchantBuckets(state) {
     }
     if (!state.paymentsByMerchant[merchantId]) {
       state.paymentsByMerchant[merchantId] = {};
+    }
+    if (!state.invoicesByMerchant[merchantId]) {
+      state.invoicesByMerchant[merchantId] = {};
     }
   }
 }
@@ -244,6 +255,10 @@ function normalizeState(initialState = null) {
     paymentsByMerchant: {
       ...defaults.paymentsByMerchant,
       ...(migrated.paymentsByMerchant || {})
+    },
+    invoicesByMerchant: {
+      ...defaults.invoicesByMerchant,
+      ...(migrated.invoicesByMerchant || {})
     },
     tenantPolicies: {
       ...defaults.tenantPolicies,
@@ -279,6 +294,7 @@ function createInMemoryDb(initialState = null) {
       merchants: db.merchants,
       merchantUsers: db.merchantUsers,
       paymentsByMerchant: db.paymentsByMerchant,
+      invoicesByMerchant: db.invoicesByMerchant,
       tenantPolicies: db.tenantPolicies,
       tenantMigrations: db.tenantMigrations,
       tenantRouteFiles: db.tenantRouteFiles,
@@ -306,6 +322,19 @@ function createInMemoryDb(initialState = null) {
         db.paymentsByMerchant[merchantId] = {};
       }
       db.paymentsByMerchant[merchantId][paymentTxnId] = payment;
+    },
+    getInvoice: (merchantId, invoiceNo) => {
+      const invoices = db.invoicesByMerchant[merchantId];
+      if (!invoices) {
+        return null;
+      }
+      return invoices[invoiceNo] || null;
+    },
+    setInvoice: (merchantId, invoiceNo, invoice) => {
+      if (!db.invoicesByMerchant[merchantId]) {
+        db.invoicesByMerchant[merchantId] = {};
+      }
+      db.invoicesByMerchant[merchantId][invoiceNo] = invoice;
     },
     appendAuditLog: ({ merchantId, action, status, role, operatorId, details = {} }) => {
       const log = {
