@@ -76,8 +76,16 @@
 1. `getHomeSnapshot(storeId, userId)`：获取首页资产快照。
 2. `getCheckoutQuote(storeId, orderAmount, userId)`：获取收银预览。
 3. `executeCheckout(storeId, orderAmount, userId)`：执行支付并返回新快照。
+4. 远程调用必须使用服务端下发的 `CUSTOMER` token，并受 `merchantId/userId` scope 约束。
 
-## 4.2 Story/TCA 注入约束
+## 4.2 运行模式与切换
+
+1. 默认模式：本地 Mock（保证离线演示与测试稳定）。
+2. 远程模式：当 `TARO_APP_USE_REMOTE_API=true` 且 `TARO_APP_SERVER_BASE_URL` 存在时，优先走服务端 API。
+3. 远程失败自动回退 Mock，不阻断顾客支付流程。
+4. 远程模式下自动向服务端申请 `CUSTOMER` token，无需手工登录。
+
+## 4.3 Story/TCA 注入约束
 
 1. 活动卡可展示 TCA 事件注入内容。
 2. 顾客端仅渲染，不做规则决策。
@@ -101,6 +109,7 @@
 2. 智能收银算法：临期券优先与外部支付差额。
 3. 卡片交互：展开/收起与焦点切换。
 4. Mock 支付执行后：钱包下降、红包状态变更。
+5. 远程模式成功时走 API，失败时自动回退 Mock 且清空失效 token。
 
 ## 6.2 覆盖要求
 
@@ -153,6 +162,8 @@
 2. 动态资产卡渲染。
 3. 智能抵扣预览与执行。
 4. 顾客端核心测试覆盖。
+5. 远程 API 联调开关与自动回退机制。
+6. 远程 token 失效自动清理，避免跨门店/跨用户脏凭证残留。
 
 后续（不偏离总规范）：
 1. 接入真实服务端 API 替换 Mock。

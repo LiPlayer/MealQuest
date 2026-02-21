@@ -27,6 +27,8 @@ export default defineConfig<'webpack5'>(async (merge, { command: _command, mode:
       "taro-plugin-tailwind"
     ],
     defineConstants: {
+      TARO_APP_SERVER_BASE_URL: JSON.stringify(process.env.TARO_APP_SERVER_BASE_URL || ''),
+      TARO_APP_USE_REMOTE_API: JSON.stringify(process.env.TARO_APP_USE_REMOTE_API || 'false')
     },
     copy: {
       patterns: [

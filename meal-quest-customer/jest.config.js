@@ -12,7 +12,6 @@ module.exports = {
         '^.+\\.(ts|tsx)$': ['ts-jest', {
             tsconfig: 'tsconfig.json',
             diagnostics: false,
-            isolatedModules: true,
         }],
         '^.+\\.(js|jsx)$': 'babel-jest',
     },

@@ -3,7 +3,7 @@ const { runTcaEngine } = require("../core/tcaEngine");
 function createCampaignService(db) {
   function triggerEvent({ merchantId, userId, event, context }) {
     const merchant = db.merchants[merchantId];
-    const user = db.users[userId];
+    const user = db.getMerchantUser(merchantId, userId);
     if (!merchant) {
       throw new Error("merchant not found");
     }
@@ -41,6 +41,9 @@ function createCampaignService(db) {
         user.vouchers.push(voucher);
         grantLogs.push({ campaignId, voucherGranted: voucher.id });
       }
+    }
+    if (engineResult.executed.length > 0 || grantLogs.length > 0) {
+      db.save();
     }
 
     return {

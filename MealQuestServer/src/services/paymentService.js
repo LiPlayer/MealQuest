@@ -14,7 +14,7 @@ function assertEntity(entity, label) {
 function createPaymentService(db) {
   function getMerchantAndUser({ merchantId, userId }) {
     const merchant = db.merchants[merchantId];
-    const user = db.users[userId];
+    const user = db.getMerchantUser(merchantId, userId);
     assertEntity(merchant, "merchant");
     assertEntity(user, "user");
     return { merchant, user };
@@ -48,7 +48,7 @@ function createPaymentService(db) {
       throw new Error("Idempotency-Key is required");
     }
 
-    const idemKey = `verify:${idempotencyKey}`;
+    const idemKey = `verify:${merchantId}:${idempotencyKey}`;
     if (db.idempotencyMap.has(idemKey)) {
       return db.idempotencyMap.get(idemKey);
     }
@@ -77,7 +77,7 @@ function createPaymentService(db) {
       }
     });
 
-    db.payments[paymentLedger.txnId] = {
+    db.setPayment(merchantId, paymentLedger.txnId, {
       paymentTxnId: paymentLedger.txnId,
       merchantId,
       userId,
@@ -85,7 +85,7 @@ function createPaymentService(db) {
       deduction: quote.deduction,
       refundedAmount: 0,
       createdAt: paymentLedger.timestamp
-    };
+    });
 
     merchant.budgetUsed = roundMoney(merchant.budgetUsed + quote.deduction.voucher);
 
@@ -95,6 +95,7 @@ function createPaymentService(db) {
       wallet: user.wallet
     };
     db.idempotencyMap.set(idemKey, result);
+    db.save();
     return result;
   }
 
@@ -108,37 +109,45 @@ function createPaymentService(db) {
     if (!idempotencyKey) {
       throw new Error("Idempotency-Key is required");
     }
-    const idemKey = `refund:${idempotencyKey}`;
+    const idemKey = `refund:${merchantId}:${idempotencyKey}`;
     if (db.idempotencyMap.has(idemKey)) {
       return db.idempotencyMap.get(idemKey);
     }
 
-    const { user } = getMerchantAndUser({ merchantId, userId });
-    const payment = db.payments[paymentTxnId];
+    const merchant = db.merchants[merchantId];
+    assertEntity(merchant, "merchant");
+    const payment = db.getPayment(merchantId, paymentTxnId);
     assertEntity(payment, "payment");
+    if (userId && payment.userId !== userId) {
+      throw new Error("payment user mismatch");
+    }
+    const user = db.getMerchantUser(merchantId, payment.userId);
+    assertEntity(user, "user");
+
+    const normalizedRefundAmount = Number(refundAmount);
 
     const availableRefund = roundMoney(payment.orderAmount - payment.refundedAmount);
-    if (refundAmount > availableRefund) {
+    if (normalizedRefundAmount > availableRefund) {
       throw new Error("refundAmount exceeds available amount");
     }
 
-    const ratio = refundAmount / payment.orderAmount;
+    const ratio = normalizedRefundAmount / payment.orderAmount;
     const bonusConsumed = roundMoney(payment.deduction.bonus * ratio);
 
     const clawbackResult = applyRefundClawback({
       wallet: user.wallet,
-      refundAmount: Number(refundAmount),
+      refundAmount: normalizedRefundAmount,
       bonusConsumed
     });
 
     user.wallet = clawbackResult.nextWallet;
-    payment.refundedAmount = roundMoney(payment.refundedAmount + refundAmount);
+    payment.refundedAmount = roundMoney(payment.refundedAmount + normalizedRefundAmount);
 
     const refundLedger = appendLedger({
       merchantId,
-      userId,
+      userId: payment.userId,
       type: "REFUND",
-      amount: Number(refundAmount),
+      amount: normalizedRefundAmount,
       details: {
         paymentTxnId,
         clawback: clawbackResult.clawback
@@ -148,11 +157,12 @@ function createPaymentService(db) {
     const result = {
       refundTxnId: refundLedger.txnId,
       paymentTxnId,
-      refundedAmount: refundAmount,
+      refundedAmount: normalizedRefundAmount,
       wallet: user.wallet,
       clawback: clawbackResult.clawback
     };
     db.idempotencyMap.set(idemKey, result);
+    db.save();
     return result;
   }
 

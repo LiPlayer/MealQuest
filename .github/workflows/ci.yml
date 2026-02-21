@@ -1,0 +1,72 @@
+name: MealQuest CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  server-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: MealQuestServer
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: MealQuestServer/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Test
+        run: npm test
+      - name: Smoke
+        run: npm run test:smoke
+
+  merchant-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: MealQuestMerchant
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: MealQuestMerchant/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Test
+        run: npm test -- --runInBand
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+  customer-test-and-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: meal-quest-customer
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: meal-quest-customer/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Test
+        run: npm test -- --runInBand
+      - name: Build Weapp
+        run: npm run build:weapp

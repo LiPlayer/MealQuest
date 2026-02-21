@@ -7,7 +7,8 @@ import CustomerCardStack from '../../components/CustomerCardStack';
 import ActivityArea from '../../components/ActivityArea';
 import CustomerBottomDock from '../../components/CustomerBottomDock';
 import { storage } from '../../utils/storage';
-import { MockDataService, HomeSnapshot } from '../../services/MockDataService';
+import { HomeSnapshot } from '../../services/MockDataService';
+import { DataService } from '../../services/DataService';
 import { buildSmartCheckoutQuote } from '../../domain/smartCheckout';
 
 import './index.scss';
@@ -66,7 +67,7 @@ export default function Index() {
 
             if (storeId) {
                 try {
-                    const homeSnapshot = await MockDataService.getHomeSnapshot(storeId);
+                    const homeSnapshot = await DataService.getHomeSnapshot(storeId);
                     console.log('Fetched snapshot [Success]:', homeSnapshot);
                     setSnapshot(homeSnapshot);
                     setRefreshTrigger(v => v + 1);
@@ -75,7 +76,7 @@ export default function Index() {
                 }
             } else {
                 console.log('Using default store_a');
-                const defaultSnapshot = await MockDataService.getHomeSnapshot('store_a');
+                const defaultSnapshot = await DataService.getHomeSnapshot('store_a');
                 setSnapshot(defaultSnapshot);
                 setRefreshTrigger(v => v + 1);
             }
@@ -90,7 +91,7 @@ export default function Index() {
         }
         setIsPaying(true);
         try {
-            const result = await MockDataService.executeCheckout(snapshot.store.id, orderAmount);
+            const result = await DataService.executeCheckout(snapshot.store.id, orderAmount);
             setSnapshot(result.snapshot);
             setLastReceipt(`支付成功 ${result.paymentId}，外部支付 ¥${result.quote.payable.toFixed(2)}`);
             setRefreshTrigger(v => v + 1);

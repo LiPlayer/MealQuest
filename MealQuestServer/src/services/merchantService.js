@@ -39,6 +39,7 @@ function createMerchantService(db) {
     proposal.approvedBy = operatorId;
     proposal.approvedAt = new Date().toISOString();
     db.campaigns.push({ ...proposal.suggestedCampaign });
+    db.save();
 
     return {
       proposalId: proposal.id,
@@ -53,6 +54,7 @@ function createMerchantService(db) {
       throw new Error("merchant not found");
     }
     merchant.killSwitchEnabled = Boolean(enabled);
+    db.save();
     return {
       merchantId,
       killSwitchEnabled: merchant.killSwitchEnabled

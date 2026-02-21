@@ -1,10 +1,30 @@
 const http = require("node:http");
+const path = require("node:path");
 const { URL } = require("node:url");
 
-const { createInMemoryDb } = require("../store/inMemoryDb");
-const { createPaymentService } = require("../services/paymentService");
+const { issueToken, parseBearerToken, verifyToken } = require("../core/auth");
+const { createTenantPolicyManager } = require("../core/tenantPolicy");
+const { createTenantRouter } = require("../core/tenantRouter");
+const { createWebSocketHub } = require("../core/websocketHub");
 const { createCampaignService } = require("../services/campaignService");
 const { createMerchantService } = require("../services/merchantService");
+const { createPaymentService } = require("../services/paymentService");
+const { createInMemoryDb } = require("../store/inMemoryDb");
+const { createPersistentDb } = require("../store/persistentDb");
+const { createTenantRepository } = require("../store/tenantRepository");
+
+const MERCHANT_ROLES = ["CLERK", "MANAGER", "OWNER"];
+const CASHIER_ROLES = ["CUSTOMER", "CLERK", "MANAGER", "OWNER"];
+const TENANT_LIMIT_OPERATIONS = [
+  "PAYMENT_VERIFY",
+  "PAYMENT_REFUND",
+  "PROPOSAL_CONFIRM",
+  "KILL_SWITCH_SET",
+  "TCA_TRIGGER",
+  "AUDIT_QUERY",
+  "WS_CONNECT",
+  "WS_STATUS_QUERY"
+];
 
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
@@ -22,7 +42,7 @@ function readJsonBody(req) {
       }
       try {
         resolve(JSON.parse(raw));
-      } catch (error) {
+      } catch {
         reject(new Error("Invalid JSON body"));
       }
     });
@@ -39,20 +59,598 @@ function sendJson(res, statusCode, payload) {
   res.end(body);
 }
 
-function createAppServer({ db = createInMemoryDb() } = {}) {
-  const paymentService = createPaymentService(db);
-  const campaignService = createCampaignService(db);
-  const merchantService = createMerchantService(db);
+function getAuthContext(req, secret) {
+  const rawToken = parseBearerToken(req.headers.authorization);
+  if (!rawToken) {
+    throw new Error("Authorization Bearer token is required");
+  }
+  return verifyToken(rawToken, secret);
+}
+
+function getUpgradeAuthContext(req, secret, parsedUrl) {
+  const queryToken = parsedUrl.searchParams.get("token");
+  const bearerToken = parseBearerToken(req.headers.authorization);
+  const token = queryToken || bearerToken;
+  if (!token) {
+    throw new Error("Authorization Bearer token is required");
+  }
+  return verifyToken(token, secret);
+}
+
+function ensureRole(auth, allowedRoles) {
+  if (!allowedRoles.includes(auth.role)) {
+    throw new Error("permission denied");
+  }
+}
+
+function normalizeRole(inputRole) {
+  const allowed = ["CUSTOMER", "CLERK", "MANAGER", "OWNER"];
+  if (allowed.includes(inputRole)) {
+    return inputRole;
+  }
+  return "CUSTOMER";
+}
+
+function operatorForRole(role) {
+  if (role === "OWNER") {
+    return "staff_owner";
+  }
+  if (role === "MANAGER") {
+    return "staff_manager";
+  }
+  if (role === "CLERK") {
+    return "staff_clerk";
+  }
+  return undefined;
+}
+
+function resolveAuditAction(method, pathname) {
+  if (method === "POST" && pathname === "/api/payment/verify") {
+    return "PAYMENT_VERIFY";
+  }
+  if (method === "POST" && pathname === "/api/payment/refund") {
+    return "PAYMENT_REFUND";
+  }
+  if (method === "POST" && pathname === "/api/merchant/kill-switch") {
+    return "KILL_SWITCH_SET";
+  }
+  if (method === "POST" && pathname === "/api/tca/trigger") {
+    return "TCA_TRIGGER";
+  }
+  if (method === "POST" && pathname === "/api/merchant/tenant-policy") {
+    return "TENANT_POLICY_SET";
+  }
+  if (method === "POST" && pathname === "/api/merchant/migration/step") {
+    return "MIGRATION_STEP";
+  }
+  if (method === "POST" && pathname === "/api/merchant/migration/cutover") {
+    return "MIGRATION_CUTOVER";
+  }
+  if (method === "POST" && pathname === "/api/merchant/migration/rollback") {
+    return "MIGRATION_ROLLBACK";
+  }
+  if (method === "POST" && /^\/api\/merchant\/proposals\/[^/]+\/confirm$/.test(pathname)) {
+    return "PROPOSAL_CONFIRM";
+  }
+  return null;
+}
+
+function toPolicyPositiveInt(value, label) {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) {
+    throw new Error(`${label} must be a positive number`);
+  }
+  return Math.floor(num);
+}
+
+function sanitizeLimitInput(limitInput) {
+  if (!limitInput || typeof limitInput !== "object") {
+    throw new Error("limits must be an object");
+  }
+
+  const limits = {};
+  for (const [rawOperation, rawValue] of Object.entries(limitInput)) {
+    const operation = String(rawOperation || "").trim().toUpperCase();
+    if (!operation || !TENANT_LIMIT_OPERATIONS.includes(operation)) {
+      throw new Error(`unsupported limit operation: ${rawOperation}`);
+    }
+
+    if (typeof rawValue === "number" || typeof rawValue === "string") {
+      limits[operation] = {
+        limit: toPolicyPositiveInt(rawValue, `${operation}.limit`),
+        windowMs: 60 * 1000
+      };
+      continue;
+    }
+
+    if (!rawValue || typeof rawValue !== "object") {
+      throw new Error(`${operation} limit must be number or object`);
+    }
+
+    limits[operation] = {
+      limit: toPolicyPositiveInt(rawValue.limit, `${operation}.limit`),
+      windowMs:
+        rawValue.windowMs === undefined
+          ? 60 * 1000
+          : toPolicyPositiveInt(rawValue.windowMs, `${operation}.windowMs`)
+    };
+  }
+
+  return limits;
+}
+
+function buildTenantPolicyPatch(body = {}) {
+  const patch = {};
+  if (Object.prototype.hasOwnProperty.call(body, "writeEnabled")) {
+    patch.writeEnabled = Boolean(body.writeEnabled);
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "wsEnabled")) {
+    patch.wsEnabled = Boolean(body.wsEnabled);
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "limits")) {
+    patch.limits = sanitizeLimitInput(body.limits);
+  }
+  if (Object.keys(patch).length === 0) {
+    throw new Error("tenant policy patch is empty");
+  }
+  return patch;
+}
+
+const MIGRATION_STEPS = new Set([
+  "FREEZE_WRITE",
+  "UNFREEZE_WRITE",
+  "DISABLE_WS",
+  "ENABLE_WS",
+  "MARK_VERIFYING",
+  "MARK_CUTOVER",
+  "MARK_ROLLBACK"
+]);
+
+function resolveMigrationPhase(previousPhase, step) {
+  if (step === "FREEZE_WRITE") {
+    return "FROZEN";
+  }
+  if (step === "UNFREEZE_WRITE") {
+    if (previousPhase === "CUTOVER" || previousPhase === "ROLLBACK") {
+      return previousPhase;
+    }
+    return "RUNNING";
+  }
+  if (step === "MARK_VERIFYING") {
+    return "VERIFYING";
+  }
+  if (step === "MARK_CUTOVER") {
+    return "CUTOVER";
+  }
+  if (step === "MARK_ROLLBACK") {
+    return "ROLLBACK";
+  }
+  return previousPhase || "IDLE";
+}
+
+function jsonClone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function upsertMerchantRows(rows, merchantId, nextRows) {
+  const currentRows = Array.isArray(rows) ? rows : [];
+  const incomingRows = Array.isArray(nextRows) ? nextRows : [];
+  return [
+    ...currentRows.filter((item) => item && item.merchantId !== merchantId),
+    ...incomingRows
+  ];
+}
+
+function buildDedicatedDbFilePath(baseFilePath, merchantId) {
+  const parsed = path.parse(baseFilePath);
+  return path.join(parsed.dir, `${parsed.name}.tenant.${merchantId}.json`);
+}
+
+function buildMerchantSnapshotSummary(db, merchantId) {
+  const users = (db.merchantUsers && db.merchantUsers[merchantId]) || {};
+  const payments = (db.paymentsByMerchant && db.paymentsByMerchant[merchantId]) || {};
+  const campaigns = (db.campaigns || []).filter((item) => item.merchantId === merchantId);
+  const proposals = (db.proposals || []).filter((item) => item.merchantId === merchantId);
+  const ledger = (db.ledger || []).filter((item) => item.merchantId === merchantId);
+  const auditLogs = (db.auditLogs || []).filter((item) => item.merchantId === merchantId);
+  const merchant = db.merchants && db.merchants[merchantId];
+
+  const walletChecksum = JSON.stringify(
+    Object.entries(users)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([uid, user]) => [uid, user.wallet, user.vouchers, user.tags, user.fragments])
+  );
+
+  return {
+    merchantExists: Boolean(merchant),
+    usersCount: Object.keys(users).length,
+    paymentsCount: Object.keys(payments).length,
+    campaignsCount: campaigns.length,
+    proposalsCount: proposals.length,
+    ledgerCount: ledger.length,
+    auditCount: auditLogs.length,
+    budgetUsed: merchant ? Number(merchant.budgetUsed || 0) : 0,
+    walletChecksum
+  };
+}
+
+function isSnapshotSummaryEqual(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function copyMerchantSlice({ sourceDb, targetDb, merchantId }) {
+  const merchant = sourceDb.merchants && sourceDb.merchants[merchantId];
+  if (!merchant) {
+    throw new Error("merchant not found");
+  }
+
+  targetDb.merchants[merchantId] = jsonClone(merchant);
+  targetDb.merchantUsers[merchantId] = jsonClone(
+    (sourceDb.merchantUsers && sourceDb.merchantUsers[merchantId]) || {}
+  );
+  targetDb.paymentsByMerchant[merchantId] = jsonClone(
+    (sourceDb.paymentsByMerchant && sourceDb.paymentsByMerchant[merchantId]) || {}
+  );
+
+  targetDb.campaigns = upsertMerchantRows(
+    targetDb.campaigns,
+    merchantId,
+    jsonClone((sourceDb.campaigns || []).filter((item) => item.merchantId === merchantId))
+  );
+  targetDb.proposals = upsertMerchantRows(
+    targetDb.proposals,
+    merchantId,
+    jsonClone((sourceDb.proposals || []).filter((item) => item.merchantId === merchantId))
+  );
+  targetDb.ledger = upsertMerchantRows(
+    targetDb.ledger,
+    merchantId,
+    jsonClone((sourceDb.ledger || []).filter((item) => item.merchantId === merchantId))
+  );
+  targetDb.auditLogs = upsertMerchantRows(
+    targetDb.auditLogs,
+    merchantId,
+    jsonClone((sourceDb.auditLogs || []).filter((item) => item.merchantId === merchantId))
+  );
+
+  if (!targetDb.tenantPolicies || typeof targetDb.tenantPolicies !== "object") {
+    targetDb.tenantPolicies = {};
+  }
+  if (sourceDb.tenantPolicies && sourceDb.tenantPolicies[merchantId]) {
+    targetDb.tenantPolicies[merchantId] = jsonClone(sourceDb.tenantPolicies[merchantId]);
+  }
+
+  if (!targetDb.tenantMigrations || typeof targetDb.tenantMigrations !== "object") {
+    targetDb.tenantMigrations = {};
+  }
+  if (sourceDb.tenantMigrations && sourceDb.tenantMigrations[merchantId]) {
+    targetDb.tenantMigrations[merchantId] = jsonClone(sourceDb.tenantMigrations[merchantId]);
+  }
+
+  if (targetDb.idCounters && sourceDb.idCounters) {
+    targetDb.idCounters.ledger = Math.max(
+      Number(targetDb.idCounters.ledger || 0),
+      Number(sourceDb.idCounters.ledger || 0)
+    );
+    targetDb.idCounters.audit = Math.max(
+      Number(targetDb.idCounters.audit || 0),
+      Number(sourceDb.idCounters.audit || 0)
+    );
+  }
+  targetDb.save();
+}
+
+function cutoverMerchantToDedicatedDb({
+  actualDb,
+  tenantRouter,
+  merchantId,
+  persist,
+  dbFilePath
+}) {
+  if (!merchantId) {
+    throw new Error("merchantId is required");
+  }
+  const sourceDb = tenantRouter.getDbForMerchant(merchantId);
+  const merchant = sourceDb.merchants && sourceDb.merchants[merchantId];
+  if (!merchant) {
+    throw new Error("merchant not found");
+  }
+
+  let dedicatedDb = null;
+  let dedicatedDbFilePath = "";
+  if (persist) {
+    dedicatedDbFilePath =
+      (actualDb.tenantRouteFiles && actualDb.tenantRouteFiles[merchantId]) ||
+      buildDedicatedDbFilePath(dbFilePath, merchantId);
+    dedicatedDb = createPersistentDb(dedicatedDbFilePath);
+  } else {
+    dedicatedDb = createInMemoryDb();
+  }
+
+  copyMerchantSlice({
+    sourceDb,
+    targetDb: dedicatedDb,
+    merchantId
+  });
+  const sourceSummary = buildMerchantSnapshotSummary(sourceDb, merchantId);
+  const dedicatedSummary = buildMerchantSnapshotSummary(dedicatedDb, merchantId);
+  if (!isSnapshotSummaryEqual(sourceSummary, dedicatedSummary)) {
+    throw new Error("cutover snapshot verify failed");
+  }
+
+  tenantRouter.setDbForMerchant(merchantId, dedicatedDb);
+  if (!actualDb.tenantRouteFiles || typeof actualDb.tenantRouteFiles !== "object") {
+    actualDb.tenantRouteFiles = {};
+  }
+  if (dedicatedDbFilePath) {
+    actualDb.tenantRouteFiles[merchantId] = dedicatedDbFilePath;
+  }
+  actualDb.save();
+  dedicatedDb.save();
+
+  return {
+    dedicatedDbAttached: true,
+    dedicatedDbFilePath: dedicatedDbFilePath || null,
+    sourceSummary,
+    dedicatedSummary
+  };
+}
+
+function rollbackMerchantToSharedDb({
+  actualDb,
+  tenantRouter,
+  merchantId
+}) {
+  if (!merchantId) {
+    throw new Error("merchantId is required");
+  }
+  if (!tenantRouter.hasDbOverride(merchantId)) {
+    throw new Error("merchant has no dedicated route");
+  }
+
+  const dedicatedDb = tenantRouter.getDbForMerchant(merchantId);
+  const dedicatedSummary = buildMerchantSnapshotSummary(dedicatedDb, merchantId);
+
+  copyMerchantSlice({
+    sourceDb: dedicatedDb,
+    targetDb: actualDb,
+    merchantId
+  });
+  const sharedSummary = buildMerchantSnapshotSummary(actualDb, merchantId);
+  if (!isSnapshotSummaryEqual(dedicatedSummary, sharedSummary)) {
+    throw new Error("rollback snapshot verify failed");
+  }
+
+  let dedicatedDbFilePath = null;
+  if (actualDb.tenantRouteFiles && actualDb.tenantRouteFiles[merchantId]) {
+    dedicatedDbFilePath = actualDb.tenantRouteFiles[merchantId];
+    delete actualDb.tenantRouteFiles[merchantId];
+  }
+  tenantRouter.clearDbForMerchant(merchantId);
+  actualDb.save();
+  dedicatedDb.save();
+
+  return {
+    dedicatedDbAttached: false,
+    dedicatedDbFilePath,
+    dedicatedSummary,
+    sharedSummary
+  };
+}
+
+function enforceTenantPolicyForHttp({
+  tenantPolicyManager,
+  merchantId,
+  operation,
+  res,
+  auth,
+  appendAuditLog
+}) {
+  const decision = tenantPolicyManager.evaluate({
+    merchantId,
+    operation
+  });
+  if (decision.allowed) {
+    return true;
+  }
+
+  if (appendAuditLog && auth && merchantId) {
+    appendAuditLog({
+      merchantId,
+      action: operation,
+      status: "BLOCKED",
+      auth,
+      details: {
+        reason: decision.reason,
+        policyCode: decision.code
+      }
+    });
+  }
+
+  sendJson(res, decision.statusCode, {
+    error: decision.reason,
+    code: decision.code
+  });
+  return false;
+}
+
+function applyMigrationStep({
+  actualDb,
+  tenantPolicyManager,
+  merchantId,
+  step,
+  note = ""
+}) {
+  const normalizedStep = String(step || "").trim().toUpperCase();
+  if (!MIGRATION_STEPS.has(normalizedStep)) {
+    throw new Error(`unsupported migration step: ${step}`);
+  }
+
+  let patch = null;
+  if (normalizedStep === "FREEZE_WRITE") {
+    patch = { writeEnabled: false };
+  } else if (normalizedStep === "UNFREEZE_WRITE") {
+    patch = { writeEnabled: true };
+  } else if (normalizedStep === "DISABLE_WS") {
+    patch = { wsEnabled: false };
+  } else if (normalizedStep === "ENABLE_WS") {
+    patch = { wsEnabled: true };
+  }
+
+  if (patch) {
+    const policy = tenantPolicyManager.setMerchantPolicy(merchantId, patch);
+    actualDb.tenantPolicies[merchantId] = {
+      ...policy
+    };
+  }
+
+  const previous = actualDb.tenantMigrations[merchantId] || {};
+  const migration = {
+    phase: resolveMigrationPhase(previous.phase, normalizedStep),
+    step: normalizedStep,
+    note: typeof note === "string" ? note : "",
+    updatedAt: new Date().toISOString()
+  };
+  actualDb.tenantMigrations[merchantId] = migration;
+  actualDb.save();
+
+  return {
+    migration,
+    policy: tenantPolicyManager.getPolicy(merchantId)
+  };
+}
+
+function createAppServer({
+  db = null,
+  persist = false,
+  tenantDbMap = {},
+  tenantPolicyMap = {},
+  defaultTenantPolicy = {},
+  dbFilePath = path.resolve(process.cwd(), "data/db.json"),
+  jwtSecret = process.env.MQ_JWT_SECRET || "mealquest-dev-secret"
+} = {}) {
+  const actualDb = db || (persist ? createPersistentDb(dbFilePath) : createInMemoryDb());
+  if (typeof actualDb.save !== "function") {
+    actualDb.save = () => {};
+  }
+  if (!actualDb.tenantRouteFiles || typeof actualDb.tenantRouteFiles !== "object") {
+    actualDb.tenantRouteFiles = {};
+  }
+  const persistedTenantDbMap = {};
+  if (persist) {
+    for (const [merchantId, filePath] of Object.entries(actualDb.tenantRouteFiles)) {
+      if (!merchantId || !filePath || typeof filePath !== "string") {
+        continue;
+      }
+      persistedTenantDbMap[merchantId] = createPersistentDb(filePath);
+    }
+  }
+  const mergedTenantDbMap = {
+    ...persistedTenantDbMap,
+    ...(tenantDbMap || {})
+  };
+
+  const tenantRouter = createTenantRouter({
+    defaultDb: actualDb,
+    tenantDbMap: mergedTenantDbMap
+  });
+  const tenantRepository = createTenantRepository({
+    tenantRouter
+  });
+  const persistedTenantPolicyMap =
+    actualDb.tenantPolicies && typeof actualDb.tenantPolicies === "object"
+      ? actualDb.tenantPolicies
+      : {};
+  const mergedTenantPolicyMap = {
+    ...persistedTenantPolicyMap,
+    ...(tenantPolicyMap || {})
+  };
+  actualDb.tenantPolicies = { ...mergedTenantPolicyMap };
+  const tenantPolicyManager = createTenantPolicyManager({
+    tenantPolicyMap: mergedTenantPolicyMap,
+    defaultTenantPolicy
+  });
+  actualDb.save();
+  const serviceCache = new WeakMap();
+  const getServicesForDb = (scopedDb) => {
+    let services = serviceCache.get(scopedDb);
+    if (!services) {
+      services = {
+        paymentService: createPaymentService(scopedDb),
+        campaignService: createCampaignService(scopedDb),
+        merchantService: createMerchantService(scopedDb)
+      };
+      serviceCache.set(scopedDb, services);
+    }
+    return services;
+  };
+  const getServicesForMerchant = (merchantId) => {
+    const scopedDb = tenantRouter.getDbForMerchant(merchantId);
+    return getServicesForDb(scopedDb);
+  };
+  const services = getServicesForDb(actualDb);
+  const wsHub = createWebSocketHub();
+  const allSockets = new Set();
+  const appendAuditLog = ({ merchantId, action, status, auth, details }) => {
+    tenantRepository.appendAuditLog({
+      merchantId,
+      action,
+      status,
+      role: auth && auth.role,
+      operatorId: auth && (auth.operatorId || auth.userId),
+      details
+    });
+  };
 
   const server = http.createServer(async (req, res) => {
+    const method = req.method || "GET";
+    const url = new URL(req.url || "/", "http://localhost");
+    const auditAction = resolveAuditAction(method, url.pathname);
+    let auth = null;
     try {
-      const method = req.method || "GET";
-      const url = new URL(req.url || "/", "http://localhost");
-
       if (method === "GET" && url.pathname === "/health") {
         sendJson(res, 200, { ok: true, now: new Date().toISOString() });
         return;
       }
+
+      if (method === "POST" && url.pathname === "/api/auth/mock-login") {
+        const body = await readJsonBody(req);
+        const role = normalizeRole(body.role);
+        const merchantId = body.merchantId || "m_demo";
+        const userId = body.userId || "u_demo";
+
+        if (!tenantRepository.getMerchant(merchantId)) {
+          sendJson(res, 404, { error: "merchant not found" });
+          return;
+        }
+        if (role === "CUSTOMER" && !tenantRepository.getMerchantUser(merchantId, userId)) {
+          sendJson(res, 404, { error: "user not found" });
+          return;
+        }
+
+        const token = issueToken(
+          {
+            role,
+            merchantId,
+            userId: role === "CUSTOMER" ? userId : undefined,
+            operatorId: operatorForRole(role)
+          },
+          jwtSecret
+        );
+
+        sendJson(res, 200, {
+          token,
+          profile: {
+            role,
+            merchantId,
+            userId: role === "CUSTOMER" ? userId : undefined,
+            operatorId: operatorForRole(role)
+          }
+        });
+        return;
+      }
+
+      auth = getAuthContext(req, jwtSecret);
 
       if (method === "GET" && url.pathname === "/api/state") {
         const merchantId = url.searchParams.get("merchantId");
@@ -61,55 +659,497 @@ function createAppServer({ db = createInMemoryDb() } = {}) {
           sendJson(res, 400, { error: "merchantId and userId are required" });
           return;
         }
-        const merchant = db.merchants[merchantId];
-        const user = db.users[userId];
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        if (auth.role === "CUSTOMER" && auth.userId !== userId) {
+          sendJson(res, 403, { error: "user scope denied" });
+          return;
+        }
+
+        const scopedDb = tenantRouter.getDbForMerchant(merchantId);
+        const { merchantService } = getServicesForDb(scopedDb);
+        const merchant = tenantRepository.getMerchant(merchantId);
+        const user = tenantRepository.getMerchantUser(merchantId, userId);
         if (!merchant || !user) {
           sendJson(res, 404, { error: "merchant or user not found" });
           return;
         }
+
         sendJson(res, 200, {
           merchant,
           user,
           dashboard: merchantService.getDashboard({ merchantId }),
-          campaigns: db.campaigns.filter((item) => item.merchantId === merchantId)
+          campaigns: tenantRepository.listCampaigns(merchantId)
         });
         return;
       }
 
+      if (method === "GET" && url.pathname === "/api/ws/status") {
+        ensureRole(auth, MERCHANT_ROLES);
+        const merchantId = url.searchParams.get("merchantId") || auth.merchantId;
+        if (auth.merchantId && merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        if (
+          !enforceTenantPolicyForHttp({
+            tenantPolicyManager,
+            merchantId,
+            operation: "WS_STATUS_QUERY",
+            res,
+            auth
+          })
+        ) {
+          return;
+        }
+        sendJson(res, 200, {
+          merchantId,
+          onlineCount: wsHub.getOnlineCount(merchantId)
+        });
+        return;
+      }
+
+      if (method === "GET" && url.pathname === "/api/audit/logs") {
+        ensureRole(auth, MERCHANT_ROLES);
+        const merchantId = url.searchParams.get("merchantId") || auth.merchantId;
+        if (!merchantId) {
+          sendJson(res, 400, { error: "merchantId is required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        if (
+          !enforceTenantPolicyForHttp({
+            tenantPolicyManager,
+            merchantId,
+            operation: "AUDIT_QUERY",
+            res,
+            auth
+          })
+        ) {
+          return;
+        }
+
+        const result = tenantRepository.listAuditLogs({
+          merchantId,
+          limit: url.searchParams.get("limit"),
+          cursor: url.searchParams.get("cursor") || "",
+          startTime: url.searchParams.get("startTime") || "",
+          endTime: url.searchParams.get("endTime") || "",
+          action: url.searchParams.get("action") || "",
+          status: url.searchParams.get("status") || ""
+        });
+        sendJson(res, 200, result);
+        return;
+      }
+
       if (method === "POST" && url.pathname === "/api/payment/quote") {
+        ensureRole(auth, CASHIER_ROLES);
         const body = await readJsonBody(req);
+        body.merchantId = auth.merchantId || body.merchantId;
+        if (auth.role === "CUSTOMER") {
+          body.userId = auth.userId;
+        }
+        const { paymentService } = getServicesForMerchant(body.merchantId);
         const result = paymentService.getQuote(body);
         sendJson(res, 200, result);
         return;
       }
 
       if (method === "POST" && url.pathname === "/api/payment/verify") {
+        ensureRole(auth, CASHIER_ROLES);
         const body = await readJsonBody(req);
+        body.merchantId = auth.merchantId || body.merchantId;
+        if (auth.role === "CUSTOMER") {
+          body.userId = auth.userId;
+        }
+        if (
+          !enforceTenantPolicyForHttp({
+            tenantPolicyManager,
+            merchantId: body.merchantId,
+            operation: "PAYMENT_VERIFY",
+            res,
+            auth,
+            appendAuditLog
+          })
+        ) {
+          return;
+        }
+
+        const { paymentService } = getServicesForMerchant(body.merchantId);
         const result = paymentService.verifyPayment({
           ...body,
           idempotencyKey: req.headers["idempotency-key"] || body.idempotencyKey
         });
+        appendAuditLog({
+          merchantId: body.merchantId,
+          action: "PAYMENT_VERIFY",
+          status: "SUCCESS",
+          auth,
+          details: {
+            paymentTxnId: result.paymentTxnId,
+            userId: body.userId,
+            orderAmount: Number(body.orderAmount || 0)
+          }
+        });
+        wsHub.broadcast(body.merchantId, "PAYMENT_VERIFIED", result);
         sendJson(res, 200, result);
         return;
       }
 
       if (method === "POST" && url.pathname === "/api/payment/refund") {
+        ensureRole(auth, ["MANAGER", "OWNER"]);
         const body = await readJsonBody(req);
+        body.merchantId = auth.merchantId || body.merchantId;
+        if (
+          !enforceTenantPolicyForHttp({
+            tenantPolicyManager,
+            merchantId: body.merchantId,
+            operation: "PAYMENT_REFUND",
+            res,
+            auth,
+            appendAuditLog
+          })
+        ) {
+          return;
+        }
+        const { paymentService } = getServicesForMerchant(body.merchantId);
         const result = paymentService.refundPayment({
           ...body,
           idempotencyKey: req.headers["idempotency-key"] || body.idempotencyKey
         });
+        appendAuditLog({
+          merchantId: body.merchantId,
+          action: "PAYMENT_REFUND",
+          status: "SUCCESS",
+          auth,
+          details: {
+            paymentTxnId: body.paymentTxnId,
+            refundTxnId: result.refundTxnId,
+            refundAmount: Number(body.refundAmount || 0)
+          }
+        });
+        wsHub.broadcast(body.merchantId, "PAYMENT_REFUNDED", result);
         sendJson(res, 200, result);
         return;
       }
 
       if (method === "GET" && url.pathname === "/api/merchant/dashboard") {
+        ensureRole(auth, MERCHANT_ROLES);
         const merchantId = url.searchParams.get("merchantId");
         if (!merchantId) {
           sendJson(res, 400, { error: "merchantId is required" });
           return;
         }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        const { merchantService } = getServicesForMerchant(merchantId);
         sendJson(res, 200, merchantService.getDashboard({ merchantId }));
+        return;
+      }
+
+      if (method === "GET" && url.pathname === "/api/merchant/tenant-policy") {
+        ensureRole(auth, ["OWNER"]);
+        const merchantId = url.searchParams.get("merchantId") || auth.merchantId;
+        if (!merchantId) {
+          sendJson(res, 400, { error: "merchantId is required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+
+        sendJson(res, 200, {
+          merchantId,
+          policy: tenantPolicyManager.getPolicy(merchantId)
+        });
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/merchant/tenant-policy") {
+        ensureRole(auth, ["OWNER"]);
+        const body = await readJsonBody(req);
+        const merchantId = auth.merchantId || body.merchantId;
+        if (!merchantId) {
+          sendJson(res, 400, { error: "merchantId is required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+
+        const patch = buildTenantPolicyPatch(body);
+        const policy = tenantPolicyManager.setMerchantPolicy(merchantId, patch);
+        actualDb.tenantPolicies[merchantId] = {
+          ...policy
+        };
+        actualDb.save();
+        appendAuditLog({
+          merchantId,
+          action: "TENANT_POLICY_SET",
+          status: "SUCCESS",
+          auth,
+          details: {
+            patch
+          }
+        });
+
+        sendJson(res, 200, {
+          merchantId,
+          policy
+        });
+        return;
+      }
+
+      if (method === "GET" && url.pathname === "/api/merchant/migration/status") {
+        ensureRole(auth, ["OWNER"]);
+        const merchantId = url.searchParams.get("merchantId") || auth.merchantId;
+        if (!merchantId) {
+          sendJson(res, 400, { error: "merchantId is required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        if (!tenantRepository.getMerchant(merchantId)) {
+          sendJson(res, 404, { error: "merchant not found" });
+          return;
+        }
+
+        const migration = actualDb.tenantMigrations[merchantId] || {
+          phase: "IDLE",
+          step: "INIT",
+          note: "",
+          updatedAt: null
+        };
+        sendJson(res, 200, {
+          merchantId,
+          dedicatedDbAttached: tenantRouter.hasDbOverride(merchantId),
+          dedicatedDbFilePath:
+            (actualDb.tenantRouteFiles && actualDb.tenantRouteFiles[merchantId]) || null,
+          migration,
+          policy: tenantPolicyManager.getPolicy(merchantId)
+        });
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/merchant/migration/step") {
+        ensureRole(auth, ["OWNER"]);
+        const body = await readJsonBody(req);
+        const merchantId = auth.merchantId || body.merchantId;
+        if (!merchantId) {
+          sendJson(res, 400, { error: "merchantId is required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        if (!tenantRepository.getMerchant(merchantId)) {
+          sendJson(res, 404, { error: "merchant not found" });
+          return;
+        }
+
+        const result = applyMigrationStep({
+          actualDb,
+          tenantPolicyManager,
+          merchantId,
+          step: body.step,
+          note: body.note
+        });
+        appendAuditLog({
+          merchantId,
+          action: "MIGRATION_STEP",
+          status: "SUCCESS",
+          auth,
+          details: {
+            step: result.migration.step,
+            phase: result.migration.phase,
+            note: result.migration.note
+          }
+        });
+
+        sendJson(res, 200, {
+          merchantId,
+          dedicatedDbAttached: tenantRouter.hasDbOverride(merchantId),
+          ...result
+        });
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/merchant/migration/cutover") {
+        ensureRole(auth, ["OWNER"]);
+        const body = await readJsonBody(req);
+        const merchantId = auth.merchantId || body.merchantId;
+        if (!merchantId) {
+          sendJson(res, 400, { error: "merchantId is required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        if (!tenantRepository.getMerchant(merchantId)) {
+          sendJson(res, 404, { error: "merchant not found" });
+          return;
+        }
+
+        let cutoverResult = null;
+        let finalState = null;
+        try {
+          applyMigrationStep({
+            actualDb,
+            tenantPolicyManager,
+            merchantId,
+            step: "FREEZE_WRITE",
+            note: body.note || "auto freeze for cutover"
+          });
+          cutoverResult = cutoverMerchantToDedicatedDb({
+            actualDb,
+            tenantRouter,
+            merchantId,
+            persist,
+            dbFilePath
+          });
+          applyMigrationStep({
+            actualDb,
+            tenantPolicyManager,
+            merchantId,
+            step: "MARK_VERIFYING",
+            note: "cutover verification"
+          });
+          applyMigrationStep({
+            actualDb,
+            tenantPolicyManager,
+            merchantId,
+            step: "MARK_CUTOVER",
+            note: "cutover completed"
+          });
+          finalState = applyMigrationStep({
+            actualDb,
+            tenantPolicyManager,
+            merchantId,
+            step: "UNFREEZE_WRITE",
+            note: "restore write traffic after cutover"
+          });
+        } catch (error) {
+          applyMigrationStep({
+            actualDb,
+            tenantPolicyManager,
+            merchantId,
+            step: "MARK_ROLLBACK",
+            note: `cutover failed: ${error.message}`
+          });
+          applyMigrationStep({
+            actualDb,
+            tenantPolicyManager,
+            merchantId,
+            step: "UNFREEZE_WRITE",
+            note: "restore write traffic after cutover failure"
+          });
+          throw error;
+        }
+
+        appendAuditLog({
+          merchantId,
+          action: "MIGRATION_CUTOVER",
+          status: "SUCCESS",
+          auth,
+          details: {
+            dedicatedDbFilePath: cutoverResult.dedicatedDbFilePath,
+            phase: finalState.migration.phase
+          }
+        });
+
+        sendJson(res, 200, {
+          merchantId,
+          ...cutoverResult,
+          ...finalState
+        });
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/merchant/migration/rollback") {
+        ensureRole(auth, ["OWNER"]);
+        const body = await readJsonBody(req);
+        const merchantId = auth.merchantId || body.merchantId;
+        if (!merchantId) {
+          sendJson(res, 400, { error: "merchantId is required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        if (!tenantRepository.getMerchant(merchantId)) {
+          sendJson(res, 404, { error: "merchant not found" });
+          return;
+        }
+
+        let rollbackResult = null;
+        let finalState = null;
+        try {
+          applyMigrationStep({
+            actualDb,
+            tenantPolicyManager,
+            merchantId,
+            step: "FREEZE_WRITE",
+            note: body.note || "freeze before rollback"
+          });
+          rollbackResult = rollbackMerchantToSharedDb({
+            actualDb,
+            tenantRouter,
+            merchantId
+          });
+          applyMigrationStep({
+            actualDb,
+            tenantPolicyManager,
+            merchantId,
+            step: "MARK_ROLLBACK",
+            note: "rollback completed"
+          });
+          finalState = applyMigrationStep({
+            actualDb,
+            tenantPolicyManager,
+            merchantId,
+            step: "UNFREEZE_WRITE",
+            note: "restore write traffic after rollback"
+          });
+        } catch (error) {
+          applyMigrationStep({
+            actualDb,
+            tenantPolicyManager,
+            merchantId,
+            step: "UNFREEZE_WRITE",
+            note: "restore write traffic after rollback failure"
+          });
+          throw error;
+        }
+
+        appendAuditLog({
+          merchantId,
+          action: "MIGRATION_ROLLBACK",
+          status: "SUCCESS",
+          auth,
+          details: {
+            phase: finalState.migration.phase
+          }
+        });
+
+        sendJson(res, 200, {
+          merchantId,
+          ...rollbackResult,
+          ...finalState
+        });
         return;
       }
 
@@ -117,38 +1157,179 @@ function createAppServer({ db = createInMemoryDb() } = {}) {
         /^\/api\/merchant\/proposals\/([^/]+)\/confirm$/
       );
       if (method === "POST" && proposalMatch) {
+        ensureRole(auth, ["OWNER"]);
         const body = await readJsonBody(req);
         const proposalId = proposalMatch[1];
+        const merchantId = auth.merchantId || body.merchantId;
+        if (
+          !enforceTenantPolicyForHttp({
+            tenantPolicyManager,
+            merchantId,
+            operation: "PROPOSAL_CONFIRM",
+            res,
+            auth,
+            appendAuditLog
+          })
+        ) {
+          return;
+        }
+        const { merchantService } = getServicesForMerchant(merchantId);
         const result = merchantService.confirmProposal({
-          merchantId: body.merchantId,
+          merchantId,
           proposalId,
-          operatorId: body.operatorId || "system"
+          operatorId: auth.operatorId || body.operatorId || "system"
         });
+        appendAuditLog({
+          merchantId,
+          action: "PROPOSAL_CONFIRM",
+          status: "SUCCESS",
+          auth,
+          details: {
+            proposalId,
+            campaignId: result.campaignId
+          }
+        });
+        wsHub.broadcast(merchantId, "PROPOSAL_CONFIRMED", result);
         sendJson(res, 200, result);
         return;
       }
 
       if (method === "POST" && url.pathname === "/api/merchant/kill-switch") {
+        ensureRole(auth, ["OWNER"]);
         const body = await readJsonBody(req);
+        const merchantId = auth.merchantId || body.merchantId;
+        if (
+          !enforceTenantPolicyForHttp({
+            tenantPolicyManager,
+            merchantId,
+            operation: "KILL_SWITCH_SET",
+            res,
+            auth,
+            appendAuditLog
+          })
+        ) {
+          return;
+        }
+        const { merchantService } = getServicesForMerchant(merchantId);
         const result = merchantService.setKillSwitch({
-          merchantId: body.merchantId,
+          merchantId,
           enabled: body.enabled
         });
+        appendAuditLog({
+          merchantId,
+          action: "KILL_SWITCH_SET",
+          status: "SUCCESS",
+          auth,
+          details: {
+            enabled: Boolean(body.enabled)
+          }
+        });
+        wsHub.broadcast(result.merchantId, "KILL_SWITCH_CHANGED", result);
         sendJson(res, 200, result);
         return;
       }
 
       if (method === "POST" && url.pathname === "/api/tca/trigger") {
+        ensureRole(auth, ["MANAGER", "OWNER"]);
         const body = await readJsonBody(req);
+        body.merchantId = auth.merchantId || body.merchantId;
+        if (
+          !enforceTenantPolicyForHttp({
+            tenantPolicyManager,
+            merchantId: body.merchantId,
+            operation: "TCA_TRIGGER",
+            res,
+            auth,
+            appendAuditLog
+          })
+        ) {
+          return;
+        }
+        const { campaignService } = getServicesForMerchant(body.merchantId);
         const result = campaignService.triggerEvent(body);
+        appendAuditLog({
+          merchantId: body.merchantId,
+          action: "TCA_TRIGGER",
+          status: result.blockedByKillSwitch ? "BLOCKED" : "SUCCESS",
+          auth,
+          details: {
+            event: body.event,
+            executedCount: (result.executed || []).length,
+            blockedByKillSwitch: Boolean(result.blockedByKillSwitch)
+          }
+        });
+        wsHub.broadcast(body.merchantId, "TCA_TRIGGERED", result);
         sendJson(res, 200, result);
         return;
       }
 
       sendJson(res, 404, { error: "Not Found" });
     } catch (error) {
-      sendJson(res, 400, { error: error.message || "Request failed" });
+      const message = error.message || "Request failed";
+      const statusCode =
+        message === "permission denied" || message.includes("scope denied")
+          ? 403
+          : message.includes("Authorization")
+            ? 401
+            : 400;
+      if (auditAction && auth && auth.merchantId) {
+        appendAuditLog({
+          merchantId: auth.merchantId,
+          action: auditAction,
+          status: statusCode === 403 || statusCode === 401 ? "DENIED" : "FAILED",
+          auth,
+          details: {
+            error: message
+          }
+        });
+      }
+      sendJson(res, statusCode, { error: message });
     }
+  });
+
+  server.on("upgrade", (req, socket) => {
+    try {
+      const parsedUrl = new URL(req.url || "/", "http://localhost");
+      if (parsedUrl.pathname !== "/ws") {
+        socket.write("HTTP/1.1 404 Not Found\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+
+      const auth = getUpgradeAuthContext(req, jwtSecret, parsedUrl);
+      const merchantId = parsedUrl.searchParams.get("merchantId");
+      if (merchantId && auth.merchantId && merchantId !== auth.merchantId) {
+        socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+      const scopedMerchantId = auth.merchantId || merchantId;
+      const wsPolicy = tenantPolicyManager.evaluate({
+        merchantId: scopedMerchantId,
+        operation: "WS_CONNECT"
+      });
+      if (!wsPolicy.allowed) {
+        const statusLine =
+          wsPolicy.statusCode === 429
+            ? "HTTP/1.1 429 Too Many Requests\r\n\r\n"
+            : "HTTP/1.1 403 Forbidden\r\n\r\n";
+        socket.write(statusLine);
+        socket.destroy();
+        return;
+      }
+      wsHub.handleUpgrade(req, socket, {
+        ...auth,
+        merchantId: scopedMerchantId
+      });
+    } catch {
+      socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+      socket.destroy();
+    }
+  });
+
+  server.on("connection", (socket) => {
+    allSockets.add(socket);
+    socket.on("close", () => allSockets.delete(socket));
   });
 
   function start(port = 0) {
@@ -166,6 +1347,14 @@ function createAppServer({ db = createInMemoryDb() } = {}) {
 
   function stop() {
     return new Promise((resolve, reject) => {
+      wsHub.closeAll();
+      for (const socket of [...allSockets]) {
+        try {
+          socket.destroy();
+        } catch {
+          // ignore
+        }
+      }
       server.close((error) => {
         if (error) {
           reject(error);
@@ -177,20 +1366,23 @@ function createAppServer({ db = createInMemoryDb() } = {}) {
   }
 
   return {
-    db,
+    db: actualDb,
     server,
     start,
     stop,
+    wsHub,
+    tenantRouter,
+    tenantRepository,
+    tenantPolicyManager,
     services: {
-      paymentService,
-      campaignService,
-      merchantService
+      ...services,
+      getServicesForMerchant
     }
   };
 }
 
 if (require.main === module) {
-  const app = createAppServer();
+  const app = createAppServer({ persist: true });
   const port = Number(process.env.PORT || 3030);
   app
     .start(port)
