@@ -721,6 +721,7 @@ export default function App() {
                     </Text>
                     <View style={styles.filterRow}>
                       <Pressable
+                        testID={`campaign-toggle-${item.id}`}
                         style={styles.filterButton}
                         onPress={() =>
                           onSetCampaignStatus(
@@ -733,6 +734,7 @@ export default function App() {
                         </Text>
                       </Pressable>
                       <Pressable
+                        testID={`campaign-archive-${item.id}`}
                         style={styles.filterButton}
                         onPress={() => onSetCampaignStatus(item.id, 'ARCHIVED')}>
                         <Text style={styles.filterButtonText}>归档</Text>
@@ -760,13 +762,17 @@ export default function App() {
                 </Text>
                 <View style={styles.filterRow}>
                   <Pressable
+                    testID="alliance-wallet-toggle"
                     style={styles.filterButton}
                     onPress={onToggleAllianceWalletShared}>
                     <Text style={styles.filterButtonText}>
                       {allianceConfig.walletShared ? '关闭钱包互通' : '开启钱包互通'}
                     </Text>
                   </Pressable>
-                  <Pressable style={styles.filterButton} onPress={onSyncAllianceUser}>
+                  <Pressable
+                    testID="alliance-sync-user"
+                    style={styles.filterButton}
+                    onPress={onSyncAllianceUser}>
                     <Text style={styles.filterButtonText}>同步示例用户</Text>
                   </Pressable>
                 </View>
@@ -777,13 +783,22 @@ export default function App() {
           <SectionCard title="社交裂变演练">
             <Text style={styles.mutedText}>演练用户：u_demo -&gt; u_friend</Text>
             <View style={styles.filterRow}>
-              <Pressable style={styles.filterButton} onPress={onSocialTransferDemo}>
+              <Pressable
+                testID="social-transfer-demo"
+                style={styles.filterButton}
+                onPress={onSocialTransferDemo}>
                 <Text style={styles.filterButtonText}>转赠 10 碎银</Text>
               </Pressable>
-              <Pressable style={styles.filterButton} onPress={onCreateSocialRedPacket}>
+              <Pressable
+                testID="social-redpacket-create"
+                style={styles.filterButton}
+                onPress={onCreateSocialRedPacket}>
                 <Text style={styles.filterButtonText}>创建拼手气红包</Text>
               </Pressable>
-              <Pressable style={styles.filterButton} onPress={onClaimSocialRedPacket}>
+              <Pressable
+                testID="social-redpacket-claim"
+                style={styles.filterButton}
+                onPress={onClaimSocialRedPacket}>
                 <Text style={styles.filterButtonText}>好友领取红包</Text>
               </Pressable>
             </View>
@@ -795,20 +810,28 @@ export default function App() {
           <SectionCard title="请客买单演练">
             <Text style={styles.mutedText}>模式：老板请客（补贴）</Text>
             <View style={styles.filterRow}>
-              <Pressable style={styles.filterButton} onPress={onCreateTreatSession}>
+              <Pressable
+                testID="treat-create"
+                style={styles.filterButton}
+                onPress={onCreateTreatSession}>
                 <Text style={styles.filterButtonText}>创建会话</Text>
               </Pressable>
               <Pressable
+                testID="treat-join-demo"
                 style={styles.filterButton}
                 onPress={() => onJoinTreatSession('u_demo', 30)}>
                 <Text style={styles.filterButtonText}>u_demo 出资 30</Text>
               </Pressable>
               <Pressable
+                testID="treat-join-friend"
                 style={styles.filterButton}
                 onPress={() => onJoinTreatSession('u_friend', 40)}>
                 <Text style={styles.filterButtonText}>u_friend 出资 40</Text>
               </Pressable>
-              <Pressable style={styles.filterButton} onPress={onCloseTreatSession}>
+              <Pressable
+                testID="treat-close"
+                style={styles.filterButton}
+                onPress={onCloseTreatSession}>
                 <Text style={styles.filterButtonText}>结算会话</Text>
               </Pressable>
             </View>

@@ -49,6 +49,7 @@
 ## 6. 自动化闸门
 
 - [ ] 执行 `node .\scripts\release-local.js`，全部 PASS。
+- [ ] 执行 `cd .\MealQuestMerchant && npm run test:regression:ui`，商户端 UI 回归脚本 PASS。
 - [ ] `artifacts/release-local-report.json` 中 `allPassed=true`。
 - [ ] CI 工作流通过（server test + smoke、merchant test + typecheck、customer test + build）。
 

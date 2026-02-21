@@ -109,7 +109,8 @@ async function login(baseUrl, role, merchantId = "m_demo", userId = "u_demo") {
   return result.data.token;
 }
 
-async function runSmoke(baseUrl) {
+async function runSmoke(baseUrl, options = {}) {
+  const managedMode = Boolean(options.managedMode);
   console.log(`[smoke] baseUrl=${baseUrl}`);
 
   const health = await getJson(baseUrl, "/health");
@@ -414,6 +415,283 @@ async function runSmoke(baseUrl) {
   expectStatus(statusAfterRollback, 200, "migration status after rollback");
   assert.equal(statusAfterRollback.data.dedicatedDbAttached, false);
 
+  console.log("[smoke] scenario G: strategy library + proposal + status");
+  const strategyLibrary = await getJson(
+    baseUrl,
+    "/api/merchant/strategy-library?merchantId=m_demo",
+    { Authorization: `Bearer ${ownerToken}` }
+  );
+  expectStatus(strategyLibrary, 200, "strategy library");
+  assert.ok(
+    Array.isArray(strategyLibrary.data.templates) &&
+      strategyLibrary.data.templates.length >= 10,
+    "strategy templates should be available"
+  );
+
+  const strategyProposal = await postJson(
+    baseUrl,
+    "/api/merchant/strategy-proposals",
+    {
+      merchantId: "m_demo",
+      templateId: "activation_contextual_drop",
+      branchId: "COOLING",
+      intent: "smoke high temperature campaign"
+    },
+    { Authorization: `Bearer ${ownerToken}` }
+  );
+  expectStatus(strategyProposal, 200, "strategy proposal create");
+  assert.equal(strategyProposal.data.status, "PENDING");
+
+  const strategyConfirm = await postJson(
+    baseUrl,
+    `/api/merchant/proposals/${encodeURIComponent(strategyProposal.data.proposalId)}/confirm`,
+    { merchantId: "m_demo" },
+    { Authorization: `Bearer ${ownerToken}` }
+  );
+  expectStatus(strategyConfirm, 200, "strategy proposal confirm");
+
+  const pauseCampaign = await postJson(
+    baseUrl,
+    `/api/merchant/campaigns/${encodeURIComponent(strategyConfirm.data.campaignId)}/status`,
+    { merchantId: "m_demo", status: "PAUSED" },
+    { Authorization: `Bearer ${ownerToken}` }
+  );
+  expectStatus(pauseCampaign, 200, "campaign pause");
+  assert.equal(pauseCampaign.data.status, "PAUSED");
+
+  const resumeCampaign = await postJson(
+    baseUrl,
+    `/api/merchant/campaigns/${encodeURIComponent(strategyConfirm.data.campaignId)}/status`,
+    { merchantId: "m_demo", status: "ACTIVE" },
+    { Authorization: `Bearer ${ownerToken}` }
+  );
+  expectStatus(resumeCampaign, 200, "campaign resume");
+  assert.equal(resumeCampaign.data.status, "ACTIVE");
+
+  console.log("[smoke] scenario H: supplier verify + fire sale");
+  const supplierVerifyPass = await postJson(
+    baseUrl,
+    "/api/supplier/verify-order",
+    {
+      merchantId: "m_demo",
+      partnerId: "partner_coffee",
+      orderId: "ext_order_1001",
+      minSpend: 30
+    },
+    { Authorization: `Bearer ${clerkToken}` }
+  );
+  expectStatus(supplierVerifyPass, 200, "supplier verify pass");
+  assert.equal(supplierVerifyPass.data.verified, true);
+
+  const supplierVerifyFail = await postJson(
+    baseUrl,
+    "/api/supplier/verify-order",
+    {
+      merchantId: "m_demo",
+      partnerId: "partner_coffee",
+      orderId: "ext_order_1001",
+      minSpend: 80
+    },
+    { Authorization: `Bearer ${clerkToken}` }
+  );
+  expectStatus(supplierVerifyFail, 200, "supplier verify fail");
+  assert.equal(supplierVerifyFail.data.verified, false);
+
+  const fireSale = await postJson(
+    baseUrl,
+    "/api/merchant/fire-sale",
+    {
+      merchantId: "m_demo",
+      targetSku: "sku_hot_soup",
+      ttlMinutes: 20
+    },
+    { Authorization: `Bearer ${ownerToken}` }
+  );
+  expectStatus(fireSale, 200, "fire sale create");
+  assert.ok(fireSale.data.campaignId, "fire sale campaign id should exist");
+
+  console.log("[smoke] scenario I: alliance wallet share + sync");
+  const bistroOwnerToken = await login(baseUrl, "OWNER", "m_bistro");
+  const allianceSet = await postJson(
+    baseUrl,
+    "/api/merchant/alliance-config",
+    {
+      merchantId: "m_demo",
+      clusterId: "cluster_demo_brand",
+      stores: ["m_demo", "m_bistro"],
+      walletShared: true,
+      tierShared: true
+    },
+    { Authorization: `Bearer ${ownerToken}` }
+  );
+  expectStatus(allianceSet, 200, "alliance config set");
+  assert.equal(allianceSet.data.walletShared, true);
+
+  const bistroAllianceSet = await postJson(
+    baseUrl,
+    "/api/merchant/alliance-config",
+    {
+      merchantId: "m_bistro",
+      clusterId: "cluster_demo_brand",
+      stores: ["m_demo", "m_bistro"],
+      walletShared: true,
+      tierShared: true
+    },
+    { Authorization: `Bearer ${bistroOwnerToken}` }
+  );
+  expectStatus(bistroAllianceSet, 200, "bistro alliance config set");
+  assert.equal(bistroAllianceSet.data.walletShared, true);
+
+  const allianceStores = await getJson(
+    baseUrl,
+    "/api/merchant/stores?merchantId=m_demo",
+    { Authorization: `Bearer ${ownerToken}` }
+  );
+  expectStatus(allianceStores, 200, "alliance stores list");
+  assert.ok((allianceStores.data.stores || []).length >= 2);
+
+  const allianceSync = await postJson(
+    baseUrl,
+    "/api/merchant/alliance/sync-user",
+    { merchantId: "m_demo", userId: "u_demo" },
+    { Authorization: `Bearer ${ownerToken}` }
+  );
+  expectStatus(allianceSync, 200, "alliance sync user");
+  assert.ok(Array.isArray(allianceSync.data.syncedStores));
+
+  const bistroCustomerToken = await login(baseUrl, "CUSTOMER", "m_bistro", "u_demo");
+  const crossStorePay = await postJson(
+    baseUrl,
+    "/api/payment/verify",
+    { merchantId: "m_bistro", userId: "u_demo", orderAmount: 10 },
+    {
+      Authorization: `Bearer ${bistroCustomerToken}`,
+      "Idempotency-Key": uniqueKey("smoke_alliance_pay")
+    }
+  );
+  expectStatus(crossStorePay, 200, "alliance cross-store payment");
+  assert.equal(crossStorePay.data.walletScope.walletShared, true);
+
+  console.log("[smoke] scenario J: social transfer + red packet");
+  const socialTransfer = await postJson(
+    baseUrl,
+    "/api/social/transfer",
+    {
+      merchantId: "m_demo",
+      fromUserId: "u_demo",
+      toUserId: "u_friend",
+      amount: 8
+    },
+    {
+      Authorization: `Bearer ${customerToken}`,
+      "Idempotency-Key": uniqueKey("smoke_social_transfer")
+    }
+  );
+  expectStatus(socialTransfer, 200, "social transfer");
+
+  const createPacket = await postJson(
+    baseUrl,
+    "/api/social/red-packets",
+    {
+      merchantId: "m_demo",
+      senderUserId: "u_demo",
+      totalAmount: 21,
+      totalSlots: 3
+    },
+    {
+      Authorization: `Bearer ${customerToken}`,
+      "Idempotency-Key": uniqueKey("smoke_red_packet_create")
+    }
+  );
+  expectStatus(createPacket, 200, "social red packet create");
+  assert.ok(createPacket.data.packetId, "packet id should exist");
+
+  const friendToken = await login(baseUrl, "CUSTOMER", "m_demo", "u_friend");
+  const claimPacket = await postJson(
+    baseUrl,
+    `/api/social/red-packets/${encodeURIComponent(createPacket.data.packetId)}/claim`,
+    {
+      merchantId: "m_demo",
+      userId: "u_friend"
+    },
+    {
+      Authorization: `Bearer ${friendToken}`,
+      "Idempotency-Key": uniqueKey("smoke_red_packet_claim")
+    }
+  );
+  expectStatus(claimPacket, 200, "social red packet claim");
+  assert.ok(Number(claimPacket.data.claimAmount) >= 1);
+
+  console.log("[smoke] scenario K: treat paying session");
+  const treatCreate = await postJson(
+    baseUrl,
+    "/api/social/treat/sessions",
+    {
+      merchantId: "m_demo",
+      initiatorUserId: "u_demo",
+      mode: "GROUP_PAY",
+      orderAmount: 60,
+      ttlMinutes: 30
+    },
+    { Authorization: `Bearer ${customerToken}` }
+  );
+  expectStatus(treatCreate, 200, "treat session create");
+  assert.ok(treatCreate.data.sessionId, "treat session id should exist");
+
+  const treatJoinDemo = await postJson(
+    baseUrl,
+    `/api/social/treat/sessions/${encodeURIComponent(treatCreate.data.sessionId)}/join`,
+    {
+      merchantId: "m_demo",
+      userId: "u_demo",
+      amount: 30
+    },
+    {
+      Authorization: `Bearer ${customerToken}`,
+      "Idempotency-Key": uniqueKey("smoke_treat_join_demo")
+    }
+  );
+  expectStatus(treatJoinDemo, 200, "treat join demo user");
+
+  const treatJoinFriend = await postJson(
+    baseUrl,
+    `/api/social/treat/sessions/${encodeURIComponent(treatCreate.data.sessionId)}/join`,
+    {
+      merchantId: "m_demo",
+      userId: "u_friend",
+      amount: 35
+    },
+    {
+      Authorization: `Bearer ${friendToken}`,
+      "Idempotency-Key": uniqueKey("smoke_treat_join_friend")
+    }
+  );
+  expectStatus(treatJoinFriend, 200, "treat join friend user");
+
+  const treatClose = await postJson(
+    baseUrl,
+    `/api/social/treat/sessions/${encodeURIComponent(treatCreate.data.sessionId)}/close`,
+    { merchantId: "m_demo" },
+    { Authorization: `Bearer ${ownerToken}` }
+  );
+  expectStatus(treatClose, 200, "treat session close");
+  assert.equal(treatClose.data.status, "SETTLED");
+
+  if (managedMode) {
+    console.log("[smoke] scenario L: customer self-service cancel-account");
+    const cancelToken = await login(baseUrl, "CUSTOMER", "m_demo", "u_friend");
+    const cancelResult = await postJson(
+      baseUrl,
+      "/api/privacy/cancel-account",
+      { merchantId: "m_demo" },
+      { Authorization: `Bearer ${cancelToken}` }
+    );
+    expectStatus(cancelResult, 200, "privacy cancel-account");
+    assert.equal(cancelResult.data.deleted, true);
+  } else {
+    console.log("[smoke] scenario L skipped in external mode: cancel-account is destructive.");
+  }
+
   console.log("[smoke] PASS: all local server smoke scenarios completed.");
 }
 
@@ -434,7 +712,7 @@ async function main() {
       );
     }
 
-    await runSmoke(baseUrl);
+    await runSmoke(baseUrl, { managedMode: args.mode === "managed" });
   } finally {
     if (app) {
       await app.stop();

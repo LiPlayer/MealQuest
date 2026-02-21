@@ -21,7 +21,8 @@ node .\scripts\release-local.js
 1. `MealQuestServer` 全量测试（含持久化、多租户、迁移、RBAC、审计、策略库、供应商核验、急售）。
 2. `MealQuestServer` 本地 smoke 场景回归。
 3. `MealQuestMerchant` 测试 + TypeScript 类型检查。
-4. `meal-quest-customer` 测试 + `build:weapp` 构建。
+4. `MealQuestMerchant` UI 可复现回归（可单独执行：`npm run test:regression:ui`）。
+5. `meal-quest-customer` 测试 + `build:weapp` 构建。
 
 输出报告：
 

@@ -506,7 +506,7 @@
 ## 4. 测试回归结果（本轮）
 
 1. `MealQuestServer`: 32/32 通过。
-2. `MealQuestMerchant`: 23/23 通过。
+2. `MealQuestMerchant`: 24/24 通过。
 3. `meal-quest-customer`: 23/23 通过。
 
 ---
