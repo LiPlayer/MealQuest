@@ -49,6 +49,10 @@ export default function CustomerCardStack() {
         setFocusIndex(prev => (prev === index ? null : index));
     };
 
+    const handleCollapseP03AndExpandP04 = () => {
+        setFocusIndex(2); // P04 is index 2
+    };
+
     const focusLayout = useMemo(() => {
         const shifts = new Array(totalCards).fill(0);
         if (focusIndex === null) {
@@ -56,7 +60,7 @@ export default function CustomerCardStack() {
         }
 
         for (let i = 0; i < totalCards; i += 1) {
-            // Click-to-expand only moves covering upper-layer cards away.
+            // Click-to-peek only moves covering upper-layer cards away.
             if (i > focusIndex) {
                 shifts[i] = FOCUS_SHIFT_RPX;
             }
@@ -82,14 +86,15 @@ export default function CustomerCardStack() {
                 height: Taro.pxTransform(Math.round(stackHeight)),
                 paddingBottom: Taro.pxTransform(32),
                 width: '100%',
-                transition: 'height 300ms cubic-bezier(0.22, 1, 0.36, 1)'
+                transition: 'height 400ms cubic-bezier(0.22, 1, 0.36, 1)'
             }}
         >
             {cards.map(({ key, Component }, index) => {
+                const isFocused = focusIndex === index;
                 return (
                     <View
                         key={key}
-                        className={`customer-card-item customer-card-item-${index}`}
+                        className={`customer-card-item customer-card-item-${index} ${isFocused ? 'is-focused' : ''}`}
                         onTap={() => onCardTap(index)}
                         style={{
                             position: 'absolute',
@@ -101,12 +106,22 @@ export default function CustomerCardStack() {
                             borderRadius: Taro.pxTransform(48),
                             backgroundColor: '#fff',
                             border: '1PX solid rgba(0,0,0,0.08)',
-                            boxShadow: `0 ${Taro.pxTransform(16)} ${Taro.pxTransform(48)} rgba(0,0,0,0.05)`,
+                            boxShadow: isFocused
+                                ? `0 ${Taro.pxTransform(24)} ${Taro.pxTransform(64)} rgba(0,0,0,0.08)`
+                                : `0 ${Taro.pxTransform(16)} ${Taro.pxTransform(48)} rgba(0,0,0,0.05)`,
                             overflow: 'hidden',
-                            transition: 'top 300ms cubic-bezier(0.22, 1, 0.36, 1)'
+                            transition: 'all 400ms cubic-bezier(0.22, 1, 0.36, 1)'
                         }}
                     >
-                        <Component style={{ width: '100%', height: '100%' }} />
+                        {(Component as any) === P03_TicketCard ? (
+                            <P03_TicketCard
+                                style={{ width: '100%', height: '100%' }}
+                                isFocused={isFocused}
+                                onGoToSynthesis={handleCollapseP03AndExpandP04}
+                            />
+                        ) : (
+                            <Component style={{ width: '100%', height: '100%' }} />
+                        )}
                     </View>
                 );
             })}
