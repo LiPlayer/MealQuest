@@ -4,9 +4,13 @@ import React from 'react'
 
 interface SilverCardProps {
     style?: React.CSSProperties
+    silver?: number
+    steps?: number
 }
 
-export default function P01_SilverCard({ style }: SilverCardProps) {
+const formatNumber = (value: number) => value.toLocaleString('zh-CN');
+
+export default function P01_SilverCard({ style, silver = 12850, steps = 8420 }: SilverCardProps) {
     return (
         <View
             style={{
@@ -25,12 +29,12 @@ export default function P01_SilverCard({ style }: SilverCardProps) {
                     {/* Middle: Step Capsule */}
                     <View className="card-step-capsule bg-gradient-to-r from-gray-900 to-black">
                         <Text className='card-step-emoji'>👟</Text>
-                        <Text className='card-step-value' style={{ color: 'white' }}>8,420</Text>
+                        <Text className='card-step-value' style={{ color: 'white' }}>{formatNumber(steps)}</Text>
                     </View>
 
                     {/* Right: Amount */}
                     <View className='flex flex-row items-baseline space-x-2'>
-                        <Text className='card-amount-value'>12,850</Text>
+                        <Text className='card-amount-value'>{formatNumber(silver)}</Text>
                         <Text className='card-amount-unit'>两</Text>
                     </View>
                 </View>

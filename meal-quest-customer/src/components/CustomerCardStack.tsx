@@ -6,6 +6,7 @@ import P01_SilverCard from './cards/P01_SilverCard';
 import P02_BalanceCard from './cards/P02_BalanceCard';
 import P03_TicketCard from './cards/P03_TicketCard';
 import P04_FragmentCard from './cards/P04_FragmentCard';
+import { Voucher } from './cards/P03_TicketCard';
 
 const HEADER_H = 60; // Card header height (rpx)
 const CARD_RATIO = 1.586;
@@ -13,7 +14,19 @@ const CARD_RATIO = 1.586;
 interface CardItem {
     key: string;
     title: string;
-    Component: React.ComponentType<{ style?: React.CSSProperties }>;
+}
+
+interface CustomerCardStackProps {
+    wallet?: {
+        principal: number;
+        bonus: number;
+        silver: number;
+    };
+    vouchers?: Voucher[];
+    fragments?: {
+        common: number;
+        rare: number;
+    };
 }
 
 const safeVibrate = (type: 'light' | 'medium') => {
@@ -24,12 +37,16 @@ const safeVibrate = (type: 'light' | 'medium') => {
     }
 };
 
-export default function CustomerCardStack() {
+export default function CustomerCardStack({
+    wallet = { principal: 120, bonus: 0, silver: 12850 },
+    vouchers = [],
+    fragments = { common: 12, rare: 2 }
+}: CustomerCardStackProps) {
     const cards = useMemo<CardItem[]>(() => [
-        { key: 'p02', title: '聚宝金库', Component: P02_BalanceCard },
-        { key: 'p01', title: '寻味碎银', Component: P01_SilverCard },
-        { key: 'p04', title: '食福碎片', Component: P04_FragmentCard },
-        { key: 'p03', title: '口福红包', Component: P03_TicketCard }
+        { key: 'p02', title: '聚宝金库' },
+        { key: 'p01', title: '寻味碎银' },
+        { key: 'p04', title: '食福碎片' },
+        { key: 'p03', title: '口福红包' }
     ], []);
 
     const totalCards = cards.length;
@@ -89,7 +106,7 @@ export default function CustomerCardStack() {
                 transition: 'height 400ms cubic-bezier(0.22, 1, 0.36, 1)'
             }}
         >
-            {cards.map(({ key, Component }, index) => {
+            {cards.map(({ key }, index) => {
                 const isFocused = focusIndex === index;
                 return (
                     <View
@@ -113,14 +130,33 @@ export default function CustomerCardStack() {
                             transition: 'all 400ms cubic-bezier(0.22, 1, 0.36, 1)'
                         }}
                     >
-                        {(Component as any) === P03_TicketCard ? (
+                        {key === 'p03' && (
                             <P03_TicketCard
                                 style={{ width: '100%', height: '100%' }}
                                 isFocused={isFocused}
+                                vouchers={vouchers}
                                 onGoToSynthesis={handleCollapseP03AndExpandP04}
                             />
-                        ) : (
-                            <Component style={{ width: '100%', height: '100%' }} />
+                        )}
+                        {key === 'p02' && (
+                            <P02_BalanceCard
+                                style={{ width: '100%', height: '100%' }}
+                                principal={wallet.principal}
+                                bonus={wallet.bonus}
+                            />
+                        )}
+                        {key === 'p01' && (
+                            <P01_SilverCard
+                                style={{ width: '100%', height: '100%' }}
+                                silver={wallet.silver}
+                            />
+                        )}
+                        {key === 'p04' && (
+                            <P04_FragmentCard
+                                style={{ width: '100%', height: '100%' }}
+                                commonCount={fragments.common}
+                                rareCount={fragments.rare}
+                            />
                         )}
                     </View>
                 );

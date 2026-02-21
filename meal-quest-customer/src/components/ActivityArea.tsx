@@ -1,7 +1,17 @@
 import { View, Text } from '@tarojs/components';
 import './ActivityArea.scss';
 
-const ACTIVITIES = [
+export interface ActivityItem {
+    id: string | number;
+    title: string;
+    desc: string;
+    icon: string;
+    color: string;
+    textColor: string;
+    tag: string;
+}
+
+const DEFAULT_ACTIVITIES: ActivityItem[] = [
     {
         id: 1,
         title: '新人进店礼',
@@ -31,7 +41,11 @@ const ACTIVITIES = [
     }
 ];
 
-export default function ActivityArea() {
+interface ActivityAreaProps {
+    activities?: ActivityItem[];
+}
+
+export default function ActivityArea({ activities = DEFAULT_ACTIVITIES }: ActivityAreaProps) {
     return (
         <View className='activity-area flex flex-col box-border'>
             {/* Header */}
@@ -42,7 +56,7 @@ export default function ActivityArea() {
 
             {/* Activities List */}
             <View className='activity-area__list'>
-                {ACTIVITIES.map((activity) => (
+                {activities.map((activity) => (
                     <View
                         key={activity.id}
                         className='activity-area__item'

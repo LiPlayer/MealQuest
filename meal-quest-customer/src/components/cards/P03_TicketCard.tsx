@@ -7,6 +7,9 @@ export interface Voucher {
     name: string;
     value: number;
     icon?: string;
+    minSpend?: number;
+    status?: 'ACTIVE' | 'USED' | 'EXPIRED';
+    expiresAt?: string;
 }
 
 interface TicketCardProps {

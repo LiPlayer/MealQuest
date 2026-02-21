@@ -3,9 +3,11 @@ import React from 'react'
 
 interface FragmentCardProps {
     style?: React.CSSProperties
+    commonCount?: number
+    rareCount?: number
 }
 
-export default function P04_FragmentCard({ style }: FragmentCardProps) {
+export default function P04_FragmentCard({ style, commonCount = 12, rareCount = 2 }: FragmentCardProps) {
     return (
         <View
             style={style}
@@ -18,11 +20,11 @@ export default function P04_FragmentCard({ style }: FragmentCardProps) {
                     <View className='flex flex-row items-center space-x-4'>
                         <View className='card-fragment-stat'>
                             <Text className='card-fragment-emoji'>📦</Text>
-                            <Text className='card-fragment-count' style={{ color: '#0f172a' }}>12</Text>
+                            <Text className='card-fragment-count' style={{ color: '#0f172a' }}>{commonCount}</Text>
                         </View>
                         <View className='card-fragment-stat'>
                             <Text className='card-fragment-emoji'>💎</Text>
-                            <Text className='card-fragment-count' style={{ color: '#0f172a' }}>2</Text>
+                            <Text className='card-fragment-count' style={{ color: '#0f172a' }}>{rareCount}</Text>
                         </View>
                     </View>
                 </View>
