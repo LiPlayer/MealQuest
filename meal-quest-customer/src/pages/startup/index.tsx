@@ -8,25 +8,32 @@ export default function Startup() {
     const [isNewUser, setIsNewUser] = useState(false);
 
     const redirectToHome = () => {
-        Taro.reLaunch({
-            url: '/pages/index/index'
+        Taro.nextTick(() => {
+            Taro.reLaunch({
+                url: '/pages/index/index'
+            });
         });
     };
 
     useLoad((options) => {
+        console.log('Startup useLoad fired with options:', options);
         const storeId = options.id || options.scene; // Handle normal param or scene value from QR
 
         if (storeId) {
+            console.log('Found storeId in options:', storeId);
             // 1. URL/QR param priority: Load the store directly
             storage.setLastStoreId(storeId);
             redirectToHome();
         } else {
             // 2. Check storage for last visited store
             const lastId = storage.getLastStoreId();
+            console.log('Checking storage for lastId:', lastId);
             if (lastId) {
+                console.log('Redirecting to home with lastId...');
                 redirectToHome();
             } else {
                 // 3. True new user: Show QR scan UI
+                console.log('No storeId found, setting isNewUser=true');
                 setIsNewUser(true);
             }
         }

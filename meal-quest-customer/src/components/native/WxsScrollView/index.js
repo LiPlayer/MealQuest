@@ -3,7 +3,16 @@ Component({
         multipleSlots: true,
         styleIsolation: 'shared'
     },
-    properties: {},
+    properties: {
+        // Trigger measurement update from parent
+        refreshTrigger: {
+            type: Number,
+            value: 0,
+            observer: function () {
+                this.updateMeasurements();
+            }
+        }
+    },
     data: {
         // Dynamic heights for WXS
         brandHeight: 200, // Default fallback
@@ -24,17 +33,20 @@ Component({
     },
     methods: {
         updateMeasurements: function () {
-            const query = this.createSelectorQuery();
-            query.select('.wxs-shop-brand-scroll-wrapper').boundingClientRect();
-            query.select('.wxs-card-stack-section').boundingClientRect();
-            query.exec((res) => {
-                if (res && res[0] && res[1]) {
-                    console.log('Measurements updated:', res[0].height, res[1].height);
-                    this.setData({
-                        brandHeight: res[0].height,
-                        cardHeight: res[1].height
-                    });
-                }
+            // Use nextTick to ensure children have finished rendering
+            wx.nextTick(() => {
+                const query = this.createSelectorQuery();
+                query.select('.wxs-shop-brand-scroll-wrapper').boundingClientRect();
+                query.select('.wxs-card-stack-section').boundingClientRect();
+                query.exec((res) => {
+                    if (res && res[0] && res[1]) {
+                        console.log('Measurements updated (Native):', res[0].height, res[1].height);
+                        this.setData({
+                            brandHeight: res[0].height,
+                            cardHeight: res[1].height
+                        });
+                    }
+                });
             });
         },
         onScroll: function (e) {

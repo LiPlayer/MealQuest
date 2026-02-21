@@ -1,14 +1,103 @@
-import { View, Text } from '@tarojs/components'
+import { View, Text, Image } from '@tarojs/components'
 import React from 'react'
 import './P03_TicketCard.scss'
+
+export interface Voucher {
+    id: string;
+    name: string;
+    value: number;
+    icon?: string;
+}
 
 interface TicketCardProps {
     style?: React.CSSProperties
     isFocused?: boolean
+    vouchers?: Voucher[]
     onGoToSynthesis?: () => void
+    onUseVoucher?: (voucher: Voucher) => void
+    onMoreClick?: () => void
 }
 
-export default function P03_TicketCard({ style, isFocused, onGoToSynthesis }: TicketCardProps) {
+export default function P03_TicketCard({
+    style,
+    isFocused,
+    vouchers = [],
+    onGoToSynthesis,
+    onUseVoucher,
+    onMoreClick
+}: TicketCardProps) {
+    const count = vouchers.length;
+
+    const renderEmptyState = () => (
+        <View className='empty-state' onClick={onGoToSynthesis}>
+            <View className='empty-plate'>
+                <View className='plate-inner'>
+                    {/* Placeholder for Isometric empty plate icon */}
+                </View>
+            </View>
+            <Text className='empty-text'>暂无可兑付资产</Text>
+            <View className='synthesis-btn-mini'>
+                <Text>去合成第一道菜</Text>
+            </View>
+        </View>
+    );
+
+    const renderSingleState = () => (
+        <View className='single-state' onClick={() => onUseVoucher?.(vouchers[0])}>
+            <View className='asset-hero'>
+                {vouchers[0].icon ? (
+                    <Image className='asset-icon-large' src={vouchers[0].icon} mode='aspectFit' />
+                ) : (
+                    <View className='asset-placeholder-large' />
+                )}
+                <View className='holographic-overlay' />
+            </View>
+            <View className='asset-info-large'>
+                <Text className='asset-name'>{vouchers[0].name}</Text>
+                <Text className='asset-value'>¥{vouchers[0].value}</Text>
+            </View>
+        </View>
+    );
+
+    const renderMinimalState = () => (
+        <View className='minimal-grid'>
+            {vouchers.map(v => (
+                <View key={v.id} className='minimal-item' onClick={() => onUseVoucher?.(v)}>
+                    <View className='asset-icon-wrap'>
+                        {v.icon ? <Image className='asset-icon-sm' src={v.icon} /> : <View className='asset-placeholder-sm' />}
+                    </View>
+                    <Text className='asset-name-sm'>{v.name}</Text>
+                </View>
+            ))}
+        </View>
+    );
+
+    const renderAssetGridState = () => {
+        const displayedVouchers = vouchers.slice(0, 5);
+        const hasMore = vouchers.length > 5;
+        const moreCount = vouchers.length - 5;
+
+        return (
+            <View className='asset-grid'>
+                {displayedVouchers.map(v => (
+                    <View key={v.id} className='grid-item' onClick={() => onUseVoucher?.(v)}>
+                        <View className='asset-icon-wrap-grid'>
+                            {v.icon ? <Image className='asset-icon-grid' src={v.icon} /> : <View className='asset-placeholder-grid' />}
+                            <View className='asset-badge'>x1</View>
+                        </View>
+                    </View>
+                ))}
+                {hasMore && (
+                    <View className='grid-item more-item' onClick={onMoreClick}>
+                        <View className='more-overlay'>
+                            <Text className='more-text'>+{moreCount}</Text>
+                        </View>
+                    </View>
+                )}
+            </View>
+        );
+    };
+
     return (
         <View
             style={{
@@ -19,42 +108,24 @@ export default function P03_TicketCard({ style, isFocused, onGoToSynthesis }: Ti
             className={`relative w-full rounded-3xl overflow-hidden bg-gradient-to-br to-white border box-border text-slate-900 p03-ticket-card ${isFocused ? 'is-focused' : ''}`}
         >
             <View className='h-full flex flex-col box-border'>
-                {/* 3.3.1 Header (Fixed) */}
+                {/* Header */}
                 <View className='card-header'>
                     <Text className='card-title'>口福红包</Text>
-                    <View className="card-badge" style={{ backgroundColor: 'rgba(255,228,230,0.8)' }}>
-                        <Text className='text-rose-600 card-badge-text'>3 VOUCHERS</Text>
-                    </View>
+                    {count > 0 && (
+                        <View className="card-badge">
+                            <Text className='card-badge-text'>{count} VOUCHERS</Text>
+                        </View>
+                    )}
                 </View>
 
+                {/* Body - Adaptive Content */}
                 <View className='card-body'>
-                    {/* Asset Preview Area (Compact) */}
-                    <View className='asset-preview-area'>
-                        <View className='empty-plate-compact'>
-                            <View className='plate-inner'></View>
-                        </View>
-                        <View
-                            className='synthesis-btn-compact'
-                            onTap={(e) => {
-                                e.stopPropagation();
-                                onGoToSynthesis?.();
-                            }}
-                        >
-                            <Text>去合成</Text>
-                        </View>
-                    </View>
-
-                    {/* Full Management Module (Compact) */}
-                    <View className='management-module-compact'>
-                        <View className='module-section'>
-                            <Text className='section-title'>合成工作台 (65%)</Text>
-                            <View className='workbench-progress'>
-                                <View className='progress-bar' style={{ width: '65%' }}></View>
-                            </View>
-                        </View>
-                    </View>
+                    {count === 0 && renderEmptyState()}
+                    {count === 1 && renderSingleState()}
+                    {count > 1 && count <= 3 && renderMinimalState()}
+                    {count >= 4 && renderAssetGridState()}
                 </View>
             </View>
         </View>
-    )
+    );
 }

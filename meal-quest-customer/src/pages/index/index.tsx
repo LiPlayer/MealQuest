@@ -26,27 +26,41 @@ declare global {
 export default function Index() {
     const [storeData, setStoreData] = useState<StoreData | null>(null);
     const [headerStyle, setHeaderStyle] = useState<React.CSSProperties>({});
+    const [refreshTrigger, setRefreshTrigger] = useState(0);
 
     useLoad(async () => {
-        console.log('Page loaded.');
+        console.log('Index useLoad fired.');
         const storeId = storage.getLastStoreId();
+        console.log('Index found storeId:', storeId);
+
         if (storeId) {
-            const data = await MockDataService.getStoreById(storeId);
-            setStoreData(data);
+            console.log('Fetching data for storeId:', storeId);
+            try {
+                const data = await MockDataService.getStoreById(storeId);
+                console.log('Fetched data:', data);
+                setStoreData(data);
+                setRefreshTrigger(v => v + 1);
+            } catch (err) {
+                console.error('Error fetching store data:', err);
+            }
         } else {
+            console.log('No storeId, loading default store_a');
             const defaultData = await MockDataService.getStoreById('store_a');
             setStoreData(defaultData);
+            setRefreshTrigger(v => v + 1);
         }
 
         // Calculate dynamic header alignment
         try {
             const capsule = Taro.getMenuButtonBoundingClientRect();
+            console.log('Capsule data:', capsule);
             setHeaderStyle({
                 '--header-height': `${capsule.bottom + 8}px`,
                 '--nav-top': `${capsule.top}px`,
                 '--nav-height': `${capsule.height}px`
             } as React.CSSProperties);
         } catch (e) {
+            console.warn('Failed to get capsule rect, using fallbacks:', e);
             // Safe fallbacks for dev/unsupported environments
             setHeaderStyle({
                 '--header-height': '88px',
@@ -59,7 +73,7 @@ export default function Index() {
     return (
         <View className='index-container' style={headerStyle}>
             {/* @ts-ignore */}
-            <wxs-scroll-view>
+            <wxs-scroll-view refresh-trigger={refreshTrigger}>
                 {/* ── Header Slots ── */}
                 <Slot name="header-left">
                     <View className="avatar-wrapper transition-transform">
@@ -76,7 +90,6 @@ export default function Index() {
                 </Slot>
 
                 {/* ── Brand Slot ── */}
-                {/* Note: The wrapper .shop-brand-scroll-wrapper is now in the native component */}
                 <Slot name="brand">
                     <ShopBrand
                         name={storeData?.name}
