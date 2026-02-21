@@ -104,7 +104,7 @@ const toStoreData = (merchant: any): StoreData => ({
 });
 
 const toHomeSnapshot = (stateData: any): HomeSnapshot => ({
-    store: toStoreData(stateData.merchant),
+  store: toStoreData(stateData.merchant),
     wallet: {
         principal: Number(stateData.user.wallet.principal || 0),
         bonus: Number(stateData.user.wallet.bonus || 0),
@@ -122,7 +122,17 @@ const toHomeSnapshot = (stateData: any): HomeSnapshot => ({
         status: voucher.status,
         expiresAt: voucher.expiresAt
     })),
-    activities: DEFAULT_ACTIVITIES
+    activities: Array.isArray(stateData.activities) && stateData.activities.length > 0
+        ? stateData.activities.map((item: any) => ({
+            id: item.id,
+            title: item.title,
+            desc: item.desc,
+            icon: item.icon || '✨',
+            color: item.color || 'bg-slate-50',
+            textColor: item.textColor || 'text-slate-600',
+            tag: item.tag || 'AI'
+        }))
+        : DEFAULT_ACTIVITIES
 });
 
 export const ApiDataService = {
@@ -135,7 +145,9 @@ export const ApiDataService = {
             path: `/api/state?merchantId=${encodeURIComponent(storeId)}&userId=${encodeURIComponent(userId)}`,
             token
         });
-        return toHomeSnapshot(stateData);
+        const snapshot = toHomeSnapshot(stateData);
+        storage.setCachedHomeSnapshot(storeId, userId, snapshot);
+        return snapshot;
     },
 
     getCheckoutQuote: async (storeId: string, orderAmount: number, userId = 'u_demo'): Promise<CheckoutQuote> => {
@@ -171,6 +183,7 @@ export const ApiDataService = {
         });
 
         const snapshot = await ApiDataService.getHomeSnapshot(storeId, userId);
+        storage.setCachedHomeSnapshot(storeId, userId, snapshot);
         return {
             paymentId: quote.paymentTxnId,
             quote: quote.quote,

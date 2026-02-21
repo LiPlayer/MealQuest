@@ -2,6 +2,7 @@ const taroMock = {
     getStorageSync: jest.fn(),
     setStorageSync: jest.fn(),
     removeStorageSync: jest.fn(),
+    request: jest.fn(),
     reLaunch: jest.fn(),
     scanCode: jest.fn(),
     showToast: jest.fn(),
@@ -30,6 +31,7 @@ export const useLoad = taroMock.useLoad;
 export const setStorageSync = taroMock.setStorageSync;
 export const getStorageSync = taroMock.getStorageSync;
 export const removeStorageSync = taroMock.removeStorageSync;
+export const request = taroMock.request;
 export const reLaunch = taroMock.reLaunch;
 export const scanCode = taroMock.scanCode;
 export const showToast = taroMock.showToast;

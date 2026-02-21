@@ -65,6 +65,21 @@ function createDefaultState(now = new Date()) {
               expiresAt: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString()
             }
           ]
+        },
+        u_friend: {
+          uid: "u_friend",
+          displayName: "Demo Friend",
+          wallet: {
+            principal: 40,
+            bonus: 8,
+            silver: 52
+          },
+          tags: ["REGULAR"],
+          fragments: {
+            spicy: 0,
+            noodle: 1
+          },
+          vouchers: []
         }
       },
       m_bistro: {
@@ -103,6 +118,61 @@ function createDefaultState(now = new Date()) {
       m_demo: {},
       m_bistro: {}
     },
+    partnerOrders: {
+      partner_coffee: {
+        ext_order_1001: {
+          partnerId: "partner_coffee",
+          orderId: "ext_order_1001",
+          amount: 38,
+          status: "PAID",
+          paidAt: new Date(now.getTime() - 30 * 60 * 1000).toISOString()
+        }
+      }
+    },
+    strategyConfigs: {
+      m_demo: {
+        activation_contextual_drop: {
+          templateId: "activation_contextual_drop",
+          branchId: "COMFORT",
+          status: "ACTIVE",
+          lastProposalId: "proposal_rainy",
+          lastCampaignId: "campaign_rainy_hot_soup",
+          updatedAt: now.toISOString()
+        }
+      },
+      m_bistro: {}
+    },
+    allianceConfigs: {
+      m_demo: {
+        merchantId: "m_demo",
+        clusterId: "cluster_demo_brand",
+        stores: ["m_demo", "m_bistro"],
+        walletShared: false,
+        tierShared: false,
+        updatedAt: now.toISOString()
+      },
+      m_bistro: {
+        merchantId: "m_bistro",
+        clusterId: "cluster_demo_brand",
+        stores: ["m_demo", "m_bistro"],
+        walletShared: false,
+        tierShared: false,
+        updatedAt: now.toISOString()
+      }
+    },
+    socialRedPacketsByMerchant: {
+      m_demo: {},
+      m_bistro: {}
+    },
+    groupTreatSessionsByMerchant: {
+      m_demo: {},
+      m_bistro: {}
+    },
+    merchantDailySubsidyUsage: {
+      m_demo: {},
+      m_bistro: {}
+    },
+    socialTransferLogs: [],
     tenantPolicies: {},
     tenantMigrations: {},
     tenantRouteFiles: {},
@@ -202,6 +272,36 @@ function migrateLegacyShape(state) {
   if (!next.invoicesByMerchant || typeof next.invoicesByMerchant !== "object") {
     next.invoicesByMerchant = {};
   }
+  if (!next.partnerOrders || typeof next.partnerOrders !== "object") {
+    next.partnerOrders = {};
+  }
+  if (!next.strategyConfigs || typeof next.strategyConfigs !== "object") {
+    next.strategyConfigs = {};
+  }
+  if (!next.allianceConfigs || typeof next.allianceConfigs !== "object") {
+    next.allianceConfigs = {};
+  }
+  if (
+    !next.socialRedPacketsByMerchant ||
+    typeof next.socialRedPacketsByMerchant !== "object"
+  ) {
+    next.socialRedPacketsByMerchant = {};
+  }
+  if (
+    !next.groupTreatSessionsByMerchant ||
+    typeof next.groupTreatSessionsByMerchant !== "object"
+  ) {
+    next.groupTreatSessionsByMerchant = {};
+  }
+  if (
+    !next.merchantDailySubsidyUsage ||
+    typeof next.merchantDailySubsidyUsage !== "object"
+  ) {
+    next.merchantDailySubsidyUsage = {};
+  }
+  if (!Array.isArray(next.socialTransferLogs)) {
+    next.socialTransferLogs = [];
+  }
 
   if (!next.tenantPolicies || typeof next.tenantPolicies !== "object") {
     next.tenantPolicies = {};
@@ -226,6 +326,18 @@ function ensureMerchantBuckets(state) {
     }
     if (!state.invoicesByMerchant[merchantId]) {
       state.invoicesByMerchant[merchantId] = {};
+    }
+    if (!state.strategyConfigs[merchantId]) {
+      state.strategyConfigs[merchantId] = {};
+    }
+    if (!state.socialRedPacketsByMerchant[merchantId]) {
+      state.socialRedPacketsByMerchant[merchantId] = {};
+    }
+    if (!state.groupTreatSessionsByMerchant[merchantId]) {
+      state.groupTreatSessionsByMerchant[merchantId] = {};
+    }
+    if (!state.merchantDailySubsidyUsage[merchantId]) {
+      state.merchantDailySubsidyUsage[merchantId] = {};
     }
   }
 }
@@ -260,6 +372,33 @@ function normalizeState(initialState = null) {
       ...defaults.invoicesByMerchant,
       ...(migrated.invoicesByMerchant || {})
     },
+    partnerOrders: {
+      ...defaults.partnerOrders,
+      ...(migrated.partnerOrders || {})
+    },
+    strategyConfigs: {
+      ...defaults.strategyConfigs,
+      ...(migrated.strategyConfigs || {})
+    },
+    allianceConfigs: {
+      ...defaults.allianceConfigs,
+      ...(migrated.allianceConfigs || {})
+    },
+    socialRedPacketsByMerchant: {
+      ...defaults.socialRedPacketsByMerchant,
+      ...(migrated.socialRedPacketsByMerchant || {})
+    },
+    groupTreatSessionsByMerchant: {
+      ...defaults.groupTreatSessionsByMerchant,
+      ...(migrated.groupTreatSessionsByMerchant || {})
+    },
+    merchantDailySubsidyUsage: {
+      ...defaults.merchantDailySubsidyUsage,
+      ...(migrated.merchantDailySubsidyUsage || {})
+    },
+    socialTransferLogs: Array.isArray(migrated.socialTransferLogs)
+      ? migrated.socialTransferLogs
+      : defaults.socialTransferLogs,
     tenantPolicies: {
       ...defaults.tenantPolicies,
       ...(migrated.tenantPolicies || {})
@@ -295,6 +434,13 @@ function createInMemoryDb(initialState = null) {
       merchantUsers: db.merchantUsers,
       paymentsByMerchant: db.paymentsByMerchant,
       invoicesByMerchant: db.invoicesByMerchant,
+      partnerOrders: db.partnerOrders,
+      strategyConfigs: db.strategyConfigs,
+      allianceConfigs: db.allianceConfigs,
+      socialRedPacketsByMerchant: db.socialRedPacketsByMerchant,
+      groupTreatSessionsByMerchant: db.groupTreatSessionsByMerchant,
+      merchantDailySubsidyUsage: db.merchantDailySubsidyUsage,
+      socialTransferLogs: db.socialTransferLogs,
       tenantPolicies: db.tenantPolicies,
       tenantMigrations: db.tenantMigrations,
       tenantRouteFiles: db.tenantRouteFiles,

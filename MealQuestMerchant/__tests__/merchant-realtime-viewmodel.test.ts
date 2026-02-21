@@ -60,4 +60,30 @@ describe('realtime event view model', () => {
     expect(row.isAnomaly).toBe(true);
     expect(row.detail).toBe('ws disconnected');
   });
+
+  it('maps social transfer event metadata', () => {
+    const row = buildRealtimeEventRow({
+      type: 'SOCIAL_TRANSFERRED',
+      merchantId: 'm_demo',
+      payload: {amount: 20},
+      timestamp: '2026-02-21T08:00:00.000Z',
+    });
+
+    expect(row.label).toBe('资产转赠');
+    expect(row.severity).toBe('info');
+    expect(row.isAnomaly).toBe(false);
+  });
+
+  it('maps treat session closed as anomaly', () => {
+    const row = buildRealtimeEventRow({
+      type: 'TREAT_SESSION_CLOSED',
+      merchantId: 'm_demo',
+      payload: {status: 'SETTLED'},
+      timestamp: '2026-02-21T08:00:00.000Z',
+    });
+
+    expect(row.label).toBe('请客会话结算');
+    expect(row.severity).toBe('warn');
+    expect(row.isAnomaly).toBe(true);
+  });
 });

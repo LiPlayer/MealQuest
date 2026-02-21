@@ -3,6 +3,10 @@ import Taro from '@tarojs/taro';
 const LAST_STORE_ID_KEY = 'mq_last_store_id';
 const API_TOKEN_KEY = 'mq_api_token';
 const USE_REMOTE_API_KEY = 'mq_use_remote_api';
+const HOME_SNAPSHOT_CACHE_PREFIX = 'mq_home_snapshot';
+
+const buildHomeSnapshotKey = (storeId: string, userId: string) =>
+    `${HOME_SNAPSHOT_CACHE_PREFIX}:${storeId}:${userId}`;
 
 export const storage = {
     /**
@@ -33,6 +37,26 @@ export const storage = {
 
     getUseRemoteApi: (): boolean => {
         return Taro.getStorageSync(USE_REMOTE_API_KEY) === '1';
+    },
+
+    setCachedHomeSnapshot: (storeId: string, userId: string, snapshot: unknown) => {
+        Taro.setStorageSync(buildHomeSnapshotKey(storeId, userId), JSON.stringify(snapshot));
+    },
+
+    getCachedHomeSnapshot: <T>(storeId: string, userId: string): T | null => {
+        const raw = Taro.getStorageSync(buildHomeSnapshotKey(storeId, userId));
+        if (!raw || typeof raw !== 'string') {
+            return null;
+        }
+        try {
+            return JSON.parse(raw) as T;
+        } catch {
+            return null;
+        }
+    },
+
+    clearCachedHomeSnapshot: (storeId: string, userId: string) => {
+        Taro.removeStorageSync(buildHomeSnapshotKey(storeId, userId));
     },
 
     /**

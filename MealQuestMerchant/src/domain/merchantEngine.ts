@@ -1,12 +1,13 @@
-export type TriggerEvent = 'WEATHER_CHANGE' | 'USER_ENTER_SHOP';
+export type TriggerEvent = string;
 
 export interface Campaign {
   id: string;
   name: string;
+  status?: 'ACTIVE' | 'PAUSED' | 'ARCHIVED';
   triggerEvent: TriggerEvent;
   condition: {
     field: string;
-    equals: string | boolean;
+    equals: string | boolean | number;
   };
   budget: {
     cap: number;
@@ -19,6 +20,8 @@ export interface Proposal {
   id: string;
   title: string;
   status: 'PENDING' | 'APPROVED';
+  templateId?: string;
+  branchId?: string;
   campaignDraft: Campaign;
 }
 
@@ -65,6 +68,7 @@ export const createInitialMerchantState = (): MerchantState => ({
       campaignDraft: {
         id: 'campaign_rainy_hot_soup',
         name: '雨天热汤投放',
+        status: 'ACTIVE',
         triggerEvent: 'WEATHER_CHANGE',
         condition: {
           field: 'weather',
@@ -110,7 +114,7 @@ export const toggleKillSwitch = (
 export const triggerCampaigns = (
   state: MerchantState,
   event: TriggerEvent,
-  context: Record<string, string | boolean>,
+  context: Record<string, string | boolean | number>,
 ): { nextState: MerchantState; executedIds: string[]; blockedByKillSwitch: boolean } => {
   if (state.killSwitchEnabled) {
     return {
@@ -124,6 +128,9 @@ export const triggerCampaigns = (
   const executedIds: string[] = [];
 
   const updatedCampaigns = state.activeCampaigns.map(campaign => {
+    if (campaign.status && campaign.status !== 'ACTIVE') {
+      return campaign;
+    }
     if (campaign.triggerEvent !== event) {
       return campaign;
     }

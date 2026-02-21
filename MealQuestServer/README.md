@@ -6,7 +6,11 @@
 - 支付核销与幂等保护
 - 退款 Clawback（优先回收赠送金，不足时回收本金）
 - TCA 规则触发执行（Trigger/Condition/Action）
-- 商户策略提案确认与熔断开关
+- 商户策略提案确认、模板策略库、活动启停与熔断开关
+- 紧急急售（`Priority:999 + TTL`）人工接管
+- 异业联盟供应商订单核验接口
+- 连锁联盟配置（门店集群/共享钱包/跨店用户同步）
+- 社交裂变账务（转赠/拼手气红包，总量守恒）
 - JWT 鉴权与角色权限（`CUSTOMER/CLERK/MANAGER/OWNER`）
 - WebSocket 实时推送（支付、退款、策略、熔断、TCA）
 - 持久化存储（默认 `data/db.json`）
@@ -82,6 +86,43 @@ POST /api/merchant/migration/rollback
 
 其中 `migration/cutover` 会自动执行“冻结写入 -> 切专库 -> 恢复写入”，并将专库路由持久化到主库快照，确保重启后不回流共享库。
 
+## 标准营销策略库
+
+```text
+GET  /api/merchant/strategy-library?merchantId=<id>
+GET  /api/merchant/strategy-configs?merchantId=<id>
+POST /api/merchant/strategy-proposals
+POST /api/merchant/campaigns/:id/status
+POST /api/merchant/fire-sale
+```
+
+支持从模板库按分支生成提案（PENDING），由 Owner 确认后生效；支持运行中策略启停与人工急售接管。
+
+## 供应商核验接口
+
+```text
+POST /api/supplier/verify-order
+```
+
+用于异业联盟交易核验（`partnerId + orderId + minSpend`），返回 `verified=true/false` 并写审计日志。
+
+## 连锁联盟与社交裂变接口
+
+```text
+GET  /api/merchant/alliance-config?merchantId=<id>
+POST /api/merchant/alliance-config
+GET  /api/merchant/stores?merchantId=<id>
+POST /api/merchant/alliance/sync-user
+POST /api/social/transfer
+POST /api/social/red-packets
+POST /api/social/red-packets/:packetId/claim
+GET  /api/social/red-packets/:packetId?merchantId=<id>
+POST /api/social/treat/sessions
+POST /api/social/treat/sessions/:sessionId/join
+POST /api/social/treat/sessions/:sessionId/close
+GET  /api/social/treat/sessions/:sessionId?merchantId=<id>
+```
+
 ## 审计日志查询
 
 ```text
@@ -147,9 +188,10 @@ GET /api/invoice/list?merchantId=<id>&userId=<optional>&limit=<optional>
 ```text
 POST /api/privacy/export-user
 POST /api/privacy/delete-user
+POST /api/privacy/cancel-account
 ```
 
-Owner-only endpoints for tenant-scoped personal data export and anonymization.
+`export-user` / `delete-user` are Owner-only. `cancel-account` is customer self-service account cancellation.
 
 ## Metrics
 

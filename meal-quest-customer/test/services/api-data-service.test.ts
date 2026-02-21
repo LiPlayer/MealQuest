@@ -1,0 +1,70 @@
+const requestMock = jest.fn();
+
+jest.mock('@tarojs/taro', () => ({
+    __esModule: true,
+    default: {
+        request: requestMock
+    }
+}));
+
+jest.mock('@/utils/storage', () => ({
+    storage: {
+        getApiToken: jest.fn(),
+        setApiToken: jest.fn(),
+        setCachedHomeSnapshot: jest.fn()
+    }
+}));
+
+describe('ApiDataService activities mapping', () => {
+    const envServerBase = process.env.TARO_APP_SERVER_BASE_URL;
+
+    beforeEach(() => {
+        jest.resetModules();
+        process.env.TARO_APP_SERVER_BASE_URL = 'http://127.0.0.1:3030';
+        requestMock.mockReset();
+    });
+
+    afterEach(() => {
+        if (typeof envServerBase === 'string') {
+            process.env.TARO_APP_SERVER_BASE_URL = envServerBase;
+        } else {
+            delete process.env.TARO_APP_SERVER_BASE_URL;
+        }
+    });
+
+    it('uses server activities when provided', async () => {
+        requestMock.mockResolvedValueOnce({
+            statusCode: 200,
+            data: { token: 'token_demo' }
+        });
+        requestMock.mockResolvedValueOnce({
+            statusCode: 200,
+            data: {
+                merchant: { merchantId: 'm_demo', name: 'Demo Merchant' },
+                user: {
+                    wallet: { principal: 120, bonus: 30, silver: 66 },
+                    fragments: { noodle: 3, spicy: 1 },
+                    vouchers: []
+                },
+                activities: [
+                    {
+                        id: 'campaign_1',
+                        title: '高温清凉',
+                        desc: '服务端动态活动',
+                        icon: '🧊',
+                        color: 'bg-cyan-50',
+                        textColor: 'text-cyan-600',
+                        tag: 'TCA'
+                    }
+                ]
+            }
+        });
+
+        const {ApiDataService} = require('@/services/ApiDataService');
+        const snapshot = await ApiDataService.getHomeSnapshot('m_demo', 'u_demo');
+
+        expect(snapshot.activities.length).toBe(1);
+        expect(snapshot.activities[0].id).toBe('campaign_1');
+        expect(snapshot.activities[0].desc).toBe('服务端动态活动');
+    });
+});

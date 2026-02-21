@@ -18,7 +18,7 @@ node .\scripts\release-local.js
 
 执行内容：
 
-1. `MealQuestServer` 全量测试（含持久化、多租户、迁移、RBAC、审计）。
+1. `MealQuestServer` 全量测试（含持久化、多租户、迁移、RBAC、审计、策略库、供应商核验、急售）。
 2. `MealQuestServer` 本地 smoke 场景回归。
 3. `MealQuestMerchant` 测试 + TypeScript 类型检查。
 4. `meal-quest-customer` 测试 + `build:weapp` 构建。
@@ -74,4 +74,11 @@ node .\scripts\smoke-local-server.js --external --base-url http://127.0.0.1:3030
    - 多租户隔离；
    - 租户策略冻结与限流；
    - 自动切库与回滚；
+   - 标准营销策略库（模板查询/分支提案/确认执行/活动启停）；
+   - 供应商核验与异业联盟订单校验；
+   - 紧急急售 `Priority:999 + TTL`；
+   - 连锁联盟共享钱包（跨店支付命中）；
+   - 社交裂变账务（转赠/红包分账总量守恒）；
+   - 请客买单会话（群买单/老板补贴结算与上限校验）；
+   - 隐私合规（Owner 导出/删除 + Customer 自助注销）；
    - 顾客端构建可通过。

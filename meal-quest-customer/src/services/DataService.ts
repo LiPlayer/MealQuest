@@ -19,6 +19,10 @@ export const DataService = {
             } catch (error) {
                 console.warn('Remote getHomeSnapshot failed, fallback to mock:', error);
                 storage.setApiToken('');
+                const cached = storage.getCachedHomeSnapshot<HomeSnapshot>(storeId, userId);
+                if (cached) {
+                    return cached;
+                }
             }
         }
         return MockDataService.getHomeSnapshot(storeId, userId);

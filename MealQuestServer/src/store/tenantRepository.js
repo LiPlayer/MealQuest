@@ -143,6 +143,15 @@ function createTenantRepository({ tenantRouter }) {
       tenantRouter.getMerchantUser(merchantId, userId),
     listCampaigns: (merchantId) =>
       getDb(merchantId).campaigns.filter((item) => item.merchantId === merchantId),
+    listProposals: (merchantId) =>
+      getDb(merchantId).proposals.filter((item) => item.merchantId === merchantId),
+    listStrategyConfigs: (merchantId) => {
+      const db = getDb(merchantId);
+      if (!db.strategyConfigs || !db.strategyConfigs[merchantId]) {
+        return [];
+      }
+      return Object.values(db.strategyConfigs[merchantId]);
+    },
     appendAuditLog,
     listAuditLogs
   };

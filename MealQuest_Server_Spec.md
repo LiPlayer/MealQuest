@@ -47,12 +47,17 @@
 5. `tenantPolicies[merchantId]`：租户策略（写冻结/实时开关/限流配额）。
 6. `tenantMigrations[merchantId]`：迁移编排状态（phase/step/note/updatedAt）。
 7. `tenantRouteFiles[merchantId]`：专库路由文件（重启后恢复商户专库绑定）。
+8. `strategyConfigs[merchantId][templateId]`：策略模板启停与分支配置状态（DRAFT/PENDING_APPROVAL/ACTIVE）。
+9. `allianceConfigs[merchantId]`：连锁集群配置（clusterId/stores/walletShared/tierShared）。
 
 ## 3.3 资金与流水
 
 1. `paymentsByMerchant[merchantId][paymentTxnId]`：支付记录与已退款金额按商户分桶。
 2. `ledger[]`：`PAYMENT/REFUND` 流水。
 3. `idempotencyMap`：幂等缓存。
+4. `partnerOrders[partnerId][orderId]`：异业联盟供应商订单核验缓存（用于 Cross-Promo B 分支交易校验）。
+5. `socialRedPacketsByMerchant[merchantId][packetId]`：拼手气红包状态（总额守恒）。
+6. `socialTransferLogs[]`：用户间转赠流水（频控与审计回溯）。
 
 ---
 
@@ -108,8 +113,13 @@
 1. `GET /health`
 2. `GET /api/state?merchantId=&userId=`
 3. `GET /api/merchant/dashboard?merchantId=`
-4. `GET /api/audit/logs?merchantId=&limit=&cursor=&startTime=&endTime=&action=&status=`
-5. `GET /api/ws/status?merchantId=`（商户在线状态）
+4. `GET /api/merchant/strategy-library?merchantId=`
+5. `GET /api/merchant/strategy-configs?merchantId=`
+6. `GET /api/audit/logs?merchantId=&limit=&cursor=&startTime=&endTime=&action=&status=`
+7. `GET /api/ws/status?merchantId=`（商户在线状态）
+8. `GET /api/merchant/alliance-config?merchantId=`
+9. `GET /api/merchant/stores?merchantId=`
+10. `GET /api/social/red-packets/:packetId?merchantId=`
 
 ## 5.1.1 鉴权
 
@@ -130,6 +140,9 @@
    - `PROPOSAL_CONFIRMED`
    - `KILL_SWITCH_CHANGED`
    - `TCA_TRIGGERED`
+   - `STRATEGY_PROPOSAL_CREATED`
+   - `CAMPAIGN_STATUS_CHANGED`
+   - `FIRE_SALE_CREATED`
 
 ## 5.2 支付与退款
 
@@ -144,6 +157,7 @@
 2. `GET /api/invoice/list?merchantId=&userId=&limit=`
 3. `POST /api/privacy/export-user`（Owner，租户范围导出）
 4. `POST /api/privacy/delete-user`（Owner，租户范围匿名化）
+5. `POST /api/privacy/cancel-account`（Customer，自助注销并物理删除非交易档案）
 
 ## 5.3 策略与风控
 
@@ -156,6 +170,18 @@
 7. `POST /api/merchant/migration/step`（仅 `OWNER`，执行冻结/解冻/编排标记）
 8. `POST /api/merchant/migration/cutover`（仅 `OWNER`，自动冻结->切库->恢复写入）
 9. `POST /api/merchant/migration/rollback`（仅 `OWNER`，自动冻结->回流共享库->恢复写入）
+10. `POST /api/merchant/strategy-proposals`（`MANAGER/OWNER`，按模板与分支生成待确认提案）
+11. `POST /api/merchant/campaigns/:id/status`（`MANAGER/OWNER`，策略启停/归档）
+12. `POST /api/merchant/fire-sale`（`MANAGER/OWNER`，创建 `Priority:999` 手动急售策略）
+13. `POST /api/supplier/verify-order`（`CLERK+`，核验异业联盟订单真伪与门槛）
+14. `POST /api/merchant/alliance-config`（`OWNER`，配置多店连锁互通规则）
+15. `POST /api/merchant/alliance/sync-user`（`MANAGER/OWNER`，执行跨店用户资产同步）
+16. `POST /api/social/transfer`（用户资产转赠，总量守恒）
+17. `POST /api/social/red-packets`（创建拼手气红包，总量守恒）
+18. `POST /api/social/red-packets/:packetId/claim`（领取红包分账）
+19. `POST /api/social/treat/sessions`（创建请客会话：群买单/老板补贴）
+20. `POST /api/social/treat/sessions/:sessionId/join`（参与请客会话出资）
+21. `POST /api/social/treat/sessions/:sessionId/close`（结算请客会话）
 
 ---
 
@@ -176,7 +202,12 @@
 13. 外部支付回调必须通过签名校验后才可入账。
 14. 发票接口必须只允许对已结算支付开票，防止未收款先开票。
 15. 隐私导出/删除必须限定 Owner 且受租户 scope 约束。
-16. 必须提供基础指标接口（请求数/错误数）用于上线监控接入。
+16. 顾客端必须支持自助注销账号，注销后非交易类档案物理删除，交易类数据仅保留匿名标识。
+17. 必须提供基础指标接口（请求数/错误数）用于上线监控接入。
+18. 策略库必须可配置完整营销策略分支，且仍遵守“无确认不执行”。
+19. 供应商核验必须可追溯并写审计日志，避免跨店伪造联盟交易。
+20. 社交裂变链路必须保证资产总量守恒，不允许增发。
+21. 社交操作必须具备幂等与频控，防止脚本刷量。
 
 ---
 
@@ -214,10 +245,14 @@
 21. 发票助手：未结算订单拒绝开票，已结算订单可成功开票
 22. 隐私合规：Owner 可导出与匿名化删除，非 Owner 拒绝
 23. 指标接口：`/metrics` 可读并输出请求/错误计数
-20. 外部支付：大额订单进入 `PENDING_EXTERNAL`，回调验签后落 `PAID`
-21. 电子发票助手：已结算订单可开票并可按商户查询
-22. 隐私合规：支持用户数据导出与匿名化删除
-23. 可观测性：`/metrics` 输出基础请求与错误计数
+24. 策略库：可查询模板库并按模板+分支生成提案，确认后进入活动策略
+25. 策略启停：`campaign status` 改变可立即影响 TCA 执行结果
+26. 紧急急售：可创建 `Priority:999 + TTL` 人工接管策略并触发执行
+27. 供应商核验：联盟订单核验成功/失败均可返回并落审计
+28. 多店连锁：可配置跨店共享钱包并在支付链路生效
+29. 社交裂变：支持用户转赠与拼手气红包，校验总量守恒
+30. 请客买单：支持群买单与老板补贴，补贴受日上限约束
+31. 顾客自助注销：注销后账号不可再次登录，交易记录匿名保留
 
 ---
 

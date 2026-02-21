@@ -16,7 +16,11 @@ import {
   toggleKillSwitch,
   triggerCampaigns,
 } from './src/domain/merchantEngine';
-import {MerchantApi} from './src/services/merchantApi';
+import {
+  AllianceConfig,
+  MerchantApi,
+  StrategyTemplate,
+} from './src/services/merchantApi';
 import {AuditLogRow, buildAuditLogRow} from './src/services/auditLogViewModel';
 import {createRealtimeClient} from './src/services/merchantRealtime';
 import {
@@ -29,7 +33,20 @@ type AuditActionFilter =
   | 'ALL'
   | 'PAYMENT_VERIFY'
   | 'PAYMENT_REFUND'
+  | 'PRIVACY_CANCEL'
   | 'PROPOSAL_CONFIRM'
+  | 'STRATEGY_PROPOSAL_CREATE'
+  | 'CAMPAIGN_STATUS_SET'
+  | 'FIRE_SALE_CREATE'
+  | 'SUPPLIER_VERIFY'
+  | 'ALLIANCE_CONFIG_SET'
+  | 'ALLIANCE_SYNC_USER'
+  | 'SOCIAL_TRANSFER'
+  | 'SOCIAL_RED_PACKET_CREATE'
+  | 'SOCIAL_RED_PACKET_CLAIM'
+  | 'TREAT_SESSION_CREATE'
+  | 'TREAT_SESSION_JOIN'
+  | 'TREAT_SESSION_CLOSE'
   | 'KILL_SWITCH_SET'
   | 'TCA_TRIGGER';
 type AuditStatusFilter = 'ALL' | 'SUCCESS' | 'DENIED' | 'BLOCKED' | 'FAILED';
@@ -39,7 +56,20 @@ const AUDIT_ACTION_OPTIONS: {value: AuditActionFilter; label: string}[] = [
   {value: 'ALL', label: '全部动作'},
   {value: 'PAYMENT_VERIFY', label: '支付'},
   {value: 'PAYMENT_REFUND', label: '退款'},
+  {value: 'PRIVACY_CANCEL', label: '顾客注销'},
   {value: 'PROPOSAL_CONFIRM', label: '提案确认'},
+  {value: 'STRATEGY_PROPOSAL_CREATE', label: '提案生成'},
+  {value: 'CAMPAIGN_STATUS_SET', label: '活动启停'},
+  {value: 'FIRE_SALE_CREATE', label: '急售'},
+  {value: 'SUPPLIER_VERIFY', label: '供应商核验'},
+  {value: 'ALLIANCE_CONFIG_SET', label: '联盟配置'},
+  {value: 'ALLIANCE_SYNC_USER', label: '联盟同步'},
+  {value: 'SOCIAL_TRANSFER', label: '社交转赠'},
+  {value: 'SOCIAL_RED_PACKET_CREATE', label: '红包创建'},
+  {value: 'SOCIAL_RED_PACKET_CLAIM', label: '红包领取'},
+  {value: 'TREAT_SESSION_CREATE', label: '请客创建'},
+  {value: 'TREAT_SESSION_JOIN', label: '请客参与'},
+  {value: 'TREAT_SESSION_CLOSE', label: '请客结算'},
   {value: 'KILL_SWITCH_SET', label: '熔断'},
   {value: 'TCA_TRIGGER', label: 'TCA'},
 ];
@@ -102,6 +132,14 @@ export default function App() {
   const [auditStatusFilter, setAuditStatusFilter] =
     useState<AuditStatusFilter>('ALL');
   const [auditTimeRange, setAuditTimeRange] = useState<AuditTimeRange>('7D');
+  const [strategyTemplates, setStrategyTemplates] = useState<StrategyTemplate[]>([]);
+  const [strategyLoading, setStrategyLoading] = useState(false);
+  const [allianceConfig, setAllianceConfig] = useState<AllianceConfig | null>(null);
+  const [allianceStores, setAllianceStores] = useState<
+    {merchantId: string; name: string}[]
+  >([]);
+  const [lastRedPacketId, setLastRedPacketId] = useState('');
+  const [lastTreatSessionId, setLastTreatSessionId] = useState('');
 
   const pendingProposals = useMemo(
     () => merchantState.pendingProposals.filter(item => item.status === 'PENDING'),
@@ -137,6 +175,32 @@ export default function App() {
   const refreshRemoteState = async (token: string) => {
     const remoteState = await MerchantApi.getState(token);
     setMerchantState(remoteState);
+  };
+
+  const refreshStrategyLibrary = async (token: string) => {
+    setStrategyLoading(true);
+    try {
+      const response = await MerchantApi.getStrategyLibrary(token);
+      setStrategyTemplates(response.templates || []);
+    } catch {
+      setStrategyTemplates([]);
+    } finally {
+      setStrategyLoading(false);
+    }
+  };
+
+  const refreshAllianceData = async (token: string) => {
+    try {
+      const [config, stores] = await Promise.all([
+        MerchantApi.getAllianceConfig(token),
+        MerchantApi.listStores(token),
+      ]);
+      setAllianceConfig(config);
+      setAllianceStores(stores.stores || []);
+    } catch {
+      setAllianceConfig(null);
+      setAllianceStores([]);
+    }
   };
 
   const refreshAuditLogs = async (
@@ -198,6 +262,8 @@ export default function App() {
         setRemoteToken(token);
 
         await refreshRemoteState(token);
+        await refreshStrategyLibrary(token);
+        await refreshAllianceData(token);
         await refreshAuditLogs(token);
         setLastAction('已连接服务端驾驶舱');
 
@@ -256,22 +322,271 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remoteMode, remoteToken, auditActionFilter, auditStatusFilter, auditTimeRange]);
 
-  const onApproveRainy = async () => {
+  useEffect(() => {
+    if (!remoteMode || !remoteToken) {
+      return;
+    }
+    void refreshStrategyLibrary(remoteToken);
+    void refreshAllianceData(remoteToken);
+  }, [remoteMode, remoteToken]);
+
+  const onApproveProposal = async (proposalId: string, title: string) => {
     if (remoteMode && remoteToken) {
-      const proposal = pendingProposals[0];
-      if (!proposal) {
-        setLastAction('暂无待确认策略');
-        return;
-      }
-      await MerchantApi.approveProposal(remoteToken, proposal.id);
+      await MerchantApi.approveProposal(remoteToken, proposalId);
       await refreshRemoteState(remoteToken);
       await refreshAuditLogs(remoteToken);
-      setLastAction(`已确认策略：${proposal.title}`);
+      await refreshStrategyLibrary(remoteToken);
+      setLastAction(`已确认策略：${title}`);
       return;
     }
 
-    setMerchantState(prev => approveProposal(prev, 'proposal_rainy'));
-    setLastAction('已确认策略：暴雨急售策略');
+    setMerchantState(prev => approveProposal(prev, proposalId));
+    setLastAction(`已确认策略：${title}`);
+  };
+
+  const onCreateStrategyProposal = async (
+    templateId: string,
+    branchId: string,
+    label: string,
+  ) => {
+    if (!remoteMode || !remoteToken) {
+      setLastAction('策略库提案仅在远程联调模式可用');
+      return;
+    }
+    await MerchantApi.createStrategyProposal(remoteToken, {
+      templateId,
+      branchId,
+      intent: `生成${label}策略`,
+    });
+    await refreshRemoteState(remoteToken);
+    await refreshAuditLogs(remoteToken);
+    await refreshStrategyLibrary(remoteToken);
+    setLastAction(`已生成提案：${label}`);
+  };
+
+  const onCreateFireSale = async () => {
+    if (!remoteMode || !remoteToken) {
+      setLastAction('紧急急售仅在远程联调模式可用');
+      return;
+    }
+    const response = await MerchantApi.createFireSale(remoteToken, {
+      targetSku: 'sku_hot_soup',
+      ttlMinutes: 30,
+      voucherValue: 15,
+      maxQty: 20,
+    });
+    await refreshRemoteState(remoteToken);
+    await refreshAuditLogs(remoteToken);
+    setLastAction(`急售已上线：${response.campaignId}`);
+  };
+
+  const onSetCampaignStatus = async (
+    campaignId: string,
+    status: 'ACTIVE' | 'PAUSED' | 'ARCHIVED',
+  ) => {
+    if (!remoteMode || !remoteToken) {
+      setLastAction('活动启停仅在远程联调模式可用');
+      return;
+    }
+    const response = await MerchantApi.setCampaignStatus(remoteToken, {
+      campaignId,
+      status,
+    });
+    await refreshRemoteState(remoteToken);
+    await refreshAuditLogs(remoteToken);
+    setLastAction(`活动状态已更新：${response.campaignId} -> ${response.status}`);
+  };
+
+  const onToggleAllianceWalletShared = async () => {
+    if (!remoteMode || !remoteToken) {
+      setLastAction('联盟配置仅在远程联调模式可用');
+      return;
+    }
+    if (!allianceConfig) {
+      setLastAction('联盟配置加载中，请稍后');
+      return;
+    }
+    const response = await MerchantApi.setAllianceConfig(remoteToken, {
+      clusterId: allianceConfig.clusterId,
+      stores: allianceConfig.stores,
+      walletShared: !allianceConfig.walletShared,
+      tierShared: allianceConfig.tierShared,
+    });
+    setAllianceConfig(response);
+    await refreshAuditLogs(remoteToken);
+    setLastAction(`连锁钱包互通已${response.walletShared ? '开启' : '关闭'}`);
+  };
+
+  const onSyncAllianceUser = async () => {
+    if (!remoteMode || !remoteToken) {
+      setLastAction('联盟同步仅在远程联调模式可用');
+      return;
+    }
+    const response = await MerchantApi.syncAllianceUser(remoteToken, {
+      userId: 'u_demo',
+    });
+    await refreshAllianceData(remoteToken);
+    await refreshAuditLogs(remoteToken);
+    setLastAction(`跨店用户同步完成：${response.syncedStores.join(', ')}`);
+  };
+
+  const onSocialTransferDemo = async () => {
+    if (!remoteMode || !remoteToken) {
+      setLastAction('社交转赠仅在远程联调模式可用');
+      return;
+    }
+    const result = await MerchantApi.socialTransfer(remoteToken, {
+      fromUserId: 'u_demo',
+      toUserId: 'u_friend',
+      amount: 10,
+      idempotencyKey: `merchant_social_transfer_${Date.now()}`,
+    });
+    await refreshRemoteState(remoteToken);
+    await refreshAuditLogs(remoteToken);
+    setLastAction(
+      `转赠完成：${result.fromUserId} -> ${result.toUserId} (${result.amount})`,
+    );
+  };
+
+  const onCreateSocialRedPacket = async () => {
+    if (!remoteMode || !remoteToken) {
+      setLastAction('社交红包仅在远程联调模式可用');
+      return;
+    }
+    const result = await MerchantApi.createSocialRedPacket(remoteToken, {
+      senderUserId: 'u_demo',
+      totalAmount: 30,
+      totalSlots: 3,
+      expiresInMinutes: 30,
+      idempotencyKey: `merchant_social_packet_${Date.now()}`,
+    });
+    setLastRedPacketId(result.packetId);
+    await refreshRemoteState(remoteToken);
+    await refreshAuditLogs(remoteToken);
+    setLastAction(`拼手气红包已创建：${result.packetId}`);
+  };
+
+  const onClaimSocialRedPacket = async () => {
+    if (!remoteMode || !remoteToken) {
+      setLastAction('社交红包仅在远程联调模式可用');
+      return;
+    }
+    if (!lastRedPacketId) {
+      setLastAction('请先创建拼手气红包');
+      return;
+    }
+    const result = await MerchantApi.claimSocialRedPacket(remoteToken, {
+      packetId: lastRedPacketId,
+      userId: 'u_friend',
+      idempotencyKey: `merchant_social_claim_${Date.now()}`,
+    });
+    const packet = await MerchantApi.getSocialRedPacket(remoteToken, {
+      packetId: lastRedPacketId,
+    });
+    await refreshRemoteState(remoteToken);
+    await refreshAuditLogs(remoteToken);
+    setLastAction(
+      `红包领取成功：${result.claimAmount}，剩余 ${packet.remainingAmount}/${packet.remainingSlots}`,
+    );
+  };
+
+  const onCreateTreatSession = async () => {
+    if (!remoteMode || !remoteToken) {
+      setLastAction('请客买单仅在远程联调模式可用');
+      return;
+    }
+    const result = await MerchantApi.createTreatSession(remoteToken, {
+      initiatorUserId: 'u_demo',
+      mode: 'MERCHANT_SUBSIDY',
+      orderAmount: 80,
+      subsidyRate: 0.2,
+      subsidyCap: 20,
+      dailySubsidyCap: 60,
+      ttlMinutes: 60,
+    });
+    setLastTreatSessionId(result.sessionId);
+    await refreshAuditLogs(remoteToken);
+    setLastAction(`请客会话已创建：${result.sessionId}`);
+  };
+
+  const onJoinTreatSession = async (userId: string, amount: number) => {
+    if (!remoteMode || !remoteToken) {
+      setLastAction('请客买单仅在远程联调模式可用');
+      return;
+    }
+    if (!lastTreatSessionId) {
+      setLastAction('请先创建请客会话');
+      return;
+    }
+    await MerchantApi.joinTreatSession(remoteToken, {
+      sessionId: lastTreatSessionId,
+      userId,
+      amount,
+      idempotencyKey: `merchant_treat_join_${userId}_${Date.now()}`,
+    });
+    await refreshRemoteState(remoteToken);
+    await refreshAuditLogs(remoteToken);
+    setLastAction(`会话参与成功：${userId} 出资 ${amount}`);
+  };
+
+  const onCloseTreatSession = async () => {
+    if (!remoteMode || !remoteToken) {
+      setLastAction('请客买单仅在远程联调模式可用');
+      return;
+    }
+    if (!lastTreatSessionId) {
+      setLastAction('请先创建请客会话');
+      return;
+    }
+    const result = await MerchantApi.closeTreatSession(remoteToken, {
+      sessionId: lastTreatSessionId,
+    });
+    await refreshRemoteState(remoteToken);
+    await refreshAuditLogs(remoteToken);
+    setLastAction(`会话已结算：${result.status}`);
+  };
+
+  const onTriggerEvent = async (
+    event: string,
+    context: Record<string, string | boolean | number>,
+    label: string,
+  ) => {
+    if (remoteMode && remoteToken) {
+      const triggerResult = await MerchantApi.triggerEvent(
+        remoteToken,
+        event,
+        context,
+      );
+      const executed = triggerResult.executed || [];
+      await refreshRemoteState(remoteToken);
+      await refreshAuditLogs(remoteToken);
+      if (triggerResult.blockedByKillSwitch) {
+        setLastAction('熔断中，策略未执行');
+      } else if (executed.length > 0) {
+        setLastAction(`${label}执行：${executed.join(', ')}`);
+      } else {
+        setLastAction(`${label}无匹配策略`);
+      }
+      return;
+    }
+
+    if (event !== 'WEATHER_CHANGE') {
+      setLastAction('本地模式仅支持 WEATHER_CHANGE 演练');
+      return;
+    }
+    setMerchantState(prev => {
+      const result = triggerCampaigns(prev, 'WEATHER_CHANGE', {
+        weather: context.weather as string,
+      });
+      if (result.blockedByKillSwitch) {
+        setLastAction('熔断中，策略未执行');
+      } else if (result.executedIds.length > 0) {
+        setLastAction(`已执行策略：${result.executedIds.join(', ')}`);
+      } else {
+        setLastAction('无匹配策略执行');
+      }
+      return result.nextState;
+    });
   };
 
   const onToggleKillSwitch = async () => {
@@ -292,32 +607,7 @@ export default function App() {
   };
 
   const onTriggerRainyEvent = async () => {
-    if (remoteMode && remoteToken) {
-      const triggerResult = await MerchantApi.triggerRainEvent(remoteToken);
-      const executed = triggerResult.executed || [];
-      await refreshRemoteState(remoteToken);
-      await refreshAuditLogs(remoteToken);
-      if (triggerResult.blockedByKillSwitch) {
-        setLastAction('熔断中，策略未执行');
-      } else if (executed.length > 0) {
-        setLastAction(`已执行策略：${executed.join(', ')}`);
-      } else {
-        setLastAction('无匹配策略执行');
-      }
-      return;
-    }
-
-    setMerchantState(prev => {
-      const result = triggerCampaigns(prev, 'WEATHER_CHANGE', {weather: 'RAIN'});
-      if (result.blockedByKillSwitch) {
-        setLastAction('熔断中，策略未执行');
-      } else if (result.executedIds.length > 0) {
-        setLastAction(`已执行策略：${result.executedIds.join(', ')}`);
-      } else {
-        setLastAction('无匹配策略执行');
-      }
-      return result.nextState;
-    });
+    await onTriggerEvent('WEATHER_CHANGE', {weather: 'RAIN'}, '暴雨事件');
   };
 
   const onVerifyCashier = () => {
@@ -370,12 +660,161 @@ export default function App() {
                   <Pressable
                     testID={`approve-${item.id}`}
                     style={styles.primaryButton}
-                    onPress={onApproveRainy}>
+                    onPress={() => onApproveProposal(item.id, item.title)}>
                     <Text style={styles.primaryButtonText}>确认执行</Text>
                   </Pressable>
                 </View>
               ))
             )}
+          </SectionCard>
+
+          <SectionCard title="策略库">
+            {!remoteMode ? (
+              <Text style={styles.mutedText}>远程模式下可查看完整营销策略库</Text>
+            ) : strategyLoading ? (
+              <Text style={styles.mutedText}>策略库加载中...</Text>
+            ) : strategyTemplates.length === 0 ? (
+              <Text style={styles.mutedText}>暂无可用策略模板</Text>
+            ) : (
+              <>
+                {strategyTemplates.map(template => (
+                  <View key={template.templateId} style={styles.strategyBlock}>
+                    <Text style={styles.dataLine}>
+                      [{template.category}] {template.name}
+                    </Text>
+                    <Text style={styles.mutedText}>{template.description}</Text>
+                    <View style={styles.filterRow}>
+                      {template.branches.map(branch => (
+                        <Pressable
+                          key={`${template.templateId}-${branch.branchId}`}
+                          style={styles.filterButton}
+                          onPress={() =>
+                            onCreateStrategyProposal(
+                              template.templateId,
+                              branch.branchId,
+                              `${template.name}-${branch.name}`,
+                            )
+                          }>
+                          <Text style={styles.filterButtonText}>{branch.name}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  </View>
+                ))}
+                <Pressable style={styles.secondaryButton} onPress={onCreateFireSale}>
+                  <Text style={styles.secondaryButtonText}>一键定向急售</Text>
+                </Pressable>
+              </>
+            )}
+          </SectionCard>
+
+          <SectionCard title="活动启停">
+            {merchantState.activeCampaigns.length === 0 ? (
+              <Text style={styles.mutedText}>暂无已生效活动</Text>
+            ) : (
+              merchantState.activeCampaigns.map(item => {
+                const status = item.status || 'ACTIVE';
+                return (
+                  <View key={`campaign-${item.id}`} style={styles.listRow}>
+                    <Text style={styles.dataLine}>
+                      {item.name} ({status})
+                    </Text>
+                    <View style={styles.filterRow}>
+                      <Pressable
+                        style={styles.filterButton}
+                        onPress={() =>
+                          onSetCampaignStatus(
+                            item.id,
+                            status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE',
+                          )
+                        }>
+                        <Text style={styles.filterButtonText}>
+                          {status === 'ACTIVE' ? '暂停' : '恢复'}
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        style={styles.filterButton}
+                        onPress={() => onSetCampaignStatus(item.id, 'ARCHIVED')}>
+                        <Text style={styles.filterButtonText}>归档</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </SectionCard>
+
+          <SectionCard title="多店联盟">
+            {!remoteMode ? (
+              <Text style={styles.mutedText}>远程模式下可配置联盟与跨店同步</Text>
+            ) : !allianceConfig ? (
+              <Text style={styles.mutedText}>联盟配置加载中...</Text>
+            ) : (
+              <>
+                <Text style={styles.dataLine}>集群：{allianceConfig.clusterId}</Text>
+                <Text style={styles.dataLine}>
+                  钱包互通：{allianceConfig.walletShared ? '已开启' : '未开启'}
+                </Text>
+                <Text style={styles.mutedText}>
+                  门店：{allianceStores.map(item => item.name).join(' / ')}
+                </Text>
+                <View style={styles.filterRow}>
+                  <Pressable
+                    style={styles.filterButton}
+                    onPress={onToggleAllianceWalletShared}>
+                    <Text style={styles.filterButtonText}>
+                      {allianceConfig.walletShared ? '关闭钱包互通' : '开启钱包互通'}
+                    </Text>
+                  </Pressable>
+                  <Pressable style={styles.filterButton} onPress={onSyncAllianceUser}>
+                    <Text style={styles.filterButtonText}>同步示例用户</Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
+          </SectionCard>
+
+          <SectionCard title="社交裂变演练">
+            <Text style={styles.mutedText}>演练用户：u_demo -&gt; u_friend</Text>
+            <View style={styles.filterRow}>
+              <Pressable style={styles.filterButton} onPress={onSocialTransferDemo}>
+                <Text style={styles.filterButtonText}>转赠 10 碎银</Text>
+              </Pressable>
+              <Pressable style={styles.filterButton} onPress={onCreateSocialRedPacket}>
+                <Text style={styles.filterButtonText}>创建拼手气红包</Text>
+              </Pressable>
+              <Pressable style={styles.filterButton} onPress={onClaimSocialRedPacket}>
+                <Text style={styles.filterButtonText}>好友领取红包</Text>
+              </Pressable>
+            </View>
+            {lastRedPacketId ? (
+              <Text style={styles.mutedText}>最近红包：{lastRedPacketId}</Text>
+            ) : null}
+          </SectionCard>
+
+          <SectionCard title="请客买单演练">
+            <Text style={styles.mutedText}>模式：老板请客（补贴）</Text>
+            <View style={styles.filterRow}>
+              <Pressable style={styles.filterButton} onPress={onCreateTreatSession}>
+                <Text style={styles.filterButtonText}>创建会话</Text>
+              </Pressable>
+              <Pressable
+                style={styles.filterButton}
+                onPress={() => onJoinTreatSession('u_demo', 30)}>
+                <Text style={styles.filterButtonText}>u_demo 出资 30</Text>
+              </Pressable>
+              <Pressable
+                style={styles.filterButton}
+                onPress={() => onJoinTreatSession('u_friend', 40)}>
+                <Text style={styles.filterButtonText}>u_friend 出资 40</Text>
+              </Pressable>
+              <Pressable style={styles.filterButton} onPress={onCloseTreatSession}>
+                <Text style={styles.filterButtonText}>结算会话</Text>
+              </Pressable>
+            </View>
+            {lastTreatSessionId ? (
+              <Text style={styles.mutedText}>最近会话：{lastTreatSessionId}</Text>
+            ) : null}
           </SectionCard>
 
           <SectionCard title="收银台模拟">
@@ -390,15 +829,33 @@ export default function App() {
           </SectionCard>
 
           <SectionCard title="TCA 触发演练">
-            <Text style={styles.mutedText}>
-              先确认“暴雨急售策略”，再触发 WEATHER_CHANGE(RAIN)
-            </Text>
-            <Pressable
-              testID="trigger-rain-event"
-              style={styles.primaryButton}
-              onPress={onTriggerRainyEvent}>
-              <Text style={styles.primaryButtonText}>触发暴雨事件</Text>
-            </Pressable>
+            <Text style={styles.mutedText}>可触发天气/进店/库存等事件检验策略执行</Text>
+            <View style={styles.filterRow}>
+              <Pressable
+                testID="trigger-rain-event"
+                style={styles.primaryButton}
+                onPress={onTriggerRainyEvent}>
+                <Text style={styles.primaryButtonText}>暴雨事件</Text>
+              </Pressable>
+              <Pressable
+                style={styles.secondaryButton}
+                onPress={() =>
+                  onTriggerEvent('APP_OPEN', {weather: 'RAIN', temperature: 18}, '开屏触发')
+                }>
+                <Text style={styles.secondaryButtonText}>开屏触发</Text>
+              </Pressable>
+              <Pressable
+                style={styles.secondaryButton}
+                onPress={() =>
+                  onTriggerEvent(
+                    'INVENTORY_ALERT',
+                    {targetSku: 'sku_hot_soup', inventoryBacklog: 12},
+                    '库存预警',
+                  )
+                }>
+                <Text style={styles.secondaryButtonText}>库存预警</Text>
+              </Pressable>
+            </View>
           </SectionCard>
 
           <SectionCard title="执行日志">
@@ -652,6 +1109,14 @@ const styles = StyleSheet.create({
   },
   listRow: {
     gap: 8,
+  },
+  strategyBlock: {
+    gap: 6,
+    backgroundColor: '#f8fafc',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: 8,
   },
   primaryButton: {
     alignSelf: 'flex-start',

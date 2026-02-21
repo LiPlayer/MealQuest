@@ -23,7 +23,8 @@ jest.mock('@/services/MockDataService', () => ({
 jest.mock('@/utils/storage', () => ({
     storage: {
         getUseRemoteApi: jest.fn(),
-        setApiToken: jest.fn()
+        setApiToken: jest.fn(),
+        getCachedHomeSnapshot: jest.fn()
     }
 }));
 
@@ -40,6 +41,7 @@ describe('DataService remote fallback', () => {
         warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
         delete process.env.TARO_APP_USE_REMOTE_API;
         storageMock.getUseRemoteApi.mockReturnValue(false);
+        storageMock.getCachedHomeSnapshot.mockReturnValue(null);
         api.isConfigured.mockReturnValue(false);
     });
 
@@ -107,5 +109,19 @@ describe('DataService remote fallback', () => {
         expect(result).toBe(fallbackResult);
         expect(storageMock.setApiToken).toHaveBeenCalledWith('');
         expect(mock.executeCheckout).toHaveBeenCalledWith('store_a', 52, 'u_demo');
+    });
+
+    it('uses cached snapshot before mock fallback when remote getHomeSnapshot fails', async () => {
+        process.env.TARO_APP_USE_REMOTE_API = 'true';
+        api.isConfigured.mockReturnValue(true);
+        api.getHomeSnapshot.mockRejectedValue(new Error('remote failed'));
+        const cached = { store: { id: 'store_a' }, wallet: { principal: 1, bonus: 2, silver: 3 } } as any;
+        storageMock.getCachedHomeSnapshot.mockReturnValue(cached);
+
+        const result = await DataService.getHomeSnapshot('store_a', 'u_demo');
+
+        expect(result).toBe(cached);
+        expect(mock.getHomeSnapshot).not.toHaveBeenCalled();
+        expect(storageMock.setApiToken).toHaveBeenCalledWith('');
     });
 });

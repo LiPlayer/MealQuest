@@ -5,7 +5,7 @@
   "type": "commonjs",
   "scripts": {
     "start": "node src/http/server.js",
-    "test": "node --test",
+    "test": "node --test --test-concurrency=1",
     "test:smoke": "node scripts/smoke-local-server.js"
   }
 }

@@ -10,8 +10,12 @@ const { createWebSocketHub } = require("../core/websocketHub");
 const { createCampaignService } = require("../services/campaignService");
 const { createInvoiceService } = require("../services/invoiceService");
 const { createMerchantService } = require("../services/merchantService");
+const { createAllianceService } = require("../services/allianceService");
 const { createPaymentService } = require("../services/paymentService");
 const { createPrivacyService } = require("../services/privacyService");
+const { createSocialService } = require("../services/socialService");
+const { createSupplierService } = require("../services/supplierService");
+const { createTreatPayService } = require("../services/treatPayService");
 const { createInMemoryDb } = require("../store/inMemoryDb");
 const { createPersistentDb } = require("../store/persistentDb");
 const { createTenantRepository } = require("../store/tenantRepository");
@@ -25,6 +29,19 @@ const TENANT_LIMIT_OPERATIONS = [
   "PROPOSAL_CONFIRM",
   "KILL_SWITCH_SET",
   "TCA_TRIGGER",
+  "PRIVACY_CANCEL",
+  "STRATEGY_PROPOSAL_CREATE",
+  "CAMPAIGN_STATUS_SET",
+  "FIRE_SALE_CREATE",
+  "SUPPLIER_VERIFY",
+  "ALLIANCE_CONFIG_SET",
+  "ALLIANCE_SYNC_USER",
+  "SOCIAL_TRANSFER",
+  "SOCIAL_RED_PACKET_CREATE",
+  "SOCIAL_RED_PACKET_CLAIM",
+  "TREAT_SESSION_CREATE",
+  "TREAT_SESSION_JOIN",
+  "TREAT_SESSION_CLOSE",
   "AUDIT_QUERY",
   "WS_CONNECT",
   "WS_STATUS_QUERY"
@@ -127,11 +144,50 @@ function resolveAuditAction(method, pathname) {
   if (method === "POST" && pathname === "/api/privacy/delete-user") {
     return "PRIVACY_DELETE";
   }
+  if (method === "POST" && pathname === "/api/privacy/cancel-account") {
+    return "PRIVACY_CANCEL";
+  }
   if (method === "POST" && pathname === "/api/merchant/kill-switch") {
     return "KILL_SWITCH_SET";
   }
   if (method === "POST" && pathname === "/api/tca/trigger") {
     return "TCA_TRIGGER";
+  }
+  if (method === "POST" && pathname === "/api/merchant/strategy-proposals") {
+    return "STRATEGY_PROPOSAL_CREATE";
+  }
+  if (method === "POST" && /^\/api\/merchant\/campaigns\/[^/]+\/status$/.test(pathname)) {
+    return "CAMPAIGN_STATUS_SET";
+  }
+  if (method === "POST" && pathname === "/api/merchant/fire-sale") {
+    return "FIRE_SALE_CREATE";
+  }
+  if (method === "POST" && pathname === "/api/supplier/verify-order") {
+    return "SUPPLIER_VERIFY";
+  }
+  if (method === "POST" && pathname === "/api/merchant/alliance-config") {
+    return "ALLIANCE_CONFIG_SET";
+  }
+  if (method === "POST" && pathname === "/api/merchant/alliance/sync-user") {
+    return "ALLIANCE_SYNC_USER";
+  }
+  if (method === "POST" && pathname === "/api/social/transfer") {
+    return "SOCIAL_TRANSFER";
+  }
+  if (method === "POST" && pathname === "/api/social/red-packets") {
+    return "SOCIAL_RED_PACKET_CREATE";
+  }
+  if (method === "POST" && /^\/api\/social\/red-packets\/[^/]+\/claim$/.test(pathname)) {
+    return "SOCIAL_RED_PACKET_CLAIM";
+  }
+  if (method === "POST" && pathname === "/api/social/treat/sessions") {
+    return "TREAT_SESSION_CREATE";
+  }
+  if (method === "POST" && /^\/api\/social\/treat\/sessions\/[^/]+\/join$/.test(pathname)) {
+    return "TREAT_SESSION_JOIN";
+  }
+  if (method === "POST" && /^\/api\/social\/treat\/sessions\/[^/]+\/close$/.test(pathname)) {
+    return "TREAT_SESSION_CLOSE";
   }
   if (method === "POST" && pathname === "/api/merchant/tenant-policy") {
     return "TENANT_POLICY_SET";
@@ -284,7 +340,27 @@ function buildMerchantSnapshotSummary(db, merchantId) {
   const invoices = (db.invoicesByMerchant && db.invoicesByMerchant[merchantId]) || {};
   const campaigns = (db.campaigns || []).filter((item) => item.merchantId === merchantId);
   const proposals = (db.proposals || []).filter((item) => item.merchantId === merchantId);
+  const strategyConfigs =
+    (db.strategyConfigs &&
+      db.strategyConfigs[merchantId] &&
+      Object.values(db.strategyConfigs[merchantId])) ||
+    [];
+  const socialPackets =
+    (db.socialRedPacketsByMerchant &&
+      db.socialRedPacketsByMerchant[merchantId] &&
+      Object.values(db.socialRedPacketsByMerchant[merchantId])) ||
+    [];
+  const treatSessions =
+    (db.groupTreatSessionsByMerchant &&
+      db.groupTreatSessionsByMerchant[merchantId] &&
+      Object.values(db.groupTreatSessionsByMerchant[merchantId])) ||
+    [];
+  const allianceConfig =
+    (db.allianceConfigs && db.allianceConfigs[merchantId]) || null;
   const ledger = (db.ledger || []).filter((item) => item.merchantId === merchantId);
+  const socialTransfers = (db.socialTransferLogs || []).filter(
+    (item) => item.merchantId === merchantId
+  );
   const auditLogs = (db.auditLogs || []).filter((item) => item.merchantId === merchantId);
   const merchant = db.merchants && db.merchants[merchantId];
 
@@ -301,6 +377,11 @@ function buildMerchantSnapshotSummary(db, merchantId) {
     invoicesCount: Object.keys(invoices).length,
     campaignsCount: campaigns.length,
     proposalsCount: proposals.length,
+    strategyConfigCount: strategyConfigs.length,
+    socialPacketCount: socialPackets.length,
+    treatSessionCount: treatSessions.length,
+    socialTransferCount: socialTransfers.length,
+    allianceWalletShared: Boolean(allianceConfig && allianceConfig.walletShared),
     ledgerCount: ledger.length,
     auditCount: auditLogs.length,
     budgetUsed: merchant ? Number(merchant.budgetUsed || 0) : 0,
@@ -310,6 +391,70 @@ function buildMerchantSnapshotSummary(db, merchantId) {
 
 function isSnapshotSummaryEqual(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function toActivityTag(category = "") {
+  const normalized = String(category || "").toUpperCase();
+  if (normalized === "ACQUISITION") {
+    return "NEW";
+  }
+  if (normalized === "ACTIVATION") {
+    return "HOT";
+  }
+  if (normalized === "REVENUE") {
+    return "PAY";
+  }
+  if (normalized === "RETENTION") {
+    return "CARE";
+  }
+  if (normalized === "SOCIAL_VIRAL") {
+    return "SOCIAL";
+  }
+  return "AI";
+}
+
+function toActivityTheme(category = "") {
+  const normalized = String(category || "").toUpperCase();
+  if (normalized === "ACQUISITION") {
+    return { color: "bg-rose-50", textColor: "text-rose-600" };
+  }
+  if (normalized === "ACTIVATION") {
+    return { color: "bg-blue-50", textColor: "text-blue-600" };
+  }
+  if (normalized === "REVENUE") {
+    return { color: "bg-amber-50", textColor: "text-amber-600" };
+  }
+  if (normalized === "RETENTION") {
+    return { color: "bg-emerald-50", textColor: "text-emerald-600" };
+  }
+  return { color: "bg-slate-50", textColor: "text-slate-600" };
+}
+
+function buildCustomerActivities(campaigns = []) {
+  return (campaigns || [])
+    .filter((campaign) => campaign && campaign.status === "ACTIVE")
+    .sort((a, b) => Number(b.priority || 0) - Number(a.priority || 0))
+    .slice(0, 6)
+    .map((campaign) => {
+      const meta = campaign.strategyMeta || {};
+      const theme = toActivityTheme(meta.category);
+      const narrative =
+        campaign.action &&
+        campaign.action.type === "STORY_CARD" &&
+        campaign.action.story &&
+        campaign.action.story.narrative
+          ? campaign.action.story.narrative
+          : `活动触发事件：${campaign.trigger && campaign.trigger.event ? campaign.trigger.event : "CUSTOM"}`;
+      return {
+        id: campaign.id,
+        title: campaign.name,
+        desc: narrative,
+        icon: "✨",
+        color: theme.color,
+        textColor: theme.textColor,
+        tag: toActivityTag(meta.category)
+      };
+    });
 }
 
 function copyMerchantSlice({ sourceDb, targetDb, merchantId }) {
@@ -342,10 +487,62 @@ function copyMerchantSlice({ sourceDb, targetDb, merchantId }) {
     merchantId,
     jsonClone((sourceDb.proposals || []).filter((item) => item.merchantId === merchantId))
   );
+  if (!targetDb.strategyConfigs || typeof targetDb.strategyConfigs !== "object") {
+    targetDb.strategyConfigs = {};
+  }
+  targetDb.strategyConfigs[merchantId] = jsonClone(
+    (sourceDb.strategyConfigs && sourceDb.strategyConfigs[merchantId]) || {}
+  );
+
+  if (!targetDb.partnerOrders || typeof targetDb.partnerOrders !== "object") {
+    targetDb.partnerOrders = {};
+  }
+  if (sourceDb.partnerOrders && typeof sourceDb.partnerOrders === "object") {
+    targetDb.partnerOrders = jsonClone(sourceDb.partnerOrders);
+  }
+
+  if (!targetDb.socialRedPacketsByMerchant || typeof targetDb.socialRedPacketsByMerchant !== "object") {
+    targetDb.socialRedPacketsByMerchant = {};
+  }
+  targetDb.socialRedPacketsByMerchant[merchantId] = jsonClone(
+    (sourceDb.socialRedPacketsByMerchant && sourceDb.socialRedPacketsByMerchant[merchantId]) || {}
+  );
+
+  if (!targetDb.allianceConfigs || typeof targetDb.allianceConfigs !== "object") {
+    targetDb.allianceConfigs = {};
+  }
+  if (sourceDb.allianceConfigs && sourceDb.allianceConfigs[merchantId]) {
+    targetDb.allianceConfigs[merchantId] = jsonClone(sourceDb.allianceConfigs[merchantId]);
+  }
+
+  if (
+    !targetDb.groupTreatSessionsByMerchant ||
+    typeof targetDb.groupTreatSessionsByMerchant !== "object"
+  ) {
+    targetDb.groupTreatSessionsByMerchant = {};
+  }
+  targetDb.groupTreatSessionsByMerchant[merchantId] = jsonClone(
+    (sourceDb.groupTreatSessionsByMerchant &&
+      sourceDb.groupTreatSessionsByMerchant[merchantId]) ||
+      {}
+  );
+
+  if (!targetDb.merchantDailySubsidyUsage || typeof targetDb.merchantDailySubsidyUsage !== "object") {
+    targetDb.merchantDailySubsidyUsage = {};
+  }
+  targetDb.merchantDailySubsidyUsage[merchantId] = jsonClone(
+    (sourceDb.merchantDailySubsidyUsage && sourceDb.merchantDailySubsidyUsage[merchantId]) || {}
+  );
+
   targetDb.ledger = upsertMerchantRows(
     targetDb.ledger,
     merchantId,
     jsonClone((sourceDb.ledger || []).filter((item) => item.merchantId === merchantId))
+  );
+  targetDb.socialTransferLogs = upsertMerchantRows(
+    targetDb.socialTransferLogs,
+    merchantId,
+    jsonClone((sourceDb.socialTransferLogs || []).filter((item) => item.merchantId === merchantId))
   );
   targetDb.auditLogs = upsertMerchantRows(
     targetDb.auditLogs,
@@ -622,8 +819,12 @@ function createAppServer({
         paymentService: createPaymentService(scopedDb, { paymentProvider }),
         campaignService: createCampaignService(scopedDb),
         merchantService: createMerchantService(scopedDb),
+        allianceService: createAllianceService(scopedDb),
         invoiceService: createInvoiceService(scopedDb),
-        privacyService: createPrivacyService(scopedDb)
+        privacyService: createPrivacyService(scopedDb),
+        socialService: createSocialService(scopedDb),
+        supplierService: createSupplierService(scopedDb),
+        treatPayService: createTreatPayService(scopedDb)
       };
       serviceCache.set(scopedDb, services);
     }
@@ -782,7 +983,7 @@ function createAppServer({
         }
 
         const scopedDb = tenantRouter.getDbForMerchant(merchantId);
-        const { merchantService } = getServicesForDb(scopedDb);
+        const { merchantService, allianceService } = getServicesForDb(scopedDb);
         const merchant = tenantRepository.getMerchant(merchantId);
         const user = tenantRepository.getMerchantUser(merchantId, userId);
         if (!merchant || !user) {
@@ -790,11 +991,16 @@ function createAppServer({
           return;
         }
 
+        const campaigns = tenantRepository.listCampaigns(merchantId);
         sendJson(res, 200, {
           merchant,
           user,
           dashboard: merchantService.getDashboard({ merchantId }),
-          campaigns: tenantRepository.listCampaigns(merchantId)
+          campaigns,
+          proposals: tenantRepository.listProposals(merchantId),
+          strategyConfigs: tenantRepository.listStrategyConfigs(merchantId),
+          activities: buildCustomerActivities(campaigns),
+          allianceConfig: allianceService.getAllianceConfig({ merchantId })
         });
         return;
       }
@@ -1074,6 +1280,37 @@ function createAppServer({
         return;
       }
 
+      if (method === "POST" && url.pathname === "/api/privacy/cancel-account") {
+        ensureRole(auth, ["CUSTOMER"]);
+        const body = await readJsonBody(req);
+        const merchantId = auth.merchantId || body.merchantId;
+        const userId = auth.userId;
+        if (!merchantId || !userId) {
+          sendJson(res, 400, { error: "merchantId and userId are required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        const { privacyService } = getServicesForMerchant(merchantId);
+        const result = privacyService.cancelUserAccount({
+          merchantId,
+          userId
+        });
+        appendAuditLog({
+          merchantId,
+          action: "PRIVACY_CANCEL",
+          status: "SUCCESS",
+          auth,
+          details: {
+            userId
+          }
+        });
+        sendJson(res, 200, result);
+        return;
+      }
+
       if (method === "GET" && url.pathname === "/api/merchant/dashboard") {
         ensureRole(auth, MERCHANT_ROLES);
         const merchantId = url.searchParams.get("merchantId");
@@ -1087,6 +1324,733 @@ function createAppServer({
         }
         const { merchantService } = getServicesForMerchant(merchantId);
         sendJson(res, 200, merchantService.getDashboard({ merchantId }));
+        return;
+      }
+
+      if (method === "GET" && url.pathname === "/api/merchant/strategy-library") {
+        ensureRole(auth, MERCHANT_ROLES);
+        const merchantId = url.searchParams.get("merchantId") || auth.merchantId;
+        if (!merchantId) {
+          sendJson(res, 400, { error: "merchantId is required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        const { merchantService } = getServicesForMerchant(merchantId);
+        sendJson(res, 200, merchantService.listStrategyLibrary({ merchantId }));
+        return;
+      }
+
+      if (method === "GET" && url.pathname === "/api/merchant/strategy-configs") {
+        ensureRole(auth, MERCHANT_ROLES);
+        const merchantId = url.searchParams.get("merchantId") || auth.merchantId;
+        if (!merchantId) {
+          sendJson(res, 400, { error: "merchantId is required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        const { merchantService } = getServicesForMerchant(merchantId);
+        sendJson(res, 200, merchantService.listStrategyConfigs({ merchantId }));
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/merchant/strategy-proposals") {
+        ensureRole(auth, ["MANAGER", "OWNER"]);
+        const body = await readJsonBody(req);
+        const merchantId = auth.merchantId || body.merchantId;
+        if (!merchantId || !body.templateId) {
+          sendJson(res, 400, { error: "merchantId and templateId are required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        if (
+          !enforceTenantPolicyForHttp({
+            tenantPolicyManager,
+            merchantId,
+            operation: "STRATEGY_PROPOSAL_CREATE",
+            res,
+            auth,
+            appendAuditLog
+          })
+        ) {
+          return;
+        }
+        const { merchantService } = getServicesForMerchant(merchantId);
+        const result = merchantService.createStrategyProposal({
+          merchantId,
+          templateId: body.templateId,
+          branchId: body.branchId,
+          operatorId: auth.operatorId,
+          intent: body.intent,
+          overrides: body.overrides
+        });
+        appendAuditLog({
+          merchantId,
+          action: "STRATEGY_PROPOSAL_CREATE",
+          status: "SUCCESS",
+          auth,
+          details: {
+            templateId: body.templateId,
+            branchId: body.branchId || null,
+            proposalId: result.proposalId
+          }
+        });
+        wsHub.broadcast(merchantId, "STRATEGY_PROPOSAL_CREATED", result);
+        sendJson(res, 200, result);
+        return;
+      }
+
+      const campaignStatusMatch = url.pathname.match(
+        /^\/api\/merchant\/campaigns\/([^/]+)\/status$/
+      );
+      if (method === "POST" && campaignStatusMatch) {
+        ensureRole(auth, ["MANAGER", "OWNER"]);
+        const body = await readJsonBody(req);
+        const merchantId = auth.merchantId || body.merchantId;
+        const campaignId = campaignStatusMatch[1];
+        if (!merchantId) {
+          sendJson(res, 400, { error: "merchantId is required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        if (
+          !enforceTenantPolicyForHttp({
+            tenantPolicyManager,
+            merchantId,
+            operation: "CAMPAIGN_STATUS_SET",
+            res,
+            auth,
+            appendAuditLog
+          })
+        ) {
+          return;
+        }
+        const { merchantService } = getServicesForMerchant(merchantId);
+        const result = merchantService.setCampaignStatus({
+          merchantId,
+          campaignId,
+          status: body.status
+        });
+        appendAuditLog({
+          merchantId,
+          action: "CAMPAIGN_STATUS_SET",
+          status: "SUCCESS",
+          auth,
+          details: {
+            campaignId,
+            status: result.status
+          }
+        });
+        wsHub.broadcast(merchantId, "CAMPAIGN_STATUS_CHANGED", result);
+        sendJson(res, 200, result);
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/merchant/fire-sale") {
+        ensureRole(auth, ["MANAGER", "OWNER"]);
+        const body = await readJsonBody(req);
+        const merchantId = auth.merchantId || body.merchantId;
+        if (!merchantId) {
+          sendJson(res, 400, { error: "merchantId is required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        if (
+          !enforceTenantPolicyForHttp({
+            tenantPolicyManager,
+            merchantId,
+            operation: "FIRE_SALE_CREATE",
+            res,
+            auth,
+            appendAuditLog
+          })
+        ) {
+          return;
+        }
+        const { merchantService } = getServicesForMerchant(merchantId);
+        const result = merchantService.createFireSaleCampaign({
+          merchantId,
+          targetSku: body.targetSku,
+          ttlMinutes: body.ttlMinutes,
+          voucherValue: body.voucherValue,
+          maxQty: body.maxQty
+        });
+        appendAuditLog({
+          merchantId,
+          action: "FIRE_SALE_CREATE",
+          status: "SUCCESS",
+          auth,
+          details: {
+            targetSku: body.targetSku || null,
+            campaignId: result.campaignId
+          }
+        });
+        wsHub.broadcast(merchantId, "FIRE_SALE_CREATED", result);
+        sendJson(res, 200, result);
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/supplier/verify-order") {
+        ensureRole(auth, ["CLERK", "MANAGER", "OWNER"]);
+        const body = await readJsonBody(req);
+        const merchantId = auth.merchantId || body.merchantId;
+        if (!merchantId || !body.partnerId || !body.orderId) {
+          sendJson(res, 400, { error: "merchantId, partnerId and orderId are required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        if (
+          !enforceTenantPolicyForHttp({
+            tenantPolicyManager,
+            merchantId,
+            operation: "SUPPLIER_VERIFY",
+            res,
+            auth,
+            appendAuditLog
+          })
+        ) {
+          return;
+        }
+        const { supplierService } = getServicesForMerchant(merchantId);
+        const result = supplierService.verifyPartnerOrder({
+          partnerId: body.partnerId,
+          orderId: body.orderId,
+          minSpend: body.minSpend
+        });
+        appendAuditLog({
+          merchantId,
+          action: "SUPPLIER_VERIFY",
+          status: result.verified ? "SUCCESS" : "BLOCKED",
+          auth,
+          details: {
+            partnerId: body.partnerId,
+            orderId: body.orderId,
+            minSpend: body.minSpend || 0,
+            verified: result.verified
+          }
+        });
+        sendJson(res, 200, result);
+        return;
+      }
+
+      if (method === "GET" && url.pathname === "/api/merchant/alliance-config") {
+        ensureRole(auth, MERCHANT_ROLES);
+        const merchantId = url.searchParams.get("merchantId") || auth.merchantId;
+        if (!merchantId) {
+          sendJson(res, 400, { error: "merchantId is required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        const { allianceService } = getServicesForMerchant(merchantId);
+        sendJson(res, 200, allianceService.getAllianceConfig({ merchantId }));
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/merchant/alliance-config") {
+        ensureRole(auth, ["OWNER"]);
+        const body = await readJsonBody(req);
+        const merchantId = auth.merchantId || body.merchantId;
+        if (!merchantId) {
+          sendJson(res, 400, { error: "merchantId is required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        if (
+          !enforceTenantPolicyForHttp({
+            tenantPolicyManager,
+            merchantId,
+            operation: "ALLIANCE_CONFIG_SET",
+            res,
+            auth,
+            appendAuditLog
+          })
+        ) {
+          return;
+        }
+        const { allianceService } = getServicesForMerchant(merchantId);
+        const result = allianceService.setAllianceConfig({
+          merchantId,
+          clusterId: body.clusterId,
+          stores: body.stores,
+          walletShared: body.walletShared,
+          tierShared: body.tierShared
+        });
+        appendAuditLog({
+          merchantId,
+          action: "ALLIANCE_CONFIG_SET",
+          status: "SUCCESS",
+          auth,
+          details: {
+            clusterId: result.clusterId,
+            stores: result.stores,
+            walletShared: result.walletShared,
+            tierShared: result.tierShared
+          }
+        });
+        sendJson(res, 200, result);
+        return;
+      }
+
+      if (method === "GET" && url.pathname === "/api/merchant/stores") {
+        ensureRole(auth, MERCHANT_ROLES);
+        const merchantId = url.searchParams.get("merchantId") || auth.merchantId;
+        if (!merchantId) {
+          sendJson(res, 400, { error: "merchantId is required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        const { allianceService } = getServicesForMerchant(merchantId);
+        sendJson(res, 200, allianceService.listStores({ merchantId }));
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/merchant/alliance/sync-user") {
+        ensureRole(auth, ["MANAGER", "OWNER"]);
+        const body = await readJsonBody(req);
+        const merchantId = auth.merchantId || body.merchantId;
+        if (!merchantId || !body.userId) {
+          sendJson(res, 400, { error: "merchantId and userId are required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        if (
+          !enforceTenantPolicyForHttp({
+            tenantPolicyManager,
+            merchantId,
+            operation: "ALLIANCE_SYNC_USER",
+            res,
+            auth,
+            appendAuditLog
+          })
+        ) {
+          return;
+        }
+        const { allianceService } = getServicesForMerchant(merchantId);
+        const result = allianceService.syncUserAcrossStores({
+          merchantId,
+          userId: body.userId
+        });
+        appendAuditLog({
+          merchantId,
+          action: "ALLIANCE_SYNC_USER",
+          status: "SUCCESS",
+          auth,
+          details: {
+            userId: body.userId,
+            syncedStores: result.syncedStores
+          }
+        });
+        sendJson(res, 200, result);
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/social/transfer") {
+        ensureRole(auth, CASHIER_ROLES);
+        const body = await readJsonBody(req);
+        const merchantId = auth.merchantId || body.merchantId;
+        const fromUserId =
+          auth.role === "CUSTOMER" ? auth.userId : body.fromUserId || body.userId;
+        const toUserId = body.toUserId;
+        if (!merchantId || !fromUserId || !toUserId) {
+          sendJson(res, 400, { error: "merchantId/fromUserId/toUserId are required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        if (auth.role === "CUSTOMER" && auth.userId !== fromUserId) {
+          sendJson(res, 403, { error: "user scope denied" });
+          return;
+        }
+        if (
+          !enforceTenantPolicyForHttp({
+            tenantPolicyManager,
+            merchantId,
+            operation: "SOCIAL_TRANSFER",
+            res,
+            auth,
+            appendAuditLog
+          })
+        ) {
+          return;
+        }
+        const idem =
+          req.headers["idempotency-key"] ||
+          body.idempotencyKey ||
+          `social_transfer_${Date.now()}`;
+        const { socialService } = getServicesForMerchant(merchantId);
+        const result = socialService.transferSilver({
+          merchantId,
+          fromUserId,
+          toUserId,
+          amount: body.amount,
+          idempotencyKey: String(idem)
+        });
+        appendAuditLog({
+          merchantId,
+          action: "SOCIAL_TRANSFER",
+          status: "SUCCESS",
+          auth,
+          details: {
+            fromUserId,
+            toUserId,
+            amount: body.amount
+          }
+        });
+        wsHub.broadcast(merchantId, "SOCIAL_TRANSFERRED", result);
+        sendJson(res, 200, result);
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/social/red-packets") {
+        ensureRole(auth, CASHIER_ROLES);
+        const body = await readJsonBody(req);
+        const merchantId = auth.merchantId || body.merchantId;
+        const senderUserId =
+          auth.role === "CUSTOMER" ? auth.userId : body.senderUserId || body.userId;
+        if (!merchantId || !senderUserId) {
+          sendJson(res, 400, { error: "merchantId and senderUserId are required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        if (auth.role === "CUSTOMER" && auth.userId !== senderUserId) {
+          sendJson(res, 403, { error: "user scope denied" });
+          return;
+        }
+        if (
+          !enforceTenantPolicyForHttp({
+            tenantPolicyManager,
+            merchantId,
+            operation: "SOCIAL_RED_PACKET_CREATE",
+            res,
+            auth,
+            appendAuditLog
+          })
+        ) {
+          return;
+        }
+        const idem =
+          req.headers["idempotency-key"] ||
+          body.idempotencyKey ||
+          `social_packet_create_${Date.now()}`;
+        const { socialService } = getServicesForMerchant(merchantId);
+        const result = socialService.createRedPacket({
+          merchantId,
+          senderUserId,
+          totalAmount: body.totalAmount,
+          totalSlots: body.totalSlots,
+          expiresInMinutes: body.expiresInMinutes,
+          idempotencyKey: String(idem)
+        });
+        appendAuditLog({
+          merchantId,
+          action: "SOCIAL_RED_PACKET_CREATE",
+          status: "SUCCESS",
+          auth,
+          details: {
+            senderUserId,
+            totalAmount: body.totalAmount,
+            totalSlots: body.totalSlots,
+            packetId: result.packetId
+          }
+        });
+        wsHub.broadcast(merchantId, "SOCIAL_RED_PACKET_CREATED", result);
+        sendJson(res, 200, result);
+        return;
+      }
+
+      const socialClaimMatch = url.pathname.match(
+        /^\/api\/social\/red-packets\/([^/]+)\/claim$/
+      );
+      if (method === "POST" && socialClaimMatch) {
+        ensureRole(auth, CASHIER_ROLES);
+        const body = await readJsonBody(req);
+        const merchantId = auth.merchantId || body.merchantId;
+        const userId = auth.role === "CUSTOMER" ? auth.userId : body.userId;
+        if (!merchantId || !userId) {
+          sendJson(res, 400, { error: "merchantId and userId are required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        if (auth.role === "CUSTOMER" && auth.userId !== userId) {
+          sendJson(res, 403, { error: "user scope denied" });
+          return;
+        }
+        if (
+          !enforceTenantPolicyForHttp({
+            tenantPolicyManager,
+            merchantId,
+            operation: "SOCIAL_RED_PACKET_CLAIM",
+            res,
+            auth,
+            appendAuditLog
+          })
+        ) {
+          return;
+        }
+        const idem =
+          req.headers["idempotency-key"] ||
+          body.idempotencyKey ||
+          `social_packet_claim_${socialClaimMatch[1]}_${userId}`;
+        const { socialService } = getServicesForMerchant(merchantId);
+        const result = socialService.claimRedPacket({
+          merchantId,
+          packetId: socialClaimMatch[1],
+          userId,
+          idempotencyKey: String(idem)
+        });
+        appendAuditLog({
+          merchantId,
+          action: "SOCIAL_RED_PACKET_CLAIM",
+          status: "SUCCESS",
+          auth,
+          details: {
+            packetId: socialClaimMatch[1],
+            userId,
+            claimAmount: result.claimAmount
+          }
+        });
+        wsHub.broadcast(merchantId, "SOCIAL_RED_PACKET_CLAIMED", result);
+        sendJson(res, 200, result);
+        return;
+      }
+
+      const socialPacketQueryMatch = url.pathname.match(/^\/api\/social\/red-packets\/([^/]+)$/);
+      if (method === "GET" && socialPacketQueryMatch) {
+        ensureRole(auth, CASHIER_ROLES);
+        const merchantId = url.searchParams.get("merchantId") || auth.merchantId;
+        if (!merchantId) {
+          sendJson(res, 400, { error: "merchantId is required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        const { socialService } = getServicesForMerchant(merchantId);
+        const result = socialService.getRedPacket({
+          merchantId,
+          packetId: socialPacketQueryMatch[1]
+        });
+        sendJson(res, 200, result);
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/social/treat/sessions") {
+        ensureRole(auth, CASHIER_ROLES);
+        const body = await readJsonBody(req);
+        const merchantId = auth.merchantId || body.merchantId;
+        const initiatorUserId =
+          auth.role === "CUSTOMER" ? auth.userId : body.initiatorUserId || body.userId;
+        if (!merchantId || !initiatorUserId) {
+          sendJson(res, 400, { error: "merchantId and initiatorUserId are required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        if (auth.role === "CUSTOMER" && auth.userId !== initiatorUserId) {
+          sendJson(res, 403, { error: "user scope denied" });
+          return;
+        }
+        if (
+          !enforceTenantPolicyForHttp({
+            tenantPolicyManager,
+            merchantId,
+            operation: "TREAT_SESSION_CREATE",
+            res,
+            auth,
+            appendAuditLog
+          })
+        ) {
+          return;
+        }
+        const { treatPayService } = getServicesForMerchant(merchantId);
+        const result = treatPayService.createSession({
+          merchantId,
+          initiatorUserId,
+          mode: body.mode,
+          orderAmount: body.orderAmount,
+          subsidyRate: body.subsidyRate,
+          subsidyCap: body.subsidyCap,
+          dailySubsidyCap: body.dailySubsidyCap,
+          ttlMinutes: body.ttlMinutes
+        });
+        appendAuditLog({
+          merchantId,
+          action: "TREAT_SESSION_CREATE",
+          status: "SUCCESS",
+          auth,
+          details: {
+            sessionId: result.sessionId,
+            mode: result.mode,
+            orderAmount: result.orderAmount
+          }
+        });
+        wsHub.broadcast(merchantId, "TREAT_SESSION_CREATED", result);
+        sendJson(res, 200, result);
+        return;
+      }
+
+      const treatJoinMatch = url.pathname.match(/^\/api\/social\/treat\/sessions\/([^/]+)\/join$/);
+      if (method === "POST" && treatJoinMatch) {
+        ensureRole(auth, CASHIER_ROLES);
+        const body = await readJsonBody(req);
+        const merchantId = auth.merchantId || body.merchantId;
+        const userId = auth.role === "CUSTOMER" ? auth.userId : body.userId;
+        if (!merchantId || !userId) {
+          sendJson(res, 400, { error: "merchantId and userId are required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        if (auth.role === "CUSTOMER" && auth.userId !== userId) {
+          sendJson(res, 403, { error: "user scope denied" });
+          return;
+        }
+        if (
+          !enforceTenantPolicyForHttp({
+            tenantPolicyManager,
+            merchantId,
+            operation: "TREAT_SESSION_JOIN",
+            res,
+            auth,
+            appendAuditLog
+          })
+        ) {
+          return;
+        }
+        const idem =
+          req.headers["idempotency-key"] ||
+          body.idempotencyKey ||
+          `treat_join_${treatJoinMatch[1]}_${userId}`;
+        const { treatPayService } = getServicesForMerchant(merchantId);
+        const result = treatPayService.joinSession({
+          merchantId,
+          sessionId: treatJoinMatch[1],
+          userId,
+          amount: body.amount,
+          idempotencyKey: String(idem)
+        });
+        appendAuditLog({
+          merchantId,
+          action: "TREAT_SESSION_JOIN",
+          status: "SUCCESS",
+          auth,
+          details: {
+            sessionId: treatJoinMatch[1],
+            userId,
+            amount: body.amount
+          }
+        });
+        wsHub.broadcast(merchantId, "TREAT_SESSION_JOINED", result);
+        sendJson(res, 200, result);
+        return;
+      }
+
+      const treatCloseMatch = url.pathname.match(/^\/api\/social\/treat\/sessions\/([^/]+)\/close$/);
+      if (method === "POST" && treatCloseMatch) {
+        ensureRole(auth, ["MANAGER", "OWNER"]);
+        const body = await readJsonBody(req);
+        const merchantId = auth.merchantId || body.merchantId;
+        if (!merchantId) {
+          sendJson(res, 400, { error: "merchantId is required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        if (
+          !enforceTenantPolicyForHttp({
+            tenantPolicyManager,
+            merchantId,
+            operation: "TREAT_SESSION_CLOSE",
+            res,
+            auth,
+            appendAuditLog
+          })
+        ) {
+          return;
+        }
+        const { treatPayService } = getServicesForMerchant(merchantId);
+        const result = treatPayService.closeSession({
+          merchantId,
+          sessionId: treatCloseMatch[1],
+          operatorId: auth.operatorId
+        });
+        appendAuditLog({
+          merchantId,
+          action: "TREAT_SESSION_CLOSE",
+          status: result.status === "SETTLED" ? "SUCCESS" : "BLOCKED",
+          auth,
+          details: {
+            sessionId: treatCloseMatch[1],
+            status: result.status
+          }
+        });
+        wsHub.broadcast(merchantId, "TREAT_SESSION_CLOSED", result);
+        sendJson(res, 200, result);
+        return;
+      }
+
+      const treatQueryMatch = url.pathname.match(/^\/api\/social\/treat\/sessions\/([^/]+)$/);
+      if (method === "GET" && treatQueryMatch) {
+        ensureRole(auth, CASHIER_ROLES);
+        const merchantId = url.searchParams.get("merchantId") || auth.merchantId;
+        if (!merchantId) {
+          sendJson(res, 400, { error: "merchantId is required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        const { treatPayService } = getServicesForMerchant(merchantId);
+        const result = treatPayService.getSession({
+          merchantId,
+          sessionId: treatQueryMatch[1]
+        });
+        sendJson(res, 200, result);
         return;
       }
 

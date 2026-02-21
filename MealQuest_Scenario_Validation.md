@@ -390,13 +390,124 @@
 
 结论：满足。
 
+## 3.18 场景 S18：标准营销策略库全链路
+
+1. 店长拉取策略模板库，需包含拉新/促活/提客单/留存/社交裂变全分类。
+2. 选择模板分支生成提案后，提案进入收件箱 `PENDING`。
+3. 店长确认提案后策略生效，可通过事件触发验证执行。
+4. 将策略置为 `PAUSED` 后，相同事件不应再命中。
+
+反推：
+1. 文档：`MealQuest_Server_Spec.md` 5.3、7.2；`MealQuest_Merchant_Spec.md` 2.3、2.4。
+2. 代码：
+   - `MealQuestServer/src/services/strategyLibrary.js`
+   - `MealQuestServer/src/services/merchantService.js`
+   - `MealQuestServer/src/http/server.js`
+   - `MealQuestMerchant/src/services/merchantApi.ts`
+3. 测试：`MealQuestServer/test/http.integration.test.js`（strategy library 用例）。
+
+结论：满足。
+
+## 3.19 场景 S19：供应商接口与异业联盟核验
+
+1. 门店传入 `partnerId/orderId/minSpend` 发起联盟订单核验。
+2. 若订单真实且满足门槛，返回 `verified=true`。
+3. 门槛不满足或订单不存在时返回 `verified=false`。
+4. 核验动作必须进入审计日志，支持追责。
+
+反推：
+1. 文档：`MealQuest_Server_Spec.md` 3.3、5.3、6。
+2. 代码：
+   - `MealQuestServer/src/services/supplierService.js`
+   - `MealQuestServer/src/http/server.js`
+3. 测试：`MealQuestServer/test/http.integration.test.js`（supplier verify 用例）。
+
+结论：满足。
+
+## 3.20 场景 S20：人工接管定向急售
+
+1. 店长一键创建急售策略，系统生成 `Priority:999` 且带 `TTL`。
+2. 触发库存预警事件时急售策略优先命中。
+3. 急售策略创建动作广播实时事件并记审计。
+
+反推：
+1. 文档：`MealQuest_Server_Spec.md` 5.3、6；`MealQuest_Merchant_Spec.md` 2.4。
+2. 代码：
+   - `MealQuestServer/src/services/merchantService.js`
+   - `MealQuestServer/src/http/server.js`
+3. 测试：`MealQuestServer/test/http.integration.test.js`（fire-sale 用例）。
+
+结论：满足。
+
+## 3.21 场景 S21：连锁钱包互通
+
+1. 店长开启连锁配置 `walletShared=true`。
+2. 顾客在 B 店支付时，系统可使用 A 店共享钱包进行扣减。
+3. 支付响应返回 `walletScope`，可追溯命中的共享钱包来源。
+
+反推：
+1. 文档：`MealQuest_Server_Spec.md` 3.2、5.3；`MealQuest_Merchant_Spec.md` 2.5。
+2. 代码：
+   - `MealQuestServer/src/services/allianceService.js`
+   - `MealQuestServer/src/services/paymentService.js`
+   - `MealQuestServer/src/http/server.js`
+3. 测试：`MealQuestServer/test/http.integration.test.js`（alliance wallet sharing 用例）。
+
+结论：满足。
+
+## 3.22 场景 S22：社交裂变守恒账务
+
+1. 用户 A 向用户 B 转赠碎银，A 减 B 增。
+2. 用户 A 创建拼手气红包，总额先冻结。
+3. 多用户领取后，领取总和严格等于红包总额，状态转 `FINISHED`。
+
+反推：
+1. 文档：`MealQuest_Server_Spec.md` 3.3、5.3；`MealQuest_Merchant_Spec.md` 2.6。
+2. 代码：
+   - `MealQuestServer/src/services/socialService.js`
+   - `MealQuestServer/src/http/server.js`
+3. 测试：`MealQuestServer/test/http.integration.test.js`（social transfer/red packet 用例）。
+
+结论：满足。
+
+## 3.23 场景 S23：请客买单会话结算
+
+1. 发起人创建请客会话（`GROUP_PAY` 或 `MERCHANT_SUBSIDY`）。
+2. 多个用户参与出资后，店长执行结算。
+3. 群买单支持超额自动按比例退款。
+4. 老板补贴模式必须受日补贴上限约束，不足时会话失败并原路退款。
+
+反推：
+1. 文档：`MealQuest_Server_Spec.md` 5.3；`MealQuest_Merchant_Spec.md` 2.6。
+2. 代码：
+   - `MealQuestServer/src/services/treatPayService.js`
+   - `MealQuestServer/src/http/server.js`
+3. 测试：`MealQuestServer/test/http.integration.test.js`（treat paying 两个用例）。
+
+结论：满足。
+
+## 3.24 场景 S24：顾客自助注销与交易匿名保留
+
+1. 顾客在小程序侧发起 `cancel-account`。
+2. 注销完成后，用户账号不可再次登录。
+3. 历史交易记录保留但用户标识匿名化（满足合规留存与隐私删除并行）。
+
+反推：
+1. 文档：`MealQuest_Server_Spec.md` 5.2.1、6；`MealQuest_Customer_Spec.md` 6.1。
+2. 代码：
+   - `MealQuestServer/src/services/privacyService.js`
+   - `MealQuestServer/src/http/server.js`
+3. 测试：`MealQuestServer/test/http.integration.test.js`（customer cancel-account 用例）。
+
+结论：满足。
+
 ---
 
 ## 4. 测试回归结果（本轮）
 
-1. `MealQuestServer`: 25/25 通过。
-2. `MealQuestMerchant`: 14/14 通过。
-3. `meal-quest-customer`: 19/19 通过。
+1. `MealQuestServer`: 32/32 通过。
+2. `MealQuestMerchant`: 23/23 通过。
+3. `meal-quest-customer`: 23/23 通过。
 
 ---
 

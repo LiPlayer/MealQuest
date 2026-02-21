@@ -31,12 +31,41 @@ function createDefaultPaymentProvider() {
 function createPaymentService(db, options = {}) {
   const paymentProvider = options.paymentProvider || createDefaultPaymentProvider();
 
+  function resolveWalletScope(merchantId) {
+    const config =
+      db.allianceConfigs && db.allianceConfigs[merchantId]
+        ? db.allianceConfigs[merchantId]
+        : null;
+    if (
+      !config ||
+      !config.walletShared ||
+      !Array.isArray(config.stores) ||
+      config.stores.length === 0
+    ) {
+      return {
+        walletMerchantId: merchantId,
+        walletShared: false
+      };
+    }
+    const firstStore = config.stores.find((storeId) => db.merchants[storeId]);
+    return {
+      walletMerchantId: firstStore || merchantId,
+      walletShared: true
+    };
+  }
+
   function getMerchantAndUser({ merchantId, userId }) {
     const merchant = db.merchants[merchantId];
-    const user = db.getMerchantUser(merchantId, userId);
+    const scope = resolveWalletScope(merchantId);
+    const user = db.getMerchantUser(scope.walletMerchantId, userId);
     assertEntity(merchant, "merchant");
     assertEntity(user, "user");
-    return { merchant, user };
+    return {
+      merchant,
+      user,
+      walletMerchantId: scope.walletMerchantId,
+      walletShared: scope.walletShared
+    };
   }
 
   function getQuote({ merchantId, userId, orderAmount }) {
@@ -85,7 +114,10 @@ function createPaymentService(db, options = {}) {
       return db.idempotencyMap.get(idemKey);
     }
 
-    const { user, merchant } = getMerchantAndUser({ merchantId, userId });
+    const { user, merchant, walletMerchantId, walletShared } = getMerchantAndUser({
+      merchantId,
+      userId
+    });
     const quote = getQuote({ merchantId, userId, orderAmount });
     const payable = roundMoney(quote.payable);
 
@@ -133,7 +165,11 @@ function createPaymentService(db, options = {}) {
         paymentTxnId,
         status: paymentRecord.status,
         quote,
-        externalPayment: paymentRecord.externalPayment
+        externalPayment: paymentRecord.externalPayment,
+        walletScope: {
+          walletShared,
+          walletMerchantId
+        }
       };
       db.idempotencyMap.set(idemKey, result);
       db.save();
@@ -170,7 +206,11 @@ function createPaymentService(db, options = {}) {
       paymentTxnId: paymentLedger.txnId,
       status: "PAID",
       quote,
-      wallet: user.wallet
+      wallet: user.wallet,
+      walletScope: {
+        walletShared,
+        walletMerchantId
+      }
     };
     db.idempotencyMap.set(idemKey, result);
     db.save();
@@ -204,7 +244,7 @@ function createPaymentService(db, options = {}) {
         paymentTxnId: payment.paymentTxnId,
         status: payment.status,
         externalPayment: payment.externalPayment,
-        wallet: db.getMerchantUser(merchantId, payment.userId).wallet
+        wallet: getMerchantAndUser({ merchantId, userId: payment.userId }).user.wallet
       };
       db.idempotencyMap.set(idemKey, settled);
       return settled;
@@ -235,7 +275,8 @@ function createPaymentService(db, options = {}) {
       throw new Error("paidAmount mismatch");
     }
 
-    const user = db.getMerchantUser(merchantId, payment.userId);
+    const userScope = getMerchantAndUser({ merchantId, userId: payment.userId });
+    const user = userScope.user;
     assertEntity(user, "user");
     applyQuoteToUser(user, payment.quote);
 
@@ -263,7 +304,11 @@ function createPaymentService(db, options = {}) {
       paymentTxnId: payment.paymentTxnId,
       status: payment.status,
       externalPayment: payment.externalPayment,
-      wallet: user.wallet
+      wallet: user.wallet,
+      walletScope: {
+        walletShared: userScope.walletShared,
+        walletMerchantId: userScope.walletMerchantId
+      }
     };
     db.idempotencyMap.set(idemKey, result);
     db.save();
@@ -295,7 +340,8 @@ function createPaymentService(db, options = {}) {
     if (userId && payment.userId !== userId) {
       throw new Error("payment user mismatch");
     }
-    const user = db.getMerchantUser(merchantId, payment.userId);
+    const userScope = getMerchantAndUser({ merchantId, userId: payment.userId });
+    const user = userScope.user;
     assertEntity(user, "user");
 
     const normalizedRefundAmount = Number(refundAmount);
@@ -332,7 +378,11 @@ function createPaymentService(db, options = {}) {
       paymentTxnId,
       refundedAmount: normalizedRefundAmount,
       wallet: user.wallet,
-      clawback: clawbackResult.clawback
+      clawback: clawbackResult.clawback,
+      walletScope: {
+        walletShared: userScope.walletShared,
+        walletMerchantId: userScope.walletMerchantId
+      }
     };
     db.idempotencyMap.set(idemKey, result);
     db.save();

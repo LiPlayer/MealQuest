@@ -31,4 +31,24 @@ describe('Storage Utils', () => {
         const result = storage.getLastStoreId();
         expect(result).toBeNull();
     });
+
+    it('should cache and load home snapshot by store/user key', () => {
+        const snapshot = {wallet: {principal: 1, bonus: 2, silver: 3}};
+        storage.setCachedHomeSnapshot('m_demo', 'u_demo', snapshot);
+        expect(Taro.setStorageSync).toHaveBeenCalledWith(
+            'mq_home_snapshot:m_demo:u_demo',
+            JSON.stringify(snapshot),
+        );
+
+        (Taro.getStorageSync as jest.Mock).mockReturnValue(JSON.stringify(snapshot));
+        const loaded = storage.getCachedHomeSnapshot('m_demo', 'u_demo');
+        expect(Taro.getStorageSync).toHaveBeenCalledWith('mq_home_snapshot:m_demo:u_demo');
+        expect(loaded).toEqual(snapshot);
+    });
+
+    it('should return null when cached snapshot is invalid json', () => {
+        (Taro.getStorageSync as jest.Mock).mockReturnValue('{bad-json');
+        const loaded = storage.getCachedHomeSnapshot('m_demo', 'u_demo');
+        expect(loaded).toBeNull();
+    });
 });
