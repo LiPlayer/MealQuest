@@ -83,7 +83,7 @@ Write-Host "[lan-server] HOST=$env:HOST PORT=$env:PORT"
 if ($ips.Count -gt 0) {
     Write-Host "[lan-server] LAN IP candidates:"
     $ips | ForEach-Object { Write-Host "  - $_" }
-    Write-Host "[lan-server] Customer/Merchant base URL example: http://$($ips[0]):$Port"
+    Write-Host "[lan-server] Customer/Merchant MQ_SERVER_URL example: http://$($ips[0]):$Port"
 } else {
     Write-Host "[lan-server] No LAN IPv4 detected automatically. Please run ipconfig and use your Wi-Fi IPv4."
 }

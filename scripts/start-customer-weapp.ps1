@@ -1,6 +1,6 @@
 param(
-    [string]$ServerBaseUrl = "http://127.0.0.1:3030",
-    [string]$StoreId = ""
+    [string]$ServerUrl = "http://127.0.0.1:3030",
+    [string]$MerchantId = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -70,23 +70,24 @@ if (-not (Test-Path $customerDir)) {
     throw "Customer app directory not found: $customerDir"
 }
 
-Set-ProcessEnv -Name "TARO_APP_USE_REMOTE_API" -Value "true"
-Set-ProcessEnv -Name "TARO_APP_SERVER_BASE_URL" -Value $ServerBaseUrl
+Set-ProcessEnv -Name "MQ_SERVER_URL" -Value $ServerUrl
+Set-ProcessEnv -Name "TARO_APP_SERVER_BASE_URL" -Value $ServerUrl
 
-if ([string]::IsNullOrWhiteSpace($StoreId)) {
+if ([string]::IsNullOrWhiteSpace($MerchantId)) {
+    Clear-ProcessEnv -Name "MQ_MERCHANT_ID"
     Clear-ProcessEnv -Name "TARO_APP_DEFAULT_STORE_ID"
 } else {
-    Set-ProcessEnv -Name "TARO_APP_DEFAULT_STORE_ID" -Value $StoreId
+    Set-ProcessEnv -Name "MQ_MERCHANT_ID" -Value $MerchantId
+    Set-ProcessEnv -Name "TARO_APP_DEFAULT_STORE_ID" -Value $MerchantId
 }
 
-Write-Host "[customer-weapp] mode=online"
-Write-Host "[customer-weapp] TARO_APP_USE_REMOTE_API=$env:TARO_APP_USE_REMOTE_API"
-Write-Host "[customer-weapp] TARO_APP_SERVER_BASE_URL=$env:TARO_APP_SERVER_BASE_URL"
-Write-Host "[customer-weapp] TARO_APP_DEFAULT_STORE_ID=$env:TARO_APP_DEFAULT_STORE_ID"
-if ([string]::IsNullOrWhiteSpace($StoreId)) {
+Write-Host "[customer-weapp] ONLINE MODE ACTIVE" -ForegroundColor Green
+Write-Host "[customer-weapp] MQ_SERVER_URL=$env:MQ_SERVER_URL"
+Write-Host "[customer-weapp] MQ_MERCHANT_ID=$env:MQ_MERCHANT_ID"
+if ([string]::IsNullOrWhiteSpace($MerchantId)) {
     Write-Host "[customer-weapp] store injection=off (real entry path: scan/link/history)" -ForegroundColor Yellow
 } else {
-    Write-Host "[customer-weapp] store injection=on ($StoreId)" -ForegroundColor Yellow
+    Write-Host "[customer-weapp] store injection=on ($MerchantId)" -ForegroundColor Yellow
 }
 
 try {

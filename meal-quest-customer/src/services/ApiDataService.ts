@@ -3,7 +3,7 @@ import Taro from '@tarojs/taro';
 import { CheckoutQuote } from '@/domain/smartCheckout';
 import { storage } from '@/utils/storage';
 
-import { HomeSnapshot, InvoiceItem, PaymentLedgerItem, StoreData } from './MockDataService';
+import { HomeSnapshot, InvoiceItem, PaymentLedgerItem, StoreData } from './dataTypes';
 
 interface RequestOptions {
     method: 'GET' | 'POST';
@@ -47,7 +47,11 @@ const getEnv = (name: string): string => {
     return typeof value === 'string' ? value : '';
 };
 
-const getServerBaseUrl = () => getEnv('TARO_APP_SERVER_BASE_URL').trim();
+const getServerBaseUrl = () => {
+    const mqUrl = getEnv('MQ_SERVER_URL');
+    if (mqUrl) return mqUrl.trim();
+    return getEnv('TARO_APP_SERVER_BASE_URL').trim();
+};
 
 const requestJson = async ({ method, path, data, token }: RequestOptions) => {
     const baseUrl = getServerBaseUrl();
@@ -104,7 +108,7 @@ const toStoreData = (merchant: any): StoreData => ({
 });
 
 const toHomeSnapshot = (stateData: any): HomeSnapshot => ({
-  store: toStoreData(stateData.merchant),
+    store: toStoreData(stateData.merchant),
     wallet: {
         principal: Number(stateData.user.wallet.principal || 0),
         bonus: Number(stateData.user.wallet.bonus || 0),
@@ -139,14 +143,16 @@ export const ApiDataService = {
     isConfigured: () => Boolean(getServerBaseUrl()),
 
     getHomeSnapshot: async (storeId: string, userId = 'u_demo'): Promise<HomeSnapshot> => {
-        const token = await ensureCustomerToken(storeId, userId);
+        const targetStoreId = storeId || getEnv('MQ_MERCHANT_ID') || getEnv('TARO_APP_DEFAULT_STORE_ID') || 'store_a';
+        const targetStoreIdStr = String(targetStoreId);
+        const token = await ensureCustomerToken(targetStoreIdStr, userId);
         const stateData = await requestJson({
             method: 'GET',
-            path: `/api/state?merchantId=${encodeURIComponent(storeId)}&userId=${encodeURIComponent(userId)}`,
+            path: `/api/state?merchantId=${encodeURIComponent(targetStoreIdStr)}&userId=${encodeURIComponent(userId)}`,
             token
         });
         const snapshot = toHomeSnapshot(stateData);
-        storage.setCachedHomeSnapshot(storeId, userId, snapshot);
+        storage.setCachedHomeSnapshot(targetStoreIdStr, userId, snapshot);
         return snapshot;
     },
 

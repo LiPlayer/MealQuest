@@ -1,7 +1,7 @@
 param(
     [ValidateSet("android", "ios")]
     [string]$Platform = "android",
-    [string]$ServerBaseUrl = "http://127.0.0.1:3030",
+    [string]$ServerUrl = "http://127.0.0.1:3030",
     [string]$AndroidSdkPath = "",
     [string]$MerchantId = "m_my_first_store",
     [bool]$EnableEntryFlow = $true,
@@ -221,35 +221,24 @@ $entryFlowValue = if ($EnableEntryFlow) { "true" } else { "false" }
 Set-ProcessEnv -Name "MQ_ENABLE_ENTRY_FLOW" -Value $entryFlowValue
 Set-ProcessEnv -Name "MQ_MERCHANT_ID" -Value $MerchantId
 
-Set-ProcessEnv -Name "MQ_USE_REMOTE_API" -Value "true"
-Set-ProcessEnv -Name "MQ_SERVER_BASE_URL" -Value $ServerBaseUrl
+Set-ProcessEnv -Name "MQ_SERVER_URL" -Value $ServerUrl
 
-Write-Host "[merchant-app] mode=online platform=$Platform"
+Write-Host "[merchant-app] ONLINE MODE ACTIVE" -ForegroundColor Green
 Write-Host "[merchant-app] MQ_ENABLE_ENTRY_FLOW=$env:MQ_ENABLE_ENTRY_FLOW"
-Write-Host "[merchant-app] MQ_USE_REMOTE_API=$env:MQ_USE_REMOTE_API"
-Write-Host "[merchant-app] MQ_SERVER_BASE_URL=$env:MQ_SERVER_BASE_URL"
+Write-Host "[merchant-app] MQ_SERVER_URL=$env:MQ_SERVER_URL"
 Write-Host "[merchant-app] MQ_MERCHANT_ID=$env:MQ_MERCHANT_ID"
 Write-Host "[merchant-app] metro=${MetroHost}:$MetroPort"
-Write-Host "[merchant-app] phone Dev Server should be '<LAN_IP>:$MetroPort' in WiFi mode."
 
 $metroProcess = $null
 
 if ($AutoStartServer) {
     $serverScript = Join-Path $PSScriptRoot "start-server.ps1"
-    if (-not (Test-Path $serverScript)) {
+    if (-not $serverScript -or -not (Test-Path $serverScript)) {
         throw "Server startup script not found: $serverScript"
     }
-    Write-Host "[merchant-app] starting local server in a new terminal..."
+    Write-Host "[merchant-app] starting local server in a new terminal..." -ForegroundColor Cyan
     Print-Command -WorkingDir $PSScriptRoot -Command "powershell -NoExit -ExecutionPolicy Bypass -File `"$serverScript`" -Profile dev"
-    $serverProcess = Start-Process powershell -ArgumentList @(
-        "-NoExit",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        $serverScript,
-        "-Profile",
-        "dev"
-    ) -PassThru
+    $serverProcess = Start-Process powershell -ArgumentList "-NoExit", "-ExecutionPolicy", "Bypass", "-File", "`"$serverScript`"", "-Profile", "dev" -PassThru
     $trackedProcesses += $serverProcess
     Start-Sleep -Seconds 2
 }
@@ -257,31 +246,29 @@ if ($AutoStartServer) {
 
 if (-not $NoMetro) {
     if (Test-PortOccupied -Port $MetroPort) {
-        Write-Host "[merchant-app] Metro port $MetroPort is already occupied. Skipping Metro startup." -ForegroundColor Green
+        Write-Host "" -ForegroundColor Yellow
+        Write-Host "*******************************************************************************" -ForegroundColor Yellow
+        Write-Host "  WARNING: Metro port $MetroPort is already occupied!" -ForegroundColor Yellow
+        Write-Host "  The existing Metro process might NOT have the current environment variables." -ForegroundColor Yellow
+        Write-Host "  If the app shows 'Connection Failed' or wrong 'BaseUrl', PLEASE RESTART METRO." -ForegroundColor Yellow
+        Write-Host "*******************************************************************************" -ForegroundColor Yellow
+        Write-Host "" -ForegroundColor Yellow
         $MetroInjectedOrPreExisting = $true
     }
 }
 
 if (-not $NoMetro -and -not $MetroInjectedOrPreExisting) {
-    # ... starts Metro in new terminal ...
     $metroCommand = @"
 `$env:MQ_ENABLE_ENTRY_FLOW='$env:MQ_ENABLE_ENTRY_FLOW';
-`$env:MQ_USE_REMOTE_API='$env:MQ_USE_REMOTE_API';
+`$env:MQ_USE_REMOTE_API='true';
 `$env:MQ_SERVER_BASE_URL='$env:MQ_SERVER_BASE_URL';
 `$env:MQ_MERCHANT_ID='$env:MQ_MERCHANT_ID';
 Set-Location '$merchantDir';
 npx react-native start --host '$MetroHost' --port $MetroPort
 "@
 
-    Write-Host "[merchant-app] starting Metro in a new terminal..."
-    Print-Command -WorkingDir $merchantDir -Command "powershell -NoExit -ExecutionPolicy Bypass -Command <set env; cd '$merchantDir'; npx react-native start --host '$MetroHost' --port $MetroPort>"
-    $metroProcess = Start-Process powershell -ArgumentList @(
-        "-NoExit",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-Command",
-        $metroCommand
-    ) -PassThru
+    Write-Host "[merchant-app] starting Metro in a new terminal..." -ForegroundColor Cyan
+    $metroProcess = Start-Process powershell -ArgumentList "-NoExit", "-ExecutionPolicy", "Bypass", "-Command", $metroCommand -PassThru
     $trackedProcesses += $metroProcess
     $MetroInjectedOrPreExisting = $true
 

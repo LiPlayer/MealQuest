@@ -7,14 +7,14 @@ import CustomerCardStack from '../../components/CustomerCardStack';
 import ActivityArea from '../../components/ActivityArea';
 import CustomerBottomDock from '../../components/CustomerBottomDock';
 import { storage } from '../../utils/storage';
-import { HomeSnapshot } from '../../services/MockDataService';
+import { HomeSnapshot } from '../../services/dataTypes';
 import { DataService } from '../../services/DataService';
 import { buildSmartCheckoutQuote } from '../../domain/smartCheckout';
 
 import './index.scss';
 
 const DEFAULT_STORE_ID =
-    (typeof process !== 'undefined' && process.env && process.env.TARO_APP_DEFAULT_STORE_ID) || 'store_a';
+    (typeof process !== 'undefined' && process.env && (process.env.MQ_MERCHANT_ID || process.env.TARO_APP_DEFAULT_STORE_ID)) || 'store_a';
 
 // Add declaration for the native component
 declare global {
@@ -111,7 +111,7 @@ export default function Index() {
     };
 
     return (
-            <View className='index-container' style={headerStyle}>
+        <View className='index-container' style={headerStyle}>
             <View id='index-account-entry' className='account-entry' onClick={handleOpenAccount}>
                 <Text className='account-entry__text'>账户中心</Text>
             </View>

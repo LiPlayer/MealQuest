@@ -1,4 +1,4 @@
-import {MerchantState} from '../domain/merchantEngine';
+import { MerchantState } from '../domain/merchantEngine';
 
 const getEnv = (name: string): string => {
   if (typeof process === 'undefined' || !process.env) {
@@ -8,9 +8,11 @@ const getEnv = (name: string): string => {
   return typeof value === 'string' ? value.trim() : '';
 };
 
-const BASE_URL = getEnv('MQ_SERVER_BASE_URL');
-const USE_REMOTE = getEnv('MQ_USE_REMOTE_API') === 'true' && BASE_URL.length > 0;
+const BASE_URL = getEnv('MQ_SERVER_URL');
 const DEFAULT_MERCHANT_ID = getEnv('MQ_MERCHANT_ID') || 'm_demo';
+if (!BASE_URL) {
+  console.warn('[MerchantApi] MQ_SERVER_URL is missing. API calls will fail.');
+}
 let runtimeMerchantId = DEFAULT_MERCHANT_ID;
 
 type HttpMethod = 'GET' | 'POST';
@@ -212,7 +214,7 @@ async function requestJson<T>(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    ...(body ? {body: JSON.stringify(body)} : {}),
+    ...(body ? { body: JSON.stringify(body) } : {}),
   });
 
   const data = await response.json();
@@ -232,7 +234,7 @@ async function requestPublicJson<T>(
     headers: {
       'Content-Type': 'application/json',
     },
-    ...(body ? {body: JSON.stringify(body)} : {}),
+    ...(body ? { body: JSON.stringify(body) } : {}),
   });
   const data = await response.json();
   if (!response.ok) {
@@ -252,44 +254,44 @@ function toMerchantState(payload: {
   const pending =
     pendingFromState.length > 0
       ? pendingFromState.map((item: any) => ({
-          id: item.id,
-          title: item.title,
-          status: 'PENDING' as const,
-          templateId: item.strategyMeta?.templateId,
-          branchId: item.strategyMeta?.branchId,
-          campaignDraft: {
-            id: item.suggestedCampaign?.id || `${item.id}_draft`,
-            name: item.suggestedCampaign?.name || item.title,
-            triggerEvent:
-              item.suggestedCampaign?.trigger?.event ||
-              item.suggestedCampaign?.triggerEvent ||
-              'WEATHER_CHANGE',
-            condition: {
-              field: item.suggestedCampaign?.conditions?.[0]?.field || 'weather',
-              equals:
-                item.suggestedCampaign?.conditions?.[0]?.value ??
-                item.suggestedCampaign?.conditions?.[0]?.equals ??
-                'RAIN',
-            },
-            budget: {
-              cap: Number(item.suggestedCampaign?.budget?.cap || 0),
-              used: Number(item.suggestedCampaign?.budget?.used || 0),
-              costPerHit: Number(item.suggestedCampaign?.budget?.costPerHit || 0),
-            },
+        id: item.id,
+        title: item.title,
+        status: 'PENDING' as const,
+        templateId: item.strategyMeta?.templateId,
+        branchId: item.strategyMeta?.branchId,
+        campaignDraft: {
+          id: item.suggestedCampaign?.id || `${item.id}_draft`,
+          name: item.suggestedCampaign?.name || item.title,
+          triggerEvent:
+            item.suggestedCampaign?.trigger?.event ||
+            item.suggestedCampaign?.triggerEvent ||
+            'WEATHER_CHANGE',
+          condition: {
+            field: item.suggestedCampaign?.conditions?.[0]?.field || 'weather',
+            equals:
+              item.suggestedCampaign?.conditions?.[0]?.value ??
+              item.suggestedCampaign?.conditions?.[0]?.equals ??
+              'RAIN',
           },
-        }))
+          budget: {
+            cap: Number(item.suggestedCampaign?.budget?.cap || 0),
+            used: Number(item.suggestedCampaign?.budget?.used || 0),
+            costPerHit: Number(item.suggestedCampaign?.budget?.costPerHit || 0),
+          },
+        },
+      }))
       : (payload.dashboard.pendingProposals || []).map((item: any) => ({
-          id: item.id,
-          title: item.title,
-          status: 'PENDING' as const,
-          campaignDraft: {
-            id: `${item.id}_draft`,
-            name: item.title,
-            triggerEvent: 'WEATHER_CHANGE' as const,
-            condition: {field: 'weather', equals: 'RAIN'},
-            budget: {cap: 0, used: 0, costPerHit: 0},
-          },
-        }));
+        id: item.id,
+        title: item.title,
+        status: 'PENDING' as const,
+        campaignDraft: {
+          id: `${item.id}_draft`,
+          name: item.title,
+          triggerEvent: 'WEATHER_CHANGE' as const,
+          condition: { field: 'weather', equals: 'RAIN' },
+          budget: { cap: 0, used: 0, costPerHit: 0 },
+        },
+      }));
 
   return {
     merchantId: payload.dashboard.merchantId,
@@ -320,7 +322,7 @@ function toMerchantState(payload: {
 }
 
 export const MerchantApi = {
-  isConfigured: () => USE_REMOTE,
+  isConfigured: () => Boolean(BASE_URL),
   getBaseUrl: () => BASE_URL,
   getMerchantId: () => runtimeMerchantId,
   setMerchantId: (merchantId: string) => {
@@ -329,21 +331,6 @@ export const MerchantApi = {
   },
 
   getMerchantCatalog: async () => {
-    if (!USE_REMOTE) {
-      return {
-        items: [
-          {
-            merchantId: runtimeMerchantId,
-            name: '本地演练门店',
-            budgetCap: 300,
-            budgetUsed: 0,
-            killSwitchEnabled: false,
-            onboardedAt: new Date().toISOString(),
-          },
-        ],
-        total: 1,
-      } as MerchantCatalogResult;
-    }
     return requestPublicJson<MerchantCatalogResult>('GET', '/api/merchant/catalog');
   },
 
@@ -353,27 +340,6 @@ export const MerchantApi = {
     budgetCap?: number;
     seedDemoUsers?: boolean;
   }) => {
-    if (!USE_REMOTE) {
-      runtimeMerchantId = payload.merchantId;
-      return {
-        merchant: {
-          merchantId: payload.merchantId,
-          name: payload.name,
-          budgetCap: payload.budgetCap || 300,
-          budgetUsed: 0,
-          killSwitchEnabled: false,
-        },
-        seededUsers: payload.seedDemoUsers === false ? [] : ['u_demo', 'u_friend'],
-        allianceConfig: {
-          merchantId: payload.merchantId,
-          clusterId: `cluster_${payload.merchantId}`,
-          stores: [payload.merchantId],
-          walletShared: false,
-          tierShared: false,
-          updatedAt: new Date().toISOString(),
-        },
-      } as MerchantOnboardResult;
-    }
     const result = await requestPublicJson<MerchantOnboardResult>(
       'POST',
       '/api/merchant/onboard',
@@ -384,17 +350,10 @@ export const MerchantApi = {
   },
 
   requestMerchantLoginCode: async (phone: string) => {
-    if (!USE_REMOTE) {
-      return {
-        phone,
-        expiresInSec: 300,
-        debugCode: '123456',
-      } as MerchantPhoneCodeResult;
-    }
     return requestPublicJson<MerchantPhoneCodeResult>(
       'POST',
       '/api/auth/merchant/request-code',
-      {phone},
+      { phone },
     );
   },
 
@@ -403,19 +362,6 @@ export const MerchantApi = {
     code: string;
     merchantId?: string;
   }) => {
-    if (!USE_REMOTE) {
-      if (String(payload.code) !== '123456') {
-        throw new Error('code mismatch');
-      }
-      return {
-        token: 'local_owner_token',
-        profile: {
-          role: 'OWNER',
-          merchantId: payload.merchantId || null,
-          phone: payload.phone,
-        },
-      } as MerchantPhoneLoginResult;
-    }
     return requestPublicJson<MerchantPhoneLoginResult>(
       'POST',
       '/api/auth/merchant/phone-login',
@@ -426,8 +372,8 @@ export const MerchantApi = {
   loginAsMerchant: async (merchantId = runtimeMerchantId) => {
     const response = await fetch(`${BASE_URL}/api/auth/mock-login`, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({role: 'OWNER', merchantId}),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'OWNER', merchantId }),
     });
     const data = await response.json();
     if (!response.ok) {
@@ -460,7 +406,7 @@ export const MerchantApi = {
       'POST',
       `/api/merchant/proposals/${proposalId}/confirm`,
       token,
-      {merchantId, operatorId: 'staff_owner'},
+      { merchantId, operatorId: 'staff_owner' },
     );
   },
 
@@ -479,7 +425,7 @@ export const MerchantApi = {
     token: string,
     merchantId = runtimeMerchantId,
   ): Promise<TriggerRainEventResult> => {
-    return MerchantApi.triggerEvent(token, 'WEATHER_CHANGE', {weather: 'RAIN'}, merchantId);
+    return MerchantApi.triggerEvent(token, 'WEATHER_CHANGE', { weather: 'RAIN' }, merchantId);
   },
 
   triggerEvent: async (
@@ -498,7 +444,7 @@ export const MerchantApi = {
   },
 
   getStrategyLibrary: async (token: string, merchantId = runtimeMerchantId) => {
-    return requestJson<{merchantId: string; templates: StrategyTemplate[]}>(
+    return requestJson<{ merchantId: string; templates: StrategyTemplate[] }>(
       'GET',
       `/api/merchant/strategy-library?merchantId=${encodeURIComponent(merchantId)}`,
       token,
@@ -506,7 +452,7 @@ export const MerchantApi = {
   },
 
   getStrategyConfigs: async (token: string, merchantId = runtimeMerchantId) => {
-    return requestJson<{merchantId: string; items: any[]}>(
+    return requestJson<{ merchantId: string; items: any[] }>(
       'GET',
       `/api/merchant/strategy-configs?merchantId=${encodeURIComponent(merchantId)}`,
       token,
@@ -613,7 +559,7 @@ export const MerchantApi = {
       clusterId: string;
       walletShared: boolean;
       tierShared: boolean;
-      stores: {merchantId: string; name: string}[];
+      stores: { merchantId: string; name: string }[];
     }>(
       'GET',
       `/api/merchant/stores?merchantId=${encodeURIComponent(merchantId)}`,
@@ -632,22 +578,6 @@ export const MerchantApi = {
       notes?: string;
     },
   ) => {
-    if (!USE_REMOTE) {
-      return {
-        merchantId: payload.merchantId || runtimeMerchantId,
-        status: 'PENDING_REVIEW',
-        application: {
-          merchantId: payload.merchantId || runtimeMerchantId,
-          companyName: payload.companyName,
-          licenseNo: payload.licenseNo,
-          settlementAccount: payload.settlementAccount,
-          contactPhone: payload.contactPhone,
-          notes: payload.notes || '',
-          submittedAt: new Date().toISOString(),
-          status: 'PENDING_REVIEW',
-        },
-      } as MerchantContractStatusResult;
-    }
     return requestJson<MerchantContractStatusResult>(
       'POST',
       '/api/merchant/contract/apply',
@@ -664,22 +594,6 @@ export const MerchantApi = {
   },
 
   getContractStatus: async (token: string, merchantId = runtimeMerchantId) => {
-    if (!USE_REMOTE) {
-      return {
-        merchantId,
-        status: 'PENDING_REVIEW',
-        application: {
-          merchantId,
-          companyName: '本地演练企业',
-          licenseNo: 'LOCAL-DEMO',
-          settlementAccount: '6222020202020202',
-          contactPhone: '+8613800000000',
-          notes: '',
-          submittedAt: new Date().toISOString(),
-          status: 'PENDING_REVIEW',
-        },
-      } as MerchantContractStatusResult;
-    }
     return requestJson<MerchantContractStatusResult>(
       'GET',
       `/api/merchant/contract/status?merchantId=${encodeURIComponent(merchantId)}`,
@@ -842,7 +756,7 @@ export const MerchantApi = {
       userId: string;
       amount: number;
       totalContributed: number;
-      userWallet: {principal: number; bonus: number; silver: number};
+      userWallet: { principal: number; bonus: number; silver: number };
     }>(
       'POST',
       `/api/social/treat/sessions/${encodeURIComponent(payload.sessionId)}/join`,

@@ -1,6 +1,6 @@
 ﻿# MealQuest 全链路执行手册（单文档版）
 
-适用目标：你只看这一份文档，就能从 0 开始理解系统、完成本地/联调测试、推进试点上线、进入运营与盈利阶段。
+适用目标：你只看这一份文档，就能从 0 开始理解系统、完成在线测试与联调、推进试点上线、进入运营与盈利阶段。
 
 文档定位：执行手册，不是概念展示。
 
@@ -185,20 +185,20 @@ Release模式下**不需要**两步启动。 上线到应用商店的 APP 是“
 1. LAN IP 候选（如 `192.168.31.10`）。
 2. 服务监听 `0.0.0.0:3030`。
 
-### 步骤 2：启动商户端（在线模式）
+### 步骤 2：启动商户端
 
 ```powershell
-.\scripts\start-merchant-app.ps1 -Platform android -ServerBaseUrl 'http://192.168.31.10:3030'
+.\scripts\start-merchant-app.ps1 -Platform android -ServerUrl 'http://192.168.31.10:3030'
 ```
 
 说明：
 1. 会自动注入商户端环境变量。
 2. 会自动起 Metro，并执行 debug 安装启动。
 
-### 步骤 3：启动顾客端（在线模式）
+### 步骤 3：启动顾客端
 
 ```powershell
-.\scripts\start-customer-weapp.ps1 -ServerBaseUrl 'http://192.168.31.10:3030'
+.\scripts\start-customer-weapp.ps1 -ServerUrl 'http://192.168.31.10:3030'
 ```
 
 ### 步骤 4：执行老板 + 顾客双角色验证
@@ -235,11 +235,9 @@ adb reverse tcp:8081 tcp:8081
 
 ---
 
-## 9. 环境模式（online）
+用途：联调真实本地后端 API。
 
-用途：联调真实本地后端 API（推荐日常验证用）。
-
-关键：`ServerBaseUrl` 必须是电脑 LAN IP，不能是 `127.0.0.1`。
+关键：`ServerUrl` 必须是电脑 LAN IP，不能是 `127.0.0.1`。
 
 ---
 
@@ -475,10 +473,10 @@ node .\scripts\release-local.js
 .\scripts\start-server-lan.ps1 -Port 3030
 
 # 2) 商户端在线模式
-.\scripts\start-merchant-app.ps1 -Platform android -ServerBaseUrl 'http://<LAN_IP>:3030'
+.\scripts\start-merchant-app.ps1 -Platform android -ServerUrl 'http://<LAN_IP>:3030'
 
 # 3) 顾客端在线模式
-.\scripts\start-customer-weapp.ps1 -ServerBaseUrl 'http://<LAN_IP>:3030'
+.\scripts\start-customer-weapp.ps1 -ServerUrl 'http://<LAN_IP>:3030'
 
 # 4) 全量回归门禁
 node .\scripts\release-local.js

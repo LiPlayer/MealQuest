@@ -1,4 +1,4 @@
-import React, {useEffect, useMemo, useState} from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -8,7 +8,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import {SafeAreaProvider, SafeAreaView} from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import {
   approveProposal,
@@ -22,8 +22,8 @@ import {
   MerchantApi,
   StrategyTemplate,
 } from './src/services/merchantApi';
-import {AuditLogRow, buildAuditLogRow} from './src/services/auditLogViewModel';
-import {createRealtimeClient} from './src/services/merchantRealtime';
+import { AuditLogRow, buildAuditLogRow } from './src/services/auditLogViewModel';
+import { createRealtimeClient } from './src/services/merchantRealtime';
 import {
   buildRealtimeEventRow,
   buildSystemEventRow,
@@ -53,40 +53,40 @@ type AuditActionFilter =
 type AuditStatusFilter = 'ALL' | 'SUCCESS' | 'DENIED' | 'BLOCKED' | 'FAILED';
 type AuditTimeRange = '24H' | '7D' | 'ALL';
 
-const AUDIT_ACTION_OPTIONS: {value: AuditActionFilter; label: string}[] = [
-  {value: 'ALL', label: '全部动作'},
-  {value: 'PAYMENT_VERIFY', label: '支付'},
-  {value: 'PAYMENT_REFUND', label: '退款'},
-  {value: 'PRIVACY_CANCEL', label: '顾客注销'},
-  {value: 'PROPOSAL_CONFIRM', label: '提案确认'},
-  {value: 'STRATEGY_PROPOSAL_CREATE', label: '提案生成'},
-  {value: 'CAMPAIGN_STATUS_SET', label: '活动启停'},
-  {value: 'FIRE_SALE_CREATE', label: '急售'},
-  {value: 'SUPPLIER_VERIFY', label: '供应商核验'},
-  {value: 'ALLIANCE_CONFIG_SET', label: '联盟配置'},
-  {value: 'ALLIANCE_SYNC_USER', label: '联盟同步'},
-  {value: 'SOCIAL_TRANSFER', label: '社交转赠'},
-  {value: 'SOCIAL_RED_PACKET_CREATE', label: '红包创建'},
-  {value: 'SOCIAL_RED_PACKET_CLAIM', label: '红包领取'},
-  {value: 'TREAT_SESSION_CREATE', label: '请客创建'},
-  {value: 'TREAT_SESSION_JOIN', label: '请客参与'},
-  {value: 'TREAT_SESSION_CLOSE', label: '请客结算'},
-  {value: 'KILL_SWITCH_SET', label: '熔断'},
-  {value: 'TCA_TRIGGER', label: 'TCA'},
+const AUDIT_ACTION_OPTIONS: { value: AuditActionFilter; label: string }[] = [
+  { value: 'ALL', label: '全部动作' },
+  { value: 'PAYMENT_VERIFY', label: '支付' },
+  { value: 'PAYMENT_REFUND', label: '退款' },
+  { value: 'PRIVACY_CANCEL', label: '顾客注销' },
+  { value: 'PROPOSAL_CONFIRM', label: '提案确认' },
+  { value: 'STRATEGY_PROPOSAL_CREATE', label: '提案生成' },
+  { value: 'CAMPAIGN_STATUS_SET', label: '活动启停' },
+  { value: 'FIRE_SALE_CREATE', label: '急售' },
+  { value: 'SUPPLIER_VERIFY', label: '供应商核验' },
+  { value: 'ALLIANCE_CONFIG_SET', label: '联盟配置' },
+  { value: 'ALLIANCE_SYNC_USER', label: '联盟同步' },
+  { value: 'SOCIAL_TRANSFER', label: '社交转赠' },
+  { value: 'SOCIAL_RED_PACKET_CREATE', label: '红包创建' },
+  { value: 'SOCIAL_RED_PACKET_CLAIM', label: '红包领取' },
+  { value: 'TREAT_SESSION_CREATE', label: '请客创建' },
+  { value: 'TREAT_SESSION_JOIN', label: '请客参与' },
+  { value: 'TREAT_SESSION_CLOSE', label: '请客结算' },
+  { value: 'KILL_SWITCH_SET', label: '熔断' },
+  { value: 'TCA_TRIGGER', label: 'TCA' },
 ];
 
-const AUDIT_STATUS_OPTIONS: {value: AuditStatusFilter; label: string}[] = [
-  {value: 'ALL', label: '全部状态'},
-  {value: 'SUCCESS', label: '成功'},
-  {value: 'DENIED', label: '拒绝'},
-  {value: 'BLOCKED', label: '阻断'},
-  {value: 'FAILED', label: '失败'},
+const AUDIT_STATUS_OPTIONS: { value: AuditStatusFilter; label: string }[] = [
+  { value: 'ALL', label: '全部状态' },
+  { value: 'SUCCESS', label: '成功' },
+  { value: 'DENIED', label: '拒绝' },
+  { value: 'BLOCKED', label: '阻断' },
+  { value: 'FAILED', label: '失败' },
 ];
 
-const AUDIT_TIME_OPTIONS: {value: AuditTimeRange; label: string}[] = [
-  {value: '24H', label: '24小时'},
-  {value: '7D', label: '7天'},
-  {value: 'ALL', label: '全部时间'},
+const AUDIT_TIME_OPTIONS: { value: AuditTimeRange; label: string }[] = [
+  { value: '24H', label: '24小时' },
+  { value: '7D', label: '7天' },
+  { value: 'ALL', label: '全部时间' },
 ];
 
 function buildAuditStartTime(range: AuditTimeRange): string {
@@ -115,9 +115,8 @@ function SectionCard({
 
 function MerchantConsoleApp() {
   const [merchantState, setMerchantState] = useState(createInitialMerchantState);
-  const [lastAction, setLastAction] = useState('待命中');
+  const [lastAction, setLastAction] = useState('正在连接...');
   const [remoteToken, setRemoteToken] = useState<string | null>(null);
-  const [remoteMode, setRemoteMode] = useState(false);
 
   const [realtimeEvents, setRealtimeEvents] = useState<RealtimeEventRow[]>([]);
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
@@ -137,7 +136,7 @@ function MerchantConsoleApp() {
   const [strategyLoading, setStrategyLoading] = useState(false);
   const [allianceConfig, setAllianceConfig] = useState<AllianceConfig | null>(null);
   const [allianceStores, setAllianceStores] = useState<
-    {merchantId: string; name: string}[]
+    { merchantId: string; name: string }[]
   >([]);
   const [lastRedPacketId, setLastRedPacketId] = useState('');
   const [lastTreatSessionId, setLastTreatSessionId] = useState('');
@@ -244,7 +243,7 @@ function MerchantConsoleApp() {
 
   useEffect(() => {
     let active = true;
-    let realtimeClient: {close: () => void} | null = null;
+    let realtimeClient: { close: () => void } | null = null;
 
     if (!MerchantApi.isConfigured()) {
       return () => {
@@ -259,13 +258,6 @@ function MerchantConsoleApp() {
         if (!active) {
           return;
         }
-        setRemoteMode(true);
-        setRemoteToken(token);
-
-        await refreshRemoteState(token);
-        await refreshStrategyLibrary(token);
-        await refreshAllianceData(token);
-        await refreshAuditLogs(token);
         setLastAction('已连接服务端驾驶舱');
 
         const wsUrl = MerchantApi.getWsUrl(token);
@@ -278,7 +270,7 @@ function MerchantConsoleApp() {
               }
               appendRealtimeEvent(buildRealtimeEventRow(message));
               setLastAction(`实时事件：${message.type}`);
-              void refreshRemoteState(token).catch(() => {});
+              void refreshRemoteState(token).catch(() => { });
             },
             onError: () => {
               if (!active) {
@@ -316,23 +308,23 @@ function MerchantConsoleApp() {
   }, []);
 
   useEffect(() => {
-    if (!remoteMode || !remoteToken) {
+    if (!remoteToken) {
       return;
     }
-    void refreshAuditLogs(remoteToken, {forceReset: true});
+    void refreshAuditLogs(remoteToken, { forceReset: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [remoteMode, remoteToken, auditActionFilter, auditStatusFilter, auditTimeRange]);
+  }, [remoteToken, auditActionFilter, auditStatusFilter, auditTimeRange]);
 
   useEffect(() => {
-    if (!remoteMode || !remoteToken) {
+    if (!remoteToken) {
       return;
     }
     void refreshStrategyLibrary(remoteToken);
     void refreshAllianceData(remoteToken);
-  }, [remoteMode, remoteToken]);
+  }, [remoteToken]);
 
   const onApproveProposal = async (proposalId: string, title: string) => {
-    if (remoteMode && remoteToken) {
+    if (remoteToken) {
       await MerchantApi.approveProposal(remoteToken, proposalId);
       await refreshRemoteState(remoteToken);
       await refreshAuditLogs(remoteToken);
@@ -340,9 +332,6 @@ function MerchantConsoleApp() {
       setLastAction(`已确认策略：${title}`);
       return;
     }
-
-    setMerchantState(prev => approveProposal(prev, proposalId));
-    setLastAction(`已确认策略：${title}`);
   };
 
   const onCreateStrategyProposal = async (
@@ -350,8 +339,8 @@ function MerchantConsoleApp() {
     branchId: string,
     label: string,
   ) => {
-    if (!remoteMode || !remoteToken) {
-      setLastAction('策略库提案仅在远程联调模式可用');
+    if (!remoteToken) {
+      setLastAction('连接未就绪');
       return;
     }
     await MerchantApi.createStrategyProposal(remoteToken, {
@@ -366,8 +355,8 @@ function MerchantConsoleApp() {
   };
 
   const onCreateFireSale = async () => {
-    if (!remoteMode || !remoteToken) {
-      setLastAction('紧急急售仅在远程联调模式可用');
+    if (!remoteToken) {
+      setLastAction('连接未就绪');
       return;
     }
     const response = await MerchantApi.createFireSale(remoteToken, {
@@ -385,8 +374,8 @@ function MerchantConsoleApp() {
     campaignId: string,
     status: 'ACTIVE' | 'PAUSED' | 'ARCHIVED',
   ) => {
-    if (!remoteMode || !remoteToken) {
-      setLastAction('活动启停仅在远程联调模式可用');
+    if (!remoteToken) {
+      setLastAction('连接未就绪');
       return;
     }
     const response = await MerchantApi.setCampaignStatus(remoteToken, {
@@ -399,8 +388,8 @@ function MerchantConsoleApp() {
   };
 
   const onToggleAllianceWalletShared = async () => {
-    if (!remoteMode || !remoteToken) {
-      setLastAction('联盟配置仅在远程联调模式可用');
+    if (!remoteToken) {
+      setLastAction('连接未就绪');
       return;
     }
     if (!allianceConfig) {
@@ -419,8 +408,8 @@ function MerchantConsoleApp() {
   };
 
   const onSyncAllianceUser = async () => {
-    if (!remoteMode || !remoteToken) {
-      setLastAction('联盟同步仅在远程联调模式可用');
+    if (!remoteToken) {
+      setLastAction('连接未就绪');
       return;
     }
     const response = await MerchantApi.syncAllianceUser(remoteToken, {
@@ -432,8 +421,8 @@ function MerchantConsoleApp() {
   };
 
   const onSocialTransferDemo = async () => {
-    if (!remoteMode || !remoteToken) {
-      setLastAction('社交转赠仅在远程联调模式可用');
+    if (!remoteToken) {
+      setLastAction('连接未就绪');
       return;
     }
     const result = await MerchantApi.socialTransfer(remoteToken, {
@@ -450,8 +439,8 @@ function MerchantConsoleApp() {
   };
 
   const onCreateSocialRedPacket = async () => {
-    if (!remoteMode || !remoteToken) {
-      setLastAction('社交红包仅在远程联调模式可用');
+    if (!remoteToken) {
+      setLastAction('连接未就绪');
       return;
     }
     const result = await MerchantApi.createSocialRedPacket(remoteToken, {
@@ -468,8 +457,8 @@ function MerchantConsoleApp() {
   };
 
   const onClaimSocialRedPacket = async () => {
-    if (!remoteMode || !remoteToken) {
-      setLastAction('社交红包仅在远程联调模式可用');
+    if (!remoteToken) {
+      setLastAction('连接未就绪');
       return;
     }
     if (!lastRedPacketId) {
@@ -492,8 +481,8 @@ function MerchantConsoleApp() {
   };
 
   const onCreateTreatSession = async () => {
-    if (!remoteMode || !remoteToken) {
-      setLastAction('请客买单仅在远程联调模式可用');
+    if (!remoteToken) {
+      setLastAction('连接未就绪');
       return;
     }
     const result = await MerchantApi.createTreatSession(remoteToken, {
@@ -511,8 +500,8 @@ function MerchantConsoleApp() {
   };
 
   const onJoinTreatSession = async (userId: string, amount: number) => {
-    if (!remoteMode || !remoteToken) {
-      setLastAction('请客买单仅在远程联调模式可用');
+    if (!remoteToken) {
+      setLastAction('连接未就绪');
       return;
     }
     if (!lastTreatSessionId) {
@@ -531,8 +520,8 @@ function MerchantConsoleApp() {
   };
 
   const onCloseTreatSession = async () => {
-    if (!remoteMode || !remoteToken) {
-      setLastAction('请客买单仅在远程联调模式可用');
+    if (!remoteToken) {
+      setLastAction('连接未就绪');
       return;
     }
     if (!lastTreatSessionId) {
@@ -552,7 +541,7 @@ function MerchantConsoleApp() {
     context: Record<string, string | boolean | number>,
     label: string,
   ) => {
-    if (remoteMode && remoteToken) {
+    if (remoteToken) {
       const triggerResult = await MerchantApi.triggerEvent(
         remoteToken,
         event,
@@ -591,7 +580,7 @@ function MerchantConsoleApp() {
   };
 
   const onToggleKillSwitch = async () => {
-    if (remoteMode && remoteToken) {
+    if (remoteToken) {
       const targetEnabled = !merchantState.killSwitchEnabled;
       await MerchantApi.setKillSwitch(remoteToken, targetEnabled);
       await refreshRemoteState(remoteToken);
@@ -608,7 +597,7 @@ function MerchantConsoleApp() {
   };
 
   const onTriggerRainyEvent = async () => {
-    await onTriggerEvent('WEATHER_CHANGE', {weather: 'RAIN'}, '暴雨事件');
+    await onTriggerEvent('WEATHER_CHANGE', { weather: 'RAIN' }, '暴雨事件');
   };
 
   const onVerifyCashier = () => {
@@ -641,19 +630,19 @@ function MerchantConsoleApp() {
               <View style={styles.heroHeadTextWrap}>
                 <Text style={styles.heroKicker}>MealQuest Merchant OS</Text>
                 <Text style={styles.appTitle}>有戏掌柜驾驶舱</Text>
-                <Text style={styles.appSubtitle}>聚合收银、策略确认、预算熔断一体化</Text>
+                <Text style={styles.appSubtitle}>聚合收银、策略确认、商业洞察一体化</Text>
               </View>
               <View
                 style={[
                   styles.modePill,
-                  remoteMode ? styles.modePillRemote : styles.modePillLocal,
+                  styles.modePillRemote,
                 ]}>
                 <Text
                   style={[
                     styles.modePillText,
-                    remoteMode ? styles.modePillTextRemote : styles.modePillTextLocal,
+                    styles.modePillTextRemote,
                   ]}>
-                  {remoteMode ? '远程联调' : '本地演练'}
+                  {remoteToken ? '已连接' : '连接中'}
                 </Text>
               </View>
             </View>
@@ -719,8 +708,8 @@ function MerchantConsoleApp() {
           </SectionCard>
 
           <SectionCard title="策略库">
-            {!remoteMode ? (
-              <Text style={styles.mutedText}>远程模式下可查看完整营销策略库</Text>
+            {!remoteToken ? (
+              <Text style={styles.mutedText}>正在连接服务端开启策略库...</Text>
             ) : strategyLoading ? (
               <Text style={styles.mutedText}>策略库加载中...</Text>
             ) : strategyTemplates.length === 0 ? (
@@ -797,8 +786,8 @@ function MerchantConsoleApp() {
           </SectionCard>
 
           <SectionCard title="多店联盟">
-            {!remoteMode ? (
-              <Text style={styles.mutedText}>远程模式下可配置联盟与跨店同步</Text>
+            {!remoteToken ? (
+              <Text style={styles.mutedText}>正在连接服务端开启联盟配置...</Text>
             ) : !allianceConfig ? (
               <Text style={styles.mutedText}>联盟配置加载中...</Text>
             ) : (
@@ -913,7 +902,7 @@ function MerchantConsoleApp() {
               <Pressable
                 style={styles.secondaryButton}
                 onPress={() =>
-                  onTriggerEvent('APP_OPEN', {weather: 'RAIN', temperature: 18}, '开屏触发')
+                  onTriggerEvent('APP_OPEN', { weather: 'RAIN', temperature: 18 }, '开屏触发')
                 }>
                 <Text style={styles.secondaryButtonText}>开屏触发</Text>
               </Pressable>
@@ -922,7 +911,7 @@ function MerchantConsoleApp() {
                 onPress={() =>
                   onTriggerEvent(
                     'INVENTORY_ALERT',
-                    {targetSku: 'sku_hot_soup', inventoryBacklog: 12},
+                    { targetSku: 'sku_hot_soup', inventoryBacklog: 12 },
                     '库存预警',
                   )
                 }>
@@ -1008,7 +997,7 @@ function MerchantConsoleApp() {
           </SectionCard>
 
           <SectionCard title="审计日志">
-            {remoteMode && (
+            {remoteToken && (
               <>
                 <View style={styles.auditFilterRow}>
                   {AUDIT_ACTION_OPTIONS.map(item => (
@@ -1072,8 +1061,8 @@ function MerchantConsoleApp() {
               </>
             )}
 
-            {!remoteMode ? (
-              <Text style={styles.mutedText}>远程模式下可查看审计流水</Text>
+            {!remoteToken ? (
+              <Text style={styles.mutedText}>正在连接服务端开启审计流水...</Text>
             ) : auditLogs.length === 0 ? (
               <Text style={styles.mutedText}>{auditLoading ? '加载中...' : '暂无审计记录'}</Text>
             ) : (
@@ -1137,7 +1126,7 @@ function MerchantConsoleApp() {
 
 type MerchantEntryStep = 'PHONE_LOGIN' | 'GUIDE' | 'OPEN_STORE' | 'CONTRACT';
 
-function MerchantEntryFlow({onComplete}: {onComplete: (merchantId: string) => void}) {
+function MerchantEntryFlow({ onComplete }: { onComplete: (merchantId: string) => void }) {
   const [step, setStep] = useState<MerchantEntryStep>('PHONE_LOGIN');
   const [phone, setPhone] = useState('+8613800000000');
   const [code, setCode] = useState('');
@@ -1172,7 +1161,7 @@ function MerchantEntryFlow({onComplete}: {onComplete: (merchantId: string) => vo
     setError('');
     setLoading(true);
     try {
-      const result = await MerchantApi.loginByPhone({phone, code});
+      const result = await MerchantApi.loginByPhone({ phone, code });
       setToken(result.token);
       setStep('GUIDE');
     } catch (err: any) {
@@ -1441,7 +1430,7 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 14,
     shadowColor: '#0f172a',
-    shadowOffset: {width: 0, height: 10},
+    shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.24,
     shadowRadius: 18,
     elevation: 4,
@@ -1534,7 +1523,7 @@ const styles = StyleSheet.create({
     borderColor: '#d9e3f0',
     gap: 10,
     shadowColor: '#0f172a',
-    shadowOffset: {width: 0, height: 6},
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.08,
     shadowRadius: 14,
     elevation: 2,
@@ -1577,7 +1566,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
     paddingVertical: 9,
     shadowColor: '#0f766e',
-    shadowOffset: {width: 0, height: 4},
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.22,
     shadowRadius: 8,
     elevation: 2,
