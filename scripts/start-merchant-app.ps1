@@ -24,11 +24,7 @@ function Print-Command {
         $script:RunStep = 0
     }
     $script:RunStep += 1
-    Write-Host ""
-    Write-Host "==================== [RUN-$($script:RunStep)] ====================" -ForegroundColor Cyan
-    Write-Host ">>> CMD: $Command" -ForegroundColor Cyan
-    Write-Host ">>> CWD: $WorkingDir" -ForegroundColor DarkCyan
-    Write-Host "==================================================================" -ForegroundColor Cyan
+    Write-Host "[RUN-$($script:RunStep)] $Command @ $WorkingDir" -ForegroundColor Cyan
 }
 
 function Print-EnvChange {
@@ -44,14 +40,15 @@ function Print-EnvChange {
     $upper = $Name.ToUpperInvariant()
     $masked = $upper.Contains("SECRET") -or $upper.Contains("TOKEN") -or $upper.Contains("PASSWORD")
     $displayValue = if ($masked) { "***" } else { $Value }
-    Write-Host ""
-    Write-Host "==================== [ENV-$($script:EnvStep)] ====================" -ForegroundColor Yellow
-    Write-Host ">>> ACT: $Action" -ForegroundColor Yellow
-    Write-Host ">>> KEY: $Name" -ForegroundColor Yellow
     if ($Action -eq "SET") {
-        Write-Host ">>> VAL: $displayValue" -ForegroundColor DarkYellow
+        if ([string]::IsNullOrEmpty($Value)) {
+            Write-Host "[ENV-$($script:EnvStep)] SET $Name" -ForegroundColor Yellow
+        } else {
+            Write-Host "[ENV-$($script:EnvStep)] SET $Name=$displayValue" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "[ENV-$($script:EnvStep)] UNSET $Name" -ForegroundColor Yellow
     }
-    Write-Host "==================================================================" -ForegroundColor Yellow
 }
 
 function Set-ProcessEnv {
@@ -147,6 +144,7 @@ function Ensure-PathContains {
     $parts = $current -split ";" | ForEach-Object { $_.Trim() } | Where-Object { $_ }
     if ($parts -notcontains $DirPath) {
         [Environment]::SetEnvironmentVariable("Path", "$current;$DirPath", "Process")
+        Print-EnvChange -Action "SET" -Name "PATH+=$DirPath" -Value ""
     }
 }
 
