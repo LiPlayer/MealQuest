@@ -259,6 +259,7 @@ function MerchantConsoleApp() {
         }
         setRemoteToken(token);
         setLastAction('已连接服务端驾驶舱');
+        await refreshRemoteState(token);
 
         const wsUrl = MerchantApi.getWsUrl(token);
         if (wsUrl) {
@@ -270,7 +271,7 @@ function MerchantConsoleApp() {
               }
               appendRealtimeEvent(buildRealtimeEventRow(message));
               setLastAction(`实时事件：${message.type}`);
-              refreshRemoteState(token).catch(() => {});
+              refreshRemoteState(token).catch(() => { });
             },
             onError: () => {
               if (!active) {
@@ -301,7 +302,7 @@ function MerchantConsoleApp() {
       }
     };
 
-    bootstrapRemote().catch(() => {});
+    bootstrapRemote().catch(() => { });
     return () => {
       active = false;
       realtimeClient?.close();
@@ -312,7 +313,7 @@ function MerchantConsoleApp() {
     if (!remoteToken) {
       return;
     }
-    refreshAuditLogs(remoteToken, { forceReset: true }).catch(() => {});
+    refreshAuditLogs(remoteToken, { forceReset: true }).catch(() => { });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remoteToken, auditActionFilter, auditStatusFilter, auditTimeRange]);
 
@@ -320,8 +321,8 @@ function MerchantConsoleApp() {
     if (!remoteToken) {
       return;
     }
-    refreshStrategyLibrary(remoteToken).catch(() => {});
-    refreshAllianceData(remoteToken).catch(() => {});
+    refreshStrategyLibrary(remoteToken).catch(() => { });
+    refreshAllianceData(remoteToken).catch(() => { });
   }, [remoteToken]);
 
   const onApproveProposal = async (proposalId: string, title: string) => {
@@ -1109,7 +1110,7 @@ function MerchantConsoleApp() {
                       refreshAuditLogs(remoteToken, {
                         append: true,
                         cursor: auditCursor,
-                      }).catch(() => {})
+                      }).catch(() => { })
                     }>
                     <Text style={styles.loadMoreButtonText}>
                       {auditLoading ? '加载中...' : '加载更多'}
