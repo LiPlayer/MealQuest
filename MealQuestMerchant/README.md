@@ -45,3 +45,23 @@ npm run android
 2. 远程模式会建立 `/ws` 实时通道，展示支付/策略等事件流。  
 3. 远程模式会拉取 `/api/audit/logs` 审计流水，支持动作/状态/时间筛选与分页查看。  
 4. 远程连接失败会自动降级回本地模式。
+
+## Quick Start Script (local / online)
+
+Run from repository root. This script auto sets env vars, builds debug app, and launches it.
+
+```powershell
+# local mode: no backend dependency
+.\scripts\start-merchant-app.ps1 -Mode local -Platform android
+
+# online mode: use backend APIs
+.\scripts\start-merchant-app.ps1 -Mode online -Platform android -ServerBaseUrl 'http://127.0.0.1:3030'
+```
+
+Optional flags:
+
+1. `-AutoStartServer`: in online mode, open a new terminal and start local server automatically.
+2. `-NoMetro`: skip starting Metro (use when Metro is already running).
+3. `-NoLaunch`: only set env/start Metro, skip `npm run android|ios`.
+4. `-Platform ios`: launch iOS debug app.
+5. `-MerchantId <id>`: override default merchant id (`m_my_first_store`).

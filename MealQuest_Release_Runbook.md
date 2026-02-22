@@ -116,3 +116,61 @@ $env:TARO_APP_DEFAULT_STORE_ID='m_my_first_store'
    - 顾客账户中心（本人流水/本人发票 scope 校验）；
    - 隐私合规（Owner 导出/删除 + Customer 自助注销）；
    - 顾客端构建可通过。
+
+## 4. Merchant App One-Command Debug (local / online)
+
+Run from repository root:
+
+```powershell
+# local mode (offline domain engine)
+.\scripts\start-merchant-app.ps1 -Mode local -Platform android
+
+# online mode (remote API + optional auto server startup)
+.\scripts\start-merchant-app.ps1 -Mode online -Platform android -ServerBaseUrl 'http://127.0.0.1:3030' -AutoStartServer
+```
+
+Notes:
+
+1. Script path: `scripts/start-merchant-app.ps1`.
+2. It auto injects `MQ_ENABLE_ENTRY_FLOW`, `MQ_USE_REMOTE_API`, `MQ_SERVER_BASE_URL`, `MQ_MERCHANT_ID`.
+3. It starts Metro in a new terminal by default, then builds and launches debug app.
+4. Use `-NoMetro` when Metro already runs, and `-NoLaunch` for env/Metro only.
+
+## 5. Same-LAN Phone Debug (Customer + Merchant)
+
+Goal: use PC as server, run merchant app and customer app on phones within same Wi-Fi LAN.
+
+1. Connect phone and PC to the same router/Wi-Fi.
+2. Start LAN server from repo root:
+
+```powershell
+.\scripts\start-server-lan.ps1 -Port 3030
+```
+
+3. Copy the printed LAN IP, e.g. `192.168.31.10`.
+4. Merchant app (React Native) uses LAN base URL:
+
+```powershell
+.\scripts\start-merchant-app.ps1 -Mode online -Platform android -ServerBaseUrl 'http://192.168.31.10:3030'
+```
+
+5. Customer app (mini program) uses LAN base URL:
+
+```powershell
+cd .\meal-quest-customer
+$env:TARO_APP_USE_REMOTE_API='true'
+$env:TARO_APP_SERVER_BASE_URL='http://192.168.31.10:3030'
+$env:TARO_APP_DEFAULT_STORE_ID='m_my_first_store'
+npm run dev:weapp
+```
+
+6. Windows firewall: allow inbound TCP 3030 for Node.js (or add explicit inbound rule).
+7. WeChat DevTools real-device debug: enable "Do not verify request domain/TLS/HTTPS" for development mode.
+8. Do not use `127.0.0.1` on phone. Always use PC LAN IP.
+
+Update (script shortcut):
+
+```powershell
+# Customer mini program online mode in LAN
+.\scripts\start-customer-weapp.ps1 -Mode online -ServerBaseUrl 'http://192.168.31.10:3030' -StoreId 'm_my_first_store'
+```

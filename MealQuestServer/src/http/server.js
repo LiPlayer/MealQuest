@@ -3047,16 +3047,21 @@ function createAppServer({
     socket.on("close", () => allSockets.delete(socket));
   });
 
-  function start(port = 0) {
+  function start(port = 0, host) {
     return new Promise((resolve, reject) => {
-      server.listen(port, () => {
+      const onListening = () => {
         const address = server.address();
         if (!address || typeof address === "string") {
           reject(new Error("Failed to read server address"));
           return;
         }
         resolve(address.port);
-      });
+      };
+      if (host) {
+        server.listen(port, host, onListening);
+      } else {
+        server.listen(port, onListening);
+      }
     });
   }
 
@@ -3099,11 +3104,12 @@ function createAppServer({
 if (require.main === module) {
   const app = createAppServer({ persist: true });
   const port = Number(process.env.PORT || 3030);
+  const host = process.env.HOST || "0.0.0.0";
   app
-    .start(port)
+    .start(port, host)
     .then((startedPort) => {
       // eslint-disable-next-line no-console
-      console.log(`MealQuestServer listening on port ${startedPort}`);
+      console.log(`MealQuestServer listening on ${host}:${startedPort}`);
     })
     .catch((error) => {
       // eslint-disable-next-line no-console
