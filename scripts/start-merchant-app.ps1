@@ -78,6 +78,12 @@ function Stop-ProcessTree {
     }
 }
 
+function Test-PortOccupied {
+    param([int]$Port)
+    $connection = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
+    return $null -ne $connection
+}
+
 function Print-InstallRestrictedGuidance {
     Write-Host "[merchant-app] detected INSTALL_FAILED_USER_RESTRICTED." -ForegroundColor Red
     Write-Host "[merchant-app] action required on phone:" -ForegroundColor Red
@@ -240,6 +246,13 @@ if ($AutoStartServer) {
         "dev"
     ) | Out-Null
     Start-Sleep -Seconds 2
+}
+
+if (-not $NoMetro) {
+    if (Test-PortOccupied -Port $MetroPort) {
+        Write-Host "[merchant-app] Metro port $MetroPort is already occupied. Skipping Metro startup." -ForegroundColor Green
+        $NoMetro = $true
+    }
 }
 
 if (-not $NoMetro) {
