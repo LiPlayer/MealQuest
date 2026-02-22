@@ -190,7 +190,8 @@ function Ensure-AndroidSetup {
     Set-ProcessEnv -Name "ANDROID_SDK_ROOT" -Value $sdkPathStr
     Set-ProcessEnv -Name "ANDROID_HOME" -Value $sdkPathStr
     Ensure-PathContains (Join-Path $sdkPathStr "platform-tools")
-    Ensure-PathContains (Join-Path $sdkPathStr "emulator")
+    # Ensuring we only use real devices, so we won't add 'emulator' to PATH
+    # Ensure-PathContains (Join-Path $sdkPathStr "emulator")
     Ensure-PathContains (Join-Path $sdkPathStr "cmdline-tools\latest\bin")
 
     $localPropertiesPath = Join-Path $MerchantDirPath "android\local.properties"
@@ -286,7 +287,17 @@ if ($NoLaunch) {
 Push-Location $merchantDir
 try {
     Write-Host "[merchant-app] building + launching $Platform debug app..."
-    $skipPackager = -not $NoMetro
+    
+    if ($Platform -eq "android") {
+        $devices = adb devices | Select-String -Pattern "\sdevice$"
+        if ($null -eq $devices -or $devices.Count -eq 0) {
+            throw "No real Android devices connected (detected via 'adb devices'). Please connect your phone via USB or Wireless ADB."
+        }
+        Write-Host "[merchant-app] Target devices detected:"
+        $devices | ForEach-Object { Write-Host "  $($_.ToString().Trim())" -ForegroundColor Green }
+    }
+
+    $skipPackager = $NoMetro
     if ($Platform -eq "android") {
         if ($skipPackager) {
             Print-Command -WorkingDir $merchantDir -Command "npm run android -- --no-packager"
