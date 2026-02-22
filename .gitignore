@@ -1,3 +1,5 @@
 artifacts/
 MealQuestServer/.env.*.local
 MealQuestServer/data/
+.tmp_*.log
+MealQuestMerchant/android/build_output*.log

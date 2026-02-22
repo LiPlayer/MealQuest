@@ -69,3 +69,11 @@
 - [ ] 电子发票供应商正式接口对接（开票、红冲、作废、下载）。
 - [ ] 异业联盟供应商订单正式通道接入（当前为本地核验缓存服务）。
 - [ ] 供应商 SLA、告警、重试补偿策略落地。
+
+## 9. Android Release Ready
+
+- [ ] NDK uses `27.1.12297006` (RN 0.84 baseline).
+- [ ] Release signing secrets are set: `MQ_RELEASE_STORE_FILE`, `MQ_RELEASE_STORE_PASSWORD`, `MQ_RELEASE_KEY_ALIAS`, `MQ_RELEASE_KEY_PASSWORD`.
+- [ ] Built release APK via `./scripts/build-merchant-android.ps1 -BuildType release -Artifact apk`.
+- [ ] Built release AAB via `./scripts/build-merchant-android.ps1 -BuildType release -Artifact aab`.
+- [ ] Release package installed and smoke-tested on real Android device.

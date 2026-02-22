@@ -71,6 +71,19 @@ def enableProguardInReleaseBuilds = false
  * this variant is about 6MiB larger per architecture than default.
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
+def getPropOrEnv = { String key ->
+    if (project.hasProperty(key) && project.property(key) != null && project.property(key).toString().trim()) {
+        return project.property(key).toString().trim()
+    }
+    def envVal = System.getenv(key)
+    return (envVal != null && envVal.trim()) ? envVal.trim() : null
+}
+
+def releaseStoreFile = getPropOrEnv("MQ_RELEASE_STORE_FILE")
+def releaseStorePassword = getPropOrEnv("MQ_RELEASE_STORE_PASSWORD")
+def releaseKeyAlias = getPropOrEnv("MQ_RELEASE_KEY_ALIAS")
+def releaseKeyPassword = getPropOrEnv("MQ_RELEASE_KEY_PASSWORD")
+def hasReleaseSigning = releaseStoreFile && releaseStorePassword && releaseKeyAlias && releaseKeyPassword
 
 android {
     ndkVersion rootProject.ext.ndkVersion
@@ -92,15 +105,23 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        release {
+            if (hasReleaseSigning) {
+                storeFile file(releaseStoreFile)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            // For store publishing, provide MQ_RELEASE_* env/properties.
+            // If absent, fallback to debug key for local verification only.
+            signingConfig hasReleaseSigning ? signingConfigs.release : signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }

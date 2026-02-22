@@ -127,6 +127,13 @@ Notes:
 2. It auto injects `MQ_ENABLE_ENTRY_FLOW`, `MQ_USE_REMOTE_API`, `MQ_SERVER_BASE_URL`, `MQ_MERCHANT_ID`.
 3. It starts Metro in a new terminal by default, then builds and launches debug app.
 4. Use `-NoMetro` when Metro already runs, and `-NoLaunch` for env/Metro only.
+5. Metro defaults to `0.0.0.0:8081` in script. You can override with `-MetroHost` / `-MetroPort`.
+
+Official baseline for this repo (recommended):
+1. React Native `0.84.x`.
+2. Android NDK `27.1.12297006` (do not pin to 25/26 for this project).
+3. Keep `node_modules` unpatched (no header/source hotfixes).
+4. If `babel.config.js` changes, restart Metro with reset cache.
 
 ## 5. Same-LAN Phone Debug (Customer + Merchant)
 
@@ -160,9 +167,63 @@ npm run dev:weapp
 7. WeChat DevTools real-device debug: enable "Do not verify request domain/TLS/HTTPS" for development mode.
 8. Do not use `127.0.0.1` on phone. Always use PC LAN IP.
 
+Merchant red-screen critical settings (WiFi mode):
+1. In RN dev menu, set both:
+   `Debug server host & port for device` = `<LAN_IP>:8081`
+   `Change bundle location` = `http://<LAN_IP>:8081/index.bundle?platform=android&dev=true&minify=false`
+2. Start Metro with LAN binding and cache reset:
+```powershell
+cd .\MealQuestMerchant
+npx react-native start --host 0.0.0.0 --port 8081 --reset-cache
+```
+3. Quick diagnosis:
+   - If app asks `localhost:8081`: phone dev menu not applied.
+   - If app asks `<LAN_IP>:8081` but still red: check Metro terminal for `TransformError` (usually Babel config/dependency issue).
+
 Update (script shortcut):
 
 ```powershell
 # Customer mini program online mode in LAN
 .\scripts\start-customer-weapp.ps1 -Mode online -ServerBaseUrl 'http://192.168.31.10:3030' -StoreId 'm_my_first_store'
 ```
+
+## 6. Android Release Build (APK/AAB)
+
+Run from repository root:
+
+```powershell
+# release APK
+.\scripts\build-merchant-android.ps1 -BuildType release -Artifact apk -AndroidSdkPath 'D:\AndroidDev\sdk' -Clean
+
+# release AAB (for store upload)
+.\scripts\build-merchant-android.ps1 -BuildType release -Artifact aab -AndroidSdkPath 'D:\AndroidDev\sdk'
+```
+
+Release signing (recommended for production):
+
+```powershell
+$env:MQ_RELEASE_STORE_FILE='D:\secrets\mealquest-release.jks'
+$env:MQ_RELEASE_STORE_PASSWORD='***'
+$env:MQ_RELEASE_KEY_ALIAS='mealquest'
+$env:MQ_RELEASE_KEY_PASSWORD='***'
+```
+
+Notes:
+1. `MealQuestMerchant/android/app/build.gradle` now supports `MQ_RELEASE_*` env/properties.
+2. If `MQ_RELEASE_*` is missing, release build falls back to debug key for local verification only.
+3. Expected outputs:
+   - APK: `MealQuestMerchant/android/app/build/outputs/apk/release/app-release.apk`
+   - AAB: `MealQuestMerchant/android/app/build/outputs/bundle/release/app-release.aab`
+
+## 7. Android Release Install + Smoke Verification
+
+Run from repository root:
+
+```powershell
+.\scripts\verify-merchant-android-release.ps1 -ApkPath '.\MealQuestMerchant\android\app\build\outputs\apk\release\app-release.apk'
+```
+
+Options:
+1. `-DeviceId <adb_serial>`: target a specific device.
+2. `-SkipInstall`: verify launch/runtime only for an already installed package.
+3. `-SmokeSeconds <N>`: how long to wait before runtime check.

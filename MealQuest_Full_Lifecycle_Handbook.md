@@ -152,8 +152,14 @@ Metro 启动后，控制台会处于待命状态。记住这几个快捷键：
 2.  **清缓存**：进入 `android` 目录执行 `.\gradlew clean`。
 3.  **重装包**：删除 `node_modules` 并重新执行 `npm install`。
 
+### 7.6 Babel 配置红线（避免 Metro 500 红屏）
+1. `preset` 和 `plugin` 不能混用。
+2. `nativewind/babel` 在本项目必须放在 `presets`，不能放在 `plugins`。
+3. `babel.config.js` 修改后，必须重启 Metro 并加 `--reset-cache`。
+4. 一旦出现 `The development server returned response error code: 500`，先看 Metro 终端第一条 `TransformError`，不要先改业务代码。
+
 ### 7.5 开发模式 (Dev) vs. 发布模式 (Release)
-**不需要**两步启动。 上线到应用商店的 APP 是“单兵作战”的。
+Release模式下**不需要**两步启动。 上线到应用商店的 APP 是“单兵作战”的。
 
 | 特性 | 开发模式 (Development) | 发布模式 (Release) |
 | :--- | :--- | :--- |
@@ -344,6 +350,18 @@ node .\scripts\release-local.js
 4. 若 NDK 报错：确认 `MealQuestMerchant/android/build.gradle` 中 `ndkVersion` 与本机已安装版本一致。
 5. 若依赖兼容报错：先 `npm install`，再 `android/gradlew clean` 后重试。
 
+WiFi 红屏专项（本项目高频）：
+1. 若日志出现 `Couldn't connect to ws://localhost:8081`：手机 Dev Server 还在 `localhost`。
+2. 在手机开发菜单同时设置两处：
+   `Debug server host & port for device` = `<LAN_IP>:8081`
+   `Change bundle location` = `http://<LAN_IP>:8081/index.bundle?platform=android&dev=true&minify=false`
+3. Metro 必须用 LAN 监听启动：
+```powershell
+cd .\MealQuestMerchant
+npx react-native start --host 0.0.0.0 --port 8081 --reset-cache
+```
+4. 若仍红屏，先看 Metro 是否返回 500（浏览器打开 bundle URL），再看 Metro 终端的 `TransformError`。
+
 ## 13.4 不确定问题在哪
 
 先跑：
@@ -484,6 +502,13 @@ node .\scripts\release-local.js
 # 5) 服务端单独测试
 cd .\MealQuestServer
 npm test
+
+# 6) 商户端 release APK / AAB
+.\scripts\build-merchant-android.ps1 -BuildType release -Artifact apk -AndroidSdkPath 'D:\AndroidDev\sdk' -Clean
+.\scripts\build-merchant-android.ps1 -BuildType release -Artifact aab -AndroidSdkPath 'D:\AndroidDev\sdk'
+
+# 7) 商户端 release 真机安装与冒烟
+.\scripts\verify-merchant-android-release.ps1 -ApkPath '.\MealQuestMerchant\android\app\build\outputs\apk\release\app-release.apk'
 ```
 
 ---

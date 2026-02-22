@@ -10,7 +10,9 @@ param(
     [switch]$AutoStartServer,
     [switch]$NoMetro,
     [switch]$NoLaunch,
-    [int]$WaitMetroSeconds = 6
+    [int]$WaitMetroSeconds = 6,
+    [string]$MetroHost = "0.0.0.0",
+    [int]$MetroPort = 8081
 )
 
 $ErrorActionPreference = "Stop"
@@ -64,6 +66,34 @@ function Clear-ProcessEnv {
     param([string]$Name)
     [Environment]::SetEnvironmentVariable($Name, $null, "Process")
     Print-EnvChange -Action "UNSET" -Name $Name
+}
+
+function Assert-LastExitCode {
+    param([string]$CommandLabel)
+    if ($LASTEXITCODE -ne 0) {
+        throw "$CommandLabel failed with exit code $LASTEXITCODE."
+    }
+}
+
+function Stop-ProcessTree {
+    param([int]$TargetProcessId)
+    if ($TargetProcessId -le 0) {
+        return
+    }
+    & taskkill /PID $TargetProcessId /T /F *> $null
+    if ($LASTEXITCODE -ne 0) {
+        Stop-Process -Id $TargetProcessId -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Print-InstallRestrictedGuidance {
+    Write-Host "[merchant-app] detected INSTALL_FAILED_USER_RESTRICTED." -ForegroundColor Red
+    Write-Host "[merchant-app] action required on phone:" -ForegroundColor Red
+    Write-Host "[merchant-app] 1) Enable Developer options." -ForegroundColor Red
+    Write-Host "[merchant-app] 2) Enable USB debugging." -ForegroundColor Red
+    Write-Host "[merchant-app] 3) Enable USB install / Install via USB." -ForegroundColor Red
+    Write-Host "[merchant-app] 4) Confirm any install/security dialogs on phone." -ForegroundColor Red
+    Write-Host "[merchant-app] 5) Re-run this script after allowing install." -ForegroundColor Red
 }
 
 function Resolve-AndroidSdkPath {
@@ -201,6 +231,12 @@ Write-Host "[merchant-app] MQ_ENABLE_ENTRY_FLOW=$env:MQ_ENABLE_ENTRY_FLOW"
 Write-Host "[merchant-app] MQ_USE_REMOTE_API=$env:MQ_USE_REMOTE_API"
 Write-Host "[merchant-app] MQ_SERVER_BASE_URL=$env:MQ_SERVER_BASE_URL"
 Write-Host "[merchant-app] MQ_MERCHANT_ID=$env:MQ_MERCHANT_ID"
+Write-Host "[merchant-app] metro=${MetroHost}:$MetroPort"
+if ($Mode -eq "online") {
+    Write-Host "[merchant-app] phone Dev Server should be '<LAN_IP>:$MetroPort' in WiFi mode."
+}
+
+$metroProcess = $null
 
 if ($AutoStartServer -and $Mode -eq "online") {
     $serverScript = Join-Path $PSScriptRoot "start-server.ps1"
@@ -228,17 +264,17 @@ if (-not $NoMetro) {
 `$env:MQ_SERVER_BASE_URL='$env:MQ_SERVER_BASE_URL';
 `$env:MQ_MERCHANT_ID='$env:MQ_MERCHANT_ID';
 Set-Location '$merchantDir';
-npm start
+npx react-native start --host '$MetroHost' --port $MetroPort
 "@
     Write-Host "[merchant-app] starting Metro in a new terminal..."
-    Print-Command -WorkingDir $merchantDir -Command "powershell -NoExit -ExecutionPolicy Bypass -Command <set env; cd '$merchantDir'; npm start>"
-    Start-Process powershell -ArgumentList @(
+    Print-Command -WorkingDir $merchantDir -Command "powershell -NoExit -ExecutionPolicy Bypass -Command <set env; cd '$merchantDir'; npx react-native start --host '$MetroHost' --port $MetroPort>"
+    $metroProcess = Start-Process powershell -ArgumentList @(
         "-NoExit",
         "-ExecutionPolicy",
         "Bypass",
         "-Command",
         $metroCommand
-    ) | Out-Null
+    ) -PassThru
     if ($WaitMetroSeconds -gt 0) {
         Start-Sleep -Seconds $WaitMetroSeconds
     }
@@ -252,13 +288,38 @@ if ($NoLaunch) {
 Push-Location $merchantDir
 try {
     Write-Host "[merchant-app] building + launching $Platform debug app..."
+    $skipPackager = -not $NoMetro
     if ($Platform -eq "android") {
-        Print-Command -WorkingDir $merchantDir -Command "npm run android"
-        npm run android
+        if ($skipPackager) {
+            Print-Command -WorkingDir $merchantDir -Command "npm run android -- --no-packager"
+            npm run android -- --no-packager
+            Assert-LastExitCode -CommandLabel "npm run android -- --no-packager"
+        } else {
+            Print-Command -WorkingDir $merchantDir -Command "npm run android"
+            npm run android
+            Assert-LastExitCode -CommandLabel "npm run android"
+        }
     } else {
-        Print-Command -WorkingDir $merchantDir -Command "npm run ios"
-        npm run ios
+        if ($skipPackager) {
+            Print-Command -WorkingDir $merchantDir -Command "npm run ios -- --no-packager"
+            npm run ios -- --no-packager
+            Assert-LastExitCode -CommandLabel "npm run ios -- --no-packager"
+        } else {
+            Print-Command -WorkingDir $merchantDir -Command "npm run ios"
+            npm run ios
+            Assert-LastExitCode -CommandLabel "npm run ios"
+        }
     }
+} catch {
+    $errText = ($_ | Out-String)
+    if ($errText -match "INSTALL_FAILED_USER_RESTRICTED") {
+        Print-InstallRestrictedGuidance
+    }
+    if ($metroProcess) {
+        Write-Host "[merchant-app] launch failed, closing Metro window (PID=$($metroProcess.Id))..." -ForegroundColor Yellow
+        Stop-ProcessTree -TargetProcessId $metroProcess.Id
+    }
+    throw
 } finally {
     Pop-Location
 }
