@@ -233,4 +233,3 @@ MealQuest 不是点餐系统，而是“餐饮私域的支付+资产化运营系
 
 1. `MealQuest_Spec.md`
 2. `MealQuest_Release_Runbook.md`
-3. `MealQuest_Beginner_LAN_Test_Guide.md`
