@@ -4,6 +4,7 @@ param(
     [ValidateSet("android", "ios")]
     [string]$Platform = "android",
     [string]$ServerBaseUrl = "http://127.0.0.1:3030",
+    [string]$AndroidSdkPath = "",
     [string]$MerchantId = "m_my_first_store",
     [bool]$EnableEntryFlow = $true,
     [switch]$AutoStartServer,
@@ -27,11 +28,121 @@ function Clear-ProcessEnv {
     [Environment]::SetEnvironmentVariable($Name, $null, "Process")
 }
 
+function Resolve-AndroidSdkPath {
+    param([string]$PreferredPath = "")
+    if ($PreferredPath -and (Test-Path $PreferredPath)) {
+        return (Resolve-Path $PreferredPath).Path
+    }
+
+    $fromEnv = @(@($env:ANDROID_SDK_ROOT, $env:ANDROID_HOME) | Where-Object { $_ -and (Test-Path $_) })
+    if ($fromEnv.Count -gt 0) {
+        return $fromEnv[0]
+    }
+
+    $adbCommand = Get-Command adb -ErrorAction SilentlyContinue
+    if ($adbCommand -and $adbCommand.Source) {
+        $adbResolved = (Resolve-Path $adbCommand.Source).Path
+        $platformToolsDir = Split-Path $adbResolved -Parent
+        if (Split-Path $platformToolsDir -Leaf -eq "platform-tools") {
+            $sdkFromAdb = Split-Path $platformToolsDir -Parent
+            if ($sdkFromAdb -and (Test-Path $sdkFromAdb)) {
+                return $sdkFromAdb
+            }
+        }
+    }
+
+    $studioOptionRoots = @(
+        (Join-Path $env:APPDATA "Google"),
+        (Join-Path $env:APPDATA "JetBrains")
+    ) | Select-Object -Unique
+
+    foreach ($root in $studioOptionRoots) {
+        if (-not $root -or -not (Test-Path $root)) {
+            continue
+        }
+        $studioDirs = Get-ChildItem -Path $root -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like "AndroidStudio*" }
+        foreach ($dir in $studioDirs) {
+            $otherXml = Join-Path $dir.FullName "options\other.xml"
+            if (-not (Test-Path $otherXml)) {
+                continue
+            }
+            try {
+                $content = Get-Content -Raw $otherXml -ErrorAction Stop
+                $match = [regex]::Match($content, 'name=\"android\.sdk\.path\"\s+value=\"([^\"]+)\"')
+                if ($match.Success) {
+                    $path = $match.Groups[1].Value.Replace('\\', '\')
+                    if ($path -and (Test-Path $path)) {
+                        return $path
+                    }
+                }
+            } catch {
+                # ignore parse/read errors and continue searching
+            }
+        }
+    }
+
+    $candidates = @(
+        (Join-Path $env:LOCALAPPDATA "Android\Sdk"),
+        (Join-Path $env:USERPROFILE "AppData\Local\Android\Sdk"),
+        "D:\Android\Sdk",
+        "E:\Android\Sdk"
+    ) | Select-Object -Unique
+
+    foreach ($path in $candidates) {
+        if ($path -and (Test-Path $path)) {
+            return $path
+        }
+    }
+    return $null
+}
+
+function Ensure-PathContains {
+    param([string]$DirPath)
+    if (-not $DirPath -or -not (Test-Path $DirPath)) {
+        return
+    }
+    $current = [Environment]::GetEnvironmentVariable("Path", "Process")
+    $parts = $current -split ";" | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+    if ($parts -notcontains $DirPath) {
+        [Environment]::SetEnvironmentVariable("Path", "$current;$DirPath", "Process")
+    }
+}
+
+function Ensure-AndroidSetup {
+    param(
+        [string]$MerchantDirPath,
+        [string]$PreferredSdkPath = ""
+    )
+    $sdkPath = Resolve-AndroidSdkPath -PreferredPath $PreferredSdkPath
+    if (-not $sdkPath) {
+        throw "Android SDK not found. Install Android Studio SDK or pass -AndroidSdkPath."
+    }
+
+    $sdkPathStr = [string]$sdkPath
+    Set-ProcessEnv -Name "ANDROID_SDK_ROOT" -Value $sdkPathStr
+    Set-ProcessEnv -Name "ANDROID_HOME" -Value $sdkPathStr
+    Ensure-PathContains (Join-Path $sdkPathStr "platform-tools")
+    Ensure-PathContains (Join-Path $sdkPathStr "emulator")
+    Ensure-PathContains (Join-Path $sdkPathStr "cmdline-tools\latest\bin")
+
+    $localPropertiesPath = Join-Path $MerchantDirPath "android\local.properties"
+    $normalizedSdkPath = $sdkPathStr.Replace("\", "/")
+    Set-Content -Path $localPropertiesPath -Encoding UTF8 -Value "sdk.dir=$normalizedSdkPath`n"
+
+    Write-Host "[merchant-app] ANDROID_SDK_ROOT=$env:ANDROID_SDK_ROOT"
+    Write-Host "[merchant-app] android/local.properties generated."
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $merchantDir = Join-Path $repoRoot "MealQuestMerchant"
 
 if (-not (Test-Path $merchantDir)) {
     throw "Merchant app directory not found: $merchantDir"
+}
+
+if ($Platform -eq "android") {
+    Ensure-AndroidSetup -MerchantDirPath $merchantDir -PreferredSdkPath $AndroidSdkPath
 }
 
 $entryFlowValue = if ($EnableEntryFlow) { "true" } else { "false" }
