@@ -222,6 +222,7 @@ npx react-native start --host '$MetroHost' --port $MetroPort
 "@
 
     Write-Host "[merchant-app] starting Metro in a new terminal..." -ForegroundColor Cyan
+    Print-Command -WorkingDir $merchantDir -Command "npx react-native start --host '$MetroHost' --port $MetroPort"
     $metroProcess = Start-Process powershell -ArgumentList "-NoExit", "-ExecutionPolicy", "Bypass", "-Command", $metroCommand -PassThru
     $trackedProcesses += $metroProcess
     $MetroInjectedOrPreExisting = $true

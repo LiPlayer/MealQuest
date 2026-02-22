@@ -188,6 +188,8 @@ Release模式下**不需要**两步启动。 上线到应用商店的 APP 是“
 
 ### 步骤 2：启动商户端
 
+
+**全量启动（含打包安装，耗时较长）**：
 ```powershell
 # 预先配置：MealQuestMerchant/.env -> MQ_SERVER_URL=http://<LAN_IP>:3030
 .\scripts\start-merchant-app.ps1 -Platform android
@@ -196,6 +198,17 @@ Release模式下**不需要**两步启动。 上线到应用商店的 APP 是“
 说明：
 1. 采用 `react-native-config` 专业方案，自动从 `.env` 注入环境变量。
 2. 脚本自动识别配置，不再强制要求命令行传参。
+
+**仅启动 Metro（高频使用，仅修改 JS/UI 时）**：
+如果设备上已安装过 App，且未修改 Android 原生代码，可跳过编译直接启动热更新服务：
+
+```powershell
+cd .\MealQuestMerchant
+
+# 真机局域网联调时，强制监听所有 IP (推荐)
+npm run start:lan
+```
+
 
 ### 步骤 3：启动顾客端
 
