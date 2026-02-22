@@ -93,12 +93,11 @@
 
 ## 4.2 运行模式与切换
 
-1. 默认模式：本地 Mock（保证离线演示与测试稳定）。
-2. 远程模式：当 `TARO_APP_USE_REMOTE_API=true` 且 `TARO_APP_SERVER_BASE_URL` 存在时，优先走服务端 API。
-3. 远程成功快照需本地缓存（按 `storeId+userId` 维度），用于弱网兜底。
-4. 远程失败优先回退本地缓存快照，再回退 Mock，不阻断顾客支付流程。
-5. 远程模式下自动向服务端申请 `CUSTOMER` token，无需手工登录。
-6. 服务端 `state` 返回活动注入时，顾客端需零配置渲染并保持视觉兜底。
+1. 线上落地模式：`TARO_APP_USE_REMOTE_API=true` 且 `TARO_APP_SERVER_BASE_URL` 必填，默认走服务端 API。
+2. 远程成功快照需本地缓存（按 `storeId+userId` 维度），用于弱网兜底。
+3. 远程失败优先回退最近一次本地缓存快照；无缓存时进入显式错误态，不再回退 Mock。
+4. 远程模式下自动向服务端申请 `CUSTOMER` token，无需手工登录。
+5. 服务端 `state` 返回活动注入时，顾客端需零配置渲染并保持视觉兜底。
 
 ## 4.3 Story/TCA 注入约束
 

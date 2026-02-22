@@ -188,7 +188,7 @@ Release模式下**不需要**两步启动。 上线到应用商店的 APP 是“
 ### 步骤 2：启动商户端（在线模式）
 
 ```powershell
-.\scripts\start-merchant-app.ps1 -Mode online -Platform android -ServerBaseUrl 'http://192.168.31.10:3030'
+.\scripts\start-merchant-app.ps1 -Platform android -ServerBaseUrl 'http://192.168.31.10:3030'
 ```
 
 说明：
@@ -198,7 +198,7 @@ Release模式下**不需要**两步启动。 上线到应用商店的 APP 是“
 ### 步骤 3：启动顾客端（在线模式）
 
 ```powershell
-.\scripts\start-customer-weapp.ps1 -Mode online -ServerBaseUrl 'http://192.168.31.10:3030' -StoreId 'm_my_first_store'
+.\scripts\start-customer-weapp.ps1 -ServerBaseUrl 'http://192.168.31.10:3030'
 ```
 
 ### 步骤 4：执行老板 + 顾客双角色验证
@@ -235,23 +235,7 @@ adb reverse tcp:8081 tcp:8081
 
 ---
 
-## 9. 环境模式（local / online）
-
-## 9.1 local 模式
-
-用途：仅演示 UI 或离线流程，不依赖服务端。
-
-商户端：
-```powershell
-.\scripts\start-merchant-app.ps1 -Mode local -Platform android
-```
-
-顾客端：
-```powershell
-.\scripts\start-customer-weapp.ps1 -Mode local -StoreId 'm_my_first_store'
-```
-
-## 9.2 online 模式
+## 9. 环境模式（online）
 
 用途：联调真实本地后端 API（推荐日常验证用）。
 
@@ -491,10 +475,10 @@ node .\scripts\release-local.js
 .\scripts\start-server-lan.ps1 -Port 3030
 
 # 2) 商户端在线模式
-.\scripts\start-merchant-app.ps1 -Mode online -Platform android -ServerBaseUrl 'http://<LAN_IP>:3030'
+.\scripts\start-merchant-app.ps1 -Platform android -ServerBaseUrl 'http://<LAN_IP>:3030'
 
 # 3) 顾客端在线模式
-.\scripts\start-customer-weapp.ps1 -Mode online -ServerBaseUrl 'http://<LAN_IP>:3030' -StoreId 'm_my_first_store'
+.\scripts\start-customer-weapp.ps1 -ServerBaseUrl 'http://<LAN_IP>:3030'
 
 # 4) 全量回归门禁
 node .\scripts\release-local.js
@@ -521,3 +505,5 @@ npm test
 4. 一周后按第 16 章输出复盘。
 
 完成这 4 步，你就不是“在试系统”，而是在“推进可上线业务”。
+
+

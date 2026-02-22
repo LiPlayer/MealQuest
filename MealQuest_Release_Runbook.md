@@ -1,46 +1,46 @@
-# MealQuest 本地发布验收 Runbook
+﻿# MealQuest æœ¬åœ°å‘å¸ƒéªŒæ”¶ Runbook
 
-本文件用于“最终可上线发布前”的本地闸门验收。
+æœ¬æ–‡ä»¶ç”¨äºŽâ€œæœ€ç»ˆå¯ä¸Šçº¿å‘å¸ƒå‰â€çš„æœ¬åœ°é—¸é—¨éªŒæ”¶ã€‚
 
-## 1. 一键验收（推荐）
+## 1. ä¸€é”®éªŒæ”¶ï¼ˆæŽ¨èï¼‰
 
-在仓库根目录执行：
+åœ¨ä»“åº“æ ¹ç›®å½•æ‰§è¡Œï¼š
 
 ```powershell
 node .\scripts\release-local.js
 ```
 
-执行内容：
+æ‰§è¡Œå†…å®¹ï¼š
 
-1. `MealQuestServer` 全量测试（含持久化、多租户、迁移、RBAC、审计、策略库、供应商核验、急售）。
-2. `MealQuestServer` 本地 smoke 场景回归。
-3. `MealQuestMerchant` 测试 + TypeScript 类型检查。
-4. `MealQuestMerchant` UI 可复现回归（可单独执行：`npm run test:regression:ui`）。
-5. `meal-quest-customer` 测试 + UI 可复现回归（`npm run test:regression:ui`）。
-6. `meal-quest-customer` `build:weapp` 构建。
+1. `MealQuestServer` å…¨é‡æµ‹è¯•ï¼ˆå«æŒä¹…åŒ–ã€å¤šç§Ÿæˆ·ã€è¿ç§»ã€RBACã€å®¡è®¡ã€ç­–ç•¥åº“ã€ä¾›åº”å•†æ ¸éªŒã€æ€¥å”®ï¼‰ã€‚
+2. `MealQuestServer` æœ¬åœ° smoke åœºæ™¯å›žå½’ã€‚
+3. `MealQuestMerchant` æµ‹è¯• + TypeScript ç±»åž‹æ£€æŸ¥ã€‚
+4. `MealQuestMerchant` UI å¯å¤çŽ°å›žå½’ï¼ˆå¯å•ç‹¬æ‰§è¡Œï¼š`npm run test:regression:ui`ï¼‰ã€‚
+5. `meal-quest-customer` æµ‹è¯• + UI å¯å¤çŽ°å›žå½’ï¼ˆ`npm run test:regression:ui`ï¼‰ã€‚
+6. `meal-quest-customer` `build:weapp` æž„å»ºã€‚
 
-E2E（需要微信开发者工具环境，独立执行）：
+E2Eï¼ˆéœ€è¦å¾®ä¿¡å¼€å‘è€…å·¥å…·çŽ¯å¢ƒï¼Œç‹¬ç«‹æ‰§è¡Œï¼‰ï¼š
 
 1. `cd meal-quest-customer && npm run test:e2e:doctor`
-2. 连接模式：设置 `WECHAT_WS_ENDPOINT` 或 `WECHAT_SERVICE_PORT` 后执行 `npm run test:e2e`
-3. 自动拉起模式：设置 `WECHAT_E2E_AUTO_LAUNCH=1` 后执行 `npm run test:e2e:weapp`
+2. è¿žæŽ¥æ¨¡å¼ï¼šè®¾ç½® `WECHAT_WS_ENDPOINT` æˆ– `WECHAT_SERVICE_PORT` åŽæ‰§è¡Œ `npm run test:e2e`
+3. è‡ªåŠ¨æ‹‰èµ·æ¨¡å¼ï¼šè®¾ç½® `WECHAT_E2E_AUTO_LAUNCH=1` åŽæ‰§è¡Œ `npm run test:e2e:weapp`
 
-输出报告：
+è¾“å‡ºæŠ¥å‘Šï¼š
 
 - `artifacts/release-local-report.json`
 
-## 1.1 环境化启动（dev/staging/prod）
+## 1.1 çŽ¯å¢ƒåŒ–å¯åŠ¨ï¼ˆdev/staging/prodï¼‰
 
-核心脚本：
+æ ¸å¿ƒè„šæœ¬ï¼š
 
 1. `scripts/start-server.ps1`
 
-默认读取顺序：
+é»˜è®¤è¯»å–é¡ºåºï¼š
 
-1. `MealQuestServer/.env.<profile>.local`（优先）
+1. `MealQuestServer/.env.<profile>.local`ï¼ˆä¼˜å…ˆï¼‰
 2. `MealQuestServer/.env.<profile>.example`
 
-示例：
+ç¤ºä¾‹ï¼š
 
 ```powershell
 .\scripts\start-server.ps1 -Profile dev
@@ -48,32 +48,32 @@ E2E（需要微信开发者工具环境，独立执行）：
 .\scripts\start-server.ps1 -Profile prod
 ```
 
-## 2. 仅验收本地运行中的服务端（可选）
+## 2. ä»…éªŒæ”¶æœ¬åœ°è¿è¡Œä¸­çš„æœåŠ¡ç«¯ï¼ˆå¯é€‰ï¼‰
 
-先启动服务端（默认 `http://127.0.0.1:3030`）：
+å…ˆå¯åŠ¨æœåŠ¡ç«¯ï¼ˆé»˜è®¤ `http://127.0.0.1:3030`ï¼‰ï¼š
 
 ```powershell
 cd .\MealQuestServer
 npm start
 ```
 
-另开终端执行 smoke：
+å¦å¼€ç»ˆç«¯æ‰§è¡Œ smokeï¼š
 
 ```powershell
 cd .\MealQuestServer
 node .\scripts\smoke-local-server.js --external --base-url http://127.0.0.1:3030
 ```
 
-## 2.1 自定义开店（无需使用 m_demo）
+## 2.1 è‡ªå®šä¹‰å¼€åº—ï¼ˆæ— éœ€ä½¿ç”¨ m_demoï¼‰
 
-在服务端目录执行：
+åœ¨æœåŠ¡ç«¯ç›®å½•æ‰§è¡Œï¼š
 
 ```powershell
 cd .\MealQuestServer
-npm run onboard:merchant -- --merchant-id m_my_first_store --name "我的第一家店"
+npm run onboard:merchant -- --merchant-id m_my_first_store --name "æˆ‘çš„ç¬¬ä¸€å®¶åº—"
 ```
 
-商户端联调时设置：
+å•†æˆ·ç«¯è”è°ƒæ—¶è®¾ç½®ï¼š
 
 ```powershell
 $env:MQ_USE_REMOTE_API='true'
@@ -81,7 +81,7 @@ $env:MQ_SERVER_BASE_URL='http://127.0.0.1:3030'
 $env:MQ_MERCHANT_ID='m_my_first_store'
 ```
 
-顾客端联调时设置：
+é¡¾å®¢ç«¯è”è°ƒæ—¶è®¾ç½®ï¼š
 
 ```powershell
 $env:TARO_APP_USE_REMOTE_API='true'
@@ -89,36 +89,33 @@ $env:TARO_APP_SERVER_BASE_URL='http://127.0.0.1:3030'
 $env:TARO_APP_DEFAULT_STORE_ID='m_my_first_store'
 ```
 
-## 3. 上线前最小放行标准
+## 3. ä¸Šçº¿å‰æœ€å°æ”¾è¡Œæ ‡å‡†
 
-1. 一键验收脚本全部 PASS。
-2. `artifacts/release-local-report.json` 中 `allPassed=true`。
-3. 关键场景确认：
-   - 支付/退款/幂等/审计；
-   - RBAC；
-   - 多租户隔离；
-   - 租户策略冻结与限流；
-   - 自动切库与回滚；
-   - 标准营销策略库（模板查询/分支提案/确认执行/活动启停）；
-   - 供应商核验与异业联盟订单校验；
-   - 紧急急售 `Priority:999 + TTL`；
-   - 连锁联盟共享钱包（跨店支付命中）；
-   - 社交裂变账务（转赠/红包分账总量守恒）；
-   - 请客买单会话（群买单/老板补贴结算与上限校验）；
-   - 顾客账户中心（本人流水/本人发票 scope 校验）；
-   - 隐私合规（Owner 导出/删除 + Customer 自助注销）；
-   - 顾客端构建可通过。
+1. ä¸€é”®éªŒæ”¶è„šæœ¬å…¨éƒ¨ PASSã€‚
+2. `artifacts/release-local-report.json` ä¸­ `allPassed=true`ã€‚
+3. å…³é”®åœºæ™¯ç¡®è®¤ï¼š
+   - æ”¯ä»˜/é€€æ¬¾/å¹‚ç­‰/å®¡è®¡ï¼›
+   - RBACï¼›
+   - å¤šç§Ÿæˆ·éš”ç¦»ï¼›
+   - ç§Ÿæˆ·ç­–ç•¥å†»ç»“ä¸Žé™æµï¼›
+   - è‡ªåŠ¨åˆ‡åº“ä¸Žå›žæ»šï¼›
+   - æ ‡å‡†è¥é”€ç­–ç•¥åº“ï¼ˆæ¨¡æ¿æŸ¥è¯¢/åˆ†æ”¯ææ¡ˆ/ç¡®è®¤æ‰§è¡Œ/æ´»åŠ¨å¯åœï¼‰ï¼›
+   - ä¾›åº”å•†æ ¸éªŒä¸Žå¼‚ä¸šè”ç›Ÿè®¢å•æ ¡éªŒï¼›
+   - ç´§æ€¥æ€¥å”® `Priority:999 + TTL`ï¼›
+   - è¿žé”è”ç›Ÿå…±äº«é’±åŒ…ï¼ˆè·¨åº—æ”¯ä»˜å‘½ä¸­ï¼‰ï¼›
+   - ç¤¾äº¤è£‚å˜è´¦åŠ¡ï¼ˆè½¬èµ /çº¢åŒ…åˆ†è´¦æ€»é‡å®ˆæ’ï¼‰ï¼›
+   - è¯·å®¢ä¹°å•ä¼šè¯ï¼ˆç¾¤ä¹°å•/è€æ¿è¡¥è´´ç»“ç®—ä¸Žä¸Šé™æ ¡éªŒï¼‰ï¼›
+   - é¡¾å®¢è´¦æˆ·ä¸­å¿ƒï¼ˆæœ¬äººæµæ°´/æœ¬äººå‘ç¥¨ scope æ ¡éªŒï¼‰ï¼›
+   - éšç§åˆè§„ï¼ˆOwner å¯¼å‡º/åˆ é™¤ + Customer è‡ªåŠ©æ³¨é”€ï¼‰ï¼›
+   - é¡¾å®¢ç«¯æž„å»ºå¯é€šè¿‡ã€‚
 
-## 4. Merchant App One-Command Debug (local / online)
+## 4. Merchant App One-Command Debug (online only)
 
 Run from repository root:
 
 ```powershell
-# local mode (offline domain engine)
-.\scripts\start-merchant-app.ps1 -Mode local -Platform android
-
 # online mode (remote API + optional auto server startup)
-.\scripts\start-merchant-app.ps1 -Mode online -Platform android -ServerBaseUrl 'http://127.0.0.1:3030' -AutoStartServer
+.\scripts\start-merchant-app.ps1 -Platform android -ServerBaseUrl 'http://127.0.0.1:3030' -AutoStartServer
 ```
 
 Notes:
@@ -150,7 +147,7 @@ Goal: use PC as server, run merchant app and customer app on phones within same 
 4. Merchant app (React Native) uses LAN base URL:
 
 ```powershell
-.\scripts\start-merchant-app.ps1 -Mode online -Platform android -ServerBaseUrl 'http://192.168.31.10:3030'
+.\scripts\start-merchant-app.ps1 -Platform android -ServerBaseUrl 'http://192.168.31.10:3030'
 ```
 
 5. Customer app (mini program) uses LAN base URL:
@@ -184,7 +181,7 @@ Update (script shortcut):
 
 ```powershell
 # Customer mini program online mode in LAN
-.\scripts\start-customer-weapp.ps1 -Mode online -ServerBaseUrl 'http://192.168.31.10:3030' -StoreId 'm_my_first_store'
+.\scripts\start-customer-weapp.ps1 -ServerBaseUrl 'http://192.168.31.10:3030'
 ```
 
 ## 6. Android Release Build (APK/AAB)
@@ -227,3 +224,5 @@ Options:
 1. `-DeviceId <adb_serial>`: target a specific device.
 2. `-SkipInstall`: verify launch/runtime only for an already installed package.
 3. `-SmokeSeconds <N>`: how long to wait before runtime check.
+
+
