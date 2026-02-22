@@ -16,6 +16,7 @@ function Stop-ProcessTree {
 }
 
 
+
 function Print-Command {
     param(
         [string]$WorkingDir,
@@ -25,57 +26,7 @@ function Print-Command {
         $script:RunStep = 0
     }
     $script:RunStep += 1
-    Write-Host "[RUN-$($script:RunStep)] $Command @ $WorkingDir" -ForegroundColor Cyan
-}
-
-function Print-EnvChange {
-    param(
-        [string]$Action,
-        [string]$Name,
-        [string]$Value = ""
-    )
-    if (-not $script:EnvStep) {
-        $script:EnvStep = 0
-    }
-    $script:EnvStep += 1
-    $upper = $Name.ToUpperInvariant()
-    $masked = $upper.Contains("SECRET") -or $upper.Contains("TOKEN") -or $upper.Contains("PASSWORD")
-    $displayValue = if ($masked) { "***" } else { $Value }
-    if ($Action -eq "SET") {
-        Write-Host "[ENV-$($script:EnvStep)] SET $Name=$displayValue" -ForegroundColor Yellow
-    } else {
-        Write-Host "[ENV-$($script:EnvStep)] UNSET $Name" -ForegroundColor Yellow
-    }
-}
-
-function Set-ProcessEnv {
-    param(
-        [string]$Name,
-        [string]$Value
-    )
-    [Environment]::SetEnvironmentVariable($Name, $Value, "Process")
-    Print-EnvChange -Action "SET" -Name $Name -Value $Value
-}
-
-function Clear-ProcessEnv {
-    param([string]$Name)
-    [Environment]::SetEnvironmentVariable($Name, $null, "Process")
-    Print-EnvChange -Action "UNSET" -Name $Name
-}
-
-function Get-EnvMap {
-    param([string]$Path)
-    $map = @{}
-    if (Test-Path $Path) {
-        Get-Content $Path | ForEach-Object {
-            $line = $_.Trim()
-            if ($line -and -not $line.StartsWith("#") -and $line.Contains("=")) {
-                $key, $val = $line -split "=", 2
-                $map[$key.Trim()] = $val.Trim().Trim('"').Trim("'")
-            }
-        }
-    }
-    return $map
+    Write-Host ">>> [STEP-$($script:RunStep)] $Command @ $WorkingDir" -ForegroundColor Red
 }
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
@@ -85,39 +36,8 @@ if (-not (Test-Path $customerDir)) {
     throw "Customer app directory not found: $customerDir"
 }
 
-# Load from .env.development first
-$dotEnvPath = Join-Path $customerDir ".env.development"
-$envMap = Get-EnvMap -Path $dotEnvPath
-
-# Override defaults
-if ($ServerUrl -eq "http://127.0.0.1:3030" -and $envMap["TARO_APP_SERVER_BASE_URL"]) {
-    $ServerUrl = $envMap["TARO_APP_SERVER_BASE_URL"]
-}
-if ([string]::IsNullOrWhiteSpace($MerchantId) -and $envMap["TARO_APP_DEFAULT_STORE_ID"]) {
-    $MerchantId = $envMap["TARO_APP_DEFAULT_STORE_ID"]
-}
-
-Set-ProcessEnv -Name "MQ_SERVER_URL" -Value $ServerUrl
-Set-ProcessEnv -Name "TARO_APP_SERVER_BASE_URL" -Value $ServerUrl
-
-if ([string]::IsNullOrWhiteSpace($MerchantId)) {
-    Clear-ProcessEnv -Name "MQ_MERCHANT_ID"
-    Clear-ProcessEnv -Name "TARO_APP_DEFAULT_STORE_ID"
-} else {
-    Set-ProcessEnv -Name "MQ_MERCHANT_ID" -Value $MerchantId
-    Set-ProcessEnv -Name "TARO_APP_DEFAULT_STORE_ID" -Value $MerchantId
-}
-
-Write-Host "[customer-weapp] CONFIG LOADED FROM: $dotEnvPath" -ForegroundColor Green
-
-Write-Host "[customer-weapp] ONLINE MODE ACTIVE" -ForegroundColor Green
-Write-Host "[customer-weapp] MQ_SERVER_URL=$env:MQ_SERVER_URL"
-Write-Host "[customer-weapp] MQ_MERCHANT_ID=$env:MQ_MERCHANT_ID"
-if ([string]::IsNullOrWhiteSpace($MerchantId)) {
-    Write-Host "[customer-weapp] store injection=off (real entry path: scan/link/history)" -ForegroundColor Yellow
-} else {
-    Write-Host "[customer-weapp] store injection=on ($MerchantId)" -ForegroundColor Yellow
-}
+    Write-Host "[customer-weapp] CONFIG MANAGED BY: meal-quest-customer/.env.development" -ForegroundColor Green
+    Write-Host "[customer-weapp] ONLINE MODE ACTIVE" -ForegroundColor Green
 
 try {
     Push-Location $customerDir

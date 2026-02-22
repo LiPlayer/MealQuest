@@ -50,13 +50,13 @@ const getEnv = (name: string): string => {
 const getServerBaseUrl = () => {
     const mqUrl = getEnv('MQ_SERVER_URL');
     if (mqUrl) return mqUrl.trim();
-    return getEnv('TARO_APP_SERVER_BASE_URL').trim();
+    return getEnv('TARO_APP_SERVER_URL').trim();
 };
 
 const requestJson = async ({ method, path, data, token }: RequestOptions) => {
     const baseUrl = getServerBaseUrl();
     if (!baseUrl) {
-        throw new Error('Missing TARO_APP_SERVER_BASE_URL');
+        throw new Error('Missing TARO_APP_SERVER_URL');
     }
 
     const response = await Taro.request({

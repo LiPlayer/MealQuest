@@ -15,46 +15,6 @@ function Stop-ProcessTree {
 }
 
 
-function Print-Command {
-    param(
-        [string]$WorkingDir,
-        [string]$Command
-    )
-    if (-not $script:RunStep) {
-        $script:RunStep = 0
-    }
-    $script:RunStep += 1
-    Write-Host "[RUN-$($script:RunStep)] $Command @ $WorkingDir" -ForegroundColor Cyan
-}
-
-function Print-EnvChange {
-    param(
-        [string]$Action,
-        [string]$Name,
-        [string]$Value = ""
-    )
-    if (-not $script:EnvStep) {
-        $script:EnvStep = 0
-    }
-    $script:EnvStep += 1
-    $upper = $Name.ToUpperInvariant()
-    $masked = $upper.Contains("SECRET") -or $upper.Contains("TOKEN") -or $upper.Contains("PASSWORD")
-    $displayValue = if ($masked) { "***" } else { $Value }
-    if ($Action -eq "SET") {
-        Write-Host "[ENV-$($script:EnvStep)] SET $Name=$displayValue" -ForegroundColor Yellow
-    } else {
-        Write-Host "[ENV-$($script:EnvStep)] UNSET $Name" -ForegroundColor Yellow
-    }
-}
-
-function Set-ProcessEnv {
-    param(
-        [string]$Name,
-        [string]$Value
-    )
-    [Environment]::SetEnvironmentVariable($Name, $Value, "Process")
-    Print-EnvChange -Action "SET" -Name $Name -Value $Value
-}
 
 function Get-LanIpv4Candidates {
     $candidates = @()
@@ -72,44 +32,29 @@ function Get-LanIpv4Candidates {
     return $candidates
 }
 
-function Get-EnvMap {
-    param([string]$Path)
-    $map = @{}
-    if (Test-Path $Path) {
-        Get-Content $Path | ForEach-Object {
-            $line = $_.Trim()
-            if ($line -and -not $line.StartsWith("#") -and $line.Contains("=")) {
-                $key, $val = $line -split "=", 2
-                $map[$key.Trim()] = $val.Trim().Trim('"').Trim("'")
-            }
-        }
+function Print-Command {
+    param(
+        [string]$WorkingDir,
+        [string]$Command
+    )
+    if (-not $script:RunStep) {
+        $script:RunStep = 0
     }
-    return $map
+    $script:RunStep += 1
+    Write-Host ">>> [STEP-$($script:RunStep)] $Command @ $WorkingDir" -ForegroundColor Red
 }
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $serverDir = Join-Path $repoRoot "MealQuestServer"
 
-# Load from .env first
 $dotEnvPath = Join-Path $serverDir ".env"
-$envMap = Get-EnvMap -Path $dotEnvPath
-
-# Override defaults if they are the default values and .env has values
-if ($Port -eq 3030 -and $envMap["PORT"]) {
-    $Port = [int]$envMap["PORT"]
-}
-$hostVal = if ($envMap["HOST"]) { $envMap["HOST"] } else { "0.0.0.0" }
-
-Set-ProcessEnv -Name "HOST" -Value $hostVal
-Set-ProcessEnv -Name "PORT" -Value "$Port"
-Write-Host "[lan-server] CONFIG LOADED FROM: $dotEnvPath" -ForegroundColor Green
+Write-Host "[lan-server] CONFIG MANAGED BY: MealQuestServer/.env" -ForegroundColor Green
 
 $ips = Get-LanIpv4Candidates
-Write-Host "[lan-server] HOST=$env:HOST PORT=$env:PORT"
 if ($ips.Count -gt 0) {
     Write-Host "[lan-server] LAN IP candidates:"
     $ips | ForEach-Object { Write-Host "  - $_" }
-    Write-Host "[lan-server] Customer/Merchant MQ_SERVER_URL example: http://$($ips[0]):$Port"
+    Write-Host "[lan-server] Customer/Merchant MQ_SERVER_URL example: http://$($ips[0]):<PORT>"
 } else {
     Write-Host "[lan-server] No LAN IPv4 detected automatically. Please run ipconfig and use your Wi-Fi IPv4."
 }

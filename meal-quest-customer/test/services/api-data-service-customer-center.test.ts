@@ -16,19 +16,19 @@ jest.mock('@/utils/storage', () => ({
 }));
 
 describe('ApiDataService customer center', () => {
-    const envServerBase = process.env.TARO_APP_SERVER_BASE_URL;
+    const envServerBase = process.env.TARO_APP_SERVER_URL;
 
     beforeEach(() => {
         jest.resetModules();
-        process.env.TARO_APP_SERVER_BASE_URL = 'http://127.0.0.1:3030';
+        process.env.TARO_APP_SERVER_URL = 'http://127.0.0.1:3030';
         requestMock.mockReset();
     });
 
     afterEach(() => {
         if (typeof envServerBase === 'string') {
-            process.env.TARO_APP_SERVER_BASE_URL = envServerBase;
+            process.env.TARO_APP_SERVER_URL = envServerBase;
         } else {
-            delete process.env.TARO_APP_SERVER_BASE_URL;
+            delete process.env.TARO_APP_SERVER_URL;
         }
     });
 

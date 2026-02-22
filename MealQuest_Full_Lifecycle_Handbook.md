@@ -200,7 +200,7 @@ Release模式下**不需要**两步启动。 上线到应用商店的 APP 是“
 ### 步骤 3：启动顾客端
 
 ```powershell
-# 预先配置：meal-quest-customer/.env.development -> TARO_APP_SERVER_BASE_URL=...
+# 预先配置：meal-quest-customer/.env.development -> TARO_APP_SERVER_URL=...
 .\scripts\start-customer-weapp.ps1
 ```
 
@@ -319,7 +319,7 @@ node .\scripts\release-local.js
 
 先查：
 1. 微信开发者工具是否允许开发态不校验域名/TLS。
-2. `TARO_APP_SERVER_BASE_URL` 是否是电脑 LAN IP。
+2. `TARO_APP_SERVER_URL` 是否是电脑 LAN IP。
 
 ## 13.3 商户端启动失败
 
