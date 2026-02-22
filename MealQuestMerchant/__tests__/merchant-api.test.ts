@@ -1,14 +1,12 @@
 describe('merchantApi audit logs', () => {
   beforeEach(() => {
     jest.resetModules();
-    process.env.MQ_USE_REMOTE_API = 'true';
-    process.env.MQ_SERVER_BASE_URL = 'http://127.0.0.1:3030';
+    process.env.MQ_SERVER_URL = 'http://127.0.0.1:3030';
     (global as any).fetch = jest.fn();
   });
 
   afterEach(() => {
-    delete process.env.MQ_USE_REMOTE_API;
-    delete process.env.MQ_SERVER_BASE_URL;
+    delete process.env.MQ_SERVER_URL;
   });
 
   it('requests audit logs with cursor pagination', async () => {

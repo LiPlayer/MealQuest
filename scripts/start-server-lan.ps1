@@ -72,11 +72,37 @@ function Get-LanIpv4Candidates {
     return $candidates
 }
 
+function Get-EnvMap {
+    param([string]$Path)
+    $map = @{}
+    if (Test-Path $Path) {
+        Get-Content $Path | ForEach-Object {
+            $line = $_.Trim()
+            if ($line -and -not $line.StartsWith("#") -and $line.Contains("=")) {
+                $key, $val = $line -split "=", 2
+                $map[$key.Trim()] = $val.Trim().Trim('"').Trim("'")
+            }
+        }
+    }
+    return $map
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $serverDir = Join-Path $repoRoot "MealQuestServer"
 
-Set-ProcessEnv -Name "HOST" -Value "0.0.0.0"
+# Load from .env first
+$dotEnvPath = Join-Path $serverDir ".env"
+$envMap = Get-EnvMap -Path $dotEnvPath
+
+# Override defaults if they are the default values and .env has values
+if ($Port -eq 3030 -and $envMap["PORT"]) {
+    $Port = [int]$envMap["PORT"]
+}
+$hostVal = if ($envMap["HOST"]) { $envMap["HOST"] } else { "0.0.0.0" }
+
+Set-ProcessEnv -Name "HOST" -Value $hostVal
 Set-ProcessEnv -Name "PORT" -Value "$Port"
+Write-Host "[lan-server] CONFIG LOADED FROM: $dotEnvPath" -ForegroundColor Green
 
 $ips = Get-LanIpv4Candidates
 Write-Host "[lan-server] HOST=$env:HOST PORT=$env:PORT"

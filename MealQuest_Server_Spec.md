@@ -25,6 +25,7 @@
 3. `src/store/`：内存仓储（可替换数据库）。
 4. `src/http/`：Node HTTP API。
 5. `test/`：`node:test` 单测与集成测试。
+6. `.env`：环境配置文件（由 `dotenv` 加载）。
 
 ---
 

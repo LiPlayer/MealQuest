@@ -11,7 +11,6 @@ import {
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import {
-  approveProposal,
   createInitialMerchantState,
   smartCashierVerify,
   toggleKillSwitch,
@@ -258,6 +257,7 @@ function MerchantConsoleApp() {
         if (!active) {
           return;
         }
+        setRemoteToken(token);
         setLastAction('已连接服务端驾驶舱');
 
         const wsUrl = MerchantApi.getWsUrl(token);
@@ -270,7 +270,7 @@ function MerchantConsoleApp() {
               }
               appendRealtimeEvent(buildRealtimeEventRow(message));
               setLastAction(`实时事件：${message.type}`);
-              void refreshRemoteState(token).catch(() => { });
+              refreshRemoteState(token).catch(() => {});
             },
             onError: () => {
               if (!active) {
@@ -296,11 +296,12 @@ function MerchantConsoleApp() {
         if (!active) {
           return;
         }
+        setRemoteToken(null);
         setLastAction('远程模式连接失败，已切回本地模式');
       }
     };
 
-    void bootstrapRemote();
+    bootstrapRemote().catch(() => {});
     return () => {
       active = false;
       realtimeClient?.close();
@@ -311,7 +312,7 @@ function MerchantConsoleApp() {
     if (!remoteToken) {
       return;
     }
-    void refreshAuditLogs(remoteToken, { forceReset: true });
+    refreshAuditLogs(remoteToken, { forceReset: true }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remoteToken, auditActionFilter, auditStatusFilter, auditTimeRange]);
 
@@ -319,8 +320,8 @@ function MerchantConsoleApp() {
     if (!remoteToken) {
       return;
     }
-    void refreshStrategyLibrary(remoteToken);
-    void refreshAllianceData(remoteToken);
+    refreshStrategyLibrary(remoteToken).catch(() => {});
+    refreshAllianceData(remoteToken).catch(() => {});
   }, [remoteToken]);
 
   const onApproveProposal = async (proposalId: string, title: string) => {
@@ -1105,10 +1106,10 @@ function MerchantConsoleApp() {
                     onPress={() =>
                       remoteToken &&
                       !auditLoading &&
-                      void refreshAuditLogs(remoteToken, {
+                      refreshAuditLogs(remoteToken, {
                         append: true,
                         cursor: auditCursor,
-                      })
+                      }).catch(() => {})
                     }>
                     <Text style={styles.loadMoreButtonText}>
                       {auditLoading ? '加载中...' : '加载更多'}

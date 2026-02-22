@@ -63,11 +63,38 @@ function Clear-ProcessEnv {
     Print-EnvChange -Action "UNSET" -Name $Name
 }
 
+function Get-EnvMap {
+    param([string]$Path)
+    $map = @{}
+    if (Test-Path $Path) {
+        Get-Content $Path | ForEach-Object {
+            $line = $_.Trim()
+            if ($line -and -not $line.StartsWith("#") -and $line.Contains("=")) {
+                $key, $val = $line -split "=", 2
+                $map[$key.Trim()] = $val.Trim().Trim('"').Trim("'")
+            }
+        }
+    }
+    return $map
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $customerDir = Join-Path $repoRoot "meal-quest-customer"
 
 if (-not (Test-Path $customerDir)) {
     throw "Customer app directory not found: $customerDir"
+}
+
+# Load from .env.development first
+$dotEnvPath = Join-Path $customerDir ".env.development"
+$envMap = Get-EnvMap -Path $dotEnvPath
+
+# Override defaults
+if ($ServerUrl -eq "http://127.0.0.1:3030" -and $envMap["TARO_APP_SERVER_BASE_URL"]) {
+    $ServerUrl = $envMap["TARO_APP_SERVER_BASE_URL"]
+}
+if ([string]::IsNullOrWhiteSpace($MerchantId) -and $envMap["TARO_APP_DEFAULT_STORE_ID"]) {
+    $MerchantId = $envMap["TARO_APP_DEFAULT_STORE_ID"]
 }
 
 Set-ProcessEnv -Name "MQ_SERVER_URL" -Value $ServerUrl
@@ -80,6 +107,8 @@ if ([string]::IsNullOrWhiteSpace($MerchantId)) {
     Set-ProcessEnv -Name "MQ_MERCHANT_ID" -Value $MerchantId
     Set-ProcessEnv -Name "TARO_APP_DEFAULT_STORE_ID" -Value $MerchantId
 }
+
+Write-Host "[customer-weapp] CONFIG LOADED FROM: $dotEnvPath" -ForegroundColor Green
 
 Write-Host "[customer-weapp] ONLINE MODE ACTIVE" -ForegroundColor Green
 Write-Host "[customer-weapp] MQ_SERVER_URL=$env:MQ_SERVER_URL"

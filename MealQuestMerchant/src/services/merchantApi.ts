@@ -1,15 +1,9 @@
+import Config from 'react-native-config';
 import { MerchantState } from '../domain/merchantEngine';
 
-const getEnv = (name: string): string => {
-  if (typeof process === 'undefined' || !process.env) {
-    return '';
-  }
-  const value = process.env[name];
-  return typeof value === 'string' ? value.trim() : '';
-};
+const BASE_URL = Config.MQ_SERVER_URL;
+const DEFAULT_MERCHANT_ID = Config.MQ_MERCHANT_ID || 'm_demo';
 
-const BASE_URL = getEnv('MQ_SERVER_URL');
-const DEFAULT_MERCHANT_ID = getEnv('MQ_MERCHANT_ID') || 'm_demo';
 if (!BASE_URL) {
   console.warn('[MerchantApi] MQ_SERVER_URL is missing. API calls will fail.');
 }

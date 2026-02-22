@@ -2,6 +2,7 @@ const http = require("node:http");
 const crypto = require("node:crypto");
 const path = require("node:path");
 const { URL } = require("node:url");
+require("dotenv").config();
 
 const { issueToken, parseBearerToken, verifyToken } = require("../core/auth");
 const { createTenantPolicyManager } = require("../core/tenantPolicy");
@@ -452,9 +453,9 @@ function buildCustomerActivities(campaigns = []) {
       const theme = toActivityTheme(meta.category);
       const narrative =
         campaign.action &&
-        campaign.action.type === "STORY_CARD" &&
-        campaign.action.story &&
-        campaign.action.story.narrative
+          campaign.action.type === "STORY_CARD" &&
+          campaign.action.story &&
+          campaign.action.story.narrative
           ? campaign.action.story.narrative
           : `活动触发事件：${campaign.trigger && campaign.trigger.event ? campaign.trigger.event : "CUSTOM"}`;
       return {
@@ -821,7 +822,7 @@ function copyMerchantSlice({ sourceDb, targetDb, merchantId }) {
   targetDb.groupTreatSessionsByMerchant[merchantId] = jsonClone(
     (sourceDb.groupTreatSessionsByMerchant &&
       sourceDb.groupTreatSessionsByMerchant[merchantId]) ||
-      {}
+    {}
   );
 
   if (!targetDb.merchantDailySubsidyUsage || typeof targetDb.merchantDailySubsidyUsage !== "object") {
@@ -1063,13 +1064,13 @@ function createAppServer({
   dbFilePath = path.resolve(process.cwd(), "data/db.json"),
   jwtSecret = process.env.MQ_JWT_SECRET || "mealquest-dev-secret",
   paymentCallbackSecret =
-    process.env.MQ_PAYMENT_CALLBACK_SECRET || "mealquest-payment-callback-secret",
+  process.env.MQ_PAYMENT_CALLBACK_SECRET || "mealquest-payment-callback-secret",
   onboardSecret = process.env.MQ_ONBOARD_SECRET || "",
   paymentProvider = null
 } = {}) {
   const actualDb = db || (persist ? createPersistentDb(dbFilePath) : createInMemoryDb());
   if (typeof actualDb.save !== "function") {
-    actualDb.save = () => {};
+    actualDb.save = () => { };
   }
   if (!actualDb.tenantRouteFiles || typeof actualDb.tenantRouteFiles !== "object") {
     actualDb.tenantRouteFiles = {};

@@ -178,27 +178,30 @@ Release模式下**不需要**两步启动。 上线到应用商店的 APP 是“
 ### 步骤 1：启动局域网服务端
 
 ```powershell
-.\scripts\start-server-lan.ps1 -Port 3030
+# 预先配置：MealQuestServer/.env -> PORT=3030
+.\scripts\start-server-lan.ps1
 ```
 
 你会看到：
 1. LAN IP 候选（如 `192.168.31.10`）。
-2. 服务监听 `0.0.0.0:3030`。
+2. 服务监听从 `.env` 读取的对应端口。
 
 ### 步骤 2：启动商户端
 
 ```powershell
-.\scripts\start-merchant-app.ps1 -Platform android -ServerUrl 'http://192.168.31.10:3030'
+# 预先配置：MealQuestMerchant/.env -> MQ_SERVER_URL=http://<LAN_IP>:3030
+.\scripts\start-merchant-app.ps1 -Platform android
 ```
 
 说明：
-1. 会自动注入商户端环境变量。
-2. 会自动起 Metro，并执行 debug 安装启动。
+1. 采用 `react-native-config` 专业方案，自动从 `.env` 注入环境变量。
+2. 脚本自动识别配置，不再强制要求命令行传参。
 
 ### 步骤 3：启动顾客端
 
 ```powershell
-.\scripts\start-customer-weapp.ps1 -ServerUrl 'http://192.168.31.10:3030'
+# 预先配置：meal-quest-customer/.env.development -> TARO_APP_SERVER_BASE_URL=...
+.\scripts\start-customer-weapp.ps1
 ```
 
 ### 步骤 4：执行老板 + 顾客双角色验证
@@ -469,14 +472,14 @@ node .\scripts\release-local.js
 ## 18. 附录：关键命令总表
 
 ```powershell
-# 1) 启动 LAN 服务器
-.\scripts\start-server-lan.ps1 -Port 3030
+# 1) 启动 LAN 服务器 (默认读取 MealQuestServer/.env)
+.\scripts\start-server-lan.ps1
 
-# 2) 商户端在线模式
-.\scripts\start-merchant-app.ps1 -Platform android -ServerUrl 'http://<LAN_IP>:3030'
+# 2) 商户端在线模式 (默认读取 MealQuestMerchant/.env)
+.\scripts\start-merchant-app.ps1 -Platform android
 
-# 3) 顾客端在线模式
-.\scripts\start-customer-weapp.ps1 -ServerUrl 'http://<LAN_IP>:3030'
+# 3) 顾客端在线模式 (默认读取 meal-quest-customer/.env.development)
+.\scripts\start-customer-weapp.ps1
 
 # 4) 全量回归门禁
 node .\scripts\release-local.js

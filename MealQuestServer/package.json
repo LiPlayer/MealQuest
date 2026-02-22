@@ -8,5 +8,8 @@
     "test": "node --test --test-concurrency=1",
     "test:smoke": "node scripts/smoke-local-server.js",
     "onboard:merchant": "node scripts/onboard-merchant.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.3.1"
   }
 }

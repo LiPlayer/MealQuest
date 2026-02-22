@@ -204,30 +204,58 @@ function Ensure-AndroidSetup {
     Write-Host "[merchant-app] android/local.properties generated."
 }
 
+function Get-EnvMap {
+    param([string]$Path)
+    $map = @{}
+    if (Test-Path $Path) {
+        Get-Content $Path | ForEach-Object {
+            $line = $_.Trim()
+            if ($line -and -not $line.StartsWith("#") -and $line.Contains("=")) {
+                $key, $val = $line -split "=", 2
+                $map[$key.Trim()] = $val.Trim().Trim('"').Trim("'")
+            }
+        }
+    }
+    return $map
+}
+
 try {
     $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+    $merchantDir = Join-Path $repoRoot "MealQuestMerchant"
 
-$merchantDir = Join-Path $repoRoot "MealQuestMerchant"
+    if (-not (Test-Path $merchantDir)) {
+        throw "Merchant app directory not found: $merchantDir"
+    }
 
-if (-not (Test-Path $merchantDir)) {
-    throw "Merchant app directory not found: $merchantDir"
-}
+    # Load from .env first
+    $dotEnvPath = Join-Path $merchantDir ".env"
+    $envMap = Get-EnvMap -Path $dotEnvPath
+    
+    # Override defaults if not explicitly passed (or if they are the default values)
+    if ($ServerUrl -eq "http://127.0.0.1:3030" -and $envMap["MQ_SERVER_URL"]) {
+        $ServerUrl = $envMap["MQ_SERVER_URL"]
+    }
+    if ($MerchantId -eq "m_my_first_store" -and $envMap["MQ_MERCHANT_ID"]) {
+        $MerchantId = $envMap["MQ_MERCHANT_ID"]
+    }
+    if ($envMap["MQ_ENABLE_ENTRY_FLOW"]) {
+        $EnableEntryFlow = $envMap["MQ_ENABLE_ENTRY_FLOW"] -eq "true"
+    }
 
-if ($Platform -eq "android") {
-    Ensure-AndroidSetup -MerchantDirPath $merchantDir -PreferredSdkPath $AndroidSdkPath
-}
+    if ($Platform -eq "android") {
+        Ensure-AndroidSetup -MerchantDirPath $merchantDir -PreferredSdkPath $AndroidSdkPath
+    }
 
-$entryFlowValue = if ($EnableEntryFlow) { "true" } else { "false" }
-Set-ProcessEnv -Name "MQ_ENABLE_ENTRY_FLOW" -Value $entryFlowValue
-Set-ProcessEnv -Name "MQ_MERCHANT_ID" -Value $MerchantId
+    $entryFlowValue = if ($EnableEntryFlow) { "true" } else { "false" }
+    Set-ProcessEnv -Name "MQ_ENABLE_ENTRY_FLOW" -Value $entryFlowValue
+    Set-ProcessEnv -Name "MQ_MERCHANT_ID" -Value $MerchantId
+    Set-ProcessEnv -Name "MQ_SERVER_URL" -Value $ServerUrl
 
-Set-ProcessEnv -Name "MQ_SERVER_URL" -Value $ServerUrl
-
-Write-Host "[merchant-app] ONLINE MODE ACTIVE" -ForegroundColor Green
-Write-Host "[merchant-app] MQ_ENABLE_ENTRY_FLOW=$env:MQ_ENABLE_ENTRY_FLOW"
-Write-Host "[merchant-app] MQ_SERVER_URL=$env:MQ_SERVER_URL"
-Write-Host "[merchant-app] MQ_MERCHANT_ID=$env:MQ_MERCHANT_ID"
-Write-Host "[merchant-app] metro=${MetroHost}:$MetroPort"
+    Write-Host "[merchant-app] CONFIG LOADED FROM: $dotEnvPath" -ForegroundColor Green
+    Write-Host "[merchant-app] MQ_ENABLE_ENTRY_FLOW=$env:MQ_ENABLE_ENTRY_FLOW"
+    Write-Host "[merchant-app] MQ_SERVER_URL=$env:MQ_SERVER_URL"
+    Write-Host "[merchant-app] MQ_MERCHANT_ID=$env:MQ_MERCHANT_ID"
+    Write-Host "[merchant-app] metro=${MetroHost}:$MetroPort"
 
 $metroProcess = $null
 
@@ -260,8 +288,7 @@ if (-not $NoMetro) {
 if (-not $NoMetro -and -not $MetroInjectedOrPreExisting) {
     $metroCommand = @"
 `$env:MQ_ENABLE_ENTRY_FLOW='$env:MQ_ENABLE_ENTRY_FLOW';
-`$env:MQ_USE_REMOTE_API='true';
-`$env:MQ_SERVER_BASE_URL='$env:MQ_SERVER_BASE_URL';
+`$env:MQ_SERVER_URL='$env:MQ_SERVER_URL';
 `$env:MQ_MERCHANT_ID='$env:MQ_MERCHANT_ID';
 Set-Location '$merchantDir';
 npx react-native start --host '$MetroHost' --port $MetroPort
