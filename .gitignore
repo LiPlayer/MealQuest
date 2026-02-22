@@ -1,2 +1,3 @@
 artifacts/
 MealQuestServer/.env.*.local
+MealQuestServer/data/

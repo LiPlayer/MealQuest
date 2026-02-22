@@ -10,12 +10,6 @@
 node .\scripts\release-local.js
 ```
 
-或：
-
-```powershell
-.\scripts\release-local.ps1
-```
-
 执行内容：
 
 1. `MealQuestServer` 全量测试（含持久化、多租户、迁移、RBAC、审计、策略库、供应商核验、急售）。
@@ -37,11 +31,9 @@ E2E（需要微信开发者工具环境，独立执行）：
 
 ## 1.1 环境化启动（dev/staging/prod）
 
-已生成脚本：
+核心脚本：
 
-1. `scripts/start-server-dev.ps1`
-2. `scripts/start-server-staging.ps1`
-3. `scripts/start-server-prod.ps1`
+1. `scripts/start-server.ps1`
 
 默认读取顺序：
 
@@ -51,9 +43,9 @@ E2E（需要微信开发者工具环境，独立执行）：
 示例：
 
 ```powershell
-.\scripts\start-server-dev.ps1
-.\scripts\start-server-staging.ps1
-.\scripts\start-server-prod.ps1
+.\scripts\start-server.ps1 -Profile dev
+.\scripts\start-server.ps1 -Profile staging
+.\scripts\start-server.ps1 -Profile prod
 ```
 
 ## 2. 仅验收本地运行中的服务端（可选）

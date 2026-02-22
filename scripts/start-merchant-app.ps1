@@ -53,7 +53,7 @@ Write-Host "[merchant-app] MQ_SERVER_BASE_URL=$env:MQ_SERVER_BASE_URL"
 Write-Host "[merchant-app] MQ_MERCHANT_ID=$env:MQ_MERCHANT_ID"
 
 if ($AutoStartServer -and $Mode -eq "online") {
-    $serverScript = Join-Path $PSScriptRoot "start-server-dev.ps1"
+    $serverScript = Join-Path $PSScriptRoot "start-server.ps1"
     if (-not (Test-Path $serverScript)) {
         throw "Server startup script not found: $serverScript"
     }
@@ -63,7 +63,9 @@ if ($AutoStartServer -and $Mode -eq "online") {
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        $serverScript
+        $serverScript,
+        "-Profile",
+        "dev"
     ) | Out-Null
     Start-Sleep -Seconds 2
 }

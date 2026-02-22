@@ -28,9 +28,9 @@ npm start
 也可使用仓库根目录脚本按环境启动：
 
 ```powershell
-.\scripts\start-server-dev.ps1
-.\scripts\start-server-staging.ps1
-.\scripts\start-server-prod.ps1
+.\scripts\start-server.ps1 -Profile dev
+.\scripts\start-server.ps1 -Profile staging
+.\scripts\start-server.ps1 -Profile prod
 ```
 
 环境模板：
