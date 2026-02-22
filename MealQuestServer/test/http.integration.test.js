@@ -294,6 +294,42 @@ test("merchant onboarding api allows custom store creation for end-to-end testin
     assert.equal(onboard.data.merchant.name, "Custom Test Store");
     assert.ok(onboard.data.seededUsers.includes("u_demo"));
 
+    const requestCode = await postJson(baseUrl, "/api/auth/merchant/request-code", {
+      phone: "+8613800000000"
+    });
+    assert.equal(requestCode.status, 200);
+    assert.ok(requestCode.data.debugCode);
+
+    const phoneLogin = await postJson(baseUrl, "/api/auth/merchant/phone-login", {
+      phone: "+8613800000000",
+      code: requestCode.data.debugCode
+    });
+    assert.equal(phoneLogin.status, 200);
+    assert.ok(phoneLogin.data.token);
+
+    const contractApply = await postJson(
+      baseUrl,
+      "/api/merchant/contract/apply",
+      {
+        merchantId,
+        companyName: "Custom Test Company",
+        licenseNo: "91310000MA1TEST001",
+        settlementAccount: "6222020202020202",
+        contactPhone: "+8613800000000"
+      },
+      { Authorization: `Bearer ${phoneLogin.data.token}` }
+    );
+    assert.equal(contractApply.status, 200);
+    assert.equal(contractApply.data.status, "PENDING_REVIEW");
+
+    const contractStatus = await getJson(
+      baseUrl,
+      `/api/merchant/contract/status?merchantId=${encodeURIComponent(merchantId)}`,
+      { Authorization: `Bearer ${phoneLogin.data.token}` }
+    );
+    assert.equal(contractStatus.status, 200);
+    assert.equal(contractStatus.data.status, "PENDING_REVIEW");
+
     const duplicate = await postJson(baseUrl, "/api/merchant/onboard", {
       merchantId,
       name: "Custom Test Store"

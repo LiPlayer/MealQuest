@@ -178,6 +178,20 @@ curl -X POST http://127.0.0.1:3030/api/auth/mock-login `
   -d "{\"role\":\"OWNER\",\"merchantId\":\"m_demo\"}"
 ```
 
+老板手机号登录流程（用于商户端引导页）：
+
+```text
+POST /api/auth/merchant/request-code
+POST /api/auth/merchant/phone-login
+```
+
+特约商户入驻：
+
+```text
+POST /api/merchant/contract/apply
+GET  /api/merchant/contract/status?merchantId=<id>
+```
+
 ## WebSocket
 
 连接地址：

@@ -5,6 +5,7 @@ import {
   StatusBar,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import {SafeAreaProvider, SafeAreaView} from 'react-native-safe-area-context';
@@ -112,7 +113,7 @@ function SectionCard({
   );
 }
 
-export default function App() {
+function MerchantConsoleApp() {
   const [merchantState, setMerchantState] = useState(createInitialMerchantState);
   const [lastAction, setLastAction] = useState('待命中');
   const [remoteToken, setRemoteToken] = useState<string | null>(null);
@@ -1134,6 +1135,230 @@ export default function App() {
   );
 }
 
+type MerchantEntryStep = 'PHONE_LOGIN' | 'GUIDE' | 'OPEN_STORE' | 'CONTRACT';
+
+function MerchantEntryFlow({onComplete}: {onComplete: (merchantId: string) => void}) {
+  const [step, setStep] = useState<MerchantEntryStep>('PHONE_LOGIN');
+  const [phone, setPhone] = useState('+8613800000000');
+  const [code, setCode] = useState('');
+  const [merchantId, setMerchantId] = useState('m_my_first_store');
+  const [merchantName, setMerchantName] = useState('我的第一家店');
+  const [companyName, setCompanyName] = useState('我的餐饮有限公司');
+  const [licenseNo, setLicenseNo] = useState('91310000MA1TEST001');
+  const [settlementAccount, setSettlementAccount] = useState('6222020202020202');
+  const [loading, setLoading] = useState(false);
+  const [token, setToken] = useState('');
+  const [hint, setHint] = useState('');
+  const [error, setError] = useState('');
+
+  const onRequestCode = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      const result = await MerchantApi.requestMerchantLoginCode(phone);
+      setHint(
+        result.debugCode
+          ? `验证码已发送（测试验证码 ${result.debugCode}）`
+          : '验证码已发送，请查看短信',
+      );
+    } catch (err: any) {
+      setError(err?.message || '验证码发送失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onVerifyPhone = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      const result = await MerchantApi.loginByPhone({phone, code});
+      setToken(result.token);
+      setStep('GUIDE');
+    } catch (err: any) {
+      setError(err?.message || '手机号登录失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onOpenStore = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      const result = await MerchantApi.onboardMerchant({
+        merchantId,
+        name: merchantName,
+        budgetCap: 500,
+        seedDemoUsers: true,
+      });
+      const nextMerchantId = result.merchant.merchantId;
+      MerchantApi.setMerchantId(nextMerchantId);
+      setMerchantId(nextMerchantId);
+      setStep('CONTRACT');
+    } catch (err: any) {
+      setError(err?.message || '开店失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onSubmitContract = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      await MerchantApi.applyContract(token, {
+        merchantId,
+        companyName,
+        licenseNo,
+        settlementAccount,
+        contactPhone: phone,
+        notes: '应用内自助提交流程',
+      });
+      onComplete(merchantId);
+    } catch (err: any) {
+      setError(err?.message || '特约商户入驻提交失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <SafeAreaProvider>
+      <StatusBar barStyle="dark-content" />
+      <SafeAreaView style={styles.safeArea}>
+        <ScrollView contentContainerStyle={styles.entryContainer}>
+          <View style={styles.entryHero}>
+            <Text style={styles.entryHeroKicker}>MealQuest Merchant</Text>
+            <Text style={styles.entryTitle}>老板开店引导</Text>
+            <Text style={styles.entrySubtitle}>手机号登录 - 引导 - 开店 - 特约入驻</Text>
+          </View>
+
+          {step === 'PHONE_LOGIN' && (
+            <View style={styles.entryCard}>
+              <Text style={styles.entryCardTitle}>1. 手机号登录</Text>
+              <TextInput
+                value={phone}
+                onChangeText={setPhone}
+                placeholder="+8613800000000"
+                style={styles.entryInput}
+                keyboardType="phone-pad"
+              />
+              <TextInput
+                value={code}
+                onChangeText={setCode}
+                placeholder="输入验证码"
+                style={styles.entryInput}
+                keyboardType="number-pad"
+              />
+              <View style={styles.filterRow}>
+                <Pressable style={styles.secondaryButton} onPress={onRequestCode}>
+                  <Text style={styles.secondaryButtonText}>获取验证码</Text>
+                </Pressable>
+                <Pressable style={styles.primaryButton} onPress={onVerifyPhone}>
+                  <Text style={styles.primaryButtonText}>登录并继续</Text>
+                </Pressable>
+              </View>
+              {hint ? <Text style={styles.entryHint}>{hint}</Text> : null}
+            </View>
+          )}
+
+          {step === 'GUIDE' && (
+            <View style={styles.entryCard}>
+              <Text style={styles.entryCardTitle}>2. 新手引导</Text>
+              <Text style={styles.dataLine}>• 收银台支持智能核销（券/赠金/本金）</Text>
+              <Text style={styles.dataLine}>• 营销策略库可按门店一键生成</Text>
+              <Text style={styles.dataLine}>• 审计日志可追溯高风险操作</Text>
+              <Pressable style={styles.primaryButton} onPress={() => setStep('OPEN_STORE')}>
+                <Text style={styles.primaryButtonText}>进入开店</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {step === 'OPEN_STORE' && (
+            <View style={styles.entryCard}>
+              <Text style={styles.entryCardTitle}>3. 开店体验</Text>
+              <TextInput
+                value={merchantId}
+                onChangeText={setMerchantId}
+                placeholder="门店ID（如 m_my_first_store）"
+                style={styles.entryInput}
+              />
+              <TextInput
+                value={merchantName}
+                onChangeText={setMerchantName}
+                placeholder="门店名称"
+                style={styles.entryInput}
+              />
+              <Pressable style={styles.primaryButton} onPress={onOpenStore}>
+                <Text style={styles.primaryButtonText}>创建门店</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {step === 'CONTRACT' && (
+            <View style={styles.entryCard}>
+              <Text style={styles.entryCardTitle}>4. 特约商户入驻</Text>
+              <TextInput
+                value={companyName}
+                onChangeText={setCompanyName}
+                placeholder="企业名称"
+                style={styles.entryInput}
+              />
+              <TextInput
+                value={licenseNo}
+                onChangeText={setLicenseNo}
+                placeholder="营业执照号"
+                style={styles.entryInput}
+              />
+              <TextInput
+                value={settlementAccount}
+                onChangeText={setSettlementAccount}
+                placeholder="结算账户"
+                style={styles.entryInput}
+              />
+              <Pressable style={styles.primaryButton} onPress={onSubmitContract}>
+                <Text style={styles.primaryButtonText}>提交入驻并进入驾驶舱</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {error ? <Text style={styles.entryError}>{error}</Text> : null}
+          {loading ? <Text style={styles.entryLoading}>处理中...</Text> : null}
+        </ScrollView>
+      </SafeAreaView>
+    </SafeAreaProvider>
+  );
+}
+
+const ENABLE_ENTRY_FLOW =
+  ((typeof process !== 'undefined' && process.env?.MQ_ENABLE_ENTRY_FLOW) ||
+    (process.env.NODE_ENV === 'test' ? 'false' : 'true')) === 'true';
+
+export default function App() {
+  const [ready, setReady] = useState(!ENABLE_ENTRY_FLOW);
+  const [merchantId, setMerchantId] = useState(
+    typeof MerchantApi.getMerchantId === 'function'
+      ? MerchantApi.getMerchantId()
+      : 'm_demo',
+  );
+
+  if (!ready) {
+    return (
+      <MerchantEntryFlow
+        onComplete={nextMerchantId => {
+          if (typeof MerchantApi.setMerchantId === 'function') {
+            MerchantApi.setMerchantId(nextMerchantId);
+          }
+          setMerchantId(nextMerchantId);
+          setReady(true);
+        }}
+      />
+    );
+  }
+  return <MerchantConsoleApp key={`merchant-console-${merchantId}`} />;
+}
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -1144,6 +1369,69 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 34,
     gap: 12,
+  },
+  entryContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 28,
+    gap: 12,
+  },
+  entryHero: {
+    backgroundColor: '#0f172a',
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#1e293b',
+    gap: 4,
+  },
+  entryHeroKicker: {
+    color: '#94a3b8',
+    fontSize: 11,
+    letterSpacing: 0.6,
+  },
+  entryTitle: {
+    color: '#f8fafc',
+    fontSize: 24,
+    fontWeight: '800',
+  },
+  entrySubtitle: {
+    color: '#cbd5e1',
+    fontSize: 13,
+  },
+  entryCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#d9e3f0',
+    padding: 14,
+    gap: 10,
+  },
+  entryCardTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  entryInput: {
+    borderWidth: 1,
+    borderColor: '#cbd8ea',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#f8fbff',
+    color: '#0f172a',
+    fontSize: 14,
+  },
+  entryHint: {
+    color: '#0f766e',
+    fontSize: 12,
+  },
+  entryError: {
+    color: '#b91c1c',
+    fontSize: 12,
+  },
+  entryLoading: {
+    color: '#334155',
+    fontSize: 12,
   },
   heroCard: {
     backgroundColor: '#0f172a',

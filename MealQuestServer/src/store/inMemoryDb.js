@@ -173,6 +173,8 @@ function createDefaultState(now = new Date()) {
       m_bistro: {}
     },
     socialTransferLogs: [],
+    phoneLoginCodes: {},
+    contractApplications: {},
     tenantPolicies: {},
     tenantMigrations: {},
     tenantRouteFiles: {},
@@ -302,6 +304,12 @@ function migrateLegacyShape(state) {
   if (!Array.isArray(next.socialTransferLogs)) {
     next.socialTransferLogs = [];
   }
+  if (!next.phoneLoginCodes || typeof next.phoneLoginCodes !== "object") {
+    next.phoneLoginCodes = {};
+  }
+  if (!next.contractApplications || typeof next.contractApplications !== "object") {
+    next.contractApplications = {};
+  }
 
   if (!next.tenantPolicies || typeof next.tenantPolicies !== "object") {
     next.tenantPolicies = {};
@@ -399,6 +407,14 @@ function normalizeState(initialState = null) {
     socialTransferLogs: Array.isArray(migrated.socialTransferLogs)
       ? migrated.socialTransferLogs
       : defaults.socialTransferLogs,
+    phoneLoginCodes: {
+      ...defaults.phoneLoginCodes,
+      ...(migrated.phoneLoginCodes || {})
+    },
+    contractApplications: {
+      ...defaults.contractApplications,
+      ...(migrated.contractApplications || {})
+    },
     tenantPolicies: {
       ...defaults.tenantPolicies,
       ...(migrated.tenantPolicies || {})
@@ -441,6 +457,8 @@ function createInMemoryDb(initialState = null) {
       groupTreatSessionsByMerchant: db.groupTreatSessionsByMerchant,
       merchantDailySubsidyUsage: db.merchantDailySubsidyUsage,
       socialTransferLogs: db.socialTransferLogs,
+      phoneLoginCodes: db.phoneLoginCodes,
+      contractApplications: db.contractApplications,
       tenantPolicies: db.tenantPolicies,
       tenantMigrations: db.tenantMigrations,
       tenantRouteFiles: db.tenantRouteFiles,

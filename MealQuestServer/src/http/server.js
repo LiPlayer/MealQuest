@@ -42,6 +42,7 @@ const TENANT_LIMIT_OPERATIONS = [
   "TREAT_SESSION_CREATE",
   "TREAT_SESSION_JOIN",
   "TREAT_SESSION_CLOSE",
+  "CONTRACT_APPLY",
   "AUDIT_QUERY",
   "WS_CONNECT",
   "WS_STATUS_QUERY"
@@ -188,6 +189,9 @@ function resolveAuditAction(method, pathname) {
   }
   if (method === "POST" && /^\/api\/social\/treat\/sessions\/[^/]+\/close$/.test(pathname)) {
     return "TREAT_SESSION_CLOSE";
+  }
+  if (method === "POST" && pathname === "/api/merchant/contract/apply") {
+    return "CONTRACT_APPLY";
   }
   if (method === "POST" && pathname === "/api/merchant/tenant-policy") {
     return "TENANT_POLICY_SET";
@@ -676,6 +680,80 @@ function onboardMerchant(db, payload = {}) {
   };
 }
 
+function sanitizePhone(input) {
+  const value = String(input || "").trim();
+  if (!/^\+?\d{10,20}$/.test(value)) {
+    throw new Error("phone format invalid");
+  }
+  return value;
+}
+
+function issuePhoneCode(db, phone) {
+  const now = Date.now();
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  if (!db.phoneLoginCodes || typeof db.phoneLoginCodes !== "object") {
+    db.phoneLoginCodes = {};
+  }
+  db.phoneLoginCodes[phone] = {
+    phone,
+    code,
+    expiresAt: new Date(now + 5 * 60 * 1000).toISOString(),
+    createdAt: new Date(now).toISOString()
+  };
+  db.save();
+  return {
+    phone,
+    expiresInSec: 300,
+    debugCode: code
+  };
+}
+
+function verifyPhoneCode(db, { phone, code }) {
+  const normalizedPhone = sanitizePhone(phone);
+  const normalizedCode = String(code || "").trim();
+  if (!/^\d{6}$/.test(normalizedCode)) {
+    throw new Error("code format invalid");
+  }
+  const record = db.phoneLoginCodes && db.phoneLoginCodes[normalizedPhone];
+  if (!record) {
+    throw new Error("code not requested");
+  }
+  const expiresAt = new Date(record.expiresAt).getTime();
+  if (!Number.isFinite(expiresAt) || Date.now() > expiresAt) {
+    throw new Error("code expired");
+  }
+  if (record.code !== normalizedCode) {
+    throw new Error("code mismatch");
+  }
+  delete db.phoneLoginCodes[normalizedPhone];
+  db.save();
+  return {
+    phone: normalizedPhone
+  };
+}
+
+function buildContractApplication(payload = {}, now = new Date()) {
+  const companyName = sanitizeMerchantName(payload.companyName || payload.company);
+  const licenseNo = String(payload.licenseNo || payload.businessLicenseNo || "").trim();
+  const settlementAccount = String(payload.settlementAccount || "").trim();
+  const contactPhone = sanitizePhone(payload.contactPhone || payload.phone);
+  if (!licenseNo) {
+    throw new Error("licenseNo is required");
+  }
+  if (!settlementAccount) {
+    throw new Error("settlementAccount is required");
+  }
+  return {
+    companyName,
+    licenseNo,
+    settlementAccount,
+    contactPhone,
+    notes: String(payload.notes || "").trim(),
+    submittedAt: now.toISOString(),
+    status: "PENDING_REVIEW"
+  };
+}
+
 function copyMerchantSlice({ sourceDb, targetDb, merchantId }) {
   const merchant = sourceDb.merchants && sourceDb.merchants[merchantId];
   if (!merchant) {
@@ -1103,6 +1181,50 @@ function createAppServer({
           "Content-Type": "text/plain; version=0.0.4; charset=utf-8"
         });
         res.end(`${lines.join("\n")}\n`);
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/auth/merchant/request-code") {
+        const body = await readJsonBody(req);
+        const phone = sanitizePhone(body.phone);
+        const result = issuePhoneCode(actualDb, phone);
+        sendJson(res, 200, result);
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/auth/merchant/phone-login") {
+        const body = await readJsonBody(req);
+        const { phone } = verifyPhoneCode(actualDb, {
+          phone: body.phone,
+          code: body.code
+        });
+        const merchantIdRaw = body.merchantId;
+        const merchantId =
+          merchantIdRaw === undefined || merchantIdRaw === null || merchantIdRaw === ""
+            ? undefined
+            : sanitizeMerchantId(merchantIdRaw);
+        if (merchantId && !tenantRepository.getMerchant(merchantId)) {
+          sendJson(res, 404, { error: "merchant not found" });
+          return;
+        }
+
+        const token = issueToken(
+          {
+            role: "OWNER",
+            merchantId,
+            operatorId: "staff_owner",
+            phone
+          },
+          jwtSecret
+        );
+        sendJson(res, 200, {
+          token,
+          profile: {
+            role: "OWNER",
+            merchantId: merchantId || null,
+            phone
+          }
+        });
         return;
       }
 
@@ -1809,6 +1931,90 @@ function createAppServer({
         });
         wsHub.broadcast(merchantId, "FIRE_SALE_CREATED", result);
         sendJson(res, 200, result);
+        return;
+      }
+
+      if (method === "GET" && url.pathname === "/api/merchant/contract/status") {
+        ensureRole(auth, ["OWNER", "MANAGER"]);
+        const merchantId = url.searchParams.get("merchantId") || auth.merchantId;
+        if (!merchantId) {
+          sendJson(res, 400, { error: "merchantId is required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        if (!tenantRepository.getMerchant(merchantId)) {
+          sendJson(res, 404, { error: "merchant not found" });
+          return;
+        }
+        const item =
+          (actualDb.contractApplications && actualDb.contractApplications[merchantId]) || null;
+        sendJson(res, 200, {
+          merchantId,
+          status: item ? item.status : "NOT_SUBMITTED",
+          application: item
+        });
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/merchant/contract/apply") {
+        ensureRole(auth, ["OWNER"]);
+        const body = await readJsonBody(req);
+        const merchantId = auth.merchantId || body.merchantId;
+        if (!merchantId) {
+          sendJson(res, 400, { error: "merchantId is required" });
+          return;
+        }
+        if (auth.merchantId && auth.merchantId !== merchantId) {
+          sendJson(res, 403, { error: "merchant scope denied" });
+          return;
+        }
+        if (!tenantRepository.getMerchant(merchantId)) {
+          sendJson(res, 404, { error: "merchant not found" });
+          return;
+        }
+        if (
+          !enforceTenantPolicyForHttp({
+            tenantPolicyManager,
+            merchantId,
+            operation: "CONTRACT_APPLY",
+            res,
+            auth,
+            appendAuditLog
+          })
+        ) {
+          return;
+        }
+
+        const application = buildContractApplication(body);
+        if (!actualDb.contractApplications || typeof actualDb.contractApplications !== "object") {
+          actualDb.contractApplications = {};
+        }
+        actualDb.contractApplications[merchantId] = {
+          merchantId,
+          ...application
+        };
+        actualDb.save();
+
+        appendAuditLog({
+          merchantId,
+          action: "CONTRACT_APPLY",
+          status: "SUCCESS",
+          auth,
+          details: {
+            companyName: application.companyName,
+            licenseNo: application.licenseNo,
+            contactPhone: application.contactPhone
+          }
+        });
+
+        sendJson(res, 200, {
+          merchantId,
+          status: application.status,
+          application: actualDb.contractApplications[merchantId]
+        });
         return;
       }
 
