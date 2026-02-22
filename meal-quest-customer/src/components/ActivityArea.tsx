@@ -1,4 +1,5 @@
-import { View, Text } from '@tarojs/components';
+import {View, Text} from '@tarojs/components';
+
 import './ActivityArea.scss';
 
 export interface ActivityItem {
@@ -19,7 +20,7 @@ const DEFAULT_ACTIVITIES: ActivityItem[] = [
         icon: '🎁',
         color: 'bg-rose-50',
         textColor: 'text-rose-600',
-        tag: 'NEW'
+        tag: 'NEW',
     },
     {
         id: 2,
@@ -28,7 +29,7 @@ const DEFAULT_ACTIVITIES: ActivityItem[] = [
         icon: '👟',
         color: 'bg-blue-50',
         textColor: 'text-blue-600',
-        tag: 'DAILY'
+        tag: 'DAILY',
     },
     {
         id: 3,
@@ -37,57 +38,50 @@ const DEFAULT_ACTIVITIES: ActivityItem[] = [
         icon: '💰',
         color: 'bg-amber-50',
         textColor: 'text-amber-600',
-        tag: 'HOT'
-    }
+        tag: 'HOT',
+    },
 ];
 
 interface ActivityAreaProps {
     activities?: ActivityItem[];
 }
 
-export default function ActivityArea({ activities = DEFAULT_ACTIVITIES }: ActivityAreaProps) {
+export default function ActivityArea({activities = DEFAULT_ACTIVITIES}: ActivityAreaProps) {
     return (
-        <View className='activity-area flex flex-col box-border'>
-            {/* Header */}
-            <View className='activity-area__header'>
-                <Text className='activity-area__header-title'>精选特惠</Text>
-                <Text className='activity-area__header-more'>查看全部</Text>
+        <View className="activity-area">
+            <View className="activity-area__header">
+                <Text className="activity-area__header-title">精选特惠</Text>
+                <Text className="activity-area__header-more">策略驱动 · 实时更新</Text>
             </View>
 
-            {/* Activities List */}
-            <View className='activity-area__list'>
-                {activities.map((activity) => (
-                    <View
-                        key={activity.id}
-                        className='activity-area__item'
-                    >
-                        {/* Decorative Background Element */}
+            <View className="activity-area__list">
+                {activities.map((activity, index) => (
+                    <View key={activity.id} className="activity-area__item">
                         <View className={`activity-area__decor ${activity.color}`} />
-
-                        {/* Icon Container */}
-                        <View className={`activity-area__icon-container ${activity.color}`}>
-                            {activity.icon}
-                        </View>
-
-                        {/* Content */}
-                        <View className='activity-area__content'>
-                            <View className='activity-area__title-row'>
-                                <Text className='activity-area__title'>{activity.title}</Text>
-                                <View className={`activity-area__tag ${activity.color} ${activity.textColor}`}>
-                                    {activity.tag}
-                                </View>
+                        <View className="activity-area__left">
+                            <View className={`activity-area__icon-container ${activity.color}`}>
+                                {activity.icon}
                             </View>
-                            <Text className='activity-area__desc text-ellipsis whitespace-nowrap overflow-hidden'>{activity.desc}</Text>
+                            <View className="activity-area__content">
+                                <View className="activity-area__title-row">
+                                    <Text className="activity-area__title">{activity.title}</Text>
+                                    <View
+                                        className={`activity-area__tag ${activity.color} ${activity.textColor}`}>
+                                        <Text>{activity.tag}</Text>
+                                    </View>
+                                </View>
+                                <Text className="activity-area__desc">{activity.desc}</Text>
+                            </View>
                         </View>
-
-                        {/* Arrow */}
-                        <View className='activity-area__arrow'>→</View>
+                        <View className="activity-area__arrow-wrap">
+                            <Text className="activity-area__arrow">{index + 1}</Text>
+                        </View>
                     </View>
                 ))}
             </View>
 
-            {/* Safety space for the bottom dock and to ensure scrollability */}
-            <View style={{ height: '320rpx' }} />
+            <View style={{height: '320rpx'}} />
         </View>
     );
 }
+

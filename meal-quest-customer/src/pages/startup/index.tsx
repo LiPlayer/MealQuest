@@ -7,6 +7,38 @@ import './index.scss';
 export default function Startup() {
     const [isNewUser, setIsNewUser] = useState(false);
 
+    const resolveStoreIdFromScan = (rawResult: string) => {
+        const raw = String(rawResult || '').trim();
+        if (!raw) {
+            return '';
+        }
+
+        const direct = raw.match(/^[a-zA-Z0-9_-]{2,64}$/);
+        if (direct) {
+            return direct[0];
+        }
+
+        const decoded = (() => {
+            try {
+                return decodeURIComponent(raw);
+            } catch {
+                return raw;
+            }
+        })();
+
+        const queryMatch = decoded.match(/[?&](?:id|storeId|merchantId|scene)=([^&#]+)/i);
+        if (queryMatch && queryMatch[1]) {
+            return queryMatch[1].trim();
+        }
+
+        const tailSegment = decoded.match(/\/([a-zA-Z0-9_-]{2,64})$/);
+        if (tailSegment && tailSegment[1]) {
+            return tailSegment[1];
+        }
+
+        return '';
+    };
+
     const redirectToHome = () => {
         Taro.nextTick(() => {
             Taro.reLaunch({
@@ -47,14 +79,13 @@ export default function Startup() {
     const handleScanQR = () => {
         Taro.scanCode({
             success: (res) => {
-                // Assume the QR code contains the store ID or a URL with it
-                // For simplicity in this mock, we just look for something that looks like an ID
-                const result = res.result;
-                // In a real app, you'd parse this URL
-                if (result) {
-                    storage.setLastStoreId(result);
+                const storeId = resolveStoreIdFromScan(res.result);
+                if (storeId) {
+                    storage.setLastStoreId(storeId);
                     redirectToHome();
+                    return;
                 }
+                Taro.showToast({ title: '二维码无效，请重试', icon: 'none' });
             }
         });
     };
@@ -79,6 +110,7 @@ export default function Startup() {
                     请扫描桌角或商家二维码，解锁专属美味
                 </Text>
                 <View
+                    id='startup-scan-button'
                     className='scan-button transition-transform'
                     onClick={handleScanQR}
                 >

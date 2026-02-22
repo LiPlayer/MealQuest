@@ -10,6 +10,7 @@ const getEnv = (name: string): string => {
 
 const BASE_URL = getEnv('MQ_SERVER_BASE_URL');
 const USE_REMOTE = getEnv('MQ_USE_REMOTE_API') === 'true' && BASE_URL.length > 0;
+const DEFAULT_MERCHANT_ID = getEnv('MQ_MERCHANT_ID') || 'm_demo';
 
 type HttpMethod = 'GET' | 'POST';
 
@@ -245,12 +246,13 @@ function toMerchantState(payload: {
 export const MerchantApi = {
   isConfigured: () => USE_REMOTE,
   getBaseUrl: () => BASE_URL,
+  getMerchantId: () => DEFAULT_MERCHANT_ID,
 
   loginAsMerchant: async () => {
     const response = await fetch(`${BASE_URL}/api/auth/mock-login`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({role: 'OWNER', merchantId: 'm_demo'}),
+      body: JSON.stringify({role: 'OWNER', merchantId: DEFAULT_MERCHANT_ID}),
     });
     const data = await response.json();
     if (!response.ok) {
@@ -259,7 +261,7 @@ export const MerchantApi = {
     return data.token as string;
   },
 
-  getState: async (token: string, merchantId = 'm_demo') => {
+  getState: async (token: string, merchantId = DEFAULT_MERCHANT_ID) => {
     const state = await requestJson<any>(
       'GET',
       `/api/state?merchantId=${encodeURIComponent(
@@ -274,7 +276,11 @@ export const MerchantApi = {
     });
   },
 
-  approveProposal: async (token: string, proposalId: string, merchantId = 'm_demo') => {
+  approveProposal: async (
+    token: string,
+    proposalId: string,
+    merchantId = DEFAULT_MERCHANT_ID,
+  ) => {
     return requestJson(
       'POST',
       `/api/merchant/proposals/${proposalId}/confirm`,
@@ -283,7 +289,11 @@ export const MerchantApi = {
     );
   },
 
-  setKillSwitch: async (token: string, enabled: boolean, merchantId = 'm_demo') => {
+  setKillSwitch: async (
+    token: string,
+    enabled: boolean,
+    merchantId = DEFAULT_MERCHANT_ID,
+  ) => {
     return requestJson('POST', '/api/merchant/kill-switch', token, {
       merchantId,
       enabled,
@@ -292,7 +302,7 @@ export const MerchantApi = {
 
   triggerRainEvent: async (
     token: string,
-    merchantId = 'm_demo',
+    merchantId = DEFAULT_MERCHANT_ID,
   ): Promise<TriggerRainEventResult> => {
     return MerchantApi.triggerEvent(token, 'WEATHER_CHANGE', {weather: 'RAIN'}, merchantId);
   },
@@ -301,7 +311,7 @@ export const MerchantApi = {
     token: string,
     event: string,
     context: Record<string, string | boolean | number>,
-    merchantId = 'm_demo',
+    merchantId = DEFAULT_MERCHANT_ID,
     userId = 'u_demo',
   ): Promise<TriggerRainEventResult> => {
     return requestJson<TriggerRainEventResult>('POST', '/api/tca/trigger', token, {
@@ -312,7 +322,7 @@ export const MerchantApi = {
     });
   },
 
-  getStrategyLibrary: async (token: string, merchantId = 'm_demo') => {
+  getStrategyLibrary: async (token: string, merchantId = DEFAULT_MERCHANT_ID) => {
     return requestJson<{merchantId: string; templates: StrategyTemplate[]}>(
       'GET',
       `/api/merchant/strategy-library?merchantId=${encodeURIComponent(merchantId)}`,
@@ -320,7 +330,7 @@ export const MerchantApi = {
     );
   },
 
-  getStrategyConfigs: async (token: string, merchantId = 'm_demo') => {
+  getStrategyConfigs: async (token: string, merchantId = DEFAULT_MERCHANT_ID) => {
     return requestJson<{merchantId: string; items: any[]}>(
       'GET',
       `/api/merchant/strategy-configs?merchantId=${encodeURIComponent(merchantId)}`,
@@ -343,7 +353,7 @@ export const MerchantApi = {
       '/api/merchant/strategy-proposals',
       token,
       {
-        merchantId: payload.merchantId || 'm_demo',
+        merchantId: payload.merchantId || DEFAULT_MERCHANT_ID,
         templateId: payload.templateId,
         branchId: payload.branchId,
         intent: payload.intent,
@@ -365,7 +375,7 @@ export const MerchantApi = {
       `/api/merchant/campaigns/${encodeURIComponent(payload.campaignId)}/status`,
       token,
       {
-        merchantId: payload.merchantId || 'm_demo',
+        merchantId: payload.merchantId || DEFAULT_MERCHANT_ID,
         status: payload.status,
       },
     );
@@ -382,7 +392,7 @@ export const MerchantApi = {
     },
   ) => {
     return requestJson<FireSaleResult>('POST', '/api/merchant/fire-sale', token, {
-      merchantId: payload.merchantId || 'm_demo',
+      merchantId: payload.merchantId || DEFAULT_MERCHANT_ID,
       targetSku: payload.targetSku,
       ttlMinutes: payload.ttlMinutes,
       voucherValue: payload.voucherValue,
@@ -390,7 +400,7 @@ export const MerchantApi = {
     });
   },
 
-  getAllianceConfig: async (token: string, merchantId = 'm_demo') => {
+  getAllianceConfig: async (token: string, merchantId = DEFAULT_MERCHANT_ID) => {
     return requestJson<AllianceConfig>(
       'GET',
       `/api/merchant/alliance-config?merchantId=${encodeURIComponent(merchantId)}`,
@@ -413,7 +423,7 @@ export const MerchantApi = {
       '/api/merchant/alliance-config',
       token,
       {
-        merchantId: payload.merchantId || 'm_demo',
+        merchantId: payload.merchantId || DEFAULT_MERCHANT_ID,
         clusterId: payload.clusterId,
         stores: payload.stores,
         walletShared: payload.walletShared,
@@ -422,7 +432,7 @@ export const MerchantApi = {
     );
   },
 
-  listStores: async (token: string, merchantId = 'm_demo') => {
+  listStores: async (token: string, merchantId = DEFAULT_MERCHANT_ID) => {
     return requestJson<{
       merchantId: string;
       clusterId: string;
@@ -452,7 +462,7 @@ export const MerchantApi = {
       '/api/merchant/alliance/sync-user',
       token,
       {
-        merchantId: payload.merchantId || 'm_demo',
+        merchantId: payload.merchantId || DEFAULT_MERCHANT_ID,
         userId: payload.userId,
       },
     );
@@ -473,7 +483,7 @@ export const MerchantApi = {
       '/api/social/transfer',
       token,
       {
-        merchantId: payload.merchantId || 'm_demo',
+        merchantId: payload.merchantId || DEFAULT_MERCHANT_ID,
         fromUserId: payload.fromUserId,
         toUserId: payload.toUserId,
         amount: payload.amount,
@@ -498,7 +508,7 @@ export const MerchantApi = {
       '/api/social/red-packets',
       token,
       {
-        merchantId: payload.merchantId || 'm_demo',
+        merchantId: payload.merchantId || DEFAULT_MERCHANT_ID,
         senderUserId: payload.senderUserId,
         totalAmount: payload.totalAmount,
         totalSlots: payload.totalSlots,
@@ -522,7 +532,7 @@ export const MerchantApi = {
       `/api/social/red-packets/${encodeURIComponent(payload.packetId)}/claim`,
       token,
       {
-        merchantId: payload.merchantId || 'm_demo',
+        merchantId: payload.merchantId || DEFAULT_MERCHANT_ID,
         userId: payload.userId,
         idempotencyKey: payload.idempotencyKey,
       },
@@ -540,7 +550,7 @@ export const MerchantApi = {
       'GET',
       `/api/social/red-packets/${encodeURIComponent(
         payload.packetId,
-      )}?merchantId=${encodeURIComponent(payload.merchantId || 'm_demo')}`,
+      )}?merchantId=${encodeURIComponent(payload.merchantId || DEFAULT_MERCHANT_ID)}`,
       token,
     );
   },
@@ -563,7 +573,7 @@ export const MerchantApi = {
       '/api/social/treat/sessions',
       token,
       {
-        merchantId: payload.merchantId || 'm_demo',
+        merchantId: payload.merchantId || DEFAULT_MERCHANT_ID,
         initiatorUserId: payload.initiatorUserId,
         mode: payload.mode,
         orderAmount: payload.orderAmount,
@@ -597,7 +607,7 @@ export const MerchantApi = {
       `/api/social/treat/sessions/${encodeURIComponent(payload.sessionId)}/join`,
       token,
       {
-        merchantId: payload.merchantId || 'm_demo',
+        merchantId: payload.merchantId || DEFAULT_MERCHANT_ID,
         userId: payload.userId,
         amount: payload.amount,
         idempotencyKey: payload.idempotencyKey,
@@ -617,7 +627,7 @@ export const MerchantApi = {
       `/api/social/treat/sessions/${encodeURIComponent(payload.sessionId)}/close`,
       token,
       {
-        merchantId: payload.merchantId || 'm_demo',
+        merchantId: payload.merchantId || DEFAULT_MERCHANT_ID,
       },
     );
   },
@@ -633,7 +643,7 @@ export const MerchantApi = {
       'GET',
       `/api/social/treat/sessions/${encodeURIComponent(
         payload.sessionId,
-      )}?merchantId=${encodeURIComponent(payload.merchantId || 'm_demo')}`,
+      )}?merchantId=${encodeURIComponent(payload.merchantId || DEFAULT_MERCHANT_ID)}`,
       token,
     );
   },
@@ -650,7 +660,7 @@ export const MerchantApi = {
       status?: string;
     } = {},
   ) => {
-    const merchantId = options.merchantId || 'm_demo';
+    const merchantId = options.merchantId || DEFAULT_MERCHANT_ID;
     const limit = options.limit || 6;
     const query = new URLSearchParams();
     query.set('merchantId', merchantId);
@@ -677,7 +687,7 @@ export const MerchantApi = {
     );
   },
 
-  getWsUrl: (token: string, merchantId = 'm_demo') => {
+  getWsUrl: (token: string, merchantId = DEFAULT_MERCHANT_ID) => {
     if (!BASE_URL) {
       return '';
     }

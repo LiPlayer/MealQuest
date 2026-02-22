@@ -6,7 +6,7 @@ This directory contains end-to-end test scripts powered by `miniprogram-automato
 1. Install WeChat DevTools.
 2. Enable Service Port in DevTools.
 3. Ensure build output exists:
-   - `npm run build:weapp`
+   - `npm run build:weapp` (output folder: `dist/`)
 
 ## Run
 ```bash
@@ -19,6 +19,17 @@ npm run test:e2e
 # Build + E2E
 npm run test:e2e:weapp
 ```
+
+## Current E2E Coverage (Required)
+- `customer-core-flow.spec.js`
+  - Startup first-time entry shows scan CTA.
+  - Home page can reach account center.
+  - Account center renders ledger/invoice modules.
+  - Cancel-account action requires second confirmation.
+- `wechat-cli-resolver.spec.js`
+  - DevTools CLI path resolution for env/PATH/default locations.
+- `mini-program-session.spec.js`
+  - E2E runtime context resolution (connect/launch path).
 
 ## CLI Resolution Strategy (Recommended)
 The resolver uses this order:
@@ -53,6 +64,16 @@ npm run test:e2e
 
 When `WECHAT_WS_ENDPOINT` is set, tests can connect directly without CLI path lookup.
 
+## Auto Launch Switch
+To auto launch WeChat DevTools from CLI, set:
+
+```powershell
+$env:WECHAT_E2E_AUTO_LAUNCH="1"
+npm run test:e2e:weapp
+```
+
+Without this switch (and without `WECHAT_WS_ENDPOINT` / `WECHAT_SERVICE_PORT`), device-dependent E2E suites are skipped intentionally.
+
 ## Doctor
 Check whether this machine has at least one usable launch/connect entry:
 
@@ -61,6 +82,8 @@ npm run test:e2e:doctor
 ```
 
 ## Structure
-- `placeholder.spec.js`: e2e placeholder while card interactions are being redesigned.
+- `customer-core-flow.spec.js`: required business e2e flow for customer app.
 - `wechat-cli-resolver.spec.js`: resolver tests for `WECHAT_CLI_PATH` / `PATH` / fallback behavior.
+- `mini-program-session.spec.js`: runtime context resolver tests.
 - `utils/wechat-devtools-cli.js`: reusable CLI path resolver.
+- `utils/mini-program-session.js`: launch/connect session helper.

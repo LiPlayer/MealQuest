@@ -17,6 +17,7 @@ npm run dev:weapp
 ```powershell
 $env:TARO_APP_USE_REMOTE_API='true'
 $env:TARO_APP_SERVER_BASE_URL='http://127.0.0.1:3030'
+$env:TARO_APP_DEFAULT_STORE_ID='m_my_first_store'
 npm run dev:weapp
 ```
 

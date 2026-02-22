@@ -9,7 +9,8 @@ import { storage } from '@/utils/storage';
 import './index.scss';
 
 const DEFAULT_USER_ID = 'u_demo';
-const DEFAULT_STORE_ID = 'store_a';
+const DEFAULT_STORE_ID =
+    (typeof process !== 'undefined' && process.env && process.env.TARO_APP_DEFAULT_STORE_ID) || 'store_a';
 
 const toMoney = (value: number) => `¥${Number(value || 0).toFixed(2)}`;
 
@@ -74,7 +75,7 @@ export default function AccountPage() {
     return (
         <View className='account-page'>
             <View className='account-page__header'>
-                <Text className='account-page__title'>账户中心</Text>
+                <Text id='account-page-title' className='account-page__title'>账户中心</Text>
                 <Text className='account-page__subtitle'>
                     {snapshot?.store.name || 'MealQuest'} · {storeId}
                 </Text>
@@ -90,10 +91,11 @@ export default function AccountPage() {
             </View>
 
             <View className='account-actions'>
-                <Button className='account-btn account-btn--ghost' onClick={loadData} disabled={loading}>
+                <Button id='account-refresh-button' className='account-btn account-btn--ghost' onClick={loadData} disabled={loading}>
                     刷新
                 </Button>
                 <Button
+                    id='account-cancel-button'
                     className='account-btn account-btn--danger'
                     onClick={handleCancelAccount}
                     disabled={canceling}
@@ -103,7 +105,7 @@ export default function AccountPage() {
             </View>
 
             <View className='account-card'>
-                <Text className='account-card__title'>支付流水</Text>
+                <Text id='account-ledger-title' className='account-card__title'>支付流水</Text>
                 {ledger.length === 0 && <Text className='account-empty'>暂无流水</Text>}
                 {ledger.map((item) => (
                     <View className='account-row' key={item.txnId}>
@@ -115,7 +117,7 @@ export default function AccountPage() {
             </View>
 
             <View className='account-card'>
-                <Text className='account-card__title'>电子发票</Text>
+                <Text id='account-invoice-title' className='account-card__title'>电子发票</Text>
                 {invoices.length === 0 && <Text className='account-empty'>暂无发票</Text>}
                 {invoices.map((invoice) => (
                     <View className='account-row' key={invoice.invoiceNo}>
@@ -128,4 +130,3 @@ export default function AccountPage() {
         </View>
     );
 }
-

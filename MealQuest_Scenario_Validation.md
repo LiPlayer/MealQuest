@@ -542,6 +542,7 @@
 1. `MealQuestServer`: 33/33 通过。
 2. `MealQuestMerchant`: 24/24 通过。
 3. `meal-quest-customer`: 33/33 通过。
+4. `meal-quest-customer e2e`: 11 通过（设备依赖场景在未连接 DevTools 时自动 skip）。
 
 ---
 

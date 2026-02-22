@@ -52,6 +52,8 @@
 - [ ] 执行 `node .\scripts\release-local.js`，全部 PASS。
 - [ ] 执行 `cd .\MealQuestMerchant && npm run test:regression:ui`，商户端 UI 回归脚本 PASS。
 - [ ] 执行 `cd .\meal-quest-customer && npm run test:regression:ui`，顾客端 UI 回归脚本 PASS。
+- [ ] 执行 `cd .\meal-quest-customer && npm run test:e2e:doctor`，确认 E2E 环境可用。
+- [ ] 执行 `cd .\meal-quest-customer && npm run test:e2e`（连接模式）或 `WECHAT_E2E_AUTO_LAUNCH=1` 后执行 `npm run test:e2e:weapp`（自动拉起模式）。
 - [ ] `artifacts/release-local-report.json` 中 `allPassed=true`。
 - [ ] CI 工作流通过（server test + smoke、merchant test + typecheck、customer test + customer ui regression + build）。
 

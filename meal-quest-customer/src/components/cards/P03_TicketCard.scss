@@ -1,96 +1,70 @@
 .p03-ticket-card {
-    transition: all 400ms cubic-bezier(0.22, 1, 0.36, 1);
+    transition: all 360ms cubic-bezier(0.22, 1, 0.36, 1);
     height: 100%;
-
-    .card-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 24px 40px;
-
-        .card-title {
-            font-size: 32px;
-            font-weight: 800;
-            color: #1e293b;
-            letter-spacing: -0.5px;
-        }
-
-        .card-badge {
-            background: rgba(255, 228, 230, 0.8);
-            padding: 4px 16px;
-            border-radius: 999px;
-
-            .card-badge-text {
-                font-size: 20px;
-                font-weight: 700;
-                color: #e11d48;
-            }
-        }
-    }
 
     .card-body {
         flex: 1;
-        padding: 0 40px 40px;
-        box-sizing: border-box;
+        padding: 0 28rpx 30rpx;
         display: flex;
         flex-direction: column;
         justify-content: center;
     }
 
-    // A. 零资产态
     .empty-state {
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        padding: 40px 0;
+        padding: 18rpx 0;
 
         .empty-plate {
-            width: 240px;
-            height: 240px;
-            border: 4px dashed rgba(0, 0, 0, 0.08);
+            width: 156rpx;
+            height: 156rpx;
+            border: 2rpx dashed rgba(244, 63, 94, 0.2);
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            margin-bottom: 32px;
+            margin-bottom: 14rpx;
 
             .plate-inner {
-                width: 180px;
-                height: 180px;
-                border: 2px dashed rgba(0, 0, 0, 0.04);
+                width: 112rpx;
+                height: 112rpx;
+                border: 2rpx dashed rgba(244, 63, 94, 0.12);
                 border-radius: 50%;
             }
         }
 
         .empty-text {
-            font-size: 28px;
+            font-size: 24rpx;
             color: #94a3b8;
-            margin-bottom: 40px;
+            margin-bottom: 14rpx;
         }
 
         .synthesis-btn-mini {
-            background: #0f172a;
+            background: #be123c;
             color: white;
-            padding: 24px 48px;
-            border-radius: 999px;
-            font-size: 26px;
+            padding: 10rpx 22rpx;
+            border-radius: 999rpx;
+            font-size: 22rpx;
             font-weight: 700;
-            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
+            box-shadow: 0 10rpx 24rpx rgba(190, 18, 60, 0.28);
         }
     }
 
-    // B. 孤品态
     .single-state {
         display: flex;
-        flex-direction: column;
+        flex-direction: row;
         align-items: center;
+        gap: 18rpx;
 
         .asset-hero {
             position: relative;
-            width: 320px;
-            height: 320px;
-            margin-bottom: 24px;
+            width: 128rpx;
+            height: 128rpx;
+            border-radius: 24rpx;
+            overflow: hidden;
+            flex-shrink: 0;
 
             .asset-icon-large {
                 width: 100%;
@@ -100,43 +74,69 @@
             .asset-placeholder-large {
                 width: 100%;
                 height: 100%;
-                background: #f1f5f9;
-                border-radius: 40px;
+                background: #fbe4e8;
+                border-radius: 24rpx;
             }
 
             .holographic-overlay {
                 position: absolute;
                 inset: 0;
-                background: linear-gradient(135deg, transparent 45%, rgba(255, 255, 255, 0.4) 50%, transparent 55%);
-                background-size: 200% 200%;
+                background: linear-gradient(
+                    135deg,
+                    transparent 40%,
+                    rgba(255, 255, 255, 0.36) 50%,
+                    transparent 60%
+                );
+                background-size: 220% 220%;
                 animation: scan 3s infinite linear;
                 pointer-events: none;
+            }
+
+            .asset-urgent-tag {
+                position: absolute;
+                bottom: 6rpx;
+                left: 6rpx;
+                background: rgba(190, 18, 60, 0.92);
+                border-radius: 999rpx;
+                padding: 4rpx 10rpx;
+
+                &__text {
+                    color: #fff1f2;
+                    font-size: 18rpx;
+                    font-weight: 700;
+                }
             }
         }
 
         .asset-info-large {
-            text-align: center;
+            flex: 1;
+            min-width: 0;
 
             .asset-name {
-                font-size: 34px;
+                font-size: 30rpx;
                 font-weight: 800;
-                color: #0f172a;
-                display: block;
+                color: #881337;
             }
 
             .asset-value {
-                font-size: 28px;
+                font-size: 26rpx;
+                color: #e11d48;
+                margin-top: 6rpx;
+                font-weight: 700;
+            }
+
+            .asset-rule {
+                font-size: 22rpx;
                 color: #64748b;
-                margin-top: 8px;
+                margin-top: 6rpx;
             }
         }
     }
 
-    // C. 简约态
     .minimal-grid {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
-        gap: 24px;
+        gap: 14rpx;
 
         .minimal-item {
             display: flex;
@@ -144,31 +144,31 @@
             align-items: center;
 
             .asset-icon-wrap {
-                width: 140px;
-                height: 140px;
-                background: #f8fafc;
-                border-radius: 32px;
+                width: 90rpx;
+                height: 90rpx;
+                background: rgba(255, 241, 242, 0.7);
+                border-radius: 20rpx;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                margin-bottom: 16px;
-                border: 1PX solid rgba(0, 0, 0, 0.03);
+                margin-bottom: 10rpx;
+                border: 1rpx solid rgba(244, 63, 94, 0.08);
 
                 .asset-icon-sm {
-                    width: 100px;
-                    height: 100px;
+                    width: 56rpx;
+                    height: 56rpx;
                 }
 
                 .asset-placeholder-sm {
-                    width: 80px;
-                    height: 80px;
-                    background: #e2e8f0;
-                    border-radius: 16px;
+                    width: 48rpx;
+                    height: 48rpx;
+                    background: #fecdd3;
+                    border-radius: 12rpx;
                 }
             }
 
             .asset-name-sm {
-                font-size: 22px;
+                font-size: 20rpx;
                 font-weight: 600;
                 color: #475569;
                 text-align: center;
@@ -180,11 +180,10 @@
         }
     }
 
-    // D. 资产态 (4x4 or 2x3 Grid)
     .asset-grid {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
-        gap: 20px;
+        gap: 12rpx;
 
         .grid-item {
             position: relative;
@@ -193,36 +192,36 @@
             .asset-icon-wrap-grid {
                 width: 100%;
                 height: 100%;
-                background: #f8fafc;
-                border-radius: 24px;
+                background: rgba(255, 241, 242, 0.64);
+                border-radius: 18rpx;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                border: 1PX solid rgba(0, 0, 0, 0.03);
+                border: 1rpx solid rgba(244, 63, 94, 0.1);
 
                 .asset-icon-grid {
-                    width: 80%;
-                    height: 80%;
+                    width: 66%;
+                    height: 66%;
                 }
 
                 .asset-placeholder-grid {
-                    width: 70%;
-                    height: 70%;
-                    background: #e2e8f0;
-                    border-radius: 12px;
+                    width: 62%;
+                    height: 62%;
+                    background: #fecdd3;
+                    border-radius: 10rpx;
                 }
 
                 .asset-badge {
                     position: absolute;
-                    top: -8px;
-                    right: -8px;
-                    background: #0f172a;
+                    top: -6rpx;
+                    right: -6rpx;
+                    background: #be123c;
                     color: white;
-                    font-size: 18px;
+                    font-size: 16rpx;
                     font-weight: 700;
-                    padding: 2px 8px;
-                    border-radius: 99px;
-                    border: 2px solid white;
+                    padding: 2rpx 8rpx;
+                    border-radius: 999rpx;
+                    border: 2rpx solid white;
                 }
             }
 
@@ -230,17 +229,17 @@
                 .more-overlay {
                     width: 100%;
                     height: 100%;
-                    background: #f1f5f9;
-                    border: 2px dashed #cbd5e1;
-                    border-radius: 24px;
+                    background: #fff1f2;
+                    border: 2rpx dashed #fda4af;
+                    border-radius: 18rpx;
                     display: flex;
                     align-items: center;
                     justify-content: center;
 
                     .more-text {
-                        font-size: 32px;
+                        font-size: 30rpx;
                         font-weight: 800;
-                        color: #64748b;
+                        color: #be123c;
                     }
                 }
             }
@@ -257,3 +256,4 @@
         background-position: -200% -200%;
     }
 }
+

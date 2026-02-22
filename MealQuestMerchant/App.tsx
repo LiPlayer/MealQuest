@@ -622,14 +622,63 @@ export default function App() {
     );
   };
 
+  const activeCampaignCount = merchantState.activeCampaigns.filter(
+    item => (item.status || 'ACTIVE') === 'ACTIVE',
+  ).length;
+  const budgetRemaining = Math.max(merchantState.budgetCap - merchantState.budgetUsed, 0);
+  const budgetUsagePercent = merchantState.budgetCap
+    ? Math.min(100, Math.round((merchantState.budgetUsed / merchantState.budgetCap) * 100))
+    : 0;
+
   return (
     <SafeAreaProvider>
       <StatusBar barStyle="dark-content" />
       <SafeAreaView style={styles.safeArea}>
         <ScrollView contentContainerStyle={styles.container}>
-          <Text style={styles.appTitle}>有戏掌柜驾驶舱</Text>
-          <Text style={styles.appSubtitle}>聚合收银、策略确认、预算熔断一体化</Text>
-          <Text style={styles.modeTag}>当前模式：{remoteMode ? '远程联调' : '本地演练'}</Text>
+          <View style={styles.heroCard}>
+            <View style={styles.heroHead}>
+              <View style={styles.heroHeadTextWrap}>
+                <Text style={styles.heroKicker}>MealQuest Merchant OS</Text>
+                <Text style={styles.appTitle}>有戏掌柜驾驶舱</Text>
+                <Text style={styles.appSubtitle}>聚合收银、策略确认、预算熔断一体化</Text>
+              </View>
+              <View
+                style={[
+                  styles.modePill,
+                  remoteMode ? styles.modePillRemote : styles.modePillLocal,
+                ]}>
+                <Text
+                  style={[
+                    styles.modePillText,
+                    remoteMode ? styles.modePillTextRemote : styles.modePillTextLocal,
+                  ]}>
+                  {remoteMode ? '远程联调' : '本地演练'}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.heroStatsRow}>
+              <View style={styles.heroStatCard}>
+                <Text style={styles.heroStatLabel}>预算使用</Text>
+                <Text style={styles.heroStatValue}>{budgetUsagePercent}%</Text>
+                <Text style={styles.heroStatHint}>剩余 ¥{budgetRemaining.toFixed(2)}</Text>
+              </View>
+              <View style={styles.heroStatCard}>
+                <Text style={styles.heroStatLabel}>进行中活动</Text>
+                <Text style={styles.heroStatValue}>{activeCampaignCount}</Text>
+                <Text style={styles.heroStatHint}>
+                  共 {merchantState.activeCampaigns.length} 个活动
+                </Text>
+              </View>
+              <View style={styles.heroStatCard}>
+                <Text style={styles.heroStatLabel}>待办策略</Text>
+                <Text style={styles.heroStatValue}>{pendingProposals.length}</Text>
+                <Text style={styles.heroStatHint}>
+                  {merchantState.killSwitchEnabled ? '熔断保护中' : '系统运行中'}
+                </Text>
+              </View>
+            </View>
+          </View>
 
           <SectionCard title="经营总览">
             <Text style={styles.dataLine}>门店：{merchantState.merchantName}</Text>
@@ -1088,87 +1137,187 @@ export default function App() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#eaf0f8',
   },
   container: {
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 34,
     gap: 12,
+  },
+  heroCard: {
+    backgroundColor: '#0f172a',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#1e293b',
+    padding: 16,
+    gap: 14,
+    shadowColor: '#0f172a',
+    shadowOffset: {width: 0, height: 10},
+    shadowOpacity: 0.24,
+    shadowRadius: 18,
+    elevation: 4,
+  },
+  heroHead: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  heroHeadTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  heroKicker: {
+    fontSize: 11,
+    color: '#94a3b8',
+    marginBottom: 6,
+    letterSpacing: 0.6,
   },
   appTitle: {
     fontSize: 24,
-    fontWeight: '700',
-    color: '#0f172a',
+    fontWeight: '800',
+    color: '#f8fafc',
   },
   appSubtitle: {
     fontSize: 14,
-    color: '#475569',
-    marginBottom: 2,
+    color: '#cbd5e1',
+    marginTop: 4,
   },
-  modeTag: {
-    fontSize: 12,
-    color: '#0f766e',
-    marginBottom: 4,
+  modePill: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+  },
+  modePillRemote: {
+    borderColor: '#14b8a6',
+    backgroundColor: '#0f766e',
+  },
+  modePillLocal: {
+    borderColor: '#64748b',
+    backgroundColor: '#1e293b',
+  },
+  modePillText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  modePillTextRemote: {
+    color: '#ccfbf1',
+  },
+  modePillTextLocal: {
+    color: '#e2e8f0',
+  },
+  heroStatsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  heroStatCard: {
+    minWidth: 94,
+    flexGrow: 1,
+    backgroundColor: 'rgba(241, 245, 249, 0.08)',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(148, 163, 184, 0.24)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 3,
+  },
+  heroStatLabel: {
+    color: '#94a3b8',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  heroStatValue: {
+    color: '#f8fafc',
+    fontSize: 22,
+    fontWeight: '800',
+  },
+  heroStatHint: {
+    color: '#cbd5e1',
+    fontSize: 11,
   },
   sectionCard: {
     backgroundColor: '#ffffff',
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: '#d9e3f0',
     gap: 10,
+    shadowColor: '#0f172a',
+    shadowOffset: {width: 0, height: 6},
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    elevation: 2,
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#0f172a',
   },
   dataLine: {
     fontSize: 14,
     color: '#1e293b',
+    lineHeight: 20,
   },
   mutedText: {
     fontSize: 13,
     color: '#64748b',
+    lineHeight: 18,
   },
   listRow: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#f8fafc',
+    padding: 10,
     gap: 8,
   },
   strategyBlock: {
-    gap: 6,
-    backgroundColor: '#f8fafc',
-    borderRadius: 8,
+    gap: 7,
+    backgroundColor: '#f8fbff',
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    padding: 8,
+    borderColor: '#dbe5f2',
+    padding: 10,
   },
   primaryButton: {
     alignSelf: 'flex-start',
     backgroundColor: '#0f766e',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    borderRadius: 10,
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    shadowColor: '#0f766e',
+    shadowOffset: {width: 0, height: 4},
+    shadowOpacity: 0.22,
+    shadowRadius: 8,
+    elevation: 2,
   },
   primaryButtonText: {
     color: '#f8fafc',
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   secondaryButton: {
     alignSelf: 'flex-start',
-    backgroundColor: '#f1f5f9',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    backgroundColor: '#e8eef7',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#cbd8ea',
+    paddingHorizontal: 13,
+    paddingVertical: 9,
   },
   secondaryButtonText: {
     color: '#334155',
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   eventLine: {
     fontSize: 12,
     color: '#334155',
     flexShrink: 1,
+    lineHeight: 17,
   },
   eventHeader: {
     flexDirection: 'row',
@@ -1176,16 +1325,18 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   eventBlock: {
-    backgroundColor: '#f8fafc',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
+    backgroundColor: '#f8fbff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#dde5f1',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
   },
   eventBadge: {
     backgroundColor: '#dbeafe',
     borderRadius: 999,
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 3,
   },
   eventBadgeWarn: {
     backgroundColor: '#fef3c7',
@@ -1196,7 +1347,7 @@ const styles = StyleSheet.create({
   eventBadgeText: {
     fontSize: 10,
     color: '#1e293b',
-    fontWeight: '600',
+    fontWeight: '700',
   },
   eventDetailWrap: {
     marginTop: 6,
@@ -1206,17 +1357,19 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#0f172a',
     fontFamily: 'monospace',
+    lineHeight: 17,
   },
   filterRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
   },
   filterButton: {
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: '#cbd5e1',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    borderColor: '#c7d4e4',
+    paddingHorizontal: 11,
+    paddingVertical: 5,
     backgroundColor: '#ffffff',
   },
   filterButtonActive: {
@@ -1230,7 +1383,7 @@ const styles = StyleSheet.create({
   filterButtonText: {
     fontSize: 11,
     color: '#475569',
-    fontWeight: '600',
+    fontWeight: '700',
   },
   filterButtonTextActive: {
     color: '#115e59',
@@ -1242,15 +1395,15 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     borderWidth: 1,
     borderColor: '#94a3b8',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
     backgroundColor: '#ffffff',
   },
   copyButtonText: {
     fontSize: 11,
     color: '#334155',
-    fontWeight: '600',
+    fontWeight: '700',
   },
   auditFilterRow: {
     flexDirection: 'row',
@@ -1260,9 +1413,9 @@ const styles = StyleSheet.create({
   auditFilterButton: {
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: '#cbd5e1',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    borderColor: '#c7d4e4',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
     backgroundColor: '#ffffff',
   },
   auditFilterButtonActive: {
@@ -1272,16 +1425,18 @@ const styles = StyleSheet.create({
   auditFilterButtonText: {
     fontSize: 11,
     color: '#475569',
-    fontWeight: '600',
+    fontWeight: '700',
   },
   auditFilterButtonTextActive: {
     color: '#115e59',
   },
   auditBlock: {
-    backgroundColor: '#f8fafc',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
+    backgroundColor: '#f8fbff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#dde5f1',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
   },
   auditHeader: {
     flexDirection: 'row',
@@ -1303,20 +1458,20 @@ const styles = StyleSheet.create({
   auditBadgeText: {
     fontSize: 10,
     color: '#1e293b',
-    fontWeight: '600',
+    fontWeight: '700',
   },
   loadMoreButton: {
     alignSelf: 'flex-start',
     borderWidth: 1,
-    borderColor: '#64748b',
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    borderColor: '#8da2bf',
+    borderRadius: 8,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
     backgroundColor: '#ffffff',
   },
   loadMoreButtonText: {
     fontSize: 12,
     color: '#334155',
-    fontWeight: '600',
+    fontWeight: '700',
   },
 });

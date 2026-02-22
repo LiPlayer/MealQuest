@@ -465,6 +465,217 @@ function buildCustomerActivities(campaigns = []) {
     });
 }
 
+function sanitizeMerchantId(input) {
+  const value = String(input || "").trim().toLowerCase();
+  if (!/^[a-z][a-z0-9_-]{1,63}$/.test(value)) {
+    throw new Error("merchantId format invalid");
+  }
+  return value;
+}
+
+function sanitizeMerchantName(input) {
+  const value = String(input || "").trim();
+  if (!value) {
+    throw new Error("merchant name is required");
+  }
+  if (value.length > 64) {
+    throw new Error("merchant name too long");
+  }
+  return value;
+}
+
+function sanitizeBudgetCap(value, fallback = 300) {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error("budgetCap must be a positive number");
+  }
+  return Math.floor(parsed);
+}
+
+function constantTimeEquals(left, right) {
+  const leftBuffer = Buffer.from(String(left || ""));
+  const rightBuffer = Buffer.from(String(right || ""));
+  if (leftBuffer.length !== rightBuffer.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function validateOnboardSecret(req, onboardSecret) {
+  if (!onboardSecret) {
+    return true;
+  }
+  const provided = req.headers["x-onboard-secret"];
+  return constantTimeEquals(provided, onboardSecret);
+}
+
+function createSeedCustomer(now, {
+  uid,
+  displayName,
+  principal = 120,
+  bonus = 30,
+  silver = 88
+}) {
+  return {
+    uid,
+    displayName,
+    wallet: {
+      principal,
+      bonus,
+      silver
+    },
+    tags: ["REGULAR"],
+    fragments: {
+      spicy: 1,
+      noodle: 2
+    },
+    vouchers: [
+      {
+        id: `voucher_welcome_${uid}`,
+        type: "ITEM_WARRANT",
+        name: "Welcome Voucher",
+        value: 12,
+        minSpend: 0,
+        status: "ACTIVE",
+        expiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString()
+      }
+    ]
+  };
+}
+
+function ensureMerchantContainers(db, merchantId) {
+  if (!db.merchantUsers || typeof db.merchantUsers !== "object") {
+    db.merchantUsers = {};
+  }
+  if (!db.paymentsByMerchant || typeof db.paymentsByMerchant !== "object") {
+    db.paymentsByMerchant = {};
+  }
+  if (!db.invoicesByMerchant || typeof db.invoicesByMerchant !== "object") {
+    db.invoicesByMerchant = {};
+  }
+  if (!db.strategyConfigs || typeof db.strategyConfigs !== "object") {
+    db.strategyConfigs = {};
+  }
+  if (!db.allianceConfigs || typeof db.allianceConfigs !== "object") {
+    db.allianceConfigs = {};
+  }
+  if (!db.socialRedPacketsByMerchant || typeof db.socialRedPacketsByMerchant !== "object") {
+    db.socialRedPacketsByMerchant = {};
+  }
+  if (!db.groupTreatSessionsByMerchant || typeof db.groupTreatSessionsByMerchant !== "object") {
+    db.groupTreatSessionsByMerchant = {};
+  }
+  if (!db.merchantDailySubsidyUsage || typeof db.merchantDailySubsidyUsage !== "object") {
+    db.merchantDailySubsidyUsage = {};
+  }
+  if (!db.tenantPolicies || typeof db.tenantPolicies !== "object") {
+    db.tenantPolicies = {};
+  }
+  if (!db.tenantMigrations || typeof db.tenantMigrations !== "object") {
+    db.tenantMigrations = {};
+  }
+  if (!db.tenantRouteFiles || typeof db.tenantRouteFiles !== "object") {
+    db.tenantRouteFiles = {};
+  }
+
+  if (!db.merchantUsers[merchantId]) {
+    db.merchantUsers[merchantId] = {};
+  }
+  if (!db.paymentsByMerchant[merchantId]) {
+    db.paymentsByMerchant[merchantId] = {};
+  }
+  if (!db.invoicesByMerchant[merchantId]) {
+    db.invoicesByMerchant[merchantId] = {};
+  }
+  if (!db.strategyConfigs[merchantId]) {
+    db.strategyConfigs[merchantId] = {};
+  }
+  if (!db.socialRedPacketsByMerchant[merchantId]) {
+    db.socialRedPacketsByMerchant[merchantId] = {};
+  }
+  if (!db.groupTreatSessionsByMerchant[merchantId]) {
+    db.groupTreatSessionsByMerchant[merchantId] = {};
+  }
+  if (!db.merchantDailySubsidyUsage[merchantId]) {
+    db.merchantDailySubsidyUsage[merchantId] = {};
+  }
+}
+
+function onboardMerchant(db, payload = {}) {
+  const merchantId = sanitizeMerchantId(payload.merchantId || payload.storeId);
+  const merchantName = sanitizeMerchantName(payload.name || payload.merchantName);
+  const budgetCap = sanitizeBudgetCap(payload.budgetCap, 300);
+  const clusterId = String(payload.clusterId || `cluster_${merchantId}`).trim();
+  const seedDemoUsers = payload.seedDemoUsers !== false;
+  const now = new Date();
+
+  if (!db.merchants || typeof db.merchants !== "object") {
+    db.merchants = {};
+  }
+  if (db.merchants[merchantId]) {
+    const error = new Error("merchant already exists");
+    error.code = "MERCHANT_EXISTS";
+    throw error;
+  }
+
+  db.merchants[merchantId] = {
+    merchantId,
+    name: merchantName,
+    killSwitchEnabled: false,
+    budgetCap,
+    budgetUsed: 0,
+    staff: [
+      { uid: "staff_owner", role: "OWNER" },
+      { uid: "staff_manager", role: "MANAGER" },
+      { uid: "staff_clerk", role: "CLERK" }
+    ],
+    onboardedAt: now.toISOString()
+  };
+
+  ensureMerchantContainers(db, merchantId);
+  if (seedDemoUsers) {
+    db.merchantUsers[merchantId].u_demo = createSeedCustomer(now, {
+      uid: "u_demo",
+      displayName: "Demo User",
+      principal: 120,
+      bonus: 30,
+      silver: 88
+    });
+    db.merchantUsers[merchantId].u_friend = createSeedCustomer(now, {
+      uid: "u_friend",
+      displayName: "Demo Friend",
+      principal: 60,
+      bonus: 12,
+      silver: 40
+    });
+  }
+
+  db.allianceConfigs[merchantId] = {
+    merchantId,
+    clusterId: clusterId || `cluster_${merchantId}`,
+    stores: [merchantId],
+    walletShared: false,
+    tierShared: false,
+    updatedAt: now.toISOString()
+  };
+  db.tenantMigrations[merchantId] = {
+    phase: "IDLE",
+    step: "INIT",
+    note: "merchant onboarded",
+    updatedAt: now.toISOString()
+  };
+
+  db.save();
+  return {
+    merchant: db.merchants[merchantId],
+    seededUsers: Object.keys(db.merchantUsers[merchantId] || {}),
+    allianceConfig: db.allianceConfigs[merchantId]
+  };
+}
+
 function copyMerchantSlice({ sourceDb, targetDb, merchantId }) {
   const merchant = sourceDb.merchants && sourceDb.merchants[merchantId];
   if (!merchant) {
@@ -775,6 +986,7 @@ function createAppServer({
   jwtSecret = process.env.MQ_JWT_SECRET || "mealquest-dev-secret",
   paymentCallbackSecret =
     process.env.MQ_PAYMENT_CALLBACK_SECRET || "mealquest-payment-callback-secret",
+  onboardSecret = process.env.MQ_ONBOARD_SECRET || "",
   paymentProvider = null
 } = {}) {
   const actualDb = db || (persist ? createPersistentDb(dbFilePath) : createInMemoryDb());
@@ -892,6 +1104,53 @@ function createAppServer({
         });
         res.end(`${lines.join("\n")}\n`);
         return;
+      }
+
+      if (method === "GET" && url.pathname === "/api/merchant/catalog") {
+        const merchants = Object.values(actualDb.merchants || {})
+          .map((merchant) => ({
+            merchantId: merchant.merchantId,
+            name: merchant.name,
+            budgetCap: merchant.budgetCap,
+            budgetUsed: merchant.budgetUsed,
+            killSwitchEnabled: Boolean(merchant.killSwitchEnabled),
+            onboardedAt: merchant.onboardedAt || null
+          }))
+          .sort((a, b) => String(a.merchantId).localeCompare(String(b.merchantId)));
+        sendJson(res, 200, {
+          items: merchants,
+          total: merchants.length
+        });
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/merchant/onboard") {
+        if (!validateOnboardSecret(req, onboardSecret)) {
+          sendJson(res, 403, { error: "onboard secret invalid" });
+          return;
+        }
+        const body = await readJsonBody(req);
+        try {
+          const result = onboardMerchant(actualDb, body);
+          tenantRepository.appendAuditLog({
+            merchantId: result.merchant.merchantId,
+            action: "MERCHANT_ONBOARD",
+            status: "SUCCESS",
+            role: "SYSTEM",
+            operatorId: "bootstrap",
+            details: {
+              seededUsers: result.seededUsers.length
+            }
+          });
+          sendJson(res, 201, result);
+          return;
+        } catch (error) {
+          if (error && error.code === "MERCHANT_EXISTS") {
+            sendJson(res, 409, { error: error.message });
+            return;
+          }
+          throw error;
+        }
       }
 
       if (method === "POST" && url.pathname === "/api/auth/mock-login") {

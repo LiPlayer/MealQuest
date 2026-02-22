@@ -18,6 +18,7 @@ npm run android
 ```powershell
 $env:MQ_USE_REMOTE_API='true'
 $env:MQ_SERVER_BASE_URL='http://127.0.0.1:3030'
+$env:MQ_MERCHANT_ID='m_my_first_store'
 npm start
 npm run android
 ```

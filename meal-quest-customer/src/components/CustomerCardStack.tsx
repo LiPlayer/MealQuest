@@ -108,6 +108,7 @@ export default function CustomerCardStack({
         >
             {cards.map(({ key }, index) => {
                 const isFocused = focusIndex === index;
+                const shouldDim = focusIndex !== null && !isFocused;
                 return (
                     <View
                         key={key}
@@ -122,10 +123,14 @@ export default function CustomerCardStack({
                             zIndex: 10 + index,
                             borderRadius: Taro.pxTransform(48),
                             backgroundColor: '#fff',
-                            border: '1PX solid rgba(0,0,0,0.08)',
+                            border: isFocused
+                                ? '1PX solid rgba(14,165,233,0.34)'
+                                : '1PX solid rgba(15,23,42,0.08)',
                             boxShadow: isFocused
-                                ? `0 ${Taro.pxTransform(24)} ${Taro.pxTransform(64)} rgba(0,0,0,0.08)`
-                                : `0 ${Taro.pxTransform(16)} ${Taro.pxTransform(48)} rgba(0,0,0,0.05)`,
+                                ? `0 ${Taro.pxTransform(28)} ${Taro.pxTransform(74)} rgba(15,23,42,0.18)`
+                                : `0 ${Taro.pxTransform(16)} ${Taro.pxTransform(46)} rgba(15,23,42,0.08)`,
+                            transform: `scale(${isFocused ? 1.01 : 1})`,
+                            opacity: shouldDim ? 0.92 : 1,
                             overflow: 'hidden',
                             transition: 'all 400ms cubic-bezier(0.22, 1, 0.36, 1)'
                         }}

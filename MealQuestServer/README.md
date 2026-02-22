@@ -39,6 +39,37 @@ npm start
 2. `.env.staging.example`
 3. `.env.prod.example`
 
+## 开店（自定义商户，不依赖 `m_demo`）
+
+你可以直接创建自己的商户 ID：
+
+```powershell
+cd .\MealQuestServer
+npm run onboard:merchant -- --merchant-id m_my_first_store --name "我的第一家店"
+```
+
+也可直接调接口：
+
+```text
+POST /api/merchant/onboard
+GET  /api/merchant/catalog
+```
+
+示例请求体：
+
+```json
+{
+  "merchantId": "m_my_first_store",
+  "name": "我的第一家店",
+  "budgetCap": 500,
+  "seedDemoUsers": true
+}
+```
+
+返回 `201` 后，可立即用该 `merchantId` 执行 `/api/auth/mock-login`（OWNER/CUSTOMER）并联调商户端与顾客端。
+
+可选安全项：设置 `MQ_ONBOARD_SECRET` 后，请求需携带 `x-onboard-secret` 头。
+
 ## 租户路由（开发）
 
 `createAppServer` 支持传入 `tenantDbMap`，按 `merchantId` 将热点商户路由到独立数据源（当前用于测试与演练）。

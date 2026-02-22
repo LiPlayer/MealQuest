@@ -13,6 +13,9 @@ import { buildSmartCheckoutQuote } from '../../domain/smartCheckout';
 
 import './index.scss';
 
+const DEFAULT_STORE_ID =
+    (typeof process !== 'undefined' && process.env && process.env.TARO_APP_DEFAULT_STORE_ID) || 'store_a';
+
 // Add declaration for the native component
 declare global {
     namespace JSX {
@@ -75,8 +78,8 @@ export default function Index() {
                     console.error('Error fetching store data:', err);
                 }
             } else {
-                console.log('Using default store_a');
-                const defaultSnapshot = await DataService.getHomeSnapshot('store_a');
+                console.log('Using default storeId:', DEFAULT_STORE_ID);
+                const defaultSnapshot = await DataService.getHomeSnapshot(DEFAULT_STORE_ID);
                 setSnapshot(defaultSnapshot);
                 setRefreshTrigger(v => v + 1);
             }
@@ -108,8 +111,8 @@ export default function Index() {
     };
 
     return (
-        <View className='index-container' style={headerStyle}>
-            <View className='account-entry' onClick={handleOpenAccount}>
+            <View className='index-container' style={headerStyle}>
+            <View id='index-account-entry' className='account-entry' onClick={handleOpenAccount}>
                 <Text className='account-entry__text'>账户中心</Text>
             </View>
             {/* @ts-ignore */}

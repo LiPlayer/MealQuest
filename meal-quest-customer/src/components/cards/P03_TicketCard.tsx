@@ -1,6 +1,7 @@
-import { View, Text, Image } from '@tarojs/components'
-import React from 'react'
-import './P03_TicketCard.scss'
+import {View, Text, Image} from '@tarojs/components';
+import React from 'react';
+
+import './P03_TicketCard.scss';
 
 export interface Voucher {
     id: string;
@@ -13,12 +14,23 @@ export interface Voucher {
 }
 
 interface TicketCardProps {
-    style?: React.CSSProperties
-    isFocused?: boolean
-    vouchers?: Voucher[]
-    onGoToSynthesis?: () => void
-    onUseVoucher?: (voucher: Voucher) => void
-    onMoreClick?: () => void
+    style?: React.CSSProperties;
+    isFocused?: boolean;
+    vouchers?: Voucher[];
+    onGoToSynthesis?: () => void;
+    onUseVoucher?: (voucher: Voucher) => void;
+    onMoreClick?: () => void;
+}
+
+function isUrgentVoucher(voucher?: Voucher): boolean {
+    if (!voucher?.expiresAt) {
+        return false;
+    }
+    const deadline = new Date(voucher.expiresAt).getTime();
+    if (Number.isNaN(deadline)) {
+        return false;
+    }
+    return deadline - Date.now() <= 24 * 60 * 60 * 1000;
 }
 
 export default function P03_TicketCard({
@@ -27,49 +39,62 @@ export default function P03_TicketCard({
     vouchers = [],
     onGoToSynthesis,
     onUseVoucher,
-    onMoreClick
+    onMoreClick,
 }: TicketCardProps) {
     const count = vouchers.length;
+    const topVoucher = vouchers[0];
 
     const renderEmptyState = () => (
-        <View className='empty-state' onClick={onGoToSynthesis}>
-            <View className='empty-plate'>
-                <View className='plate-inner'>
-                    {/* Placeholder for Isometric empty plate icon */}
-                </View>
+        <View className="empty-state" onClick={onGoToSynthesis}>
+            <View className="empty-plate">
+                <View className="plate-inner" />
             </View>
-            <Text className='empty-text'>暂无可兑付资产</Text>
-            <View className='synthesis-btn-mini'>
+            <Text className="empty-text">暂无可兑付资产</Text>
+            <View className="synthesis-btn-mini">
                 <Text>去合成第一道菜</Text>
             </View>
         </View>
     );
 
     const renderSingleState = () => (
-        <View className='single-state' onClick={() => onUseVoucher?.(vouchers[0])}>
-            <View className='asset-hero'>
-                {vouchers[0].icon ? (
-                    <Image className='asset-icon-large' src={vouchers[0].icon} mode='aspectFit' />
+        <View className="single-state" onClick={() => topVoucher && onUseVoucher?.(topVoucher)}>
+            <View className="asset-hero">
+                {topVoucher?.icon ? (
+                    <Image className="asset-icon-large" src={topVoucher.icon} mode="aspectFit" />
                 ) : (
-                    <View className='asset-placeholder-large' />
+                    <View className="asset-placeholder-large" />
                 )}
-                <View className='holographic-overlay' />
+                <View className="holographic-overlay" />
+                {isUrgentVoucher(topVoucher) && (
+                    <View className="asset-urgent-tag">
+                        <Text className="asset-urgent-tag__text">24h 内到期</Text>
+                    </View>
+                )}
             </View>
-            <View className='asset-info-large'>
-                <Text className='asset-name'>{vouchers[0].name}</Text>
-                <Text className='asset-value'>¥{vouchers[0].value}</Text>
+            <View className="asset-info-large">
+                <Text className="asset-name">{topVoucher?.name}</Text>
+                <Text className="asset-value">¥{topVoucher?.value ?? 0}</Text>
+                {topVoucher?.minSpend ? (
+                    <Text className="asset-rule">满 {topVoucher.minSpend} 可用</Text>
+                ) : (
+                    <Text className="asset-rule">无门槛直接抵扣</Text>
+                )}
             </View>
         </View>
     );
 
     const renderMinimalState = () => (
-        <View className='minimal-grid'>
+        <View className="minimal-grid">
             {vouchers.map(v => (
-                <View key={v.id} className='minimal-item' onClick={() => onUseVoucher?.(v)}>
-                    <View className='asset-icon-wrap'>
-                        {v.icon ? <Image className='asset-icon-sm' src={v.icon} /> : <View className='asset-placeholder-sm' />}
+                <View key={v.id} className="minimal-item" onClick={() => onUseVoucher?.(v)}>
+                    <View className="asset-icon-wrap">
+                        {v.icon ? (
+                            <Image className="asset-icon-sm" src={v.icon} />
+                        ) : (
+                            <View className="asset-placeholder-sm" />
+                        )}
                     </View>
-                    <Text className='asset-name-sm'>{v.name}</Text>
+                    <Text className="asset-name-sm">{v.name}</Text>
                 </View>
             ))}
         </View>
@@ -81,19 +106,25 @@ export default function P03_TicketCard({
         const moreCount = vouchers.length - 5;
 
         return (
-            <View className='asset-grid'>
+            <View className="asset-grid">
                 {displayedVouchers.map(v => (
-                    <View key={v.id} className='grid-item' onClick={() => onUseVoucher?.(v)}>
-                        <View className='asset-icon-wrap-grid'>
-                            {v.icon ? <Image className='asset-icon-grid' src={v.icon} /> : <View className='asset-placeholder-grid' />}
-                            <View className='asset-badge'>x1</View>
+                    <View key={v.id} className="grid-item" onClick={() => onUseVoucher?.(v)}>
+                        <View className="asset-icon-wrap-grid">
+                            {v.icon ? (
+                                <Image className="asset-icon-grid" src={v.icon} />
+                            ) : (
+                                <View className="asset-placeholder-grid" />
+                            )}
+                            <View className="asset-badge">
+                                <Text>x1</Text>
+                            </View>
                         </View>
                     </View>
                 ))}
                 {hasMore && (
-                    <View className='grid-item more-item' onClick={onMoreClick}>
-                        <View className='more-overlay'>
-                            <Text className='more-text'>+{moreCount}</Text>
+                    <View className="grid-item more-item" onClick={onMoreClick}>
+                        <View className="more-overlay">
+                            <Text className="more-text">+{moreCount}</Text>
                         </View>
                     </View>
                 )}
@@ -105,24 +136,22 @@ export default function P03_TicketCard({
         <View
             style={{
                 ...style,
-                backgroundImage: 'linear-gradient(to bottom right, rgba(255,241,242,0.3), #ffffff)',
-                borderColor: 'rgba(255,228,230,0.5)'
+                backgroundImage:
+                    'radial-gradient(circle at 6% 0%, rgba(251,113,133,0.20), transparent 36%), linear-gradient(145deg, rgba(255,241,242,0.34), #ffffff 62%)',
+                borderColor: 'rgba(254,205,211,0.7)',
             }}
-            className={`relative w-full rounded-3xl overflow-hidden bg-gradient-to-br to-white border box-border text-slate-900 p03-ticket-card ${isFocused ? 'is-focused' : ''}`}
-        >
-            <View className='h-full flex flex-col box-border'>
-                {/* Header */}
-                <View className='card-header'>
-                    <Text className='card-title'>口福红包</Text>
+            className={`relative w-full rounded-3xl overflow-hidden border box-border text-slate-900 p03-ticket-card ${isFocused ? 'is-focused' : ''}`}>
+            <View className="h-full flex flex-col box-border card-shell">
+                <View className="card-header">
+                    <Text className="card-title">口福红包</Text>
                     {count > 0 && (
                         <View className="card-badge">
-                            <Text className='card-badge-text'>{count} VOUCHERS</Text>
+                            <Text className="card-badge-text">{count} VOUCHERS</Text>
                         </View>
                     )}
                 </View>
 
-                {/* Body - Adaptive Content */}
-                <View className='card-body'>
+                <View className="card-body">
                     {count === 0 && renderEmptyState()}
                     {count === 1 && renderSingleState()}
                     {count > 1 && count <= 3 && renderMinimalState()}
@@ -132,3 +161,4 @@ export default function P03_TicketCard({
         </View>
     );
 }
+

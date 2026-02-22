@@ -25,6 +25,12 @@ node .\scripts\release-local.js
 5. `meal-quest-customer` 测试 + UI 可复现回归（`npm run test:regression:ui`）。
 6. `meal-quest-customer` `build:weapp` 构建。
 
+E2E（需要微信开发者工具环境，独立执行）：
+
+1. `cd meal-quest-customer && npm run test:e2e:doctor`
+2. 连接模式：设置 `WECHAT_WS_ENDPOINT` 或 `WECHAT_SERVICE_PORT` 后执行 `npm run test:e2e`
+3. 自动拉起模式：设置 `WECHAT_E2E_AUTO_LAUNCH=1` 后执行 `npm run test:e2e:weapp`
+
 输出报告：
 
 - `artifacts/release-local-report.json`
@@ -64,6 +70,31 @@ npm start
 ```powershell
 cd .\MealQuestServer
 node .\scripts\smoke-local-server.js --external --base-url http://127.0.0.1:3030
+```
+
+## 2.1 自定义开店（无需使用 m_demo）
+
+在服务端目录执行：
+
+```powershell
+cd .\MealQuestServer
+npm run onboard:merchant -- --merchant-id m_my_first_store --name "我的第一家店"
+```
+
+商户端联调时设置：
+
+```powershell
+$env:MQ_USE_REMOTE_API='true'
+$env:MQ_SERVER_BASE_URL='http://127.0.0.1:3030'
+$env:MQ_MERCHANT_ID='m_my_first_store'
+```
+
+顾客端联调时设置：
+
+```powershell
+$env:TARO_APP_USE_REMOTE_API='true'
+$env:TARO_APP_SERVER_BASE_URL='http://127.0.0.1:3030'
+$env:TARO_APP_DEFAULT_STORE_ID='m_my_first_store'
 ```
 
 ## 3. 上线前最小放行标准

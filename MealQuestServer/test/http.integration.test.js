@@ -277,6 +277,55 @@ test("protected endpoint rejects missing token", async () => {
   }
 });
 
+test("merchant onboarding api allows custom store creation for end-to-end testing", async () => {
+  const app = createAppServer({ persist: false });
+  const port = await app.start(0);
+  const baseUrl = `http://127.0.0.1:${port}`;
+  const merchantId = `m_custom_${Date.now()}`;
+
+  try {
+    const onboard = await postJson(baseUrl, "/api/merchant/onboard", {
+      merchantId,
+      name: "Custom Test Store",
+      budgetCap: 420
+    });
+    assert.equal(onboard.status, 201);
+    assert.equal(onboard.data.merchant.merchantId, merchantId);
+    assert.equal(onboard.data.merchant.name, "Custom Test Store");
+    assert.ok(onboard.data.seededUsers.includes("u_demo"));
+
+    const duplicate = await postJson(baseUrl, "/api/merchant/onboard", {
+      merchantId,
+      name: "Custom Test Store"
+    });
+    assert.equal(duplicate.status, 409);
+    assert.equal(duplicate.data.error, "merchant already exists");
+
+    const ownerToken = await mockLogin(baseUrl, "OWNER", { merchantId });
+    assert.ok(ownerToken);
+    const customerToken = await mockLogin(baseUrl, "CUSTOMER", {
+      merchantId,
+      userId: "u_demo"
+    });
+    assert.ok(customerToken);
+
+    const state = await getJson(
+      baseUrl,
+      `/api/state?merchantId=${encodeURIComponent(merchantId)}&userId=u_demo`,
+      { Authorization: `Bearer ${customerToken}` }
+    );
+    assert.equal(state.status, 200);
+    assert.equal(state.data.merchant.merchantId, merchantId);
+    assert.equal(state.data.merchant.name, "Custom Test Store");
+
+    const catalog = await getJson(baseUrl, "/api/merchant/catalog");
+    assert.equal(catalog.status, 200);
+    assert.ok(catalog.data.items.some((item) => item.merchantId === merchantId));
+  } finally {
+    await app.stop();
+  }
+});
+
 test("persistent mode keeps state across restarts", async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "mq-server-test-"));
   const dbFilePath = path.join(tempDir, "db.json");
