@@ -7,17 +7,58 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Print-Command {
+    param(
+        [string]$WorkingDir,
+        [string]$Command
+    )
+    if (-not $script:RunStep) {
+        $script:RunStep = 0
+    }
+    $script:RunStep += 1
+    Write-Host ""
+    Write-Host "==================== [RUN-$($script:RunStep)] ====================" -ForegroundColor Cyan
+    Write-Host ">>> CMD: $Command" -ForegroundColor Cyan
+    Write-Host ">>> CWD: $WorkingDir" -ForegroundColor DarkCyan
+    Write-Host "==================================================================" -ForegroundColor Cyan
+}
+
+function Print-EnvChange {
+    param(
+        [string]$Action,
+        [string]$Name,
+        [string]$Value = ""
+    )
+    if (-not $script:EnvStep) {
+        $script:EnvStep = 0
+    }
+    $script:EnvStep += 1
+    $upper = $Name.ToUpperInvariant()
+    $masked = $upper.Contains("SECRET") -or $upper.Contains("TOKEN") -or $upper.Contains("PASSWORD")
+    $displayValue = if ($masked) { "***" } else { $Value }
+    Write-Host ""
+    Write-Host "==================== [ENV-$($script:EnvStep)] ====================" -ForegroundColor Yellow
+    Write-Host ">>> ACT: $Action" -ForegroundColor Yellow
+    Write-Host ">>> KEY: $Name" -ForegroundColor Yellow
+    if ($Action -eq "SET") {
+        Write-Host ">>> VAL: $displayValue" -ForegroundColor DarkYellow
+    }
+    Write-Host "==================================================================" -ForegroundColor Yellow
+}
+
 function Set-ProcessEnv {
     param(
         [string]$Name,
         [string]$Value
     )
     [Environment]::SetEnvironmentVariable($Name, $Value, "Process")
+    Print-EnvChange -Action "SET" -Name $Name -Value $Value
 }
 
 function Clear-ProcessEnv {
     param([string]$Name)
     [Environment]::SetEnvironmentVariable($Name, $null, "Process")
+    Print-EnvChange -Action "UNSET" -Name $Name
 }
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
@@ -44,6 +85,7 @@ Write-Host "[customer-weapp] TARO_APP_DEFAULT_STORE_ID=$env:TARO_APP_DEFAULT_STO
 
 Push-Location $customerDir
 try {
+    Print-Command -WorkingDir $customerDir -Command "npm run dev:weapp"
     npm run dev:weapp
 } finally {
     Pop-Location

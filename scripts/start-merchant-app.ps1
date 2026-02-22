@@ -15,17 +15,58 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Print-Command {
+    param(
+        [string]$WorkingDir,
+        [string]$Command
+    )
+    if (-not $script:RunStep) {
+        $script:RunStep = 0
+    }
+    $script:RunStep += 1
+    Write-Host ""
+    Write-Host "==================== [RUN-$($script:RunStep)] ====================" -ForegroundColor Cyan
+    Write-Host ">>> CMD: $Command" -ForegroundColor Cyan
+    Write-Host ">>> CWD: $WorkingDir" -ForegroundColor DarkCyan
+    Write-Host "==================================================================" -ForegroundColor Cyan
+}
+
+function Print-EnvChange {
+    param(
+        [string]$Action,
+        [string]$Name,
+        [string]$Value = ""
+    )
+    if (-not $script:EnvStep) {
+        $script:EnvStep = 0
+    }
+    $script:EnvStep += 1
+    $upper = $Name.ToUpperInvariant()
+    $masked = $upper.Contains("SECRET") -or $upper.Contains("TOKEN") -or $upper.Contains("PASSWORD")
+    $displayValue = if ($masked) { "***" } else { $Value }
+    Write-Host ""
+    Write-Host "==================== [ENV-$($script:EnvStep)] ====================" -ForegroundColor Yellow
+    Write-Host ">>> ACT: $Action" -ForegroundColor Yellow
+    Write-Host ">>> KEY: $Name" -ForegroundColor Yellow
+    if ($Action -eq "SET") {
+        Write-Host ">>> VAL: $displayValue" -ForegroundColor DarkYellow
+    }
+    Write-Host "==================================================================" -ForegroundColor Yellow
+}
+
 function Set-ProcessEnv {
     param(
         [string]$Name,
         [string]$Value
     )
     [Environment]::SetEnvironmentVariable($Name, $Value, "Process")
+    Print-EnvChange -Action "SET" -Name $Name -Value $Value
 }
 
 function Clear-ProcessEnv {
     param([string]$Name)
     [Environment]::SetEnvironmentVariable($Name, $null, "Process")
+    Print-EnvChange -Action "UNSET" -Name $Name
 }
 
 function Resolve-AndroidSdkPath {
@@ -169,6 +210,7 @@ if ($AutoStartServer -and $Mode -eq "online") {
         throw "Server startup script not found: $serverScript"
     }
     Write-Host "[merchant-app] starting local server in a new terminal..."
+    Print-Command -WorkingDir $PSScriptRoot -Command "powershell -NoExit -ExecutionPolicy Bypass -File `"$serverScript`" -Profile dev"
     Start-Process powershell -ArgumentList @(
         "-NoExit",
         "-ExecutionPolicy",
@@ -191,6 +233,7 @@ Set-Location '$merchantDir';
 npm start
 "@
     Write-Host "[merchant-app] starting Metro in a new terminal..."
+    Print-Command -WorkingDir $merchantDir -Command "powershell -NoExit -ExecutionPolicy Bypass -Command <set env; cd '$merchantDir'; npm start>"
     Start-Process powershell -ArgumentList @(
         "-NoExit",
         "-ExecutionPolicy",
@@ -212,8 +255,10 @@ Push-Location $merchantDir
 try {
     Write-Host "[merchant-app] building + launching $Platform debug app..."
     if ($Platform -eq "android") {
+        Print-Command -WorkingDir $merchantDir -Command "npm run android"
         npm run android
     } else {
+        Print-Command -WorkingDir $merchantDir -Command "npm run ios"
         npm run ios
     }
 } finally {
