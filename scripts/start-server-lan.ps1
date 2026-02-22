@@ -3,6 +3,17 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$trackedProcesses = @()
+
+function Stop-ProcessTree {
+    param([int]$TargetProcessId)
+    if ($TargetProcessId -le 0) { return }
+    & taskkill /PID $TargetProcessId /T /F *> $null
+    if ($LASTEXITCODE -ne 0) {
+        Stop-Process -Id $TargetProcessId -Force -ErrorAction SilentlyContinue
+    }
+}
+
 
 function Print-Command {
     param(
@@ -78,10 +89,38 @@ if ($ips.Count -gt 0) {
 }
 
 Write-Host "[lan-server] Starting MealQuestServer..."
-Push-Location $serverDir
 try {
+    Push-Location $serverDir
     Print-Command -WorkingDir $serverDir -Command "npm start"
-    npm start
+    $serverProcess = Start-Process cmd -ArgumentList "/c npm start" -NoNewWindow -PassThru
+    $trackedProcesses += $serverProcess
+
+
+
+    if ($trackedProcesses.Count -gt 0) {
+        Write-Host ""
+        Write-Host "[lan-server] Server is running (PID $($serverProcess.Id))." -ForegroundColor Cyan
+        Write-Host "[lan-server] SCRIPT IS ACTIVE. Press Ctrl+C to kill server and exit." -ForegroundColor Yellow
+        
+        while ($true) {
+            $running = $trackedProcesses | Where-Object { -not $_.HasExited }
+            if (-not $running) {
+                Write-Host "[lan-server] Server process has exited."
+                break
+            }
+            Start-Sleep -Seconds 2
+        }
+    }
 } finally {
+    if ($trackedProcesses.Count -gt 0) {
+        Write-Host "[lan-server] cleaning up processes..." -ForegroundColor Yellow
+        foreach ($p in $trackedProcesses) {
+            if (-not $p.HasExited) {
+                Write-Host "[lan-server] killing process tree for PID $($p.Id)..."
+                Stop-ProcessTree -TargetProcessId $p.Id
+            }
+        }
+    }
     Pop-Location
 }
+

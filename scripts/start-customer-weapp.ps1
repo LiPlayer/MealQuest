@@ -4,6 +4,17 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$trackedProcesses = @()
+
+function Stop-ProcessTree {
+    param([int]$TargetProcessId)
+    if ($TargetProcessId -le 0) { return }
+    & taskkill /PID $TargetProcessId /T /F *> $null
+    if ($LASTEXITCODE -ne 0) {
+        Stop-Process -Id $TargetProcessId -Force -ErrorAction SilentlyContinue
+    }
+}
+
 
 function Print-Command {
     param(
@@ -78,10 +89,38 @@ if ([string]::IsNullOrWhiteSpace($StoreId)) {
     Write-Host "[customer-weapp] store injection=on ($StoreId)" -ForegroundColor Yellow
 }
 
-Push-Location $customerDir
 try {
+    Push-Location $customerDir
     Print-Command -WorkingDir $customerDir -Command "npm run dev:weapp"
-    npm run dev:weapp
+    $customerProcess = Start-Process cmd -ArgumentList "/c npm run dev:weapp" -NoNewWindow -PassThru
+    $trackedProcesses += $customerProcess
+
+
+
+    if ($trackedProcesses.Count -gt 0) {
+        Write-Host ""
+        Write-Host "[customer-weapp] Taroserv is running (PID $($customerProcess.Id))." -ForegroundColor Cyan
+        Write-Host "[customer-weapp] SCRIPT IS ACTIVE. Press Ctrl+C to kill process and exit." -ForegroundColor Yellow
+        
+        while ($true) {
+            $running = $trackedProcesses | Where-Object { -not $_.HasExited }
+            if (-not $running) {
+                Write-Host "[customer-weapp] Customer process has exited."
+                break
+            }
+            Start-Sleep -Seconds 2
+        }
+    }
 } finally {
+    if ($trackedProcesses.Count -gt 0) {
+        Write-Host "[customer-weapp] cleaning up processes..." -ForegroundColor Yellow
+        foreach ($p in $trackedProcesses) {
+            if (-not $p.HasExited) {
+                Write-Host "[customer-weapp] killing process tree for PID $($p.Id)..."
+                Stop-ProcessTree -TargetProcessId $p.Id
+            }
+        }
+    }
     Pop-Location
 }
+

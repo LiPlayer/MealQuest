@@ -14,6 +14,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$trackedProcesses = @()
+
 
 function Print-Command {
     param(
@@ -202,7 +204,9 @@ function Ensure-AndroidSetup {
     Write-Host "[merchant-app] android/local.properties generated."
 }
 
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+try {
+    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+
 $merchantDir = Join-Path $repoRoot "MealQuestMerchant"
 
 if (-not (Test-Path $merchantDir)) {
@@ -237,7 +241,7 @@ if ($AutoStartServer) {
     }
     Write-Host "[merchant-app] starting local server in a new terminal..."
     Print-Command -WorkingDir $PSScriptRoot -Command "powershell -NoExit -ExecutionPolicy Bypass -File `"$serverScript`" -Profile dev"
-    Start-Process powershell -ArgumentList @(
+    $serverProcess = Start-Process powershell -ArgumentList @(
         "-NoExit",
         "-ExecutionPolicy",
         "Bypass",
@@ -245,18 +249,21 @@ if ($AutoStartServer) {
         $serverScript,
         "-Profile",
         "dev"
-    ) | Out-Null
+    ) -PassThru
+    $trackedProcesses += $serverProcess
     Start-Sleep -Seconds 2
 }
+
 
 if (-not $NoMetro) {
     if (Test-PortOccupied -Port $MetroPort) {
         Write-Host "[merchant-app] Metro port $MetroPort is already occupied. Skipping Metro startup." -ForegroundColor Green
-        $NoMetro = $true
+        $MetroInjectedOrPreExisting = $true
     }
 }
 
-if (-not $NoMetro) {
+if (-not $NoMetro -and -not $MetroInjectedOrPreExisting) {
+    # ... starts Metro in new terminal ...
     $metroCommand = @"
 `$env:MQ_ENABLE_ENTRY_FLOW='$env:MQ_ENABLE_ENTRY_FLOW';
 `$env:MQ_USE_REMOTE_API='$env:MQ_USE_REMOTE_API';
@@ -265,6 +272,7 @@ if (-not $NoMetro) {
 Set-Location '$merchantDir';
 npx react-native start --host '$MetroHost' --port $MetroPort
 "@
+
     Write-Host "[merchant-app] starting Metro in a new terminal..."
     Print-Command -WorkingDir $merchantDir -Command "powershell -NoExit -ExecutionPolicy Bypass -Command <set env; cd '$merchantDir'; npx react-native start --host '$MetroHost' --port $MetroPort>"
     $metroProcess = Start-Process powershell -ArgumentList @(
@@ -274,6 +282,9 @@ npx react-native start --host '$MetroHost' --port $MetroPort
         "-Command",
         $metroCommand
     ) -PassThru
+    $trackedProcesses += $metroProcess
+    $MetroInjectedOrPreExisting = $true
+
     if ($WaitMetroSeconds -gt 0) {
         Start-Sleep -Seconds $WaitMetroSeconds
     }
@@ -285,7 +296,6 @@ if ($NoLaunch) {
 }
 
 Push-Location $merchantDir
-try {
     Write-Host "[merchant-app] building + launching $Platform debug app..."
     
     if ($Platform -eq "android") {
@@ -297,7 +307,7 @@ try {
         $devices | ForEach-Object { Write-Host "  $($_.ToString().Trim())" -ForegroundColor Green }
     }
 
-    $skipPackager = $NoMetro
+    $skipPackager = $MetroInjectedOrPreExisting -or $NoMetro
     if ($Platform -eq "android") {
         if ($skipPackager) {
             Print-Command -WorkingDir $merchantDir -Command "npm run android -- --no-packager"
@@ -319,16 +329,44 @@ try {
             Assert-LastExitCode -CommandLabel "npm run ios"
         }
     }
+
+    
+    if ($trackedProcesses.Count -gt 0) {
+        Write-Host ""
+        Write-Host "[merchant-app] Startup sequence finished. Child processes are running:" -ForegroundColor Cyan
+        foreach ($p in $trackedProcesses) {
+            Write-Host "  - PID $($p.Id): $($p.ProcessName)" -ForegroundColor Gray
+        }
+        Write-Host "[merchant-app] SCRIPT IS ACTIVE. Press Ctrl+C to kill all child processes and exit." -ForegroundColor Yellow
+        
+        while ($true) {
+            $running = $trackedProcesses | Where-Object { -not $_.HasExited }
+            if (-not $running) {
+                Write-Host "[merchant-app] All child processes have exited."
+                break
+            }
+            Start-Sleep -Seconds 2
+        }
+    }
 } catch {
     $errText = ($_ | Out-String)
     if ($errText -match "INSTALL_FAILED_USER_RESTRICTED") {
         Print-InstallRestrictedGuidance
     }
-    if ($metroProcess) {
-        Write-Host "[merchant-app] launch failed, closing Metro window (PID=$($metroProcess.Id))..." -ForegroundColor Yellow
-        Stop-ProcessTree -TargetProcessId $metroProcess.Id
-    }
     throw
 } finally {
-    Pop-Location
+    if ($trackedProcesses.Count -gt 0) {
+        Write-Host "[merchant-app] cleaning up child processes..." -ForegroundColor Yellow
+        foreach ($p in $trackedProcesses) {
+            if (-not $p.HasExited) {
+                Write-Host "[merchant-app] killing process tree for PID $($p.Id)..."
+                Stop-ProcessTree -TargetProcessId $p.Id
+            }
+        }
+    }
+    if ($PSScriptRoot -ne $PWD.Path -and (Test-Path $merchantDir) -and ($PWD.Path -eq (Resolve-Path $merchantDir).Path)) {
+        Pop-Location
+    }
 }
+
+

@@ -8,6 +8,17 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$trackedProcesses = @()
+
+function Stop-ProcessTree {
+    param([int]$TargetProcessId)
+    if ($TargetProcessId -le 0) { return }
+    & taskkill /PID $TargetProcessId /T /F *> $null
+    if ($LASTEXITCODE -ne 0) {
+        Stop-Process -Id $TargetProcessId -Force -ErrorAction SilentlyContinue
+    }
+}
+
 
 function Print-Command {
     param([string]$Command)
@@ -48,7 +59,9 @@ function Invoke-Adb {
     return $output
 }
 
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+try {
+    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+
 if ([string]::IsNullOrWhiteSpace($ApkPath)) {
     $ApkPath = Join-Path $repoRoot "MealQuestMerchant\android\app\build\outputs\apk\release\app-release.apk"
 }
@@ -129,4 +142,14 @@ if ($fatal) {
     throw "Release smoke failed: fatal runtime signal detected. Review logcat output."
 }
 
-Write-Host "[verify-merchant-release] launch smoke=PASS" -ForegroundColor Green
+    Write-Host "[verify-merchant-release] launch smoke=PASS" -ForegroundColor Green
+} finally {
+    if ($trackedProcesses.Count -gt 0) {
+        foreach ($p in $trackedProcesses) {
+            if (-not $p.HasExited) {
+                Stop-ProcessTree -TargetProcessId $p.Id
+            }
+        }
+    }
+}
+

@@ -8,6 +8,17 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$trackedProcesses = @()
+
+function Stop-ProcessTree {
+    param([int]$TargetProcessId)
+    if ($TargetProcessId -le 0) { return }
+    & taskkill /PID $TargetProcessId /T /F *> $null
+    if ($LASTEXITCODE -ne 0) {
+        Stop-Process -Id $TargetProcessId -Force -ErrorAction SilentlyContinue
+    }
+}
+
 
 function Print-Command {
     param([string]$WorkingDir, [string]$Command)
@@ -82,20 +93,33 @@ $task = if ($Artifact -eq "aab") {
     if ($BuildType -eq "release") { "assembleRelease" } else { "assembleDebug" }
 }
 
-Push-Location $androidDir
 try {
+    Push-Location $androidDir
     if ($Clean) {
         Print-Command -WorkingDir $androidDir -Command ".\gradlew.bat clean"
-        .\gradlew.bat clean
+        $cleanProcess = Start-Process cmd -ArgumentList "/c gradlew.bat clean" -NoNewWindow -PassThru -Wait
+        $trackedProcesses += $cleanProcess
+
         Assert-LastExitCode -CommandLabel "gradlew clean"
     }
 
     Print-Command -WorkingDir $androidDir -Command ".\gradlew.bat $task"
-    .\gradlew.bat $task
+    $buildProcess = Start-Process cmd -ArgumentList "/c gradlew.bat $task" -NoNewWindow -PassThru -Wait
+    $trackedProcesses += $buildProcess
+
     Assert-LastExitCode -CommandLabel "gradlew $task"
+
 } finally {
+    if ($trackedProcesses.Count -gt 0) {
+        foreach ($p in $trackedProcesses) {
+            if (-not $p.HasExited) {
+                Stop-ProcessTree -TargetProcessId $p.Id
+            }
+        }
+    }
     Pop-Location
 }
+
 
 $artifactPath = if ($Artifact -eq "aab") {
     Join-Path $androidDir "app\build\outputs\bundle\$BuildType\app-$BuildType.aab"
