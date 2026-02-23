@@ -7,7 +7,7 @@
     },
     "merchant_rn": {
       "source": "react-native-config (.env)",
-      "requiredKeys": ["MQ_SERVER_URL", "MQ_MERCHANT_ID", "MQ_ENABLE_ENTRY_FLOW"]
+      "requiredKeys": ["MQ_SERVER_URL", "MQ_MERCHANT_ID"]
     },
     "customer_taro": {
       "source": "taro env (.env.development*)",
@@ -24,4 +24,3 @@
     "server_src_forbid": ["TARO_APP_", "react-native-config"]
   }
 }
-

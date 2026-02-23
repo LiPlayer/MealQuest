@@ -250,8 +250,6 @@ try {
     Write-Host "[merchant-app] envFile=$resolvedEnvFile" -ForegroundColor Green
     Write-Host "[merchant-app] metro=${MetroHost}:$MetroPort"
 
-$metroProcess = $null
-
 if ($AutoStartServer) {
     $serverScript = Join-Path $PSScriptRoot "start-server.ps1"
     if (-not $serverScript -or -not (Test-Path $serverScript)) {

@@ -11,6 +11,7 @@
     "test:regression:ui": "jest __tests__/merchant-ui-regression.test.tsx --runInBand"
   },
   "dependencies": {
+    "@react-native-async-storage/async-storage": "^1.23.1",
     "@react-native/new-app-screen": "0.84.0",
     "nativewind": "^4.2.1",
     "react": "19.2.3",

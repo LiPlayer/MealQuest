@@ -155,7 +155,7 @@ Goal: use PC as server, run merchant app and customer app on phones within same 
 4. Merchant app (React Native) uses LAN base URL:
 
 ```powershell
-.\scripts\start-merchant-app.ps1 -Mode online -Platform android -ServerBaseUrl 'http://192.168.31.10:3030'
+.\scripts\start-merchant-app.ps1 -Platform android
 ```
 
 5. Customer app (mini program) uses LAN base URL:

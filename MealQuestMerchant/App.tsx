@@ -8,7 +8,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import Config from 'react-native-config';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import {
@@ -1323,13 +1322,6 @@ function MerchantEntryFlow({ onComplete }: { onComplete: (merchantId: string) =>
   );
 }
 
-const ENABLE_ENTRY_FLOW = (() => {
-  const raw = String(Config.MQ_ENABLE_ENTRY_FLOW ?? 'true')
-    .trim()
-    .toLowerCase();
-  return raw === '1' || raw === 'true';
-})();
-
 const ENTRY_DONE_KEY = 'mq_merchant_entry_done';
 const ENTRY_MERCHANT_ID_KEY = 'mq_merchant_entry_merchant_id';
 
@@ -1375,8 +1367,8 @@ const persistEntryState = async (merchantId: string) => {
 };
 
 export default function App() {
-  const [entryBootstrapped, setEntryBootstrapped] = useState(!ENABLE_ENTRY_FLOW);
-  const [ready, setReady] = useState(!ENABLE_ENTRY_FLOW);
+  const [entryBootstrapped, setEntryBootstrapped] = useState(false);
+  const [ready, setReady] = useState(false);
   const [merchantId, setMerchantId] = useState(
     typeof MerchantApi.getMerchantId === 'function'
       ? MerchantApi.getMerchantId()
@@ -1384,10 +1376,6 @@ export default function App() {
   );
 
   useEffect(() => {
-    if (!ENABLE_ENTRY_FLOW) {
-      return;
-    }
-
     let active = true;
     const bootstrap = async () => {
       try {

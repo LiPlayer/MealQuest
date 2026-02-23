@@ -49,8 +49,8 @@ function Print-Command {
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $serverDir = Join-Path $repoRoot "MealQuestServer"
 
-$dotEnvPath = Join-Path $serverDir ".env"
 Write-Host "[lan-server] CONFIG MANAGED BY: MealQuestServer/.env" -ForegroundColor Green
+Write-Host "[lan-server] PORT=$Port" -ForegroundColor Green
 
 $ips = Get-LanIpv4Candidates
 if ($ips.Count -gt 0) {
@@ -64,6 +64,7 @@ if ($ips.Count -gt 0) {
 Write-Host "[lan-server] Starting MealQuestServer..."
 try {
     Push-Location $serverDir
+    [Environment]::SetEnvironmentVariable("PORT", [string]$Port, "Process")
     Print-Command -WorkingDir $serverDir -Command "npm start"
     $serverProcess = Start-Process cmd -ArgumentList "/c npm start" -NoNewWindow -PassThru
     $trackedProcesses += $serverProcess
