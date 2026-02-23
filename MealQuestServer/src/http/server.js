@@ -1,6 +1,5 @@
 const http = require("node:http");
 const crypto = require("node:crypto");
-const path = require("node:path");
 const { URL } = require("node:url");
 const {
   loadServerEnv,
@@ -23,7 +22,7 @@ const { createSocialService } = require("../services/socialService");
 const { createSupplierService } = require("../services/supplierService");
 const { createTreatPayService } = require("../services/treatPayService");
 const { createInMemoryDb } = require("../store/inMemoryDb");
-const { createPersistentDb } = require("../store/persistentDb");
+const { createPostgresDb } = require("../store/postgresDb");
 const { createTenantRepository } = require("../store/tenantRepository");
 
 const MERCHANT_ROLES = ["CLERK", "MANAGER", "OWNER"];
@@ -347,9 +346,17 @@ function upsertMerchantRows(rows, merchantId, nextRows) {
   ];
 }
 
-function buildDedicatedDbFilePath(baseFilePath, merchantId) {
-  const parsed = path.parse(baseFilePath);
-  return path.join(parsed.dir, `${parsed.name}.tenant.${merchantId}.json`);
+function uniqueDbs(items) {
+  const out = [];
+  for (const item of items) {
+    if (!item) {
+      continue;
+    }
+    if (!out.includes(item)) {
+      out.push(item);
+    }
+  }
+  return out;
 }
 
 function buildMerchantSnapshotSummary(db, merchantId) {
@@ -880,12 +887,11 @@ function copyMerchantSlice({ sourceDb, targetDb, merchantId }) {
   targetDb.save();
 }
 
-function cutoverMerchantToDedicatedDb({
+async function cutoverMerchantToDedicatedDb({
   actualDb,
   tenantRouter,
   merchantId,
-  persist,
-  dbFilePath
+  postgresOptions = {},
 }) {
   if (!merchantId) {
     throw new Error("merchantId is required");
@@ -898,13 +904,32 @@ function cutoverMerchantToDedicatedDb({
 
   let dedicatedDb = null;
   let dedicatedDbFilePath = "";
-  if (persist) {
+  if (postgresOptions.connectionString) {
     dedicatedDbFilePath =
       (actualDb.tenantRouteFiles && actualDb.tenantRouteFiles[merchantId]) ||
-      buildDedicatedDbFilePath(dbFilePath, merchantId);
-    dedicatedDb = createPersistentDb(dedicatedDbFilePath);
+      `${postgresOptions.snapshotKey || "main"}.tenant.${merchantId}`;
+    dedicatedDb = await createPostgresDb({
+      connectionString: postgresOptions.connectionString,
+      schema: postgresOptions.schema,
+      table: postgresOptions.table,
+      snapshotKey: dedicatedDbFilePath,
+      maxPoolSize: postgresOptions.maxPoolSize,
+    });
   } else {
     dedicatedDb = createInMemoryDb();
+    dedicatedDbFilePath = `inline:${merchantId}`;
+    const inlineSnapshotRef = {
+      type: "INLINE_SNAPSHOT",
+      state: dedicatedDb.serialize()
+    };
+    dedicatedDb.save = () => {
+      inlineSnapshotRef.state = dedicatedDb.serialize();
+      if (!actualDb.tenantRouteFiles || typeof actualDb.tenantRouteFiles !== "object") {
+        actualDb.tenantRouteFiles = {};
+      }
+      actualDb.tenantRouteFiles[merchantId] = inlineSnapshotRef;
+      actualDb.save();
+    };
   }
 
   copyMerchantSlice({
@@ -922,7 +947,7 @@ function cutoverMerchantToDedicatedDb({
   if (!actualDb.tenantRouteFiles || typeof actualDb.tenantRouteFiles !== "object") {
     actualDb.tenantRouteFiles = {};
   }
-  if (dedicatedDbFilePath) {
+  if (postgresOptions.connectionString && dedicatedDbFilePath) {
     actualDb.tenantRouteFiles[merchantId] = dedicatedDbFilePath;
   }
   actualDb.save();
@@ -936,7 +961,7 @@ function cutoverMerchantToDedicatedDb({
   };
 }
 
-function rollbackMerchantToSharedDb({
+async function rollbackMerchantToSharedDb({
   actualDb,
   tenantRouter,
   merchantId
@@ -969,6 +994,9 @@ function rollbackMerchantToSharedDb({
   tenantRouter.clearDbForMerchant(merchantId);
   actualDb.save();
   dedicatedDb.save();
+  if (typeof dedicatedDb.close === "function") {
+    await dedicatedDb.close();
+  }
 
   return {
     dedicatedDbAttached: false,
@@ -1062,36 +1090,44 @@ function applyMigrationStep({
 
 function createAppServer({
   db = null,
-  persist = false,
+  postgresOptions = {},
   tenantDbMap = {},
   tenantPolicyMap = {},
   defaultTenantPolicy = {},
-  dbFilePath = path.resolve(process.cwd(), "data/db.json"),
-  jwtSecret = resolveServerRuntimeEnv(process.env).jwtSecret,
-  paymentCallbackSecret = resolveServerRuntimeEnv(process.env).paymentCallbackSecret,
-  onboardSecret = resolveServerRuntimeEnv(process.env).onboardSecret,
+  jwtSecret = process.env.MQ_JWT_SECRET || "mealquest-dev-secret",
+  paymentCallbackSecret =
+    process.env.MQ_PAYMENT_CALLBACK_SECRET || "mealquest-payment-callback-secret",
+  onboardSecret = process.env.MQ_ONBOARD_SECRET || "",
   paymentProvider = null
 } = {}) {
-  const actualDb = db || (persist ? createPersistentDb(dbFilePath) : createInMemoryDb());
+  const actualDb = db || createInMemoryDb();
   if (typeof actualDb.save !== "function") {
     actualDb.save = () => { };
   }
   if (!actualDb.tenantRouteFiles || typeof actualDb.tenantRouteFiles !== "object") {
     actualDb.tenantRouteFiles = {};
   }
-  const persistedTenantDbMap = {};
-  if (persist) {
-    for (const [merchantId, filePath] of Object.entries(actualDb.tenantRouteFiles)) {
-      if (!merchantId || !filePath || typeof filePath !== "string") {
-        continue;
-      }
-      persistedTenantDbMap[merchantId] = createPersistentDb(filePath);
+  const hydratedTenantDbMap = {};
+  for (const [merchantId, snapshotRef] of Object.entries(actualDb.tenantRouteFiles)) {
+    if (!merchantId || !snapshotRef || typeof snapshotRef !== "object") {
+      continue;
     }
+    if (snapshotRef.type !== "INLINE_SNAPSHOT") {
+      continue;
+    }
+    const tenantDb = createInMemoryDb(snapshotRef.state || null);
+    tenantDb.save = () => {
+      snapshotRef.state = tenantDb.serialize();
+      actualDb.tenantRouteFiles[merchantId] = snapshotRef;
+      actualDb.save();
+    };
+    hydratedTenantDbMap[merchantId] = tenantDb;
   }
   const mergedTenantDbMap = {
-    ...persistedTenantDbMap,
+    ...hydratedTenantDbMap,
     ...(tenantDbMap || {})
   };
+  const managedDbs = uniqueDbs([actualDb, ...Object.values(mergedTenantDbMap)]);
 
   const tenantRouter = createTenantRouter({
     defaultDb: actualDb,
@@ -2732,12 +2768,11 @@ function createAppServer({
             step: "FREEZE_WRITE",
             note: body.note || "auto freeze for cutover"
           });
-          cutoverResult = cutoverMerchantToDedicatedDb({
+          cutoverResult = await cutoverMerchantToDedicatedDb({
             actualDb,
             tenantRouter,
             merchantId,
-            persist,
-            dbFilePath
+            postgresOptions
           });
           applyMigrationStep({
             actualDb,
@@ -2824,7 +2859,7 @@ function createAppServer({
             step: "FREEZE_WRITE",
             note: body.note || "freeze before rollback"
           });
-          rollbackResult = rollbackMerchantToSharedDb({
+          rollbackResult = await rollbackMerchantToSharedDb({
             actualDb,
             tenantRouter,
             merchantId
@@ -3085,7 +3120,22 @@ function createAppServer({
           reject(error);
           return;
         }
-        resolve();
+        const dynamicManaged = uniqueDbs([
+          ...managedDbs,
+          ...(tenantRouter.listOverrideDbs ? tenantRouter.listOverrideDbs() : []),
+        ]);
+        Promise.all(
+          dynamicManaged.map(async (dbItem) => {
+            if (dbItem && typeof dbItem.flush === "function") {
+              await dbItem.flush();
+            }
+            if (dbItem && typeof dbItem.close === "function") {
+              await dbItem.close();
+            }
+          }),
+        )
+          .then(() => resolve())
+          .catch(reject);
       });
     });
   }
@@ -3106,14 +3156,91 @@ function createAppServer({
   };
 }
 
+async function createAppServerAsync(options = {}) {
+  const runtimeEnv = resolveServerRuntimeEnv(process.env);
+
+  const postgresOptions = {
+    connectionString:
+      (options.postgresOptions && options.postgresOptions.connectionString) ||
+      runtimeEnv.dbUrl,
+    schema:
+      (options.postgresOptions && options.postgresOptions.schema) ||
+      runtimeEnv.dbSchema ||
+      "public",
+    table:
+      (options.postgresOptions && options.postgresOptions.table) ||
+      runtimeEnv.dbStateTable ||
+      "mealquest_state_snapshots",
+    snapshotKey:
+      (options.postgresOptions && options.postgresOptions.snapshotKey) ||
+      runtimeEnv.dbSnapshotKey ||
+      "main",
+    maxPoolSize:
+      (options.postgresOptions && options.postgresOptions.maxPoolSize) ||
+      runtimeEnv.dbPoolMax ||
+      5,
+  };
+
+  const rootDb =
+    options.db ||
+    (await createPostgresDb({
+      ...postgresOptions,
+      onPersistError: (error) => {
+        // eslint-disable-next-line no-console
+        console.error("[postgres-db] persist failed:", error.message);
+      },
+    }));
+
+  if (!rootDb.tenantRouteFiles || typeof rootDb.tenantRouteFiles !== "object") {
+    rootDb.tenantRouteFiles = {};
+  }
+
+  const persistedTenantDbMap = {};
+  for (const [merchantId, snapshotRef] of Object.entries(rootDb.tenantRouteFiles)) {
+    if (!merchantId || typeof snapshotRef !== "string" || !snapshotRef.trim()) {
+      continue;
+    }
+    persistedTenantDbMap[merchantId] = await createPostgresDb({
+      ...postgresOptions,
+      snapshotKey: snapshotRef.trim(),
+      onPersistError: (error) => {
+        // eslint-disable-next-line no-console
+        console.error("[postgres-db] tenant persist failed:", error.message);
+      },
+    });
+  }
+
+  return createAppServer({
+    ...options,
+    db: rootDb,
+    postgresOptions,
+    tenantDbMap: {
+      ...persistedTenantDbMap,
+      ...(options.tenantDbMap || {}),
+    },
+  });
+}
+
 if (require.main === module) {
   const runtimeEnv = resolveServerRuntimeEnv(process.env);
-  const app = createAppServer({ persist: true });
-  app
-    .start(runtimeEnv.port, runtimeEnv.host)
+  createAppServerAsync({
+    postgresOptions: {
+      connectionString: runtimeEnv.dbUrl,
+      schema: runtimeEnv.dbSchema,
+      table: runtimeEnv.dbStateTable,
+      snapshotKey: runtimeEnv.dbSnapshotKey,
+      maxPoolSize: runtimeEnv.dbPoolMax,
+    },
+    jwtSecret: runtimeEnv.jwtSecret,
+    paymentCallbackSecret: runtimeEnv.paymentCallbackSecret,
+    onboardSecret: runtimeEnv.onboardSecret,
+  })
+    .then((app) => app.start(runtimeEnv.port, runtimeEnv.host))
     .then((startedPort) => {
       // eslint-disable-next-line no-console
       console.log(`MealQuestServer listening on ${runtimeEnv.host}:${startedPort}`);
+      // eslint-disable-next-line no-console
+      console.log("[db] driver=postgres");
     })
     .catch((error) => {
       // eslint-disable-next-line no-console
@@ -3123,5 +3250,6 @@ if (require.main === module) {
 }
 
 module.exports = {
-  createAppServer
+  createAppServer,
+  createAppServerAsync,
 };

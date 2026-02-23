@@ -1,9 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
 
 const { createAppServer } = require("../src/http/server");
 const { createInMemoryDb } = require("../src/store/inMemoryDb");
@@ -70,6 +67,24 @@ function waitForWebSocketMessage(ws, timeoutMs = 2000) {
 
 function signCallback(payload, secret) {
   return crypto.createHmac("sha256", secret).update(JSON.stringify(payload)).digest("hex");
+}
+
+function cloneJson(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function createSnapshotBackedDbFactory(initialSnapshot = null) {
+  let snapshot = initialSnapshot ? cloneJson(initialSnapshot) : null;
+  return {
+    createDb() {
+      const db = createInMemoryDb(snapshot ? cloneJson(snapshot) : null);
+      db.save = () => {
+        snapshot = cloneJson(db.serialize());
+      };
+      db.save();
+      return db;
+    }
+  };
 }
 
 test("http flow: quote -> verify -> refund -> confirm proposal -> trigger", async () => {
@@ -363,10 +378,9 @@ test("merchant onboarding api allows custom store creation for end-to-end testin
 });
 
 test("persistent mode keeps state across restarts", async () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "mq-server-test-"));
-  const dbFilePath = path.join(tempDir, "db.json");
+  const dbFactory = createSnapshotBackedDbFactory();
 
-  const app1 = createAppServer({ persist: true, dbFilePath });
+  const app1 = createAppServer({ db: dbFactory.createDb() });
   const port1 = await app1.start(0);
   const base1 = `http://127.0.0.1:${port1}`;
 
@@ -387,7 +401,7 @@ test("persistent mode keeps state across restarts", async () => {
   assert.equal(verify.status, 200);
   await app1.stop();
 
-  const app2 = createAppServer({ persist: true, dbFilePath });
+  const app2 = createAppServer({ db: dbFactory.createDb() });
   const port2 = await app2.start(0);
   const base2 = `http://127.0.0.1:${port2}`;
 
@@ -407,15 +421,13 @@ test("persistent mode keeps state across restarts", async () => {
     assert.ok(stateData.user.vouchers.some((item) => item.status === "USED"));
   } finally {
     await app2.stop();
-    fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
 
 test("persistent mode keeps tenant policy across restarts", async () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "mq-server-policy-test-"));
-  const dbFilePath = path.join(tempDir, "db.json");
+  const dbFactory = createSnapshotBackedDbFactory();
 
-  const app1 = createAppServer({ persist: true, dbFilePath });
+  const app1 = createAppServer({ db: dbFactory.createDb() });
   const port1 = await app1.start(0);
   const base1 = `http://127.0.0.1:${port1}`;
 
@@ -441,7 +453,7 @@ test("persistent mode keeps tenant policy across restarts", async () => {
   assert.equal(policyUpdate.data.policy.writeEnabled, false);
   await app1.stop();
 
-  const app2 = createAppServer({ persist: true, dbFilePath });
+  const app2 = createAppServer({ db: dbFactory.createDb() });
   const port2 = await app2.start(0);
   const base2 = `http://127.0.0.1:${port2}`;
 
@@ -475,15 +487,13 @@ test("persistent mode keeps tenant policy across restarts", async () => {
     assert.equal(verifyBlocked.data.code, "TENANT_WRITE_DISABLED");
   } finally {
     await app2.stop();
-    fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
 
 test("persistent mode keeps tenant dedicated route after cutover", async () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "mq-server-cutover-test-"));
-  const dbFilePath = path.join(tempDir, "db.json");
+  const dbFactory = createSnapshotBackedDbFactory();
 
-  const app1 = createAppServer({ persist: true, dbFilePath });
+  const app1 = createAppServer({ db: dbFactory.createDb() });
   const port1 = await app1.start(0);
   const base1 = `http://127.0.0.1:${port1}`;
 
@@ -532,7 +542,7 @@ test("persistent mode keeps tenant dedicated route after cutover", async () => {
   );
   await app1.stop();
 
-  const app2 = createAppServer({ persist: true, dbFilePath });
+  const app2 = createAppServer({ db: dbFactory.createDb() });
   const port2 = await app2.start(0);
   const base2 = `http://127.0.0.1:${port2}`;
 
@@ -577,7 +587,6 @@ test("persistent mode keeps tenant dedicated route after cutover", async () => {
     );
   } finally {
     await app2.stop();
-    fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
 

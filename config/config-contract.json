@@ -3,7 +3,7 @@
   "domains": {
     "server": {
       "source": "system env / k8s config",
-      "requiredKeys": ["MQ_JWT_SECRET", "MQ_PAYMENT_CALLBACK_SECRET", "PORT"]
+      "requiredKeys": ["MQ_JWT_SECRET", "MQ_PAYMENT_CALLBACK_SECRET", "PORT", "MQ_DB_URL"]
     },
     "merchant_rn": {
       "source": "react-native-config (.env)",

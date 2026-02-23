@@ -13,7 +13,7 @@
 - 社交裂变账务（转赠/拼手气红包，总量守恒）
 - JWT 鉴权与角色权限（`CUSTOMER/CLERK/MANAGER/OWNER`）
 - WebSocket 实时推送（支付、退款、策略、熔断、TCA）
-- 持久化存储（默认 `data/db.json`）
+- 持久化存储（PostgreSQL 快照表）
 - 共享库强隔离（`merchantUsers` 与 `paymentsByMerchant` 按商户分桶）
 - 高风险审计日志（支付/退款/提案/熔断/TCA）
 
@@ -38,6 +38,23 @@ npm start
 1. `.env.dev.example`
 2. `.env.staging.example`
 3. `.env.prod.example`
+
+## Storage
+
+Set at least:
+
+```ini
+MQ_DB_URL=postgres://user:password@host:5432/mealquest
+MQ_DB_SCHEMA=public
+MQ_DB_STATE_TABLE=mealquest_state_snapshots
+MQ_DB_SNAPSHOT_KEY=main
+```
+
+Notes:
+
+1. Business behavior is unchanged; the runtime model is still the same in-memory state shape.
+2. `save()` writes snapshots into PostgreSQL (`JSONB`) with upsert semantics.
+3. Migration cutover/rollback continues to work. Dedicated tenant stores are mapped to per-tenant snapshot keys.
 
 ## 开店（自定义商户，不依赖 `m_store_001`）
 
@@ -82,7 +99,7 @@ GET  /api/merchant/catalog
 1. `writeEnabled=false`：迁移窗口写冻结（read-only）。
 2. `wsEnabled=false`：临时关闭实时通道接入。
 3. `limits`：按操作限流（例如 `PAYMENT_VERIFY` 每分钟配额）。
-4. 策略写入后会随 `data/db.json` 持久化，服务重启后自动恢复。
+4. 策略写入会持久化到 PostgreSQL snapshot table，服务重启后自动恢复。
 
 示例：
 

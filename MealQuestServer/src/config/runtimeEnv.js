@@ -21,6 +21,14 @@ function parsePort(rawPort) {
   return Math.floor(parsed);
 }
 
+function parsePositiveInt(raw, fallback) {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return Math.floor(parsed);
+}
+
 function resolveServerRuntimeEnv(env = process.env) {
   const nodeEnv = asString(env.NODE_ENV) || "development";
   const isProduction = nodeEnv === "production";
@@ -31,6 +39,11 @@ function resolveServerRuntimeEnv(env = process.env) {
   const jwtSecret = asString(env.MQ_JWT_SECRET);
   const paymentCallbackSecret = asString(env.MQ_PAYMENT_CALLBACK_SECRET);
   const onboardSecret = asString(env.MQ_ONBOARD_SECRET);
+  const dbUrl = asString(env.MQ_DB_URL);
+  const dbSchema = asString(env.MQ_DB_SCHEMA) || "public";
+  const dbStateTable = asString(env.MQ_DB_STATE_TABLE) || "mealquest_state_snapshots";
+  const dbSnapshotKey = asString(env.MQ_DB_SNAPSHOT_KEY) || "main";
+  const dbPoolMax = parsePositiveInt(env.MQ_DB_POOL_MAX, 5);
 
   const errors = [];
   if (isProduction && !jwtSecret) {
@@ -38,6 +51,9 @@ function resolveServerRuntimeEnv(env = process.env) {
   }
   if (isProduction && !paymentCallbackSecret) {
     errors.push("MQ_PAYMENT_CALLBACK_SECRET is required when NODE_ENV=production");
+  }
+  if (!dbUrl) {
+    errors.push("MQ_DB_URL is required");
   }
   if (errors.length > 0) {
     throw new Error(`Invalid server env: ${errors.join("; ")}`);
@@ -50,7 +66,12 @@ function resolveServerRuntimeEnv(env = process.env) {
     jwtSecret: jwtSecret || "mealquest-dev-secret",
     paymentCallbackSecret:
       paymentCallbackSecret || "mealquest-payment-callback-secret",
-    onboardSecret
+    onboardSecret,
+    dbUrl,
+    dbSchema,
+    dbStateTable,
+    dbSnapshotKey,
+    dbPoolMax,
   };
 }
 
@@ -58,4 +79,3 @@ module.exports = {
   loadServerEnv,
   resolveServerRuntimeEnv
 };
-

@@ -99,13 +99,18 @@ function createTenantRouter({ defaultDb, tenantDbMap = {} }) {
     return Boolean(merchantId && overrideMap[merchantId]);
   }
 
+  function listOverrideDbs() {
+    return Object.values(overrideMap).filter(Boolean);
+  }
+
   return {
     getDbForMerchant,
     getMerchant,
     getMerchantUser,
     setDbForMerchant,
     clearDbForMerchant,
-    hasDbOverride
+    hasDbOverride,
+    listOverrideDbs
   };
 }
 
