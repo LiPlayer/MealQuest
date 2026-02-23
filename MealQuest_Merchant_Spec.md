@@ -125,7 +125,6 @@
 1. **配置驱动**：商户端通过 `MealQuestMerchant/.env` 获取配置。
 2. **核心变量**：
    - `MQ_SERVER_URL`：后端服务端点。
-   - `MQ_MERCHANT_ID`：默认登录或注入的门店 ID。
    - `MQ_ENABLE_ENTRY_FLOW`：是否开启扫码/链接入店引导流。
 3. **优势**：JS 层与原生 Android 层共享配置，支持在 `AndroidManifest.xml` 或 Gradle 中引用变量。
 4. **实时事件**：通过 WebSocket 订阅支付、退款、策略变更等实时事件。

@@ -1283,7 +1283,7 @@ function createAppServer({
       if (method === "POST" && url.pathname === "/api/auth/mock-login") {
         const body = await readJsonBody(req);
         const role = normalizeRole(body.role);
-        const merchantId = body.merchantId || "m_demo";
+        const merchantId = body.merchantId || "m_store_001";
         const userId = body.userId || "u_demo";
 
         if (!tenantRepository.getMerchant(merchantId)) {

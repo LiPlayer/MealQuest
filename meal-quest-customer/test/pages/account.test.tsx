@@ -27,10 +27,10 @@ describe('Account page', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
-        storageMock.getLastStoreId.mockReturnValue('m_demo');
+        storageMock.getLastStoreId.mockReturnValue('m_store_001');
         dataServiceMock.getHomeSnapshot.mockResolvedValue({
             store: {
-                id: 'm_demo',
+                id: 'm_store_001',
                 name: 'Demo Merchant',
                 branchName: 'Main',
                 slogan: 'demo',
@@ -50,7 +50,7 @@ describe('Account page', () => {
         dataServiceMock.getPaymentLedger.mockResolvedValue([
             {
                 txnId: 'txn_1',
-                merchantId: 'm_demo',
+                merchantId: 'm_store_001',
                 userId: 'u_demo',
                 type: 'PAYMENT',
                 amount: 12,
@@ -60,7 +60,7 @@ describe('Account page', () => {
         dataServiceMock.getInvoices.mockResolvedValue([
             {
                 invoiceNo: 'INV_1',
-                merchantId: 'm_demo',
+                merchantId: 'm_store_001',
                 userId: 'u_demo',
                 paymentTxnId: 'txn_1',
                 amount: 12,
@@ -78,7 +78,7 @@ describe('Account page', () => {
             expect(screen.getByText('账户中心')).toBeInTheDocument();
         });
         await waitFor(() => {
-            expect(dataServiceMock.getInvoices).toHaveBeenCalledWith('m_demo', 'u_demo', 20);
+            expect(dataServiceMock.getInvoices).toHaveBeenCalledWith('m_store_001', 'u_demo', 20);
         });
         expect(screen.getByText('支付流水')).toBeInTheDocument();
         expect(screen.getByText('电子发票')).toBeInTheDocument();
@@ -88,7 +88,7 @@ describe('Account page', () => {
         dataServiceMock.cancelAccount.mockResolvedValue({
             deleted: true,
             deletedAt: '2026-02-21T00:00:00.000Z',
-            anonymizedUserId: 'DELETED_m_demo_u_demo'
+            anonymizedUserId: 'DELETED_m_store_001_u_demo'
         });
 
         render(<AccountPage />);
@@ -99,9 +99,9 @@ describe('Account page', () => {
 
         fireEvent.click(screen.getByText('确认注销'));
         await waitFor(() => {
-            expect(dataServiceMock.cancelAccount).toHaveBeenCalledWith('m_demo', 'u_demo');
+            expect(dataServiceMock.cancelAccount).toHaveBeenCalledWith('m_store_001', 'u_demo');
         });
-        expect(storageMock.clearCustomerSession).toHaveBeenCalledWith('m_demo', 'u_demo');
+        expect(storageMock.clearCustomerSession).toHaveBeenCalledWith('m_store_001', 'u_demo');
         expect(Taro.reLaunch).toHaveBeenCalledWith({ url: '/pages/startup/index' });
     });
 });

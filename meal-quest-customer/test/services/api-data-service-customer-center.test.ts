@@ -39,7 +39,7 @@ describe('ApiDataService customer center', () => {
                 items: [
                     {
                         txnId: 'txn_1',
-                        merchantId: 'm_demo',
+                        merchantId: 'm_store_001',
                         userId: 'u_demo',
                         type: 'PAYMENT',
                         amount: 12.5,
@@ -50,14 +50,14 @@ describe('ApiDataService customer center', () => {
         });
 
         const { ApiDataService } = require('@/services/ApiDataService');
-        const rows = await ApiDataService.getPaymentLedger('m_demo', 'u_demo', 10);
+        const rows = await ApiDataService.getPaymentLedger('m_store_001', 'u_demo', 10);
 
         expect(rows.length).toBe(1);
         expect(rows[0].txnId).toBe('txn_1');
         expect(requestMock).toHaveBeenCalledWith(
             expect.objectContaining({
                 method: 'GET',
-                url: expect.stringContaining('/api/payment/ledger?merchantId=m_demo')
+                url: expect.stringContaining('/api/payment/ledger?merchantId=m_store_001')
             })
         );
     });
@@ -69,7 +69,7 @@ describe('ApiDataService customer center', () => {
                 items: [
                     {
                         invoiceNo: 'INV_1',
-                        merchantId: 'm_demo',
+                        merchantId: 'm_store_001',
                         userId: 'u_demo',
                         paymentTxnId: 'txn_1',
                         amount: 12.5,
@@ -82,14 +82,14 @@ describe('ApiDataService customer center', () => {
         });
 
         const { ApiDataService } = require('@/services/ApiDataService');
-        const rows = await ApiDataService.getInvoices('m_demo', 'u_demo', 10);
+        const rows = await ApiDataService.getInvoices('m_store_001', 'u_demo', 10);
 
         expect(rows.length).toBe(1);
         expect(rows[0].invoiceNo).toBe('INV_1');
         expect(requestMock).toHaveBeenCalledWith(
             expect.objectContaining({
                 method: 'GET',
-                url: expect.stringContaining('/api/invoice/list?merchantId=m_demo')
+                url: expect.stringContaining('/api/invoice/list?merchantId=m_store_001')
             })
         );
     });
@@ -100,12 +100,12 @@ describe('ApiDataService customer center', () => {
             data: {
                 deleted: true,
                 deletedAt: '2026-02-21T00:00:00.000Z',
-                anonymizedUserId: 'DELETED_m_demo_u_demo'
+                anonymizedUserId: 'DELETED_m_store_001_u_demo'
             }
         });
 
         const { ApiDataService } = require('@/services/ApiDataService');
-        const result = await ApiDataService.cancelAccount('m_demo', 'u_demo');
+        const result = await ApiDataService.cancelAccount('m_store_001', 'u_demo');
 
         expect(result.deleted).toBe(true);
         expect(requestMock).toHaveBeenCalledWith(

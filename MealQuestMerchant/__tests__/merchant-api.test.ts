@@ -15,7 +15,7 @@ describe('merchantApi audit logs', () => {
       ok: true,
       status: 200,
       json: async () => ({
-        merchantId: 'm_demo',
+        merchantId: 'm_store_001',
         items: [],
         pageInfo: {limit: 2, hasMore: false, nextCursor: null},
       }),
@@ -23,7 +23,7 @@ describe('merchantApi audit logs', () => {
 
     const {MerchantApi} = require('../src/services/merchantApi');
     await MerchantApi.getAuditLogs('token_demo', {
-      merchantId: 'm_demo',
+      merchantId: 'm_store_001',
       limit: 2,
       cursor: 'cursor_1',
     });
@@ -31,7 +31,7 @@ describe('merchantApi audit logs', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, options] = fetchMock.mock.calls[0];
     expect(url).toContain('/api/audit/logs?');
-    expect(url).toContain('merchantId=m_demo');
+    expect(url).toContain('merchantId=m_store_001');
     expect(url).toContain('limit=2');
     expect(url).toContain('cursor=cursor_1');
     expect(options.method).toBe('GET');
@@ -44,7 +44,7 @@ describe('merchantApi audit logs', () => {
       ok: true,
       status: 200,
       json: async () => ({
-        merchantId: 'm_demo',
+        merchantId: 'm_store_001',
         items: [],
         pageInfo: {limit: 5, hasMore: false, nextCursor: null},
       }),
@@ -52,7 +52,7 @@ describe('merchantApi audit logs', () => {
 
     const {MerchantApi} = require('../src/services/merchantApi');
     await MerchantApi.getAuditLogs('token_demo', {
-      merchantId: 'm_demo',
+      merchantId: 'm_store_001',
       limit: 5,
       action: 'KILL_SWITCH_SET',
       status: 'SUCCESS',
@@ -73,16 +73,16 @@ describe('merchantApi audit logs', () => {
       ok: true,
       status: 200,
       json: async () => ({
-        merchantId: 'm_demo',
+        merchantId: 'm_store_001',
         templates: [],
       }),
     });
 
     const {MerchantApi} = require('../src/services/merchantApi');
-    await MerchantApi.getStrategyLibrary('token_demo', 'm_demo');
+    await MerchantApi.getStrategyLibrary('token_demo', 'm_store_001');
 
     const [url, options] = fetchMock.mock.calls[0];
-    expect(url).toContain('/api/merchant/strategy-library?merchantId=m_demo');
+    expect(url).toContain('/api/merchant/strategy-library?merchantId=m_store_001');
     expect(options.method).toBe('GET');
     expect(options.headers.Authorization).toBe('Bearer token_demo');
   });
@@ -100,7 +100,7 @@ describe('merchantApi audit logs', () => {
 
     const {MerchantApi} = require('../src/services/merchantApi');
     await MerchantApi.createStrategyProposal('token_demo', {
-      merchantId: 'm_demo',
+      merchantId: 'm_store_001',
       templateId: 'activation_contextual_drop',
       branchId: 'COOLING',
       intent: '高温活动',
@@ -122,7 +122,7 @@ describe('merchantApi audit logs', () => {
       ok: true,
       status: 200,
       json: async () => ({
-        merchantId: 'm_demo',
+        merchantId: 'm_store_001',
         campaignId: 'campaign_1',
         status: 'PAUSED',
       }),
@@ -130,7 +130,7 @@ describe('merchantApi audit logs', () => {
 
     const {MerchantApi} = require('../src/services/merchantApi');
     await MerchantApi.setCampaignStatus('token_demo', {
-      merchantId: 'm_demo',
+      merchantId: 'm_store_001',
       campaignId: 'campaign_1',
       status: 'PAUSED',
     });
@@ -148,9 +148,9 @@ describe('merchantApi audit logs', () => {
       ok: true,
       status: 200,
       json: async () => ({
-        merchantId: 'm_demo',
+        merchantId: 'm_store_001',
         clusterId: 'cluster_demo_brand',
-        stores: ['m_demo', 'm_bistro'],
+        stores: ['m_store_001', 'm_bistro'],
         walletShared: true,
         tierShared: false,
       }),
@@ -158,8 +158,8 @@ describe('merchantApi audit logs', () => {
 
     const {MerchantApi} = require('../src/services/merchantApi');
     await MerchantApi.setAllianceConfig('token_demo', {
-      merchantId: 'm_demo',
-      stores: ['m_demo', 'm_bistro'],
+      merchantId: 'm_store_001',
+      stores: ['m_store_001', 'm_bistro'],
       walletShared: true,
     });
 
@@ -168,7 +168,7 @@ describe('merchantApi audit logs', () => {
     expect(options.method).toBe('POST');
     const payload = JSON.parse(options.body);
     expect(payload.walletShared).toBe(true);
-    expect(payload.stores).toEqual(['m_demo', 'm_bistro']);
+    expect(payload.stores).toEqual(['m_store_001', 'm_bistro']);
   });
 
   it('posts social transfer payload', async () => {
@@ -183,7 +183,7 @@ describe('merchantApi audit logs', () => {
 
     const {MerchantApi} = require('../src/services/merchantApi');
     await MerchantApi.socialTransfer('token_demo', {
-      merchantId: 'm_demo',
+      merchantId: 'm_store_001',
       fromUserId: 'u_demo',
       toUserId: 'u_friend',
       amount: 20,
@@ -209,7 +209,7 @@ describe('merchantApi audit logs', () => {
 
     const {MerchantApi} = require('../src/services/merchantApi');
     await MerchantApi.createTreatSession('token_demo', {
-      merchantId: 'm_demo',
+      merchantId: 'm_store_001',
       initiatorUserId: 'u_demo',
       mode: 'MERCHANT_SUBSIDY',
       orderAmount: 100,
@@ -237,12 +237,13 @@ describe('merchantApi audit logs', () => {
 
     const {MerchantApi} = require('../src/services/merchantApi');
     await MerchantApi.getSocialRedPacket('token_demo', {
-      merchantId: 'm_demo',
+      merchantId: 'm_store_001',
       packetId: 'packet_1',
     });
 
     const [url, options] = fetchMock.mock.calls[0];
-    expect(url).toContain('/api/social/red-packets/packet_1?merchantId=m_demo');
+    expect(url).toContain('/api/social/red-packets/packet_1?merchantId=m_store_001');
     expect(options.method).toBe('GET');
   });
 });
+

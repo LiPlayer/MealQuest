@@ -5,7 +5,7 @@ describe('merchantRealtime parser', () => {
     const parsed = parseRealtimeMessage(
       JSON.stringify({
         type: 'PAYMENT_VERIFIED',
-        merchantId: 'm_demo',
+        merchantId: 'm_store_001',
         payload: {paymentTxnId: 'txn_1'},
         timestamp: '2026-02-21T00:00:00.000Z',
       }),
@@ -13,7 +13,7 @@ describe('merchantRealtime parser', () => {
 
     expect(parsed).not.toBeNull();
     expect(parsed?.type).toBe('PAYMENT_VERIFIED');
-    expect(parsed?.merchantId).toBe('m_demo');
+    expect(parsed?.merchantId).toBe('m_store_001');
   });
 
   it('returns null for invalid payload', () => {
@@ -21,3 +21,4 @@ describe('merchantRealtime parser', () => {
     expect(parsed).toBeNull();
   });
 });
+

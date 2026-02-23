@@ -18,12 +18,18 @@ jest.mock('../src/services/merchantRealtime', () => ({
   })),
 }));
 
+jest.mock('react-native-qrcode-svg', () => {
+  const ReactLib = require('react');
+  const {View} = require('react-native');
+  return ({testID}: {testID?: string}) => ReactLib.createElement(View, {testID});
+});
+
 jest.mock('../src/services/merchantApi', () => ({
   MerchantApi: {
     isConfigured: jest.fn(() => true),
     loginAsMerchant: jest.fn(async () => 'token_demo'),
     getState: jest.fn(async () => ({
-      merchantId: 'm_demo',
+      merchantId: 'm_store_001',
       merchantName: 'Demo Merchant',
       killSwitchEnabled: false,
       budgetCap: 300,
@@ -40,52 +46,52 @@ jest.mock('../src/services/merchantApi', () => ({
         },
       ],
     })),
-    getStrategyLibrary: jest.fn(async () => ({merchantId: 'm_demo', templates: []})),
+    getStrategyLibrary: jest.fn(async () => ({merchantId: 'm_store_001', templates: []})),
     getAuditLogs: jest.fn(async () => ({
-      merchantId: 'm_demo',
+      merchantId: 'm_store_001',
       items: [],
       pageInfo: {limit: 6, hasMore: false, nextCursor: null},
     })),
     getAllianceConfig: jest.fn(async () => ({
-      merchantId: 'm_demo',
+      merchantId: 'm_store_001',
       clusterId: 'cluster_demo_brand',
-      stores: ['m_demo', 'm_bistro'],
+      stores: ['m_store_001', 'm_bistro'],
       walletShared: false,
       tierShared: false,
       updatedAt: '2026-02-21T00:00:00.000Z',
     })),
     listStores: jest.fn(async () => ({
-      merchantId: 'm_demo',
+      merchantId: 'm_store_001',
       clusterId: 'cluster_demo_brand',
       walletShared: false,
       tierShared: false,
       stores: [
-        {merchantId: 'm_demo', name: 'Demo Merchant'},
+        {merchantId: 'm_store_001', name: 'Demo Merchant'},
         {merchantId: 'm_bistro', name: 'Bistro Harbor'},
       ],
     })),
     getWsUrl: jest.fn(() => ''),
     setCampaignStatus: jest.fn(async () => ({
-      merchantId: 'm_demo',
+      merchantId: 'm_store_001',
       campaignId: 'campaign_demo',
       status: 'PAUSED',
     })),
     setAllianceConfig: jest.fn(async () => ({
-      merchantId: 'm_demo',
+      merchantId: 'm_store_001',
       clusterId: 'cluster_demo_brand',
-      stores: ['m_demo', 'm_bistro'],
+      stores: ['m_store_001', 'm_bistro'],
       walletShared: true,
       tierShared: false,
       updatedAt: '2026-02-21T00:00:00.000Z',
     })),
     syncAllianceUser: jest.fn(async () => ({
-      merchantId: 'm_demo',
+      merchantId: 'm_store_001',
       userId: 'u_demo',
-      syncedStores: ['m_demo', 'm_bistro'],
+      syncedStores: ['m_store_001', 'm_bistro'],
     })),
     socialTransfer: jest.fn(async () => ({
       transferId: 'transfer_1',
-      merchantId: 'm_demo',
+      merchantId: 'm_store_001',
       fromUserId: 'u_demo',
       toUserId: 'u_friend',
       amount: 10,
@@ -93,7 +99,7 @@ jest.mock('../src/services/merchantApi', () => ({
     })),
     createSocialRedPacket: jest.fn(async () => ({
       packetId: 'packet_1',
-      merchantId: 'm_demo',
+      merchantId: 'm_store_001',
       senderUserId: 'u_demo',
       totalAmount: 30,
       totalSlots: 3,
@@ -111,7 +117,7 @@ jest.mock('../src/services/merchantApi', () => ({
     })),
     getSocialRedPacket: jest.fn(async () => ({
       packetId: 'packet_1',
-      merchantId: 'm_demo',
+      merchantId: 'm_store_001',
       senderUserId: 'u_demo',
       totalAmount: 30,
       totalSlots: 3,
@@ -121,7 +127,7 @@ jest.mock('../src/services/merchantApi', () => ({
     })),
     createTreatSession: jest.fn(async () => ({
       sessionId: 'session_1',
-      merchantId: 'm_demo',
+      merchantId: 'm_store_001',
       initiatorUserId: 'u_demo',
       mode: 'MERCHANT_SUBSIDY',
       orderAmount: 80,
@@ -135,7 +141,7 @@ jest.mock('../src/services/merchantApi', () => ({
     })),
     joinTreatSession: jest.fn(async () => ({
       sessionId: 'session_1',
-      merchantId: 'm_demo',
+      merchantId: 'm_store_001',
       userId: 'u_demo',
       amount: 30,
       totalContributed: 30,
@@ -143,7 +149,7 @@ jest.mock('../src/services/merchantApi', () => ({
     })),
     closeTreatSession: jest.fn(async () => ({
       sessionId: 'session_1',
-      merchantId: 'm_demo',
+      merchantId: 'm_store_001',
       initiatorUserId: 'u_demo',
       mode: 'MERCHANT_SUBSIDY',
       orderAmount: 80,
@@ -156,7 +162,7 @@ jest.mock('../src/services/merchantApi', () => ({
       expiresAt: '2026-02-21T01:00:00.000Z',
     })),
     createFireSale: jest.fn(async () => ({
-      merchantId: 'm_demo',
+      merchantId: 'm_store_001',
       campaignId: 'fire_1',
       priority: 999,
       ttlUntil: '2026-02-21T01:00:00.000Z',
@@ -277,5 +283,20 @@ describe('merchant ui regression flow', () => {
     expect(mockApi.closeTreatSession).toHaveBeenCalledWith('token_demo', {
       sessionId: 'session_1',
     });
+
+    await ReactTestRenderer.act(async () => {
+      tree!.root
+        .findByProps({testID: 'merchant-qr-store-id-input'})
+        .props.onChangeText('m_store_001');
+      tree!.root
+        .findByProps({testID: 'merchant-qr-scene-input'})
+        .props.onChangeText('table_a1');
+      tree!.root.findByProps({testID: 'merchant-qr-generate'}).props.onPress();
+      await flush(2);
+    });
+    tree!.root.findByProps({testID: 'merchant-qr-native'});
+    const qrPayload = tree!.root.findByProps({testID: 'merchant-qr-payload-text'});
+    expect(String(qrPayload.props.children)).toContain('https://mealquest.app/startup?id=m_store_001');
   });
 });
+

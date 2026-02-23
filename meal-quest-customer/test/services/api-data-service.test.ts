@@ -40,7 +40,7 @@ describe('ApiDataService activities mapping', () => {
         requestMock.mockResolvedValueOnce({
             statusCode: 200,
             data: {
-                merchant: { merchantId: 'm_demo', name: 'Demo Merchant' },
+                merchant: { merchantId: 'm_store_001', name: 'Demo Merchant' },
                 user: {
                     wallet: { principal: 120, bonus: 30, silver: 66 },
                     fragments: { noodle: 3, spicy: 1 },
@@ -61,7 +61,7 @@ describe('ApiDataService activities mapping', () => {
         });
 
         const { ApiDataService } = require('@/services/ApiDataService');
-        const snapshot = await ApiDataService.getHomeSnapshot('m_demo', 'u_demo');
+        const snapshot = await ApiDataService.getHomeSnapshot('m_store_001', 'u_demo');
 
         expect(snapshot.activities.length).toBe(1);
         expect(snapshot.activities[0].id).toBe('campaign_1');

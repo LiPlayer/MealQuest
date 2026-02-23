@@ -7,7 +7,7 @@
     },
     "merchant_rn": {
       "source": "react-native-config (.env)",
-      "requiredKeys": ["MQ_SERVER_URL", "MQ_MERCHANT_ID"]
+      "requiredKeys": ["MQ_SERVER_URL"]
     },
     "customer_taro": {
       "source": "taro env (.env.development*)",

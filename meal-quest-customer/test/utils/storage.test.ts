@@ -39,27 +39,27 @@ describe('Storage Utils', () => {
 
     it('should cache and load home snapshot by store/user key', () => {
         const snapshot = {wallet: {principal: 1, bonus: 2, silver: 3}};
-        storage.setCachedHomeSnapshot('m_demo', 'u_demo', snapshot);
+        storage.setCachedHomeSnapshot('m_store_001', 'u_demo', snapshot);
         expect(Taro.setStorageSync).toHaveBeenCalledWith(
-            'mq_home_snapshot:m_demo:u_demo',
+            'mq_home_snapshot:m_store_001:u_demo',
             JSON.stringify(snapshot),
         );
 
         (Taro.getStorageSync as jest.Mock).mockReturnValue(JSON.stringify(snapshot));
-        const loaded = storage.getCachedHomeSnapshot('m_demo', 'u_demo');
-        expect(Taro.getStorageSync).toHaveBeenCalledWith('mq_home_snapshot:m_demo:u_demo');
+        const loaded = storage.getCachedHomeSnapshot('m_store_001', 'u_demo');
+        expect(Taro.getStorageSync).toHaveBeenCalledWith('mq_home_snapshot:m_store_001:u_demo');
         expect(loaded).toEqual(snapshot);
     });
 
     it('should return null when cached snapshot is invalid json', () => {
         (Taro.getStorageSync as jest.Mock).mockReturnValue('{bad-json');
-        const loaded = storage.getCachedHomeSnapshot('m_demo', 'u_demo');
+        const loaded = storage.getCachedHomeSnapshot('m_store_001', 'u_demo');
         expect(loaded).toBeNull();
     });
 
     it('should clear customer session keys', () => {
-        storage.clearCustomerSession('m_demo', 'u_demo');
-        expect(Taro.removeStorageSync).toHaveBeenCalledWith('mq_home_snapshot:m_demo:u_demo');
+        storage.clearCustomerSession('m_store_001', 'u_demo');
+        expect(Taro.removeStorageSync).toHaveBeenCalledWith('mq_home_snapshot:m_store_001:u_demo');
         expect(Taro.setStorageSync).toHaveBeenCalledWith('mq_api_token', '');
         expect(Taro.removeStorageSync).toHaveBeenCalledWith('mq_last_store_id');
     });

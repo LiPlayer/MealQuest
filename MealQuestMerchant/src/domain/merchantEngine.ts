@@ -55,7 +55,7 @@ export interface CashierSettlement {
 const roundMoney = (value: number) => Math.round(value * 100) / 100;
 
 export const createInitialMerchantState = (): MerchantState => ({
-  merchantId: 'm_demo',
+  merchantId: 'm_store_001',
   merchantName: '探味轩',
   killSwitchEnabled: false,
   budgetCap: 300,
@@ -187,3 +187,4 @@ export const smartCashierVerify = (input: CashierInput): CashierSettlement => {
     payable: roundMoney(Math.max(remain, 0)),
   };
 };
+

@@ -86,7 +86,6 @@ JWT_SECRET=...
 **2. 商家端配置 (`MealQuestMerchant/.env`)**
 ```ini
 MQ_SERVER_URL=http://<LAN_IP>:3030
-MQ_MERCHANT_ID=m_my_first_store
 ```
 
 **3. 用户端配置 (`meal-quest-customer/.env.development`)**

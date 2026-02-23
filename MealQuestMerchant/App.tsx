@@ -8,6 +8,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import {
@@ -139,6 +140,9 @@ function MerchantConsoleApp() {
   >([]);
   const [lastRedPacketId, setLastRedPacketId] = useState('');
   const [lastTreatSessionId, setLastTreatSessionId] = useState('');
+  const [qrStoreId, setQrStoreId] = useState('');
+  const [qrScene, setQrScene] = useState('entry');
+  const [qrPayload, setQrPayload] = useState('');
 
   const pendingProposals = useMemo(
     () => merchantState.pendingProposals.filter(item => item.status === 'PENDING'),
@@ -324,6 +328,12 @@ function MerchantConsoleApp() {
     refreshStrategyLibrary(remoteToken).catch(() => { });
     refreshAllianceData(remoteToken).catch(() => { });
   }, [remoteToken]);
+
+  useEffect(() => {
+    if (!qrStoreId && merchantState.merchantId) {
+      setQrStoreId(merchantState.merchantId);
+    }
+  }, [merchantState.merchantId, qrStoreId]);
 
   const onApproveProposal = async (proposalId: string, title: string) => {
     if (remoteToken) {
@@ -614,6 +624,21 @@ function MerchantConsoleApp() {
     );
   };
 
+  const onGenerateMerchantQr = () => {
+    const storeId = qrStoreId.trim();
+    if (!/^[a-zA-Z0-9_-]{2,64}$/.test(storeId)) {
+      setLastAction('Store ID must be 2-64 chars: letters, numbers, _ or -');
+      return;
+    }
+    const scene = qrScene.trim();
+    let payload = `https://mealquest.app/startup?id=${encodeURIComponent(storeId)}`;
+    if (scene) {
+      payload += `&scene=${encodeURIComponent(scene)}`;
+    }
+    setQrPayload(payload);
+    setLastAction(`QR generated for ${storeId}`);
+  };
+
   const activeCampaignCount = merchantState.activeCampaigns.filter(
     item => (item.status || 'ACTIVE') === 'ACTIVE',
   ).length;
@@ -891,6 +916,57 @@ function MerchantConsoleApp() {
               <Text style={styles.primaryButtonText}>执行智能核销</Text>
             </Pressable>
           </SectionCard>
+          <SectionCard title="Merchant QR Code">
+            <Text style={styles.mutedText}>
+              Compatible with customer startup scan parser: id/storeId/merchantId/scene.
+            </Text>
+            <TextInput
+              testID="merchant-qr-store-id-input"
+              value={qrStoreId}
+              onChangeText={setQrStoreId}
+              placeholder="Store ID (for example: m_store_001)"
+              style={styles.entryInput}
+            />
+            <TextInput
+              testID="merchant-qr-scene-input"
+              value={qrScene}
+              onChangeText={setQrScene}
+              placeholder="Scene (optional, for example: table_a1)"
+              style={styles.entryInput}
+            />
+            <View style={styles.filterRow}>
+              <Pressable
+                testID="merchant-qr-generate"
+                style={styles.primaryButton}
+                onPress={onGenerateMerchantQr}>
+                <Text style={styles.primaryButtonText}>Generate QR</Text>
+              </Pressable>
+              {qrPayload ? (
+                <Pressable
+                  testID="merchant-qr-copy"
+                  style={styles.secondaryButton}
+                  onPress={() => onCopyEventDetail(qrPayload)}>
+                  <Text style={styles.secondaryButtonText}>Copy Payload</Text>
+                </Pressable>
+              ) : null}
+            </View>
+            {qrPayload ? (
+              <View style={styles.qrPreviewWrap}>
+                <QRCode
+                  testID="merchant-qr-native"
+                  value={qrPayload}
+                  size={220}
+                  backgroundColor="#ffffff"
+                  color="#0f172a"
+                />
+              </View>
+            ) : null}
+            {qrPayload ? (
+              <Text testID="merchant-qr-payload-text" selectable style={styles.qrPayloadText}>
+                {qrPayload}
+              </Text>
+            ) : null}
+          </SectionCard>
 
           <SectionCard title="TCA 触发演练">
             <Text style={styles.mutedText}>可触发天气/进店/库存等事件检验策略执行</Text>
@@ -1128,11 +1204,26 @@ function MerchantConsoleApp() {
 
 type MerchantEntryStep = 'PHONE_LOGIN' | 'GUIDE' | 'OPEN_STORE' | 'CONTRACT';
 
+function buildMerchantIdFromName(name: string): string {
+  const trimmed = String(name || '').trim().toLowerCase();
+  if (!trimmed) {
+    return `m_store_${Date.now().toString(36).slice(-6)}`;
+  }
+  const asciiSlug = trimmed
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 24);
+  if (asciiSlug.length >= 2) {
+    return `m_${asciiSlug}`;
+  }
+  return `m_store_${Date.now().toString(36).slice(-6)}`;
+}
+
 function MerchantEntryFlow({ onComplete }: { onComplete: (merchantId: string) => void }) {
   const [step, setStep] = useState<MerchantEntryStep>('PHONE_LOGIN');
   const [phone, setPhone] = useState('+8613800000000');
   const [code, setCode] = useState('');
-  const [merchantId, setMerchantId] = useState('m_my_first_store');
+  const [merchantId, setMerchantId] = useState('');
   const [merchantName, setMerchantName] = useState('我的第一家店');
   const [companyName, setCompanyName] = useState('我的餐饮有限公司');
   const [licenseNo, setLicenseNo] = useState('91310000MA1TEST001');
@@ -1141,6 +1232,10 @@ function MerchantEntryFlow({ onComplete }: { onComplete: (merchantId: string) =>
   const [token, setToken] = useState('');
   const [hint, setHint] = useState('');
   const [error, setError] = useState('');
+  const suggestedMerchantId = useMemo(
+    () => buildMerchantIdFromName(merchantName),
+    [merchantName],
+  );
 
   const onRequestCode = async () => {
     setError('');
@@ -1175,10 +1270,15 @@ function MerchantEntryFlow({ onComplete }: { onComplete: (merchantId: string) =>
 
   const onOpenStore = async () => {
     setError('');
+    if (!merchantName.trim()) {
+      setError('Please enter a store name');
+      return;
+    }
     setLoading(true);
     try {
+      const generatedMerchantId = buildMerchantIdFromName(merchantName);
       const result = await MerchantApi.onboardMerchant({
-        merchantId,
+        merchantId: generatedMerchantId,
         name: merchantName,
         budgetCap: 500,
         seedDemoUsers: true,
@@ -1269,18 +1369,14 @@ function MerchantEntryFlow({ onComplete }: { onComplete: (merchantId: string) =>
           {step === 'OPEN_STORE' && (
             <View style={styles.entryCard}>
               <Text style={styles.entryCardTitle}>3. 开店体验</Text>
-              <TextInput
-                value={merchantId}
-                onChangeText={setMerchantId}
-                placeholder="门店ID（如 m_my_first_store）"
-                style={styles.entryInput}
-              />
+
               <TextInput
                 value={merchantName}
                 onChangeText={setMerchantName}
                 placeholder="门店名称"
                 style={styles.entryInput}
               />
+              <Text style={styles.mutedText}>Auto generated store ID: {suggestedMerchantId}</Text>
               <Pressable style={styles.primaryButton} onPress={onOpenStore}>
                 <Text style={styles.primaryButtonText}>创建门店</Text>
               </Pressable>
@@ -1372,7 +1468,7 @@ export default function App() {
   const [merchantId, setMerchantId] = useState(
     typeof MerchantApi.getMerchantId === 'function'
       ? MerchantApi.getMerchantId()
-      : 'm_demo',
+      : '',
   );
 
   useEffect(() => {
@@ -1387,7 +1483,7 @@ export default function App() {
           MerchantApi.setMerchantId(state.merchantId);
           setMerchantId(state.merchantId);
         }
-        if (state.done) {
+        if (state.done && state.merchantId) {
           setReady(true);
         }
       } catch {
@@ -1500,6 +1596,20 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8fbff',
     color: '#0f172a',
     fontSize: 14,
+  },
+  qrPreviewWrap: {
+    alignSelf: 'flex-start',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#dbe5f2',
+    backgroundColor: '#ffffff',
+    padding: 8,
+  },
+  qrPayloadText: {
+    fontSize: 12,
+    color: '#1e293b',
+    lineHeight: 18,
+    fontFamily: 'monospace',
   },
   entryHint: {
     color: '#0f766e',
@@ -1843,3 +1953,4 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+

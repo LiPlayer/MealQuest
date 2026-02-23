@@ -200,8 +200,8 @@
 ## 3.4 场景 S4：跨商户隔离（共享库强隔离）
 
 1. 两个商户使用同一 `userId=u_demo`。
-2. 在 `m_demo` 完成支付后，`m_bistro` 用户钱包不受影响。
-3. `m_bistro` 管理员尝试退款 `m_demo` 的支付单，应被拒绝。
+2. 在 `m_store_001` 完成支付后，`m_bistro` 用户钱包不受影响。
+3. `m_bistro` 管理员尝试退款 `m_store_001` 的支付单，应被拒绝。
 
 反推：
 1. 文档：`MealQuest_Server_Spec.md` 3.1、3.3、6、7.2。

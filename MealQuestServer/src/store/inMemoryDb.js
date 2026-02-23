@@ -5,8 +5,8 @@ function createDefaultState(now = new Date()) {
       audit: 0
     },
     merchants: {
-      m_demo: {
-        merchantId: "m_demo",
+      m_store_001: {
+        merchantId: "m_store_001",
         name: "Demo Merchant",
         killSwitchEnabled: false,
         budgetCap: 300,
@@ -31,7 +31,7 @@ function createDefaultState(now = new Date()) {
       }
     },
     merchantUsers: {
-      m_demo: {
+      m_store_001: {
         u_demo: {
           uid: "u_demo",
           displayName: "Demo User",
@@ -111,11 +111,11 @@ function createDefaultState(now = new Date()) {
       }
     },
     paymentsByMerchant: {
-      m_demo: {},
+      m_store_001: {},
       m_bistro: {}
     },
     invoicesByMerchant: {
-      m_demo: {},
+      m_store_001: {},
       m_bistro: {}
     },
     partnerOrders: {
@@ -130,7 +130,7 @@ function createDefaultState(now = new Date()) {
       }
     },
     strategyConfigs: {
-      m_demo: {
+      m_store_001: {
         activation_contextual_drop: {
           templateId: "activation_contextual_drop",
           branchId: "COMFORT",
@@ -143,10 +143,10 @@ function createDefaultState(now = new Date()) {
       m_bistro: {}
     },
     allianceConfigs: {
-      m_demo: {
-        merchantId: "m_demo",
+      m_store_001: {
+        merchantId: "m_store_001",
         clusterId: "cluster_demo_brand",
-        stores: ["m_demo", "m_bistro"],
+        stores: ["m_store_001", "m_bistro"],
         walletShared: false,
         tierShared: false,
         updatedAt: now.toISOString()
@@ -154,22 +154,22 @@ function createDefaultState(now = new Date()) {
       m_bistro: {
         merchantId: "m_bistro",
         clusterId: "cluster_demo_brand",
-        stores: ["m_demo", "m_bistro"],
+        stores: ["m_store_001", "m_bistro"],
         walletShared: false,
         tierShared: false,
         updatedAt: now.toISOString()
       }
     },
     socialRedPacketsByMerchant: {
-      m_demo: {},
+      m_store_001: {},
       m_bistro: {}
     },
     groupTreatSessionsByMerchant: {
-      m_demo: {},
+      m_store_001: {},
       m_bistro: {}
     },
     merchantDailySubsidyUsage: {
-      m_demo: {},
+      m_store_001: {},
       m_bistro: {}
     },
     socialTransferLogs: [],
@@ -183,7 +183,7 @@ function createDefaultState(now = new Date()) {
     campaigns: [
       {
         id: "campaign_welcome",
-        merchantId: "m_demo",
+        merchantId: "m_store_001",
         name: "Welcome Campaign",
         status: "ACTIVE",
         priority: 20,
@@ -208,13 +208,13 @@ function createDefaultState(now = new Date()) {
     proposals: [
       {
         id: "proposal_rainy",
-        merchantId: "m_demo",
+        merchantId: "m_store_001",
         status: "PENDING",
         title: "Rainy Day Promotion",
         createdAt: now.toISOString(),
         suggestedCampaign: {
           id: "campaign_rainy_hot_soup",
-          merchantId: "m_demo",
+          merchantId: "m_store_001",
           name: "Rainy Hot Soup Campaign",
           status: "ACTIVE",
           priority: 90,
@@ -255,7 +255,7 @@ function migrateLegacyShape(state) {
     next.merchantUsers = {};
   }
   if (next.users && Object.keys(next.merchantUsers).length === 0) {
-    next.merchantUsers.m_demo = next.users;
+    next.merchantUsers.m_store_001 = next.users;
   }
 
   if (!next.paymentsByMerchant || typeof next.paymentsByMerchant !== "object") {
@@ -263,7 +263,7 @@ function migrateLegacyShape(state) {
   }
   if (next.payments && Object.keys(next.paymentsByMerchant).length === 0) {
     for (const [paymentTxnId, payment] of Object.entries(next.payments)) {
-      const merchantId = payment && payment.merchantId ? payment.merchantId : "m_demo";
+      const merchantId = payment && payment.merchantId ? payment.merchantId : "m_store_001";
       if (!next.paymentsByMerchant[merchantId]) {
         next.paymentsByMerchant[merchantId] = {};
       }

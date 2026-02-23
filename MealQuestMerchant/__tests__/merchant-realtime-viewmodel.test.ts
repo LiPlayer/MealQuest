@@ -7,7 +7,7 @@ describe('realtime event view model', () => {
   it('builds mapped metadata and detail for known payload event', () => {
     const row = buildRealtimeEventRow({
       type: 'PAYMENT_VERIFIED',
-      merchantId: 'm_demo',
+      merchantId: 'm_store_001',
       payload: {paymentTxnId: 'txn_1', amount: 52},
       timestamp: '2026-02-21T08:00:00.000Z',
     });
@@ -24,7 +24,7 @@ describe('realtime event view model', () => {
   it('handles empty payload for anomaly event', () => {
     const row = buildRealtimeEventRow({
       type: 'KILL_SWITCH_CHANGED',
-      merchantId: 'm_demo',
+      merchantId: 'm_store_001',
       payload: {},
       timestamp: 'invalid-time',
     });
@@ -38,7 +38,7 @@ describe('realtime event view model', () => {
   it('falls back to raw type for unknown event', () => {
     const row = buildRealtimeEventRow({
       type: 'SOME_NEW_EVENT',
-      merchantId: 'm_demo',
+      merchantId: 'm_store_001',
       payload: {x: 1},
       timestamp: '2026-02-21T08:00:00.000Z',
     });
@@ -64,7 +64,7 @@ describe('realtime event view model', () => {
   it('maps social transfer event metadata', () => {
     const row = buildRealtimeEventRow({
       type: 'SOCIAL_TRANSFERRED',
-      merchantId: 'm_demo',
+      merchantId: 'm_store_001',
       payload: {amount: 20},
       timestamp: '2026-02-21T08:00:00.000Z',
     });
@@ -77,7 +77,7 @@ describe('realtime event view model', () => {
   it('maps treat session closed as anomaly', () => {
     const row = buildRealtimeEventRow({
       type: 'TREAT_SESSION_CLOSED',
-      merchantId: 'm_demo',
+      merchantId: 'm_store_001',
       payload: {status: 'SETTLED'},
       timestamp: '2026-02-21T08:00:00.000Z',
     });
@@ -87,3 +87,4 @@ describe('realtime event view model', () => {
     expect(row.isAnomaly).toBe(true);
   });
 });
+

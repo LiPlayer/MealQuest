@@ -39,7 +39,7 @@ npm start
 2. `.env.staging.example`
 3. `.env.prod.example`
 
-## 开店（自定义商户，不依赖 `m_demo`）
+## 开店（自定义商户，不依赖 `m_store_001`）
 
 你可以直接创建自己的商户 ID：
 
@@ -89,7 +89,7 @@ GET  /api/merchant/catalog
 ```js
 createAppServer({
   tenantPolicyMap: {
-    m_demo: {
+    m_store_001: {
       writeEnabled: false,
       limits: {
         PAYMENT_VERIFY: { limit: 30, windowMs: 60000 }
@@ -102,14 +102,14 @@ createAppServer({
 在线策略管理（仅 Owner）：
 
 ```text
-GET /api/merchant/tenant-policy?merchantId=m_demo
+GET /api/merchant/tenant-policy?merchantId=m_store_001
 POST /api/merchant/tenant-policy
 ```
 
 迁移编排接口（仅 Owner）：
 
 ```text
-GET /api/merchant/migration/status?merchantId=m_demo
+GET /api/merchant/migration/status?merchantId=m_store_001
 POST /api/merchant/migration/step
 POST /api/merchant/migration/cutover
 POST /api/merchant/migration/rollback
@@ -157,7 +157,7 @@ GET  /api/social/treat/sessions/:sessionId?merchantId=<id>
 ## 审计日志查询
 
 ```text
-GET /api/audit/logs?merchantId=m_demo&limit=20&cursor=<cursor>&startTime=<iso>&endTime=<iso>&action=<ACTION>&status=<STATUS>
+GET /api/audit/logs?merchantId=m_store_001&limit=20&cursor=<cursor>&startTime=<iso>&endTime=<iso>&action=<ACTION>&status=<STATUS>
 ```
 
 仅 `CLERK/MANAGER/OWNER` 可访问，且受商户 scope 限制。
@@ -165,7 +165,7 @@ GET /api/audit/logs?merchantId=m_demo&limit=20&cursor=<cursor>&startTime=<iso>&e
 在线状态查询：
 
 ```text
-GET /api/ws/status?merchantId=m_demo
+GET /api/ws/status?merchantId=m_store_001
 ```
 
 同样受商户 scope 限制，跨商户请求返回 `merchant scope denied`。
@@ -175,7 +175,7 @@ GET /api/ws/status?merchantId=m_demo
 ```powershell
 curl -X POST http://127.0.0.1:3030/api/auth/mock-login `
   -H "Content-Type: application/json" `
-  -d "{\"role\":\"OWNER\",\"merchantId\":\"m_demo\"}"
+  -d "{\"role\":\"OWNER\",\"merchantId\":\"m_store_001\"}"
 ```
 
 老板手机号登录流程（用于商户端引导页）：
@@ -197,7 +197,7 @@ GET  /api/merchant/contract/status?merchantId=<id>
 连接地址：
 
 ```text
-ws://127.0.0.1:3030/ws?merchantId=m_demo&token=<JWT>
+ws://127.0.0.1:3030/ws?merchantId=m_store_001&token=<JWT>
 ```
 
 ## External Payment Callback (Commercial Path)

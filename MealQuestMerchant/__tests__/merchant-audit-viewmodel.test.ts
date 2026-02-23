@@ -5,7 +5,7 @@ describe('audit log view model', () => {
     const row = buildAuditLogRow({
       auditId: 'audit_1',
       timestamp: '2026-02-21T08:00:00.000Z',
-      merchantId: 'm_demo',
+      merchantId: 'm_store_001',
       action: 'PAYMENT_VERIFY',
       status: 'SUCCESS',
       role: 'CUSTOMER',
@@ -23,7 +23,7 @@ describe('audit log view model', () => {
     const row = buildAuditLogRow({
       auditId: 'audit_2',
       timestamp: 'invalid-time',
-      merchantId: 'm_demo',
+      merchantId: 'm_store_001',
       action: 'PROPOSAL_CONFIRM',
       status: 'DENIED',
       role: 'CLERK',
@@ -37,3 +37,4 @@ describe('audit log view model', () => {
     expect(row.detail).toContain('details');
   });
 });
+

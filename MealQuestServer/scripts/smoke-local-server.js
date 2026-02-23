@@ -96,7 +96,7 @@ async function waitForWebSocketMessage(ws, timeoutMs = 3000) {
   });
 }
 
-async function login(baseUrl, role, merchantId = "m_demo", userId = "u_demo") {
+async function login(baseUrl, role, merchantId = "m_store_001", userId = "u_demo") {
   const payload = {
     role,
     merchantId
@@ -125,7 +125,7 @@ async function runSmoke(baseUrl, options = {}) {
   const quote = await postJson(
     baseUrl,
     "/api/payment/quote",
-    { merchantId: "m_demo", userId: "u_demo", orderAmount: 52 },
+    { merchantId: "m_store_001", userId: "u_demo", orderAmount: 52 },
     { Authorization: `Bearer ${customerToken}` }
   );
   expectStatus(quote, 200, "payment quote");
@@ -133,7 +133,7 @@ async function runSmoke(baseUrl, options = {}) {
   const verify = await postJson(
     baseUrl,
     "/api/payment/verify",
-    { merchantId: "m_demo", userId: "u_demo", orderAmount: 52 },
+    { merchantId: "m_store_001", userId: "u_demo", orderAmount: 52 },
     {
       Authorization: `Bearer ${customerToken}`,
       "Idempotency-Key": uniqueKey("smoke_pay")
@@ -146,7 +146,7 @@ async function runSmoke(baseUrl, options = {}) {
     baseUrl,
     "/api/payment/refund",
     {
-      merchantId: "m_demo",
+      merchantId: "m_store_001",
       userId: "u_demo",
       paymentTxnId: verify.data.paymentTxnId,
       refundAmount: 10
@@ -162,7 +162,7 @@ async function runSmoke(baseUrl, options = {}) {
   const deniedConfirm = await postJson(
     baseUrl,
     "/api/merchant/proposals/proposal_rainy/confirm",
-    { merchantId: "m_demo" },
+    { merchantId: "m_store_001" },
     { Authorization: `Bearer ${clerkToken}` }
   );
   expectStatus(deniedConfirm, 403, "clerk confirm denied");
@@ -171,11 +171,11 @@ async function runSmoke(baseUrl, options = {}) {
   console.log("[smoke] scenario B: websocket + ws scope");
   const wsUrl = baseUrl.replace(/^http/i, "ws");
   const ws = new WebSocket(
-    `${wsUrl}/ws?merchantId=${encodeURIComponent("m_demo")}&token=${encodeURIComponent(ownerToken)}`
+    `${wsUrl}/ws?merchantId=${encodeURIComponent("m_store_001")}&token=${encodeURIComponent(ownerToken)}`
   );
   await waitForWebSocketOpen(ws);
 
-  const wsStatus = await getJson(baseUrl, "/api/ws/status?merchantId=m_demo", {
+  const wsStatus = await getJson(baseUrl, "/api/ws/status?merchantId=m_store_001", {
     Authorization: `Bearer ${ownerToken}`
   });
   expectStatus(wsStatus, 200, "ws status");
@@ -191,7 +191,7 @@ async function runSmoke(baseUrl, options = {}) {
   const verifyForWs = await postJson(
     baseUrl,
     "/api/payment/verify",
-    { merchantId: "m_demo", userId: "u_demo", orderAmount: 11 },
+    { merchantId: "m_store_001", userId: "u_demo", orderAmount: 11 },
     {
       Authorization: `Bearer ${customerToken}`,
       "Idempotency-Key": uniqueKey("smoke_ws_pay")
@@ -203,7 +203,7 @@ async function runSmoke(baseUrl, options = {}) {
   ws.close();
 
   console.log("[smoke] scenario C: proposal + trigger + kill switch");
-  const dashboard = await getJson(baseUrl, "/api/merchant/dashboard?merchantId=m_demo", {
+  const dashboard = await getJson(baseUrl, "/api/merchant/dashboard?merchantId=m_store_001", {
     Authorization: `Bearer ${ownerToken}`
   });
   expectStatus(dashboard, 200, "dashboard");
@@ -214,7 +214,7 @@ async function runSmoke(baseUrl, options = {}) {
     const confirm = await postJson(
       baseUrl,
       "/api/merchant/proposals/proposal_rainy/confirm",
-      { merchantId: "m_demo", operatorId: "staff_owner" },
+      { merchantId: "m_store_001", operatorId: "staff_owner" },
       { Authorization: `Bearer ${ownerToken}` }
     );
     expectStatus(confirm, 200, "owner confirm proposal");
@@ -223,7 +223,7 @@ async function runSmoke(baseUrl, options = {}) {
   const killSwitchOff = await postJson(
     baseUrl,
     "/api/merchant/kill-switch",
-    { merchantId: "m_demo", enabled: false },
+    { merchantId: "m_store_001", enabled: false },
     { Authorization: `Bearer ${ownerToken}` }
   );
   expectStatus(killSwitchOff, 200, "kill switch off");
@@ -232,7 +232,7 @@ async function runSmoke(baseUrl, options = {}) {
     baseUrl,
     "/api/tca/trigger",
     {
-      merchantId: "m_demo",
+      merchantId: "m_store_001",
       userId: "u_demo",
       event: "WEATHER_CHANGE",
       context: { weather: "RAIN" }
@@ -244,7 +244,7 @@ async function runSmoke(baseUrl, options = {}) {
   const killSwitchOn = await postJson(
     baseUrl,
     "/api/merchant/kill-switch",
-    { merchantId: "m_demo", enabled: true },
+    { merchantId: "m_store_001", enabled: true },
     { Authorization: `Bearer ${ownerToken}` }
   );
   expectStatus(killSwitchOn, 200, "kill switch on");
@@ -252,7 +252,7 @@ async function runSmoke(baseUrl, options = {}) {
     baseUrl,
     "/api/tca/trigger",
     {
-      merchantId: "m_demo",
+      merchantId: "m_store_001",
       userId: "u_demo",
       event: "WEATHER_CHANGE",
       context: { weather: "RAIN" }
@@ -264,14 +264,14 @@ async function runSmoke(baseUrl, options = {}) {
   await postJson(
     baseUrl,
     "/api/merchant/kill-switch",
-    { merchantId: "m_demo", enabled: false },
+    { merchantId: "m_store_001", enabled: false },
     { Authorization: `Bearer ${ownerToken}` }
   );
 
   console.log("[smoke] scenario D: audit query");
   const auditQuery = await getJson(
     baseUrl,
-    "/api/audit/logs?merchantId=m_demo&limit=5&action=KILL_SWITCH_SET",
+    "/api/audit/logs?merchantId=m_store_001&limit=5&action=KILL_SWITCH_SET",
     { Authorization: `Bearer ${ownerToken}` }
   );
   expectStatus(auditQuery, 200, "audit query by owner");
@@ -279,7 +279,7 @@ async function runSmoke(baseUrl, options = {}) {
 
   const auditDenied = await getJson(
     baseUrl,
-    "/api/audit/logs?merchantId=m_demo&limit=5",
+    "/api/audit/logs?merchantId=m_store_001&limit=5",
     { Authorization: `Bearer ${customerToken}` }
   );
   expectStatus(auditDenied, 403, "audit denied for customer");
@@ -288,7 +288,7 @@ async function runSmoke(baseUrl, options = {}) {
   const freeze = await postJson(
     baseUrl,
     "/api/merchant/tenant-policy",
-    { merchantId: "m_demo", writeEnabled: false },
+    { merchantId: "m_store_001", writeEnabled: false },
     { Authorization: `Bearer ${ownerToken}` }
   );
   expectStatus(freeze, 200, "tenant policy freeze");
@@ -296,7 +296,7 @@ async function runSmoke(baseUrl, options = {}) {
   const writeBlocked = await postJson(
     baseUrl,
     "/api/payment/verify",
-    { merchantId: "m_demo", userId: "u_demo", orderAmount: 8 },
+    { merchantId: "m_store_001", userId: "u_demo", orderAmount: 8 },
     {
       Authorization: `Bearer ${customerToken}`,
       "Idempotency-Key": uniqueKey("smoke_frozen_pay")
@@ -309,7 +309,7 @@ async function runSmoke(baseUrl, options = {}) {
     baseUrl,
     "/api/merchant/tenant-policy",
     {
-      merchantId: "m_demo",
+      merchantId: "m_store_001",
       writeEnabled: true,
       limits: {
         PAYMENT_VERIFY: {
@@ -325,7 +325,7 @@ async function runSmoke(baseUrl, options = {}) {
   const firstLimited = await postJson(
     baseUrl,
     "/api/payment/verify",
-    { merchantId: "m_demo", userId: "u_demo", orderAmount: 7 },
+    { merchantId: "m_store_001", userId: "u_demo", orderAmount: 7 },
     {
       Authorization: `Bearer ${customerToken}`,
       "Idempotency-Key": uniqueKey("smoke_limit_pay")
@@ -336,7 +336,7 @@ async function runSmoke(baseUrl, options = {}) {
   const secondLimited = await postJson(
     baseUrl,
     "/api/payment/verify",
-    { merchantId: "m_demo", userId: "u_demo", orderAmount: 6 },
+    { merchantId: "m_store_001", userId: "u_demo", orderAmount: 6 },
     {
       Authorization: `Bearer ${customerToken}`,
       "Idempotency-Key": uniqueKey("smoke_limit_pay")
@@ -349,7 +349,7 @@ async function runSmoke(baseUrl, options = {}) {
     baseUrl,
     "/api/merchant/tenant-policy",
     {
-      merchantId: "m_demo",
+      merchantId: "m_store_001",
       writeEnabled: true,
       limits: {
         PAYMENT_VERIFY: {
@@ -365,7 +365,7 @@ async function runSmoke(baseUrl, options = {}) {
   const stepFreeze = await postJson(
     baseUrl,
     "/api/merchant/migration/step",
-    { merchantId: "m_demo", step: "FREEZE_WRITE", note: "smoke freeze" },
+    { merchantId: "m_store_001", step: "FREEZE_WRITE", note: "smoke freeze" },
     { Authorization: `Bearer ${ownerToken}` }
   );
   expectStatus(stepFreeze, 200, "migration step freeze");
@@ -374,7 +374,7 @@ async function runSmoke(baseUrl, options = {}) {
   const stepUnfreeze = await postJson(
     baseUrl,
     "/api/merchant/migration/step",
-    { merchantId: "m_demo", step: "UNFREEZE_WRITE", note: "smoke unfreeze" },
+    { merchantId: "m_store_001", step: "UNFREEZE_WRITE", note: "smoke unfreeze" },
     { Authorization: `Bearer ${ownerToken}` }
   );
   expectStatus(stepUnfreeze, 200, "migration step unfreeze");
@@ -383,7 +383,7 @@ async function runSmoke(baseUrl, options = {}) {
   const cutover = await postJson(
     baseUrl,
     "/api/merchant/migration/cutover",
-    { merchantId: "m_demo", note: "smoke cutover" },
+    { merchantId: "m_store_001", note: "smoke cutover" },
     { Authorization: `Bearer ${ownerToken}` }
   );
   expectStatus(cutover, 200, "migration cutover");
@@ -391,7 +391,7 @@ async function runSmoke(baseUrl, options = {}) {
 
   const statusAfterCutover = await getJson(
     baseUrl,
-    "/api/merchant/migration/status?merchantId=m_demo",
+    "/api/merchant/migration/status?merchantId=m_store_001",
     { Authorization: `Bearer ${ownerToken}` }
   );
   expectStatus(statusAfterCutover, 200, "migration status after cutover");
@@ -400,7 +400,7 @@ async function runSmoke(baseUrl, options = {}) {
   const rollback = await postJson(
     baseUrl,
     "/api/merchant/migration/rollback",
-    { merchantId: "m_demo", note: "smoke rollback" },
+    { merchantId: "m_store_001", note: "smoke rollback" },
     { Authorization: `Bearer ${ownerToken}` }
   );
   expectStatus(rollback, 200, "migration rollback");
@@ -409,7 +409,7 @@ async function runSmoke(baseUrl, options = {}) {
 
   const statusAfterRollback = await getJson(
     baseUrl,
-    "/api/merchant/migration/status?merchantId=m_demo",
+    "/api/merchant/migration/status?merchantId=m_store_001",
     { Authorization: `Bearer ${ownerToken}` }
   );
   expectStatus(statusAfterRollback, 200, "migration status after rollback");
@@ -418,7 +418,7 @@ async function runSmoke(baseUrl, options = {}) {
   console.log("[smoke] scenario G: strategy library + proposal + status");
   const strategyLibrary = await getJson(
     baseUrl,
-    "/api/merchant/strategy-library?merchantId=m_demo",
+    "/api/merchant/strategy-library?merchantId=m_store_001",
     { Authorization: `Bearer ${ownerToken}` }
   );
   expectStatus(strategyLibrary, 200, "strategy library");
@@ -432,7 +432,7 @@ async function runSmoke(baseUrl, options = {}) {
     baseUrl,
     "/api/merchant/strategy-proposals",
     {
-      merchantId: "m_demo",
+      merchantId: "m_store_001",
       templateId: "activation_contextual_drop",
       branchId: "COOLING",
       intent: "smoke high temperature campaign"
@@ -445,7 +445,7 @@ async function runSmoke(baseUrl, options = {}) {
   const strategyConfirm = await postJson(
     baseUrl,
     `/api/merchant/proposals/${encodeURIComponent(strategyProposal.data.proposalId)}/confirm`,
-    { merchantId: "m_demo" },
+    { merchantId: "m_store_001" },
     { Authorization: `Bearer ${ownerToken}` }
   );
   expectStatus(strategyConfirm, 200, "strategy proposal confirm");
@@ -453,7 +453,7 @@ async function runSmoke(baseUrl, options = {}) {
   const pauseCampaign = await postJson(
     baseUrl,
     `/api/merchant/campaigns/${encodeURIComponent(strategyConfirm.data.campaignId)}/status`,
-    { merchantId: "m_demo", status: "PAUSED" },
+    { merchantId: "m_store_001", status: "PAUSED" },
     { Authorization: `Bearer ${ownerToken}` }
   );
   expectStatus(pauseCampaign, 200, "campaign pause");
@@ -462,7 +462,7 @@ async function runSmoke(baseUrl, options = {}) {
   const resumeCampaign = await postJson(
     baseUrl,
     `/api/merchant/campaigns/${encodeURIComponent(strategyConfirm.data.campaignId)}/status`,
-    { merchantId: "m_demo", status: "ACTIVE" },
+    { merchantId: "m_store_001", status: "ACTIVE" },
     { Authorization: `Bearer ${ownerToken}` }
   );
   expectStatus(resumeCampaign, 200, "campaign resume");
@@ -473,7 +473,7 @@ async function runSmoke(baseUrl, options = {}) {
     baseUrl,
     "/api/supplier/verify-order",
     {
-      merchantId: "m_demo",
+      merchantId: "m_store_001",
       partnerId: "partner_coffee",
       orderId: "ext_order_1001",
       minSpend: 30
@@ -487,7 +487,7 @@ async function runSmoke(baseUrl, options = {}) {
     baseUrl,
     "/api/supplier/verify-order",
     {
-      merchantId: "m_demo",
+      merchantId: "m_store_001",
       partnerId: "partner_coffee",
       orderId: "ext_order_1001",
       minSpend: 80
@@ -501,7 +501,7 @@ async function runSmoke(baseUrl, options = {}) {
     baseUrl,
     "/api/merchant/fire-sale",
     {
-      merchantId: "m_demo",
+      merchantId: "m_store_001",
       targetSku: "sku_hot_soup",
       ttlMinutes: 20
     },
@@ -516,9 +516,9 @@ async function runSmoke(baseUrl, options = {}) {
     baseUrl,
     "/api/merchant/alliance-config",
     {
-      merchantId: "m_demo",
+      merchantId: "m_store_001",
       clusterId: "cluster_demo_brand",
-      stores: ["m_demo", "m_bistro"],
+      stores: ["m_store_001", "m_bistro"],
       walletShared: true,
       tierShared: true
     },
@@ -533,7 +533,7 @@ async function runSmoke(baseUrl, options = {}) {
     {
       merchantId: "m_bistro",
       clusterId: "cluster_demo_brand",
-      stores: ["m_demo", "m_bistro"],
+      stores: ["m_store_001", "m_bistro"],
       walletShared: true,
       tierShared: true
     },
@@ -544,7 +544,7 @@ async function runSmoke(baseUrl, options = {}) {
 
   const allianceStores = await getJson(
     baseUrl,
-    "/api/merchant/stores?merchantId=m_demo",
+    "/api/merchant/stores?merchantId=m_store_001",
     { Authorization: `Bearer ${ownerToken}` }
   );
   expectStatus(allianceStores, 200, "alliance stores list");
@@ -553,7 +553,7 @@ async function runSmoke(baseUrl, options = {}) {
   const allianceSync = await postJson(
     baseUrl,
     "/api/merchant/alliance/sync-user",
-    { merchantId: "m_demo", userId: "u_demo" },
+    { merchantId: "m_store_001", userId: "u_demo" },
     { Authorization: `Bearer ${ownerToken}` }
   );
   expectStatus(allianceSync, 200, "alliance sync user");
@@ -577,7 +577,7 @@ async function runSmoke(baseUrl, options = {}) {
     baseUrl,
     "/api/social/transfer",
     {
-      merchantId: "m_demo",
+      merchantId: "m_store_001",
       fromUserId: "u_demo",
       toUserId: "u_friend",
       amount: 8
@@ -593,7 +593,7 @@ async function runSmoke(baseUrl, options = {}) {
     baseUrl,
     "/api/social/red-packets",
     {
-      merchantId: "m_demo",
+      merchantId: "m_store_001",
       senderUserId: "u_demo",
       totalAmount: 21,
       totalSlots: 3
@@ -606,12 +606,12 @@ async function runSmoke(baseUrl, options = {}) {
   expectStatus(createPacket, 200, "social red packet create");
   assert.ok(createPacket.data.packetId, "packet id should exist");
 
-  const friendToken = await login(baseUrl, "CUSTOMER", "m_demo", "u_friend");
+  const friendToken = await login(baseUrl, "CUSTOMER", "m_store_001", "u_friend");
   const claimPacket = await postJson(
     baseUrl,
     `/api/social/red-packets/${encodeURIComponent(createPacket.data.packetId)}/claim`,
     {
-      merchantId: "m_demo",
+      merchantId: "m_store_001",
       userId: "u_friend"
     },
     {
@@ -627,7 +627,7 @@ async function runSmoke(baseUrl, options = {}) {
     baseUrl,
     "/api/social/treat/sessions",
     {
-      merchantId: "m_demo",
+      merchantId: "m_store_001",
       initiatorUserId: "u_demo",
       mode: "GROUP_PAY",
       orderAmount: 60,
@@ -642,7 +642,7 @@ async function runSmoke(baseUrl, options = {}) {
     baseUrl,
     `/api/social/treat/sessions/${encodeURIComponent(treatCreate.data.sessionId)}/join`,
     {
-      merchantId: "m_demo",
+      merchantId: "m_store_001",
       userId: "u_demo",
       amount: 30
     },
@@ -657,7 +657,7 @@ async function runSmoke(baseUrl, options = {}) {
     baseUrl,
     `/api/social/treat/sessions/${encodeURIComponent(treatCreate.data.sessionId)}/join`,
     {
-      merchantId: "m_demo",
+      merchantId: "m_store_001",
       userId: "u_friend",
       amount: 35
     },
@@ -671,7 +671,7 @@ async function runSmoke(baseUrl, options = {}) {
   const treatClose = await postJson(
     baseUrl,
     `/api/social/treat/sessions/${encodeURIComponent(treatCreate.data.sessionId)}/close`,
-    { merchantId: "m_demo" },
+    { merchantId: "m_store_001" },
     { Authorization: `Bearer ${ownerToken}` }
   );
   expectStatus(treatClose, 200, "treat session close");
@@ -681,7 +681,7 @@ async function runSmoke(baseUrl, options = {}) {
   const customerCenterPay = await postJson(
     baseUrl,
     "/api/payment/verify",
-    { merchantId: "m_demo", userId: "u_demo", orderAmount: 1 },
+    { merchantId: "m_store_001", userId: "u_demo", orderAmount: 1 },
     {
       Authorization: `Bearer ${customerToken}`,
       "Idempotency-Key": uniqueKey("smoke_customer_center_pay")
@@ -694,7 +694,7 @@ async function runSmoke(baseUrl, options = {}) {
     baseUrl,
     "/api/invoice/issue",
     {
-      merchantId: "m_demo",
+      merchantId: "m_store_001",
       paymentTxnId: customerCenterPay.data.paymentTxnId,
       title: "Smoke Invoice"
     },
@@ -705,7 +705,7 @@ async function runSmoke(baseUrl, options = {}) {
 
   const customerLedger = await getJson(
     baseUrl,
-    "/api/payment/ledger?merchantId=m_demo&limit=10",
+    "/api/payment/ledger?merchantId=m_store_001&limit=10",
     { Authorization: `Bearer ${customerToken}` }
   );
   expectStatus(customerLedger, 200, "customer ledger");
@@ -714,7 +714,7 @@ async function runSmoke(baseUrl, options = {}) {
 
   const customerInvoices = await getJson(
     baseUrl,
-    "/api/invoice/list?merchantId=m_demo&limit=10",
+    "/api/invoice/list?merchantId=m_store_001&limit=10",
     { Authorization: `Bearer ${customerToken}` }
   );
   expectStatus(customerInvoices, 200, "customer invoices");
@@ -722,11 +722,11 @@ async function runSmoke(baseUrl, options = {}) {
 
   if (managedMode) {
     console.log("[smoke] scenario M: customer self-service cancel-account");
-    const cancelToken = await login(baseUrl, "CUSTOMER", "m_demo", "u_friend");
+    const cancelToken = await login(baseUrl, "CUSTOMER", "m_store_001", "u_friend");
     const cancelResult = await postJson(
       baseUrl,
       "/api/privacy/cancel-account",
-      { merchantId: "m_demo" },
+      { merchantId: "m_store_001" },
       { Authorization: `Bearer ${cancelToken}` }
     );
     expectStatus(cancelResult, 200, "privacy cancel-account");
