@@ -132,7 +132,7 @@ Notes:
 2. It loads app config from `MealQuestMerchant/.env.local` first, then falls back to `MealQuestMerchant/.env`.
 3. It starts Metro in a new terminal by default, then builds and launches debug app.
 4. Use `-NoMetro` when Metro already runs, and `-NoLaunch` for env/Metro only.
-5. Metro defaults to `0.0.0.0:8081` in script. You can override with `-MetroHost` / `-MetroPort`.
+5. Metro is fixed at `localhost:8081` in script.
 
 Official baseline for this repo (recommended):
 1. React Native `0.84.x`.
@@ -176,7 +176,7 @@ Merchant red-screen critical settings (WiFi mode):
 2. Start Metro with LAN binding and cache reset:
 ```powershell
 cd .\MealQuestMerchant
-npx react-native start --host 0.0.0.0 --port 8081 --reset-cache
+npx react-native start --port 8081 --reset-cache
 ```
 3. Quick diagnosis:
    - If app asks `localhost:8081`: phone dev menu not applied.

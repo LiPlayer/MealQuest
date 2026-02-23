@@ -5,13 +5,12 @@ param(
     [switch]$AutoStartServer,
     [switch]$NoMetro,
     [switch]$NoLaunch,
-    [int]$WaitMetroSeconds = 6,
-    [string]$MetroHost = "0.0.0.0",
-    [int]$MetroPort = 8081
+    [int]$WaitMetroSeconds = 6
 )
 
 $ErrorActionPreference = "Stop"
 $trackedProcesses = @()
+$MetroPort = 8081
 
 
 function Print-Command {
@@ -248,7 +247,7 @@ try {
     }
 
     Write-Host "[merchant-app] envFile=$resolvedEnvFile" -ForegroundColor Green
-    Write-Host "[merchant-app] metro=${MetroHost}:$MetroPort"
+    Write-Host "[merchant-app] metro=localhost:$MetroPort"
 
 if ($AutoStartServer) {
     $serverScript = Join-Path $PSScriptRoot "start-server.ps1"
@@ -279,11 +278,11 @@ if (-not $NoMetro) {
 if (-not $NoMetro -and -not $MetroInjectedOrPreExisting) {
     $metroCommand = @"
 Set-Location '$merchantDir';
-npx react-native start --host '$MetroHost' --port $MetroPort
+npx react-native start --port $MetroPort
 "@
 
     Write-Host "[merchant-app] starting Metro in a new terminal..." -ForegroundColor Cyan
-    Print-Command -WorkingDir $merchantDir -Command "npx react-native start --host '$MetroHost' --port $MetroPort"
+    Print-Command -WorkingDir $merchantDir -Command "npx react-native start --port $MetroPort"
     $metroProcess = Start-Process powershell -ArgumentList "-NoExit", "-ExecutionPolicy", "Bypass", "-Command", $metroCommand -PassThru
     $trackedProcesses += $metroProcess
     $MetroInjectedOrPreExisting = $true
