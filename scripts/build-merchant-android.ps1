@@ -24,7 +24,9 @@ function Print-Command {
     param([string]$WorkingDir, [string]$Command)
     if (-not $script:RunStep) { $script:RunStep = 0 }
     $script:RunStep += 1
-    Write-Host "[RUN-$($script:RunStep)] $Command @ $WorkingDir" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host (">>> [STEP-{0}] {1}" -f $script:RunStep, $Command) -ForegroundColor Red
+    Write-Host ("    @ {0}" -f $WorkingDir) -ForegroundColor DarkGray
 }
 
 function Print-EnvChange {

@@ -41,7 +41,9 @@ function Print-Command {
         $script:RunStep = 0
     }
     $script:RunStep += 1
-    Write-Host ">>> [STEP-$($script:RunStep)] $Command @ $WorkingDir" -ForegroundColor Red
+    Write-Host ""
+    Write-Host (">>> [STEP-{0}] {1}" -f $script:RunStep, $Command) -ForegroundColor Red
+    Write-Host ("    @ {0}" -f $WorkingDir) -ForegroundColor DarkGray
 }
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path

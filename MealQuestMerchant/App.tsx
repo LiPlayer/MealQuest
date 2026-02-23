@@ -8,6 +8,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import Config from 'react-native-config';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import {
@@ -1322,17 +1323,116 @@ function MerchantEntryFlow({ onComplete }: { onComplete: (merchantId: string) =>
   );
 }
 
-const ENABLE_ENTRY_FLOW =
-  ((typeof process !== 'undefined' && process.env?.MQ_ENABLE_ENTRY_FLOW) ||
-    (process.env.NODE_ENV === 'test' ? 'false' : 'true')) === 'true';
+const ENABLE_ENTRY_FLOW = (() => {
+  const raw = String(Config.MQ_ENABLE_ENTRY_FLOW ?? 'true')
+    .trim()
+    .toLowerCase();
+  return raw === '1' || raw === 'true';
+})();
+
+const ENTRY_DONE_KEY = 'mq_merchant_entry_done';
+const ENTRY_MERCHANT_ID_KEY = 'mq_merchant_entry_merchant_id';
+
+type SimpleStorage = {
+  getItem: (key: string) => Promise<string | null>;
+  setItem: (key: string, value: string) => Promise<void>;
+};
+
+const getSimpleStorage = (): SimpleStorage | null => {
+  try {
+    // Keep dynamic require so app can still run even if the module is not linked in a local dev setup.
+    const mod = require('@react-native-async-storage/async-storage');
+    return (mod?.default || mod) as SimpleStorage;
+  } catch {
+    return null;
+  }
+};
+
+const restoreEntryState = async () => {
+  const storage = getSimpleStorage();
+  if (!storage) {
+    return { done: false, merchantId: null as string | null };
+  }
+  const [doneRaw, merchantId] = await Promise.all([
+    storage.getItem(ENTRY_DONE_KEY),
+    storage.getItem(ENTRY_MERCHANT_ID_KEY),
+  ]);
+  return {
+    done: doneRaw === '1',
+    merchantId: merchantId ? String(merchantId) : null,
+  };
+};
+
+const persistEntryState = async (merchantId: string) => {
+  const storage = getSimpleStorage();
+  if (!storage) {
+    return;
+  }
+  await Promise.all([
+    storage.setItem(ENTRY_DONE_KEY, '1'),
+    storage.setItem(ENTRY_MERCHANT_ID_KEY, merchantId),
+  ]);
+};
 
 export default function App() {
+  const [entryBootstrapped, setEntryBootstrapped] = useState(!ENABLE_ENTRY_FLOW);
   const [ready, setReady] = useState(!ENABLE_ENTRY_FLOW);
   const [merchantId, setMerchantId] = useState(
     typeof MerchantApi.getMerchantId === 'function'
       ? MerchantApi.getMerchantId()
       : 'm_demo',
   );
+
+  useEffect(() => {
+    if (!ENABLE_ENTRY_FLOW) {
+      return;
+    }
+
+    let active = true;
+    const bootstrap = async () => {
+      try {
+        const state = await restoreEntryState();
+        if (!active) {
+          return;
+        }
+        if (state.merchantId && typeof MerchantApi.setMerchantId === 'function') {
+          MerchantApi.setMerchantId(state.merchantId);
+          setMerchantId(state.merchantId);
+        }
+        if (state.done) {
+          setReady(true);
+        }
+      } catch {
+        // Ignore bootstrap failures and fall back to entry flow.
+      } finally {
+        if (active) {
+          setEntryBootstrapped(true);
+        }
+      }
+    };
+
+    bootstrap().catch(() => {
+      if (active) {
+        setEntryBootstrapped(true);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (!entryBootstrapped) {
+    return (
+      <SafeAreaProvider>
+        <SafeAreaView style={styles.safeArea}>
+          <View style={[styles.entryContainer, { justifyContent: 'center' }]}>
+            <Text style={styles.mutedText}>加载中...</Text>
+          </View>
+        </SafeAreaView>
+      </SafeAreaProvider>
+    );
+  }
 
   if (!ready) {
     return (
@@ -1342,6 +1442,7 @@ export default function App() {
             MerchantApi.setMerchantId(nextMerchantId);
           }
           setMerchantId(nextMerchantId);
+          persistEntryState(nextMerchantId).catch(() => { });
           setReady(true);
         }}
       />

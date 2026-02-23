@@ -20,8 +20,8 @@
 ## 运行
 
 ```powershell
-# 可选：自定义 JWT 密钥
-$env:MQ_JWT_SECRET='mealquest-dev-secret'
+# 推荐：先复制示例环境文件并修改需要的键
+Copy-Item .env.example .env
 npm start
 ```
 
@@ -204,8 +204,9 @@ ws://127.0.0.1:3030/ws?merchantId=m_demo&token=<JWT>
 
 Configure callback signature secret:
 
-```powershell
-$env:MQ_PAYMENT_CALLBACK_SECRET='mealquest-payment-callback-secret'
+```ini
+# MealQuestServer/.env
+MQ_PAYMENT_CALLBACK_SECRET=mealquest-payment-callback-secret
 ```
 
 Callback endpoint (gateway -> server):

@@ -1,0 +1,27 @@
+{
+  "version": "1.0.0",
+  "domains": {
+    "server": {
+      "source": "system env / k8s config",
+      "requiredKeys": ["MQ_JWT_SECRET", "MQ_PAYMENT_CALLBACK_SECRET", "PORT"]
+    },
+    "merchant_rn": {
+      "source": "react-native-config (.env)",
+      "requiredKeys": ["MQ_SERVER_URL", "MQ_MERCHANT_ID", "MQ_ENABLE_ENTRY_FLOW"]
+    },
+    "customer_taro": {
+      "source": "taro env (.env.development*)",
+      "requiredKeys": [
+        "TARO_APP_SERVER_URL",
+        "TARO_APP_USE_REMOTE_API",
+        "TARO_APP_DEFAULT_STORE_ID"
+      ]
+    }
+  },
+  "lintRules": {
+    "merchant_src_forbid": ["process.env."],
+    "customer_src_forbid": ["process.env.MQ_"],
+    "server_src_forbid": ["TARO_APP_", "react-native-config"]
+  }
+}
+

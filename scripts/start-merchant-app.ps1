@@ -1,10 +1,7 @@
 param(
     [ValidateSet("android", "ios")]
     [string]$Platform = "android",
-    [string]$ServerUrl = "http://127.0.0.1:3030",
     [string]$AndroidSdkPath = "",
-    [string]$MerchantId = "m_my_first_store",
-    [bool]$EnableEntryFlow = $true,
     [switch]$AutoStartServer,
     [switch]$NoMetro,
     [switch]$NoLaunch,
@@ -26,7 +23,9 @@ function Print-Command {
         $script:RunStep = 0
     }
     $script:RunStep += 1
-    Write-Host ">>> [STEP-$($script:RunStep)] $Command @ $WorkingDir" -ForegroundColor Red
+    Write-Host ""
+    Write-Host (">>> [STEP-{0}] {1}" -f $script:RunStep, $Command) -ForegroundColor Red
+    Write-Host ("    @ {0}" -f $WorkingDir) -ForegroundColor DarkGray
 }
 
 
@@ -171,6 +170,67 @@ function Ensure-AndroidSetup {
     Write-Host "[merchant-app] android/local.properties generated."
 }
 
+function Resolve-EnvFilePath {
+    param([string]$ProjectDir)
+    $candidates = @(
+        (Join-Path $ProjectDir ".env.local"),
+        (Join-Path $ProjectDir ".env")
+    )
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate) {
+            return (Resolve-Path $candidate).Path
+        }
+    }
+
+    throw "Env file not found. Expected one of: $($candidates -join ', ')"
+}
+
+function Parse-DotEnvLine {
+    param([string]$Line)
+
+    $trimmed = $Line.Trim()
+    if ($trimmed.Length -eq 0 -or $trimmed.StartsWith("#")) {
+        return $null
+    }
+
+    $match = [regex]::Match($trimmed, '^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$')
+    if (-not $match.Success) {
+        return $null
+    }
+
+    $name = $match.Groups[1].Value
+    $rawValue = $match.Groups[2].Value.Trim()
+
+    if ($rawValue.StartsWith('"') -and $rawValue.EndsWith('"') -and $rawValue.Length -ge 2) {
+        $rawValue = $rawValue.Substring(1, $rawValue.Length - 2)
+        $rawValue = $rawValue.Replace('\"', '"').Replace('\n', "`n").Replace('\r', "`r").Replace('\t', "`t")
+    } elseif ($rawValue.StartsWith("'") -and $rawValue.EndsWith("'") -and $rawValue.Length -ge 2) {
+        $rawValue = $rawValue.Substring(1, $rawValue.Length - 2)
+    } else {
+        $hashIndex = $rawValue.IndexOf('#')
+        if ($hashIndex -ge 0) {
+            $rawValue = $rawValue.Substring(0, $hashIndex).TrimEnd()
+        }
+    }
+
+    return @{
+        Name = $name
+        Value = $rawValue
+    }
+}
+
+function Import-EnvFile {
+    param([string]$Path)
+
+    Get-Content -Path $Path | ForEach-Object {
+        $entry = Parse-DotEnvLine -Line $_
+        if ($null -ne $entry) {
+            [Environment]::SetEnvironmentVariable([string]$entry.Name, [string]$entry.Value, "Process")
+        }
+    }
+}
+
 
 try {
     $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
@@ -180,11 +240,14 @@ try {
         throw "Merchant app directory not found: $merchantDir"
     }
 
+    $resolvedEnvFile = Resolve-EnvFilePath -ProjectDir $merchantDir
+    Import-EnvFile -Path $resolvedEnvFile
+
     if ($Platform -eq "android") {
         Ensure-AndroidSetup -MerchantDirPath $merchantDir -PreferredSdkPath $AndroidSdkPath
     }
 
-    Write-Host "[merchant-app] CONFIG MANAGED BY: MealQuestMerchant/.env" -ForegroundColor Green
+    Write-Host "[merchant-app] envFile=$resolvedEnvFile" -ForegroundColor Green
     Write-Host "[merchant-app] metro=${MetroHost}:$MetroPort"
 
 $metroProcess = $null

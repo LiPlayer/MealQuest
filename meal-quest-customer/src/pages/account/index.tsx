@@ -10,7 +10,7 @@ import './index.scss';
 
 const DEFAULT_USER_ID = 'u_demo';
 const DEFAULT_STORE_ID =
-    (typeof process !== 'undefined' && process.env && (process.env.MQ_MERCHANT_ID || process.env.TARO_APP_DEFAULT_STORE_ID)) || 'store_a';
+    (typeof process !== 'undefined' && process.env && process.env.TARO_APP_DEFAULT_STORE_ID) || 'store_a';
 
 const toMoney = (value: number) => `¥${Number(value || 0).toFixed(2)}`;
 

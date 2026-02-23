@@ -2,7 +2,12 @@ const http = require("node:http");
 const crypto = require("node:crypto");
 const path = require("node:path");
 const { URL } = require("node:url");
-require("dotenv").config();
+const {
+  loadServerEnv,
+  resolveServerRuntimeEnv
+} = require("../config/runtimeEnv");
+
+loadServerEnv();
 
 const { issueToken, parseBearerToken, verifyToken } = require("../core/auth");
 const { createTenantPolicyManager } = require("../core/tenantPolicy");
@@ -1062,10 +1067,9 @@ function createAppServer({
   tenantPolicyMap = {},
   defaultTenantPolicy = {},
   dbFilePath = path.resolve(process.cwd(), "data/db.json"),
-  jwtSecret = process.env.MQ_JWT_SECRET || "mealquest-dev-secret",
-  paymentCallbackSecret =
-  process.env.MQ_PAYMENT_CALLBACK_SECRET || "mealquest-payment-callback-secret",
-  onboardSecret = process.env.MQ_ONBOARD_SECRET || "",
+  jwtSecret = resolveServerRuntimeEnv(process.env).jwtSecret,
+  paymentCallbackSecret = resolveServerRuntimeEnv(process.env).paymentCallbackSecret,
+  onboardSecret = resolveServerRuntimeEnv(process.env).onboardSecret,
   paymentProvider = null
 } = {}) {
   const actualDb = db || (persist ? createPersistentDb(dbFilePath) : createInMemoryDb());
@@ -3103,14 +3107,13 @@ function createAppServer({
 }
 
 if (require.main === module) {
+  const runtimeEnv = resolveServerRuntimeEnv(process.env);
   const app = createAppServer({ persist: true });
-  const port = Number(process.env.PORT || 3030);
-  const host = process.env.HOST || "0.0.0.0";
   app
-    .start(port, host)
+    .start(runtimeEnv.port, runtimeEnv.host)
     .then((startedPort) => {
       // eslint-disable-next-line no-console
-      console.log(`MealQuestServer listening on ${host}:${startedPort}`);
+      console.log(`MealQuestServer listening on ${runtimeEnv.host}:${startedPort}`);
     })
     .catch((error) => {
       // eslint-disable-next-line no-console

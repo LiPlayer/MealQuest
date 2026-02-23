@@ -14,7 +14,7 @@ import { buildSmartCheckoutQuote } from '../../domain/smartCheckout';
 import './index.scss';
 
 const DEFAULT_STORE_ID =
-    (typeof process !== 'undefined' && process.env && (process.env.MQ_MERCHANT_ID || process.env.TARO_APP_DEFAULT_STORE_ID)) || 'store_a';
+    (typeof process !== 'undefined' && process.env && process.env.TARO_APP_DEFAULT_STORE_ID) || 'store_a';
 
 // Add declaration for the native component
 declare global {

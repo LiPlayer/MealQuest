@@ -24,7 +24,8 @@ function Print-Command {
     param([string]$Command)
     if (-not $script:RunStep) { $script:RunStep = 0 }
     $script:RunStep += 1
-    Write-Host "[RUN-$($script:RunStep)] $Command" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host (">>> [STEP-{0}] {1}" -f $script:RunStep, $Command) -ForegroundColor Red
 }
 
 function Resolve-AdbPath {
@@ -152,4 +153,3 @@ if ($fatal) {
         }
     }
 }
-

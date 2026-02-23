@@ -12,12 +12,13 @@ node .\scripts\release-local.js
 
 Steps performed:
 
-1. `MealQuestServer` full testing (including persistence, multi-tenancy, migrations, RBAC, auditing, policy library, supplier verification, flash sales).
-2. `MealQuestServer` local smoke scenario regression.
-3. `MealQuestMerchant` testing + TypeScript type checking.
-4. `MealQuestMerchant` UI reproducible regression (can be run separately: `npm run test:regression:ui`).
-5. `meal-quest-customer` testing + UI reproducible regression (`npm run test:regression:ui`).
-6. `meal-quest-customer` `build:weapp` build.
+1. Config contract verification (`scripts/verify-config-contract.js`).
+2. `MealQuestServer` full testing (including persistence, multi-tenancy, migrations, RBAC, auditing, policy library, supplier verification, flash sales).
+3. `MealQuestServer` local smoke scenario regression.
+4. `MealQuestMerchant` testing + TypeScript type checking.
+5. `MealQuestMerchant` UI reproducible regression (can be run separately: `npm run test:regression:ui`).
+6. `meal-quest-customer` testing + UI reproducible regression (`npm run test:regression:ui`).
+7. `meal-quest-customer` `build:weapp` build.
 
 E2E (requires WeChat DevTools environment, executed independently):
 
@@ -123,15 +124,12 @@ Run from repository root:
 ```powershell
 # 采用配置驱动（推荐）：直接编辑 MealQuestMerchant/.env 后执行
 .\scripts\start-merchant-app.ps1 -Platform android
-
-# 命令行覆盖示例：
-.\scripts\start-merchant-app.ps1 -Platform android -ServerUrl 'http://127.0.0.1:3030' -AutoStartServer
 ```
 
 Notes:
 
 1. Script path: `scripts/start-merchant-app.ps1`.
-2. It auto injects `MQ_ENABLE_ENTRY_FLOW`, `MQ_USE_REMOTE_API`, `MQ_SERVER_BASE_URL`, `MQ_MERCHANT_ID`.
+2. It loads app config from `MealQuestMerchant/.env.local` first, then falls back to `MealQuestMerchant/.env`.
 3. It starts Metro in a new terminal by default, then builds and launches debug app.
 4. Use `-NoMetro` when Metro already runs, and `-NoLaunch` for env/Metro only.
 5. Metro defaults to `0.0.0.0:8081` in script. You can override with `-MetroHost` / `-MetroPort`.
@@ -187,8 +185,8 @@ npx react-native start --host 0.0.0.0 --port 8081 --reset-cache
 Update (script shortcut):
 
 ```powershell
-# Customer mini program online mode in LAN (parameters are optional overrides for .env)
-.\scripts\start-customer-weapp.ps1 -ServerUrl 'http://192.168.31.10:3030' -MerchantId 'm_my_first_store'
+# Customer mini program online mode in LAN (driven by env file)
+.\scripts\start-customer-weapp.ps1
 ```
 
 ## 6. Android Release Build (APK/AAB)

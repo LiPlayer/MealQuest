@@ -35,6 +35,12 @@ function main() {
   const repoRoot = process.cwd();
   const tasks = [
     {
+      name: "Config Contract",
+      cwd: repoRoot,
+      command: "node",
+      args: ["scripts/verify-config-contract.js"]
+    },
+    {
       name: "Server Test",
       cwd: path.join(repoRoot, "MealQuestServer"),
       command: "npm",

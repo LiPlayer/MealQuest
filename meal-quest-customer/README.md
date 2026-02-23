@@ -12,12 +12,17 @@ npm run dev:weapp
 
 ## 远程联调模式
 
-先启动服务端（见 `MealQuestServer/README.md`），再设置环境变量：
+先启动服务端（见 `MealQuestServer/README.md`），再在 `meal-quest-customer/.env.development`（或 `.env.development.local`）中配置：
+
+```ini
+TARO_APP_USE_REMOTE_API=true
+TARO_APP_SERVER_URL=http://127.0.0.1:3030
+TARO_APP_DEFAULT_STORE_ID=m_my_first_store
+```
+
+然后启动：
 
 ```powershell
-$env:TARO_APP_USE_REMOTE_API='true'
-$env:TARO_APP_SERVER_URL='http://127.0.0.1:3030'
-$env:TARO_APP_DEFAULT_STORE_ID='m_my_first_store'
 npm run dev:weapp
 ```
 

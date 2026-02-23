@@ -48,8 +48,6 @@ const getEnv = (name: string): string => {
 };
 
 const getServerBaseUrl = () => {
-    const mqUrl = getEnv('MQ_SERVER_URL');
-    if (mqUrl) return mqUrl.trim();
     return getEnv('TARO_APP_SERVER_URL').trim();
 };
 
@@ -143,7 +141,7 @@ export const ApiDataService = {
     isConfigured: () => Boolean(getServerBaseUrl()),
 
     getHomeSnapshot: async (storeId: string, userId = 'u_demo'): Promise<HomeSnapshot> => {
-        const targetStoreId = storeId || getEnv('MQ_MERCHANT_ID') || getEnv('TARO_APP_DEFAULT_STORE_ID') || 'store_a';
+        const targetStoreId = storeId || getEnv('TARO_APP_DEFAULT_STORE_ID') || 'store_a';
         const targetStoreIdStr = String(targetStoreId);
         const token = await ensureCustomerToken(targetStoreIdStr, userId);
         const stateData = await requestJson({

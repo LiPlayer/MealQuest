@@ -34,8 +34,8 @@ $env:MQ_ENABLE_ENTRY_FLOW='false'
 在仓库根目录下运行。该脚本会自动设置环境变量、构建并启动 Debug 应用。
 
 ```powershell
-# 启动商户端并指定后端地址
-.\scripts\start-merchant-app.ps1 -Platform android -ServerUrl 'http://192.168.x.x:3030'
+# 启动商户端（配置来自 MealQuestMerchant/.env 或 .env.local）
+.\scripts\start-merchant-app.ps1 -Platform android
 ```
 
 可选参数：
@@ -44,5 +44,5 @@ $env:MQ_ENABLE_ENTRY_FLOW='false'
 2. `-NoMetro`: 跳过启动 Metro（如果 Metro 已在运行）。注意：如果环境配置有变，请重启 Metro。
 3. `-NoLaunch`: 仅设置环境并启动 Metro，跳过应用安装/运行步骤。
 4. `-Platform ios`: 启动 iOS 调试应用。
-5. `-MerchantId <id>`: 覆盖默认商户 ID（默认为 `m_my_first_store`）。
+5. 配置文件路径固定：默认优先 `.env.local`，其次 `.env`。
 
