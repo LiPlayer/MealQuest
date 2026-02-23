@@ -1,18 +1,21 @@
-# meal-quest-customer
+﻿# meal-quest-customer
 
-顾客端小程序（Taro + React）。
+Customer mini-program built with Taro + React.
 
-## 本地模式
+## Local Mode
 
-默认使用本地 Mock 数据，无需服务端。
+Local mode uses mock data and does not require backend server.
 
 ```powershell
+cd .\meal-quest-customer
+npm install
 npm run dev:weapp
 ```
 
-## 远程联调模式
+## Remote Integration Mode
 
-先启动服务端（见 `MealQuestServer/README.md`），再在 `meal-quest-customer/.env.development`（或 `.env.development.local`）中配置：
+Start backend server first (see `MealQuestServer/README.md`), then configure
+`meal-quest-customer/.env.development` (or `.env.development.local`):
 
 ```ini
 TARO_APP_USE_REMOTE_API=true
@@ -20,13 +23,20 @@ TARO_APP_SERVER_URL=http://127.0.0.1:3030
 TARO_APP_DEFAULT_STORE_ID=m_my_first_store
 ```
 
-然后启动：
+Then run:
 
 ```powershell
 npm run dev:weapp
 ```
 
-说明：
+Notes:
 
-1. 远程接口失败会自动回退本地 Mock，保证页面可继续使用。
-2. 顾客端会通过 `/api/auth/mock-login` 自动获取测试 token。
+1. If remote API fails, client automatically falls back to local mock.
+2. Client uses `/api/auth/mock-login` to fetch a test token.
+
+## Test
+
+```powershell
+npm test
+npm run test:e2e
+```
