@@ -3158,27 +3158,37 @@ function createAppServer({
 
 async function createAppServerAsync(options = {}) {
   const runtimeEnv = resolveServerRuntimeEnv(process.env);
+  const inputPostgresOptions = options.postgresOptions || {};
 
   const postgresOptions = {
     connectionString:
-      (options.postgresOptions && options.postgresOptions.connectionString) ||
+      inputPostgresOptions.connectionString ||
       runtimeEnv.dbUrl,
     schema:
-      (options.postgresOptions && options.postgresOptions.schema) ||
+      inputPostgresOptions.schema ||
       runtimeEnv.dbSchema ||
       "public",
     table:
-      (options.postgresOptions && options.postgresOptions.table) ||
+      inputPostgresOptions.table ||
       runtimeEnv.dbStateTable ||
       "mealquest_state_snapshots",
     snapshotKey:
-      (options.postgresOptions && options.postgresOptions.snapshotKey) ||
+      inputPostgresOptions.snapshotKey ||
       runtimeEnv.dbSnapshotKey ||
       "main",
     maxPoolSize:
-      (options.postgresOptions && options.postgresOptions.maxPoolSize) ||
+      inputPostgresOptions.maxPoolSize ||
       runtimeEnv.dbPoolMax ||
       5,
+    autoCreateDatabase:
+      inputPostgresOptions.autoCreateDatabase === undefined
+        ? runtimeEnv.dbAutoCreate
+        : Boolean(inputPostgresOptions.autoCreateDatabase),
+    adminConnectionString:
+      (typeof inputPostgresOptions.adminConnectionString === "string" &&
+        inputPostgresOptions.adminConnectionString.trim()) ||
+      runtimeEnv.dbAdminUrl ||
+      null,
   };
 
   const rootDb =
@@ -3230,6 +3240,8 @@ if (require.main === module) {
       table: runtimeEnv.dbStateTable,
       snapshotKey: runtimeEnv.dbSnapshotKey,
       maxPoolSize: runtimeEnv.dbPoolMax,
+      autoCreateDatabase: runtimeEnv.dbAutoCreate,
+      adminConnectionString: runtimeEnv.dbAdminUrl || null,
     },
     jwtSecret: runtimeEnv.jwtSecret,
     paymentCallbackSecret: runtimeEnv.paymentCallbackSecret,

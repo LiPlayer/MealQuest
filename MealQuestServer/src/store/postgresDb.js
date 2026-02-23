@@ -1,4 +1,5 @@
 const { Pool } = require("pg");
+const { URL } = require("node:url");
 
 const { createInMemoryDb } = require("./inMemoryDb");
 
@@ -15,6 +16,133 @@ function normalizeIdentifier(raw, fallback) {
 
 function qIdent(name) {
   return `"${String(name).replace(/"/g, "\"\"")}"`;
+}
+
+function normalizePoolSize(raw, fallback = 5) {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return Math.max(1, Math.floor(parsed));
+}
+
+function createPool(connectionString, maxPoolSize) {
+  return new Pool({
+    connectionString,
+    max: normalizePoolSize(maxPoolSize, 5),
+  });
+}
+
+function isMissingDatabaseError(error) {
+  if (!error) {
+    return false;
+  }
+  if (error.code === "3D000") {
+    return true;
+  }
+  const message = String(error.message || "").toLowerCase();
+  return message.includes("database") && message.includes("does not exist");
+}
+
+function parseConnectionInfo(connectionString) {
+  try {
+    const parsed = new URL(String(connectionString || ""));
+    if (parsed.protocol !== "postgres:" && parsed.protocol !== "postgresql:") {
+      return null;
+    }
+    const dbPath = String(parsed.pathname || "").replace(/^\/+/, "");
+    const encodedDbName = dbPath.split("/")[0];
+    const databaseName = encodedDbName ? decodeURIComponent(encodedDbName) : "";
+    return {
+      url: parsed,
+      databaseName,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function buildAdminConnectionString(connectionString) {
+  const parsed = parseConnectionInfo(connectionString);
+  if (!parsed) {
+    return null;
+  }
+  const adminUrl = new URL(parsed.url.toString());
+  adminUrl.pathname = "/postgres";
+  return adminUrl.toString();
+}
+
+async function ensureDatabaseExists({
+  connectionString,
+  adminConnectionString,
+}) {
+  const target = parseConnectionInfo(connectionString);
+  if (!target || !target.databaseName) {
+    return false;
+  }
+
+  const adminConn =
+    typeof adminConnectionString === "string" && adminConnectionString.trim()
+      ? adminConnectionString.trim()
+      : buildAdminConnectionString(connectionString);
+
+  if (!adminConn) {
+    return false;
+  }
+
+  const adminPool = createPool(adminConn, 1);
+  try {
+    await adminPool.query(`CREATE DATABASE ${qIdent(target.databaseName)}`);
+    return true;
+  } catch (error) {
+    if (error && error.code === "42P04") {
+      return false;
+    }
+    if (error && error.code === "42501") {
+      const permissionError = new Error(
+        `database "${target.databaseName}" does not exist and role has no CREATEDB privilege; create it manually or set MQ_DB_ADMIN_URL`,
+      );
+      permissionError.cause = error;
+      throw permissionError;
+    }
+    throw error;
+  } finally {
+    await adminPool.end().catch(() => {});
+  }
+}
+
+async function ensureSnapshotPool({
+  connectionString,
+  schema,
+  table,
+  maxPoolSize,
+  autoCreateDatabase,
+  adminConnectionString,
+}) {
+  let pool = createPool(connectionString, maxPoolSize);
+  try {
+    await ensureSnapshotTable(pool, schema, table);
+    return pool;
+  } catch (error) {
+    await pool.end().catch(() => {});
+    if (!autoCreateDatabase || !isMissingDatabaseError(error)) {
+      throw error;
+    }
+
+    await ensureDatabaseExists({
+      connectionString,
+      adminConnectionString,
+    });
+
+    pool = createPool(connectionString, maxPoolSize);
+    try {
+      await ensureSnapshotTable(pool, schema, table);
+      return pool;
+    } catch (retryError) {
+      await pool.end().catch(() => {});
+      throw retryError;
+    }
+  }
 }
 
 async function ensureSnapshotTable(pool, schema, table) {
@@ -94,6 +222,8 @@ async function createPostgresDb({
   table = "mealquest_state_snapshots",
   snapshotKey = "main",
   maxPoolSize = 5,
+  autoCreateDatabase = true,
+  adminConnectionString = null,
   onPersistError = null,
 } = {}) {
   const normalizedSchema = normalizeIdentifier(schema, "public");
@@ -107,18 +237,27 @@ async function createPostgresDb({
     throw new Error("connectionString is required for postgres db driver");
   }
 
-  const pool = new Pool({
+  const pool = await ensureSnapshotPool({
     connectionString,
-    max: Number.isFinite(Number(maxPoolSize)) ? Math.max(1, Number(maxPoolSize)) : 5,
+    schema: normalizedSchema,
+    table: normalizedTable,
+    maxPoolSize,
+    autoCreateDatabase: Boolean(autoCreateDatabase),
+    adminConnectionString,
   });
 
-  await ensureSnapshotTable(pool, normalizedSchema, normalizedTable);
-  const initialState = await readSnapshot(
-    pool,
-    normalizedSchema,
-    normalizedTable,
-    normalizedSnapshotKey,
-  );
+  let initialState = null;
+  try {
+    initialState = await readSnapshot(
+      pool,
+      normalizedSchema,
+      normalizedTable,
+      normalizedSnapshotKey,
+    );
+  } catch (error) {
+    await pool.end().catch(() => {});
+    throw error;
+  }
   const db = createInMemoryDb(initialState);
 
   createSaveQueue({
@@ -142,4 +281,3 @@ async function createPostgresDb({
 module.exports = {
   createPostgresDb,
 };
-

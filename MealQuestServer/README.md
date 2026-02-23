@@ -45,6 +45,8 @@ MQ_DB_URL=postgres://user:password@host:5432/mealquest
 MQ_DB_SCHEMA=public
 MQ_DB_STATE_TABLE=mealquest_state_snapshots
 MQ_DB_SNAPSHOT_KEY=main
+MQ_DB_AUTO_CREATE=true
+MQ_DB_ADMIN_URL=
 ```
 
 Notes:
@@ -52,6 +54,8 @@ Notes:
 1. Runtime state model is still in-memory first.
 2. `save()` persists one JSONB snapshot to PostgreSQL by upsert.
 3. Migration cutover and rollback keep working with tenant snapshot keys.
+4. When `MQ_DB_AUTO_CREATE=true`, server auto-creates the target database if it is missing.
+5. If the app user has no `CREATEDB` privilege, set `MQ_DB_ADMIN_URL` with an admin connection.
 
 ## Merchant Onboarding
 
