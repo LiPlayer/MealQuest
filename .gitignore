@@ -1,5 +1,50 @@
-artifacts/
-MealQuestServer/.env.*.local
-MealQuestServer/data/
-.tmp_*.log
+# Dependencies
+node_modules/
+jspm_packages/
+.bundle/
+vendor/bundle/
+**/Pods/
+
+# Build Outputs
+dist/
+build/
+bin/
+obj/
+out/
+.taro/
+.temp/
+.rn_temp/
+*.jsbundle
 MealQuestMerchant/android/build_output*.log
+
+# Environment and Secrets
+.env
+.env.*
+!.env.example
+*.local
+local.properties
+*.keystore
+!debug.keystore
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.tmp_*.log
+
+# System Files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+
+# Project Specific
+artifacts/
+MealQuestServer/data/
+jest-results.json
+tests_list.txt
+.metro-health-check*
