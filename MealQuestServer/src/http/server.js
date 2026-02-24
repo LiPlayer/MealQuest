@@ -21,6 +21,10 @@ const { createPrivacyService } = require("../services/privacyService");
 const { createSocialService } = require("../services/socialService");
 const { createSupplierService } = require("../services/supplierService");
 const { createTreatPayService } = require("../services/treatPayService");
+const {
+  CUSTOMER_PROVIDER_WECHAT_MINIAPP,
+  createSocialAuthService
+} = require("../services/socialAuthService");
 const { createInMemoryDb } = require("../store/inMemoryDb");
 const { createPostgresDb } = require("../store/postgresDb");
 const { createTenantRepository } = require("../store/tenantRepository");
@@ -108,27 +112,6 @@ function ensureRole(auth, allowedRoles) {
   if (!allowedRoles.includes(auth.role)) {
     throw new Error("permission denied");
   }
-}
-
-function normalizeRole(inputRole) {
-  const allowed = ["CUSTOMER", "CLERK", "MANAGER", "OWNER"];
-  if (allowed.includes(inputRole)) {
-    return inputRole;
-  }
-  return "CUSTOMER";
-}
-
-function operatorForRole(role) {
-  if (role === "OWNER") {
-    return "staff_owner";
-  }
-  if (role === "MANAGER") {
-    return "staff_manager";
-  }
-  if (role === "CLERK") {
-    return "staff_clerk";
-  }
-  return undefined;
 }
 
 function resolveAuditAction(method, pathname) {
@@ -388,6 +371,16 @@ function buildMerchantSnapshotSummary(db, merchantId) {
   );
   const auditLogs = (db.auditLogs || []).filter((item) => item.merchantId === merchantId);
   const merchant = db.merchants && db.merchants[merchantId];
+  const customerAuthBindings =
+    (db.socialAuth &&
+      db.socialAuth.customerBindingsByMerchant &&
+      db.socialAuth.customerBindingsByMerchant[merchantId]) ||
+    {};
+  const customerPhoneBindings =
+    (db.socialAuth &&
+      db.socialAuth.customerPhoneBindingsByMerchant &&
+      db.socialAuth.customerPhoneBindingsByMerchant[merchantId]) ||
+    {};
 
   const walletChecksum = JSON.stringify(
     Object.entries(users)
@@ -410,6 +403,8 @@ function buildMerchantSnapshotSummary(db, merchantId) {
     ledgerCount: ledger.length,
     auditCount: auditLogs.length,
     budgetUsed: merchant ? Number(merchant.budgetUsed || 0) : 0,
+    customerAuthBindingCount: Object.keys(customerAuthBindings).length,
+    customerPhoneBindingCount: Object.keys(customerPhoneBindings).length,
     walletChecksum
   };
 }
@@ -745,6 +740,146 @@ function verifyPhoneCode(db, { phone, code }) {
   };
 }
 
+function ensureSocialAuthContainers(db) {
+  if (!db.socialAuth || typeof db.socialAuth !== "object") {
+    db.socialAuth = {};
+  }
+  if (
+    !db.socialAuth.customerBindingsByMerchant ||
+    typeof db.socialAuth.customerBindingsByMerchant !== "object"
+  ) {
+    db.socialAuth.customerBindingsByMerchant = {};
+  }
+  if (
+    !db.socialAuth.customerPhoneBindingsByMerchant ||
+    typeof db.socialAuth.customerPhoneBindingsByMerchant !== "object"
+  ) {
+    db.socialAuth.customerPhoneBindingsByMerchant = {};
+  }
+}
+
+function buildIdentityKey(provider, subject) {
+  return `${String(provider || "").trim().toUpperCase()}:${String(subject || "").trim()}`;
+}
+
+function buildPhoneIdentityKey(phone) {
+  return buildIdentityKey("PHONE", sanitizePhone(phone));
+}
+
+function buildPhoneCustomerId(phone) {
+  const digest = crypto
+    .createHash("sha1")
+    .update(`PHONE:${phone}`)
+    .digest("hex")
+    .slice(0, 12);
+  return `u_${digest}`;
+}
+
+function createCustomerProfile({ uid, displayName }) {
+  return {
+    uid,
+    displayName: displayName || "MealQuest User",
+    wallet: {
+      principal: 0,
+      bonus: 0,
+      silver: 0
+    },
+    tags: ["NEW_USER"],
+    fragments: {
+      spicy: 0,
+      noodle: 0
+    },
+    vouchers: []
+  };
+}
+
+function bindCustomerPhoneIdentity(db, {
+  merchantId,
+  provider,
+  subject,
+  unionId = null,
+  displayName = "",
+  phone = ""
+}) {
+  ensureMerchantContainers(db, merchantId);
+  ensureSocialAuthContainers(db);
+  if (!db.socialAuth.customerBindingsByMerchant[merchantId]) {
+    db.socialAuth.customerBindingsByMerchant[merchantId] = {};
+  }
+  if (!db.socialAuth.customerPhoneBindingsByMerchant[merchantId]) {
+    db.socialAuth.customerPhoneBindingsByMerchant[merchantId] = {};
+  }
+
+  const nowIso = new Date().toISOString();
+  const identityKey = buildIdentityKey(provider, subject);
+  const merchantBindings = db.socialAuth.customerBindingsByMerchant[merchantId];
+  const phoneBindings = db.socialAuth.customerPhoneBindingsByMerchant[merchantId];
+  const existingBinding = merchantBindings[identityKey] || null;
+  const resolvedPhone = String(phone || "").trim();
+  if (!resolvedPhone) {
+    const phoneRequiredError = new Error("phone is required for customer login");
+    phoneRequiredError.statusCode = 400;
+    throw phoneRequiredError;
+  }
+  const normalizedPhone = sanitizePhone(resolvedPhone);
+  const phoneKey = buildPhoneIdentityKey(normalizedPhone);
+  const existingPhoneBinding = phoneBindings[phoneKey] || null;
+  const existingUserId =
+    existingBinding && existingBinding.userId && db.merchantUsers[merchantId][existingBinding.userId]
+      ? existingBinding.userId
+      : null;
+  const existingPhoneUserId =
+    existingPhoneBinding &&
+    existingPhoneBinding.userId &&
+    db.merchantUsers[merchantId][existingPhoneBinding.userId]
+      ? existingPhoneBinding.userId
+      : null;
+
+  if (existingUserId && existingPhoneUserId && existingUserId !== existingPhoneUserId) {
+    const conflictError = new Error("phone already bound to another user");
+    conflictError.statusCode = 409;
+    throw conflictError;
+  }
+
+  const userId = existingUserId || existingPhoneUserId || buildPhoneCustomerId(normalizedPhone);
+  const wasCreated = !db.merchantUsers[merchantId][userId];
+  if (!db.merchantUsers[merchantId][userId]) {
+    db.merchantUsers[merchantId][userId] = createCustomerProfile({
+      uid: userId,
+      displayName: String(displayName || "").trim() || "MealQuest User"
+    });
+  }
+  if (displayName) {
+    db.merchantUsers[merchantId][userId].displayName = String(displayName).trim();
+  }
+
+  merchantBindings[identityKey] = {
+    userId,
+    provider,
+    subject,
+    unionId: unionId || null,
+    phone: normalizedPhone,
+    linkedAt: existingBinding && existingBinding.linkedAt ? existingBinding.linkedAt : nowIso,
+    lastLoginAt: nowIso
+  };
+  phoneBindings[phoneKey] = {
+    userId,
+    phone: normalizedPhone,
+    linkedAt:
+      existingPhoneBinding && existingPhoneBinding.linkedAt
+        ? existingPhoneBinding.linkedAt
+        : nowIso,
+    lastLoginAt: nowIso
+  };
+  db.save();
+
+  return {
+    userId,
+    created: wasCreated,
+    phone: normalizedPhone
+  };
+}
+
 function buildContractApplication(payload = {}, now = new Date()) {
   const companyName = sanitizeMerchantName(payload.companyName || payload.company);
   const licenseNo = String(payload.licenseNo || payload.businessLicenseNo || "").trim();
@@ -842,6 +977,19 @@ function copyMerchantSlice({ sourceDb, targetDb, merchantId }) {
   }
   targetDb.merchantDailySubsidyUsage[merchantId] = jsonClone(
     (sourceDb.merchantDailySubsidyUsage && sourceDb.merchantDailySubsidyUsage[merchantId]) || {}
+  );
+
+  ensureSocialAuthContainers(targetDb);
+  ensureSocialAuthContainers(sourceDb);
+  targetDb.socialAuth.customerBindingsByMerchant[merchantId] = jsonClone(
+    (sourceDb.socialAuth.customerBindingsByMerchant &&
+      sourceDb.socialAuth.customerBindingsByMerchant[merchantId]) ||
+      {}
+  );
+  targetDb.socialAuth.customerPhoneBindingsByMerchant[merchantId] = jsonClone(
+    (sourceDb.socialAuth.customerPhoneBindingsByMerchant &&
+      sourceDb.socialAuth.customerPhoneBindingsByMerchant[merchantId]) ||
+      {}
   );
 
   targetDb.ledger = upsertMerchantRows(
@@ -1098,7 +1246,9 @@ function createAppServer({
   paymentCallbackSecret =
     process.env.MQ_PAYMENT_CALLBACK_SECRET || "mealquest-payment-callback-secret",
   onboardSecret = process.env.MQ_ONBOARD_SECRET || "",
-  paymentProvider = null
+  paymentProvider = null,
+  socialAuthService = null,
+  socialAuthOptions = {}
 } = {}) {
   const actualDb = db || createInMemoryDb();
   if (typeof actualDb.save !== "function") {
@@ -1151,6 +1301,12 @@ function createAppServer({
   });
   actualDb.save();
   const serviceCache = new WeakMap();
+  const activeSocialAuthService =
+    socialAuthService ||
+    createSocialAuthService({
+      timeoutMs: socialAuthOptions.timeoutMs,
+      providers: socialAuthOptions.providers
+    });
   const getServicesForDb = (scopedDb) => {
     let services = serviceCache.get(scopedDb);
     if (!services) {
@@ -1269,6 +1425,61 @@ function createAppServer({
         return;
       }
 
+      if (method === "POST" && url.pathname === "/api/auth/customer/wechat-login") {
+        const body = await readJsonBody(req);
+        const merchantIdInput = body.merchantId || body.storeId;
+        if (!merchantIdInput) {
+          sendJson(res, 400, { error: "merchantId is required" });
+          return;
+        }
+        const merchantId = sanitizeMerchantId(merchantIdInput);
+        if (!tenantRepository.getMerchant(merchantId)) {
+          sendJson(res, 404, { error: "merchant not found" });
+          return;
+        }
+        const identity = await activeSocialAuthService.verifyWeChatMiniAppCode(body.code);
+        if (
+          !identity ||
+          identity.provider !== CUSTOMER_PROVIDER_WECHAT_MINIAPP ||
+          !identity.subject
+        ) {
+          sendJson(res, 401, { error: "invalid wechat identity" });
+          return;
+        }
+
+        const scopedDb = tenantRouter.getDbForMerchant(merchantId);
+        const providerPhone =
+          identity && typeof identity.phone === "string" ? String(identity.phone).trim() : "";
+        const binding = bindCustomerPhoneIdentity(scopedDb, {
+          merchantId,
+          provider: identity.provider,
+          subject: identity.subject,
+          unionId: identity.unionId || null,
+          displayName: body.displayName || "",
+          phone: String(body.phone || "").trim() || providerPhone
+        });
+        const token = issueToken(
+          {
+            role: "CUSTOMER",
+            merchantId,
+            userId: binding.userId,
+            phone: binding.phone
+          },
+          jwtSecret
+        );
+        sendJson(res, 200, {
+          token,
+          profile: {
+            role: "CUSTOMER",
+            merchantId,
+            userId: binding.userId,
+            phone: binding.phone
+          },
+          isNewUser: binding.created
+        });
+        return;
+      }
+
       if (method === "GET" && url.pathname === "/api/merchant/catalog") {
         const merchants = Object.values(actualDb.merchants || {})
           .map((merchant) => ({
@@ -1314,43 +1525,6 @@ function createAppServer({
           }
           throw error;
         }
-      }
-
-      if (method === "POST" && url.pathname === "/api/auth/mock-login") {
-        const body = await readJsonBody(req);
-        const role = normalizeRole(body.role);
-        const merchantId = body.merchantId || "m_store_001";
-        const userId = body.userId || "u_demo";
-
-        if (!tenantRepository.getMerchant(merchantId)) {
-          sendJson(res, 404, { error: "merchant not found" });
-          return;
-        }
-        if (role === "CUSTOMER" && !tenantRepository.getMerchantUser(merchantId, userId)) {
-          sendJson(res, 404, { error: "user not found" });
-          return;
-        }
-
-        const token = issueToken(
-          {
-            role,
-            merchantId,
-            userId: role === "CUSTOMER" ? userId : undefined,
-            operatorId: operatorForRole(role)
-          },
-          jwtSecret
-        );
-
-        sendJson(res, 200, {
-          token,
-          profile: {
-            role,
-            merchantId,
-            userId: role === "CUSTOMER" ? userId : undefined,
-            operatorId: operatorForRole(role)
-          }
-        });
-        return;
       }
 
       if (method === "POST" && url.pathname === "/api/payment/callback") {
@@ -3021,12 +3195,17 @@ function createAppServer({
     } catch (error) {
       metrics.errorsTotal += 1;
       const message = error.message || "Request failed";
+      const explicitStatusCode = Number(error && error.statusCode);
       const statusCode =
-        message === "permission denied" || message.includes("scope denied")
-          ? 403
-          : message.includes("Authorization")
-            ? 401
-            : 400;
+        Number.isFinite(explicitStatusCode) &&
+          explicitStatusCode >= 400 &&
+          explicitStatusCode <= 599
+          ? explicitStatusCode
+          : message === "permission denied" || message.includes("scope denied")
+            ? 403
+            : message.includes("Authorization")
+              ? 401
+              : 400;
       if (auditAction && auth && auth.merchantId) {
         appendAuditLog({
           merchantId: auth.merchantId,
@@ -3159,6 +3338,14 @@ function createAppServer({
 async function createAppServerAsync(options = {}) {
   const runtimeEnv = resolveServerRuntimeEnv(process.env);
   const inputPostgresOptions = options.postgresOptions || {};
+  const socialAuthOptions = {
+    timeoutMs:
+      (options.socialAuthOptions && options.socialAuthOptions.timeoutMs) ||
+      runtimeEnv.authHttpTimeoutMs,
+    providers:
+      (options.socialAuthOptions && options.socialAuthOptions.providers) ||
+      runtimeEnv.authProviders
+  };
 
   const postgresOptions = {
     connectionString:
@@ -3224,6 +3411,7 @@ async function createAppServerAsync(options = {}) {
     ...options,
     db: rootDb,
     postgresOptions,
+    socialAuthOptions,
     tenantDbMap: {
       ...persistedTenantDbMap,
       ...(options.tenantDbMap || {}),
@@ -3246,6 +3434,10 @@ if (require.main === module) {
     jwtSecret: runtimeEnv.jwtSecret,
     paymentCallbackSecret: runtimeEnv.paymentCallbackSecret,
     onboardSecret: runtimeEnv.onboardSecret,
+    socialAuthOptions: {
+      timeoutMs: runtimeEnv.authHttpTimeoutMs,
+      providers: runtimeEnv.authProviders
+    }
   })
     .then((app) => app.start(runtimeEnv.port, runtimeEnv.host))
     .then((startedPort) => {

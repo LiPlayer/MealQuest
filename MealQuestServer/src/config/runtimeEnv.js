@@ -63,6 +63,9 @@ function resolveServerRuntimeEnv(env = process.env) {
   const dbPoolMax = parsePositiveInt(env.MQ_DB_POOL_MAX, 5);
   const dbAutoCreate = parseBoolean(env.MQ_DB_AUTO_CREATE, true);
   const dbAdminUrl = asString(env.MQ_DB_ADMIN_URL);
+  const authHttpTimeoutMs = parsePositiveInt(env.MQ_AUTH_HTTP_TIMEOUT_MS, 10000);
+  const authWeChatMiniAppId = asString(env.MQ_AUTH_WECHAT_MINI_APP_ID);
+  const authWeChatMiniAppSecret = asString(env.MQ_AUTH_WECHAT_MINI_APP_SECRET);
 
   const errors = [];
   if (isProduction && !jwtSecret) {
@@ -73,6 +76,12 @@ function resolveServerRuntimeEnv(env = process.env) {
   }
   if (!dbUrl) {
     errors.push("MQ_DB_URL is required");
+  }
+  const hasCustomerAuth = Boolean(authWeChatMiniAppId && authWeChatMiniAppSecret);
+  if (isProduction && !hasCustomerAuth) {
+    errors.push(
+      "MQ_AUTH_WECHAT_MINI_APP_ID and MQ_AUTH_WECHAT_MINI_APP_SECRET are required in production"
+    );
   }
   if (errors.length > 0) {
     throw new Error(`Invalid server env: ${errors.join("; ")}`);
@@ -93,6 +102,13 @@ function resolveServerRuntimeEnv(env = process.env) {
     dbPoolMax,
     dbAutoCreate,
     dbAdminUrl,
+    authHttpTimeoutMs,
+    authProviders: {
+      wechatMini: {
+        appId: authWeChatMiniAppId,
+        appSecret: authWeChatMiniAppSecret
+      }
+    }
   };
 }
 

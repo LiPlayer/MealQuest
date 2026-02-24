@@ -1,5 +1,6 @@
 const assert = require("node:assert/strict");
 const { createAppServer } = require("../src/http/server");
+const { issueToken } = require("../src/core/auth");
 
 function parseArgs(argv) {
   const args = {
@@ -96,17 +97,39 @@ async function waitForWebSocketMessage(ws, timeoutMs = 3000) {
   });
 }
 
-async function login(baseUrl, role, merchantId = "m_store_001", userId = "u_demo") {
-  const payload = {
-    role,
-    merchantId
-  };
-  if (role === "CUSTOMER") {
-    payload.userId = userId;
+function operatorIdForRole(role) {
+  if (role === "OWNER") {
+    return "staff_owner";
   }
-  const result = await postJson(baseUrl, "/api/auth/mock-login", payload);
-  expectStatus(result, 200, `mock login ${role}`);
-  return result.data.token;
+  if (role === "MANAGER") {
+    return "staff_manager";
+  }
+  if (role === "CLERK") {
+    return "staff_clerk";
+  }
+  return undefined;
+}
+
+async function login(baseUrl, role, merchantId = "m_store_001", userId = "u_demo", options = {}) {
+  const envToken = process.env[`MQ_SMOKE_TOKEN_${String(role || "").toUpperCase()}`];
+  if (envToken) {
+    return envToken;
+  }
+
+  const secret =
+    options.jwtSecret ||
+    process.env.MQ_SMOKE_JWT_SECRET ||
+    process.env.MQ_JWT_SECRET ||
+    "mealquest-dev-secret";
+  return issueToken(
+    {
+      role,
+      merchantId,
+      userId: role === "CUSTOMER" ? userId : undefined,
+      operatorId: operatorIdForRole(role)
+    },
+    secret
+  );
 }
 
 async function runSmoke(baseUrl, options = {}) {

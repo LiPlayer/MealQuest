@@ -174,6 +174,10 @@ function createDefaultState(now = new Date()) {
     },
     socialTransferLogs: [],
     phoneLoginCodes: {},
+    socialAuth: {
+      customerBindingsByMerchant: {},
+      customerPhoneBindingsByMerchant: {}
+    },
     contractApplications: {},
     tenantPolicies: {},
     tenantMigrations: {},
@@ -307,6 +311,21 @@ function migrateLegacyShape(state) {
   if (!next.phoneLoginCodes || typeof next.phoneLoginCodes !== "object") {
     next.phoneLoginCodes = {};
   }
+  if (!next.socialAuth || typeof next.socialAuth !== "object") {
+    next.socialAuth = {};
+  }
+  if (
+    !next.socialAuth.customerBindingsByMerchant ||
+    typeof next.socialAuth.customerBindingsByMerchant !== "object"
+  ) {
+    next.socialAuth.customerBindingsByMerchant = {};
+  }
+  if (
+    !next.socialAuth.customerPhoneBindingsByMerchant ||
+    typeof next.socialAuth.customerPhoneBindingsByMerchant !== "object"
+  ) {
+    next.socialAuth.customerPhoneBindingsByMerchant = {};
+  }
   if (!next.contractApplications || typeof next.contractApplications !== "object") {
     next.contractApplications = {};
   }
@@ -411,6 +430,16 @@ function normalizeState(initialState = null) {
       ...defaults.phoneLoginCodes,
       ...(migrated.phoneLoginCodes || {})
     },
+    socialAuth: {
+      customerBindingsByMerchant: {
+        ...defaults.socialAuth.customerBindingsByMerchant,
+        ...((migrated.socialAuth && migrated.socialAuth.customerBindingsByMerchant) || {})
+      },
+      customerPhoneBindingsByMerchant: {
+        ...defaults.socialAuth.customerPhoneBindingsByMerchant,
+        ...((migrated.socialAuth && migrated.socialAuth.customerPhoneBindingsByMerchant) || {})
+      }
+    },
     contractApplications: {
       ...defaults.contractApplications,
       ...(migrated.contractApplications || {})
@@ -458,6 +487,7 @@ function createInMemoryDb(initialState = null) {
       merchantDailySubsidyUsage: db.merchantDailySubsidyUsage,
       socialTransferLogs: db.socialTransferLogs,
       phoneLoginCodes: db.phoneLoginCodes,
+      socialAuth: db.socialAuth,
       contractApplications: db.contractApplications,
       tenantPolicies: db.tenantPolicies,
       tenantMigrations: db.tenantMigrations,

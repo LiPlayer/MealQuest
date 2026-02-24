@@ -3,7 +3,10 @@ const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
 
 const { createAppServer } = require("../src/http/server");
+const { issueToken } = require("../src/core/auth");
 const { createInMemoryDb } = require("../src/store/inMemoryDb");
+
+const TEST_JWT_SECRET = process.env.MQ_JWT_SECRET || "mealquest-dev-secret";
 
 async function postJson(baseUrl, targetPath, body, headers = {}) {
   const res = await fetch(`${baseUrl}${targetPath}`, {
@@ -28,13 +31,52 @@ async function getJson(baseUrl, targetPath, headers = {}) {
   };
 }
 
-async function mockLogin(baseUrl, role, options = {}) {
-  const login = await postJson(baseUrl, "/api/auth/mock-login", {
-    role,
-    ...options
-  });
-  assert.equal(login.status, 200);
-  return login.data.token;
+function operatorIdForRole(role) {
+  if (role === "OWNER") {
+    return "staff_owner";
+  }
+  if (role === "MANAGER") {
+    return "staff_manager";
+  }
+  if (role === "CLERK") {
+    return "staff_clerk";
+  }
+  return undefined;
+}
+
+async function mockLogin(_baseUrl, role, options = {}) {
+  const merchantId = options.merchantId || "m_store_001";
+  const userId = options.userId || "u_demo";
+  return issueToken(
+    {
+      role,
+      merchantId,
+      userId: role === "CUSTOMER" ? userId : undefined,
+      operatorId: operatorIdForRole(role)
+    },
+    TEST_JWT_SECRET
+  );
+}
+
+function createFakeSocialAuthService() {
+  return {
+    verifyWeChatMiniAppCode: async (code) => ({
+      provider: "WECHAT_MINIAPP",
+      subject: `wxmini_${String(code || "")}`,
+      unionId: null,
+      phone: "+8613900000001"
+    })
+  };
+}
+
+function createFakeSocialAuthServiceWithoutPhone() {
+  return {
+    verifyWeChatMiniAppCode: async (code) => ({
+      provider: "WECHAT_MINIAPP",
+      subject: `wxmini_${String(code || "")}`,
+      unionId: null
+    })
+  };
 }
 
 function waitForWebSocketOpen(ws, timeoutMs = 2000) {
@@ -287,6 +329,130 @@ test("protected endpoint rejects missing token", async () => {
     });
     assert.equal(res.status, 401);
     assert.equal(res.data.error, "Authorization Bearer token is required");
+  } finally {
+    await app.stop();
+  }
+});
+
+test("customer wechat login binds phone as primary identity", async () => {
+  const app = createAppServer({
+    persist: false,
+    socialAuthService: createFakeSocialAuthService()
+  });
+  const port = await app.start(0);
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const firstLogin = await postJson(baseUrl, "/api/auth/customer/wechat-login", {
+      merchantId: "m_store_001",
+      code: "mini_code_1"
+    });
+    assert.equal(firstLogin.status, 200);
+    assert.equal(firstLogin.data.profile.role, "CUSTOMER");
+    assert.equal(firstLogin.data.profile.merchantId, "m_store_001");
+    assert.ok(firstLogin.data.profile.userId);
+    assert.equal(firstLogin.data.profile.phone, "+8613900000001");
+    assert.equal(firstLogin.data.isNewUser, true);
+
+    const secondLogin = await postJson(baseUrl, "/api/auth/customer/wechat-login", {
+      merchantId: "m_store_001",
+      code: "mini_code_2"
+    });
+    assert.equal(secondLogin.status, 200);
+    assert.equal(secondLogin.data.profile.userId, firstLogin.data.profile.userId);
+    assert.equal(secondLogin.data.profile.phone, firstLogin.data.profile.phone);
+    assert.equal(secondLogin.data.isNewUser, false);
+
+    const state = await getJson(
+      baseUrl,
+      `/api/state?merchantId=m_store_001&userId=${encodeURIComponent(firstLogin.data.profile.userId)}`,
+      { Authorization: `Bearer ${firstLogin.data.token}` }
+    );
+    assert.equal(state.status, 200);
+    assert.equal(state.data.user.uid, firstLogin.data.profile.userId);
+  } finally {
+    await app.stop();
+  }
+});
+
+test("customer wechat login is rejected when provider phone is missing", async () => {
+  const app = createAppServer({
+    persist: false,
+    socialAuthService: createFakeSocialAuthServiceWithoutPhone()
+  });
+  const port = await app.start(0);
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const login = await postJson(baseUrl, "/api/auth/customer/wechat-login", {
+      merchantId: "m_store_001",
+      code: "mini_code_without_phone"
+    });
+    assert.equal(login.status, 400);
+    assert.equal(login.data.error, "phone is required for customer login");
+  } finally {
+    await app.stop();
+  }
+});
+
+test("merchant phone login issues owner token and enforces merchant scope", async () => {
+  const app = createAppServer({ persist: false });
+  const port = await app.start(0);
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const requestCode = await postJson(baseUrl, "/api/auth/merchant/request-code", {
+      phone: "+8613900000000"
+    });
+    assert.equal(requestCode.status, 200);
+
+    const login = await postJson(baseUrl, "/api/auth/merchant/phone-login", {
+      phone: "+8613900000000",
+      code: requestCode.data.debugCode,
+      merchantId: "m_store_001",
+    });
+    assert.equal(login.status, 200);
+    assert.equal(login.data.profile.role, "OWNER");
+    assert.equal(login.data.profile.merchantId, "m_store_001");
+    assert.equal(login.data.profile.phone, "+8613900000000");
+
+    const dashboard = await getJson(
+      baseUrl,
+      "/api/merchant/dashboard?merchantId=m_store_001",
+      { Authorization: `Bearer ${login.data.token}` }
+    );
+    assert.equal(dashboard.status, 200);
+
+    const deniedCrossMerchant = await getJson(
+      baseUrl,
+      "/api/merchant/dashboard?merchantId=m_bistro",
+      { Authorization: `Bearer ${login.data.token}` }
+    );
+    assert.equal(deniedCrossMerchant.status, 403);
+    assert.equal(deniedCrossMerchant.data.error, "merchant scope denied");
+
+    const requestCodeUnknownMerchant = await postJson(baseUrl, "/api/auth/merchant/request-code", {
+      phone: "+8613900000000",
+    });
+    assert.equal(requestCodeUnknownMerchant.status, 200);
+    const unknownMerchant = await postJson(baseUrl, "/api/auth/merchant/phone-login", {
+      phone: "+8613900000000",
+      code: requestCodeUnknownMerchant.data.debugCode,
+      merchantId: "m_not_exists"
+    });
+    assert.equal(unknownMerchant.status, 404);
+    assert.equal(unknownMerchant.data.error, "merchant not found");
+
+    const requestCodeNoScope = await postJson(baseUrl, "/api/auth/merchant/request-code", {
+      phone: "+8613900000000"
+    });
+    assert.equal(requestCodeNoScope.status, 200);
+    const unscopedLogin = await postJson(baseUrl, "/api/auth/merchant/phone-login", {
+      phone: "+8613900000000",
+      code: requestCodeNoScope.data.debugCode
+    });
+    assert.equal(unscopedLogin.status, 200);
+    assert.equal(unscopedLogin.data.profile.merchantId, null);
   } finally {
     await app.stop();
   }
@@ -1491,13 +1657,13 @@ test("customer can cancel account and keep transactional records anonymized", as
       "DELETED_m_store_001_u_demo"
     );
 
-    const loginAfterCancel = await postJson(baseUrl, "/api/auth/mock-login", {
-      role: "CUSTOMER",
-      merchantId: "m_store_001",
-      userId: "u_demo"
-    });
-    assert.equal(loginAfterCancel.status, 404);
-    assert.equal(loginAfterCancel.data.error, "user not found");
+    const stateAfterCancel = await getJson(
+      baseUrl,
+      "/api/state?merchantId=m_store_001&userId=u_demo",
+      { Authorization: `Bearer ${customerToken}` }
+    );
+    assert.equal(stateAfterCancel.status, 404);
+    assert.equal(stateAfterCancel.data.error, "merchant or user not found");
 
     const payment = app.db.paymentsByMerchant.m_store_001[verify.data.paymentTxnId];
     assert.equal(payment.userId, "DELETED_m_store_001_u_demo");

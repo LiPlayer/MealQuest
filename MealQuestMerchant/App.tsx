@@ -113,10 +113,10 @@ function SectionCard({
   );
 }
 
-function MerchantConsoleApp() {
+function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
   const [merchantState, setMerchantState] = useState(createInitialMerchantState);
   const [lastAction, setLastAction] = useState('正在连接...');
-  const [remoteToken, setRemoteToken] = useState<string | null>(null);
+  const remoteToken = initialToken || null;
 
   const [realtimeEvents, setRealtimeEvents] = useState<RealtimeEventRow[]>([]);
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
@@ -248,7 +248,7 @@ function MerchantConsoleApp() {
     let active = true;
     let realtimeClient: { close: () => void } | null = null;
 
-    if (!MerchantApi.isConfigured()) {
+    if (!MerchantApi.isConfigured() || !remoteToken) {
       return () => {
         active = false;
         realtimeClient?.close();
@@ -257,15 +257,10 @@ function MerchantConsoleApp() {
 
     const bootstrapRemote = async () => {
       try {
-        const token = await MerchantApi.loginAsMerchant();
-        if (!active) {
-          return;
-        }
-        setRemoteToken(token);
         setLastAction('已连接服务端驾驶舱');
-        await refreshRemoteState(token);
+        await refreshRemoteState(remoteToken);
 
-        const wsUrl = MerchantApi.getWsUrl(token);
+        const wsUrl = MerchantApi.getWsUrl(remoteToken);
         if (wsUrl) {
           realtimeClient = createRealtimeClient({
             wsUrl,
@@ -275,7 +270,7 @@ function MerchantConsoleApp() {
               }
               appendRealtimeEvent(buildRealtimeEventRow(message));
               setLastAction(`实时事件：${message.type}`);
-              refreshRemoteState(token).catch(() => { });
+              refreshRemoteState(remoteToken).catch(() => { });
             },
             onError: () => {
               if (!active) {
@@ -301,8 +296,7 @@ function MerchantConsoleApp() {
         if (!active) {
           return;
         }
-        setRemoteToken(null);
-        setLastAction('远程模式连接失败，已切回本地模式');
+        setLastAction('远程会话失效，请重新登录');
       }
     };
 
@@ -1219,13 +1213,17 @@ function buildMerchantIdFromName(name: string): string {
   return `m_store_${Date.now().toString(36).slice(-6)}`;
 }
 
-function MerchantEntryFlow({ onComplete }: { onComplete: (merchantId: string) => void }) {
+function MerchantEntryFlow({
+  onComplete,
+}: {
+  onComplete: (payload: { merchantId: string; token: string }) => void;
+}) {
   const [step, setStep] = useState<MerchantEntryStep>('PHONE_LOGIN');
-  const [phone, setPhone] = useState('+8613800000000');
-  const [code, setCode] = useState('');
+  const [contactPhone, setContactPhone] = useState('+8613800000000');
+  const [phoneCode, setPhoneCode] = useState('');
   const [merchantId, setMerchantId] = useState('');
-  const [merchantName, setMerchantName] = useState('我的第一家店');
-  const [companyName, setCompanyName] = useState('我的餐饮有限公司');
+  const [merchantName, setMerchantName] = useState('My First Store');
+  const [companyName, setCompanyName] = useState('My Catering Company');
   const [licenseNo, setLicenseNo] = useState('91310000MA1TEST001');
   const [settlementAccount, setSettlementAccount] = useState('6222020202020202');
   const [loading, setLoading] = useState(false);
@@ -1237,32 +1235,55 @@ function MerchantEntryFlow({ onComplete }: { onComplete: (merchantId: string) =>
     [merchantName],
   );
 
-  const onRequestCode = async () => {
+  const onRequestPhoneCode = async () => {
     setError('');
+    setHint('');
+    if (!contactPhone.trim()) {
+      setError('Please input phone number');
+      return;
+    }
     setLoading(true);
     try {
-      const result = await MerchantApi.requestMerchantLoginCode(phone);
+      const result = await MerchantApi.requestMerchantLoginCode(contactPhone.trim());
       setHint(
         result.debugCode
-          ? `验证码已发送（测试验证码 ${result.debugCode}）`
-          : '验证码已发送，请查看短信',
+          ? `Code sent (debug: ${result.debugCode})`
+          : 'Code sent, please check SMS',
       );
     } catch (err: any) {
-      setError(err?.message || '验证码发送失败');
+      setError(err?.message || 'Failed to request code');
     } finally {
       setLoading(false);
     }
   };
 
-  const onVerifyPhone = async () => {
+  const onVerifyPhoneLogin = async () => {
     setError('');
+    setHint('');
+    if (!contactPhone.trim()) {
+      setError('Phone is required');
+      return;
+    }
+    if (!phoneCode.trim()) {
+      setError('Phone verification code is required');
+      return;
+    }
     setLoading(true);
     try {
-      const result = await MerchantApi.loginByPhone({ phone, code });
+      const result = await MerchantApi.loginByPhone({
+        phone: contactPhone.trim(),
+        code: phoneCode.trim(),
+        merchantId: merchantId || undefined,
+      });
       setToken(result.token);
+      if (result.profile.merchantId) {
+        MerchantApi.setMerchantId(result.profile.merchantId);
+        setMerchantId(result.profile.merchantId);
+      }
       setStep('GUIDE');
+      setHint('Phone login verified');
     } catch (err: any) {
-      setError(err?.message || '手机号登录失败');
+      setError(err?.message || 'Phone login failed');
     } finally {
       setLoading(false);
     }
@@ -1286,9 +1307,10 @@ function MerchantEntryFlow({ onComplete }: { onComplete: (merchantId: string) =>
       const nextMerchantId = result.merchant.merchantId;
       MerchantApi.setMerchantId(nextMerchantId);
       setMerchantId(nextMerchantId);
+      setHint(`Store created: ${nextMerchantId}`);
       setStep('CONTRACT');
     } catch (err: any) {
-      setError(err?.message || '开店失败');
+      setError(err?.message || 'Store onboarding failed');
     } finally {
       setLoading(false);
     }
@@ -1303,12 +1325,12 @@ function MerchantEntryFlow({ onComplete }: { onComplete: (merchantId: string) =>
         companyName,
         licenseNo,
         settlementAccount,
-        contactPhone: phone,
-        notes: '应用内自助提交流程',
+        contactPhone,
+        notes: 'submitted from merchant app entry flow',
       });
-      onComplete(merchantId);
+      onComplete({ merchantId, token });
     } catch (err: any) {
-      setError(err?.message || '特约商户入驻提交失败');
+      setError(err?.message || 'Contract apply failed');
     } finally {
       setLoading(false);
     }
@@ -1321,97 +1343,109 @@ function MerchantEntryFlow({ onComplete }: { onComplete: (merchantId: string) =>
         <ScrollView contentContainerStyle={styles.entryContainer}>
           <View style={styles.entryHero}>
             <Text style={styles.entryHeroKicker}>MealQuest Merchant</Text>
-            <Text style={styles.entryTitle}>老板开店引导</Text>
-            <Text style={styles.entrySubtitle}>手机号登录 - 引导 - 开店 - 特约入驻</Text>
+            <Text style={styles.entryTitle}>Merchant Onboarding</Text>
+            <Text style={styles.entrySubtitle}>Phone Login - Guide - Store Onboarding - Contract</Text>
           </View>
 
           {step === 'PHONE_LOGIN' && (
             <View style={styles.entryCard}>
-              <Text style={styles.entryCardTitle}>1. 手机号登录</Text>
+              <Text style={styles.entryCardTitle}>1. Phone Login</Text>
               <TextInput
-                value={phone}
-                onChangeText={setPhone}
-                placeholder="+8613800000000"
+                value={merchantId}
+                onChangeText={setMerchantId}
+                placeholder="Existing merchantId (optional)"
+                style={styles.entryInput}
+              />
+              <TextInput
+                value={contactPhone}
+                onChangeText={setContactPhone}
+                placeholder="Phone number"
                 style={styles.entryInput}
                 keyboardType="phone-pad"
               />
               <TextInput
-                value={code}
-                onChangeText={setCode}
-                placeholder="输入验证码"
+                value={phoneCode}
+                onChangeText={setPhoneCode}
+                placeholder="Phone verification code"
                 style={styles.entryInput}
                 keyboardType="number-pad"
               />
               <View style={styles.filterRow}>
-                <Pressable style={styles.secondaryButton} onPress={onRequestCode}>
-                  <Text style={styles.secondaryButtonText}>获取验证码</Text>
+                <Pressable style={styles.secondaryButton} onPress={onRequestPhoneCode}>
+                  <Text style={styles.secondaryButtonText}>Send Code</Text>
                 </Pressable>
-                <Pressable style={styles.primaryButton} onPress={onVerifyPhone}>
-                  <Text style={styles.primaryButtonText}>登录并继续</Text>
+                <Pressable style={styles.primaryButton} onPress={onVerifyPhoneLogin}>
+                  <Text style={styles.primaryButtonText}>Login and Continue</Text>
                 </Pressable>
               </View>
-              {hint ? <Text style={styles.entryHint}>{hint}</Text> : null}
             </View>
           )}
 
           {step === 'GUIDE' && (
             <View style={styles.entryCard}>
-              <Text style={styles.entryCardTitle}>2. 新手引导</Text>
-              <Text style={styles.dataLine}>• 收银台支持智能核销（券/赠金/本金）</Text>
-              <Text style={styles.dataLine}>• 营销策略库可按门店一键生成</Text>
-              <Text style={styles.dataLine}>• 审计日志可追溯高风险操作</Text>
+              <Text style={styles.entryCardTitle}>2. Quick Guide</Text>
+              <Text style={styles.dataLine}>- Smart verification supports voucher/bonus/principal.</Text>
+              <Text style={styles.dataLine}>- Strategy templates can generate campaigns quickly.</Text>
+              <Text style={styles.dataLine}>- Audit logs provide traceability for risky operations.</Text>
               <Pressable style={styles.primaryButton} onPress={() => setStep('OPEN_STORE')}>
-                <Text style={styles.primaryButtonText}>进入开店</Text>
+                <Text style={styles.primaryButtonText}>Continue</Text>
               </Pressable>
             </View>
           )}
 
           {step === 'OPEN_STORE' && (
             <View style={styles.entryCard}>
-              <Text style={styles.entryCardTitle}>3. 开店体验</Text>
-
+              <Text style={styles.entryCardTitle}>3. Open Store</Text>
               <TextInput
                 value={merchantName}
                 onChangeText={setMerchantName}
-                placeholder="门店名称"
+                placeholder="Store Name"
                 style={styles.entryInput}
               />
               <Text style={styles.mutedText}>Auto generated store ID: {suggestedMerchantId}</Text>
               <Pressable style={styles.primaryButton} onPress={onOpenStore}>
-                <Text style={styles.primaryButtonText}>创建门店</Text>
+                <Text style={styles.primaryButtonText}>Create Store</Text>
               </Pressable>
             </View>
           )}
 
           {step === 'CONTRACT' && (
             <View style={styles.entryCard}>
-              <Text style={styles.entryCardTitle}>4. 特约商户入驻</Text>
+              <Text style={styles.entryCardTitle}>4. Contract Apply</Text>
               <TextInput
                 value={companyName}
                 onChangeText={setCompanyName}
-                placeholder="企业名称"
+                placeholder="Company Name"
                 style={styles.entryInput}
               />
               <TextInput
                 value={licenseNo}
                 onChangeText={setLicenseNo}
-                placeholder="营业执照号"
+                placeholder="Business License Number"
                 style={styles.entryInput}
               />
               <TextInput
                 value={settlementAccount}
                 onChangeText={setSettlementAccount}
-                placeholder="结算账户"
+                placeholder="Settlement Account"
                 style={styles.entryInput}
               />
+              <TextInput
+                value={contactPhone}
+                onChangeText={setContactPhone}
+                placeholder="Contact Phone"
+                style={styles.entryInput}
+                keyboardType="phone-pad"
+              />
               <Pressable style={styles.primaryButton} onPress={onSubmitContract}>
-                <Text style={styles.primaryButtonText}>提交入驻并进入驾驶舱</Text>
+                <Text style={styles.primaryButtonText}>Submit and Enter Console</Text>
               </Pressable>
             </View>
           )}
 
+          {hint ? <Text style={styles.entryHint}>{hint}</Text> : null}
           {error ? <Text style={styles.entryError}>{error}</Text> : null}
-          {loading ? <Text style={styles.entryLoading}>处理中...</Text> : null}
+          {loading ? <Text style={styles.entryLoading}>Processing...</Text> : null}
         </ScrollView>
       </SafeAreaView>
     </SafeAreaProvider>
@@ -1420,6 +1454,7 @@ function MerchantEntryFlow({ onComplete }: { onComplete: (merchantId: string) =>
 
 const ENTRY_DONE_KEY = 'mq_merchant_entry_done';
 const ENTRY_MERCHANT_ID_KEY = 'mq_merchant_entry_merchant_id';
+const ENTRY_AUTH_TOKEN_KEY = 'mq_merchant_entry_auth_token';
 
 type SimpleStorage = {
   getItem: (key: string) => Promise<string | null>;
@@ -1439,19 +1474,21 @@ const getSimpleStorage = (): SimpleStorage | null => {
 const restoreEntryState = async () => {
   const storage = getSimpleStorage();
   if (!storage) {
-    return { done: false, merchantId: null as string | null };
+    return { done: false, merchantId: null as string | null, authToken: null as string | null };
   }
-  const [doneRaw, merchantId] = await Promise.all([
+  const [doneRaw, merchantId, authToken] = await Promise.all([
     storage.getItem(ENTRY_DONE_KEY),
     storage.getItem(ENTRY_MERCHANT_ID_KEY),
+    storage.getItem(ENTRY_AUTH_TOKEN_KEY),
   ]);
   return {
     done: doneRaw === '1',
     merchantId: merchantId ? String(merchantId) : null,
+    authToken: authToken ? String(authToken) : null,
   };
 };
 
-const persistEntryState = async (merchantId: string) => {
+const persistEntryState = async (merchantId: string, authToken: string) => {
   const storage = getSimpleStorage();
   if (!storage) {
     return;
@@ -1459,12 +1496,14 @@ const persistEntryState = async (merchantId: string) => {
   await Promise.all([
     storage.setItem(ENTRY_DONE_KEY, '1'),
     storage.setItem(ENTRY_MERCHANT_ID_KEY, merchantId),
+    storage.setItem(ENTRY_AUTH_TOKEN_KEY, authToken),
   ]);
 };
 
 export default function App() {
   const [entryBootstrapped, setEntryBootstrapped] = useState(false);
   const [ready, setReady] = useState(false);
+  const [authToken, setAuthToken] = useState('');
   const [merchantId, setMerchantId] = useState(
     typeof MerchantApi.getMerchantId === 'function'
       ? MerchantApi.getMerchantId()
@@ -1483,7 +1522,8 @@ export default function App() {
           MerchantApi.setMerchantId(state.merchantId);
           setMerchantId(state.merchantId);
         }
-        if (state.done && state.merchantId) {
+        if (state.done && state.merchantId && state.authToken) {
+          setAuthToken(state.authToken);
           setReady(true);
         }
       } catch {
@@ -1521,18 +1561,19 @@ export default function App() {
   if (!ready) {
     return (
       <MerchantEntryFlow
-        onComplete={nextMerchantId => {
+        onComplete={({ merchantId: nextMerchantId, token: nextToken }) => {
           if (typeof MerchantApi.setMerchantId === 'function') {
             MerchantApi.setMerchantId(nextMerchantId);
           }
           setMerchantId(nextMerchantId);
-          persistEntryState(nextMerchantId).catch(() => { });
+          setAuthToken(nextToken);
+          persistEntryState(nextMerchantId, nextToken).catch(() => { });
           setReady(true);
         }}
       />
     );
   }
-  return <MerchantConsoleApp key={`merchant-console-${merchantId}`} />;
+  return <MerchantConsoleApp key={`merchant-console-${merchantId}`} initialToken={authToken} />;
 }
 
 const styles = StyleSheet.create({
@@ -1953,4 +1994,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+
 

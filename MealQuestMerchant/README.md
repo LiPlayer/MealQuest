@@ -1,4 +1,4 @@
-﻿# MealQuestMerchant
+# MealQuestMerchant
 
 React Native merchant app (operations cockpit + cashier + strategy confirmation).
 
@@ -55,9 +55,10 @@ npm run android
 ## Integration Notes
 
 1. Cockpit mode calls backend APIs for strategy approval, fuse, and TCA operations.
-2. Realtime events come from `/ws`.
-3. Audit timeline is fetched from `/api/audit/logs` with filters and pagination.
-4. If backend is unavailable, UI shows connection status and degrades gracefully.
+2. Merchant login is exchanged by `/api/auth/merchant/phone-login`.
+3. Realtime events come from `/ws`.
+4. Audit timeline is fetched from `/api/audit/logs` with filters and pagination.
+5. If backend is unavailable, UI shows connection status and degrades gracefully.
 
 ## Test
 

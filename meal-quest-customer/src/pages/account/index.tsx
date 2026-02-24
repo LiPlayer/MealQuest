@@ -8,9 +8,8 @@ import { storage } from '@/utils/storage';
 
 import './index.scss';
 
-const DEFAULT_USER_ID = 'u_demo';
 const DEFAULT_STORE_ID =
-    (typeof process !== 'undefined' && process.env && process.env.TARO_APP_DEFAULT_STORE_ID) || 'store_a';
+    (typeof process !== 'undefined' && process.env && process.env.TARO_APP_DEFAULT_STORE_ID) || 'm_store_001';
 
 const toMoney = (value: number) => `¥${Number(value || 0).toFixed(2)}`;
 
@@ -21,20 +20,24 @@ export default function AccountPage() {
     const [loading, setLoading] = useState(true);
     const [cancelArmed, setCancelArmed] = useState(false);
     const [canceling, setCanceling] = useState(false);
+    const [customerUserId, setCustomerUserId] = useState('');
 
     const storeId = useMemo(() => storage.getLastStoreId() || DEFAULT_STORE_ID, []);
+    const getResolvedUserId = () => String(storage.getCustomerUserId() || '').trim();
 
     const loadData = useCallback(async () => {
         setLoading(true);
         try {
+            const userId = getResolvedUserId();
             const [nextSnapshot, nextLedger, nextInvoices] = await Promise.all([
-                DataService.getHomeSnapshot(storeId, DEFAULT_USER_ID),
-                DataService.getPaymentLedger(storeId, DEFAULT_USER_ID, 20),
-                DataService.getInvoices(storeId, DEFAULT_USER_ID, 20)
+                DataService.getHomeSnapshot(storeId, userId),
+                DataService.getPaymentLedger(storeId, userId, 20),
+                DataService.getInvoices(storeId, userId, 20)
             ]);
             setSnapshot(nextSnapshot);
             setLedger(nextLedger);
             setInvoices(nextInvoices);
+            setCustomerUserId(getResolvedUserId());
         } catch (error) {
             console.error('Account page load failed:', error);
             Taro.showToast({ title: '加载失败，请重试', icon: 'none' });
@@ -59,8 +62,9 @@ export default function AccountPage() {
 
         setCanceling(true);
         try {
-            await DataService.cancelAccount(storeId, DEFAULT_USER_ID);
-            storage.clearCustomerSession(storeId, DEFAULT_USER_ID);
+            const resolvedUserId = customerUserId || getResolvedUserId();
+            await DataService.cancelAccount(storeId, resolvedUserId);
+            storage.clearCustomerSession(storeId, resolvedUserId);
             Taro.showToast({ title: '账号已注销', icon: 'none' });
             Taro.reLaunch({ url: '/pages/startup/index' });
         } catch (error) {

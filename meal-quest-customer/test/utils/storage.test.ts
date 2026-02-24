@@ -61,6 +61,29 @@ describe('Storage Utils', () => {
         storage.clearCustomerSession('m_store_001', 'u_demo');
         expect(Taro.removeStorageSync).toHaveBeenCalledWith('mq_home_snapshot:m_store_001:u_demo');
         expect(Taro.setStorageSync).toHaveBeenCalledWith('mq_api_token', '');
+        expect(Taro.removeStorageSync).toHaveBeenCalledWith('mq_api_token_merchant_id');
+        expect(Taro.removeStorageSync).toHaveBeenCalledWith('mq_customer_user_id');
         expect(Taro.removeStorageSync).toHaveBeenCalledWith('mq_last_store_id');
+    });
+
+    it('should save and read customer user identity keys', () => {
+        storage.setCustomerUserId('u_abc');
+        expect(Taro.setStorageSync).toHaveBeenCalledWith('mq_customer_user_id', 'u_abc');
+
+        storage.setApiTokenMerchantId('m_store_001');
+        expect(Taro.setStorageSync).toHaveBeenCalledWith('mq_api_token_merchant_id', 'm_store_001');
+
+        (Taro.getStorageSync as jest.Mock).mockImplementation((key: string) => {
+            if (key === 'mq_customer_user_id') {
+                return 'u_abc';
+            }
+            if (key === 'mq_api_token_merchant_id') {
+                return 'm_store_001';
+            }
+            return '';
+        });
+
+        expect(storage.getCustomerUserId()).toBe('u_abc');
+        expect(storage.getApiTokenMerchantId()).toBe('m_store_001');
     });
 });

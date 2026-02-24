@@ -1,6 +1,5 @@
-import { DataService } from '@/services/DataService';
+﻿import { DataService } from '@/services/DataService';
 import { ApiDataService } from '@/services/ApiDataService';
-import { MockDataService } from '@/services/MockDataService';
 import { storage } from '@/utils/storage';
 
 jest.mock('@/services/ApiDataService', () => ({
@@ -15,70 +14,39 @@ jest.mock('@/services/ApiDataService', () => ({
     }
 }));
 
-jest.mock('@/services/MockDataService', () => ({
-    MockDataService: {
-        getHomeSnapshot: jest.fn(),
-        getCheckoutQuote: jest.fn(),
-        executeCheckout: jest.fn(),
-        getPaymentLedger: jest.fn(),
-        getInvoices: jest.fn(),
-        cancelAccount: jest.fn()
-    }
-}));
-
 jest.mock('@/utils/storage', () => ({
     storage: {
-        getUseRemoteApi: jest.fn(),
         setApiToken: jest.fn(),
-        getCachedHomeSnapshot: jest.fn()
+        setApiTokenMerchantId: jest.fn(),
+        setCustomerUserId: jest.fn()
     }
 }));
 
 const api = ApiDataService as jest.Mocked<typeof ApiDataService>;
-const mock = MockDataService as jest.Mocked<typeof MockDataService>;
 const storageMock = storage as jest.Mocked<typeof storage>;
 
-describe('DataService remote fallback', () => {
-    const envBackup = process.env.TARO_APP_USE_REMOTE_API;
+describe('DataService remote only', () => {
     let warnSpy: jest.SpyInstance;
 
     beforeEach(() => {
         jest.clearAllMocks();
         warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
-        delete process.env.TARO_APP_USE_REMOTE_API;
-        storageMock.getUseRemoteApi.mockReturnValue(false);
-        storageMock.getCachedHomeSnapshot.mockReturnValue(null);
-        api.isConfigured.mockReturnValue(false);
+        api.isConfigured.mockReturnValue(true);
     });
 
     afterEach(() => {
         warnSpy.mockRestore();
     });
 
-    afterAll(() => {
-        if (typeof envBackup === 'string') {
-            process.env.TARO_APP_USE_REMOTE_API = envBackup;
-        } else {
-            delete process.env.TARO_APP_USE_REMOTE_API;
-        }
+    it('throws when api base url is not configured', async () => {
+        api.isConfigured.mockReturnValue(false);
+
+        await expect(DataService.getHomeSnapshot('store_a', 'u_demo')).rejects.toThrow(
+            'Missing TARO_APP_SERVER_URL',
+        );
     });
 
-    it('uses mock service when remote mode is disabled', async () => {
-        const snapshot = { store: { id: 'store_a' } } as any;
-        mock.getHomeSnapshot.mockResolvedValue(snapshot);
-        api.isConfigured.mockReturnValue(true);
-        storageMock.getUseRemoteApi.mockReturnValue(false);
-
-        const result = await DataService.getHomeSnapshot('store_a', 'u_demo');
-
-        expect(result).toBe(snapshot);
-        expect(mock.getHomeSnapshot).toHaveBeenCalledWith('store_a', 'u_demo');
-        expect(api.getHomeSnapshot).not.toHaveBeenCalled();
-    });
-
-    it('uses api service when remote mode is enabled and configured', async () => {
-        process.env.TARO_APP_USE_REMOTE_API = 'true';
-        api.isConfigured.mockReturnValue(true);
+    it('delegates checkout quote to api service', async () => {
         api.getCheckoutQuote.mockResolvedValue({
             orderAmount: 52,
             selectedVoucher: null,
@@ -90,54 +58,24 @@ describe('DataService remote fallback', () => {
         await DataService.getCheckoutQuote('store_a', 52, 'u_demo');
 
         expect(api.getCheckoutQuote).toHaveBeenCalledWith('store_a', 52, 'u_demo');
-        expect(mock.getCheckoutQuote).not.toHaveBeenCalled();
     });
 
-    it('falls back to mock service and clears token when remote call fails', async () => {
-        process.env.TARO_APP_USE_REMOTE_API = 'true';
-        api.isConfigured.mockReturnValue(true);
+    it('clears token and rethrows when remote executeCheckout fails', async () => {
         api.executeCheckout.mockRejectedValue(new Error('remote failed'));
-        const fallbackResult = {
-            paymentId: 'pay_local_1',
-            quote: {
-                orderAmount: 52,
-                selectedVoucher: null,
-                deduction: { voucher: 0, bonus: 0, principal: 0, silver: 0 },
-                payable: 52,
-                remainingWallet: { principal: 0, bonus: 0, silver: 0 }
-            },
-            snapshot: { store: { id: 'store_a' } }
-        } as any;
-        mock.executeCheckout.mockResolvedValue(fallbackResult);
 
-        const result = await DataService.executeCheckout('store_a', 52, 'u_demo');
+        await expect(DataService.executeCheckout('store_a', 52, 'u_demo')).rejects.toThrow(
+            'remote failed',
+        );
 
-        expect(result).toBe(fallbackResult);
         expect(storageMock.setApiToken).toHaveBeenCalledWith('');
-        expect(mock.executeCheckout).toHaveBeenCalledWith('store_a', 52, 'u_demo');
+        expect(storageMock.setApiTokenMerchantId).toHaveBeenCalledWith('');
+        expect(storageMock.setCustomerUserId).toHaveBeenCalledWith('');
     });
 
-    it('uses cached snapshot before mock fallback when remote getHomeSnapshot fails', async () => {
-        process.env.TARO_APP_USE_REMOTE_API = 'true';
-        api.isConfigured.mockReturnValue(true);
-        api.getHomeSnapshot.mockRejectedValue(new Error('remote failed'));
-        const cached = { store: { id: 'store_a' }, wallet: { principal: 1, bonus: 2, silver: 3 } } as any;
-        storageMock.getCachedHomeSnapshot.mockReturnValue(cached);
-
-        const result = await DataService.getHomeSnapshot('store_a', 'u_demo');
-
-        expect(result).toBe(cached);
-        expect(mock.getHomeSnapshot).not.toHaveBeenCalled();
-        expect(storageMock.setApiToken).toHaveBeenCalledWith('');
-    });
-
-    it('falls back to mock ledger query when remote ledger fails', async () => {
-        process.env.TARO_APP_USE_REMOTE_API = 'true';
-        api.isConfigured.mockReturnValue(true);
-        api.getPaymentLedger.mockRejectedValue(new Error('remote failed'));
-        mock.getPaymentLedger.mockResolvedValue([
+    it('delegates ledger query to api service', async () => {
+        api.getPaymentLedger.mockResolvedValue([
             {
-                txnId: 'txn_local_1',
+                txnId: 'txn_1',
                 merchantId: 'store_a',
                 userId: 'u_demo',
                 type: 'PAYMENT',
@@ -148,8 +86,7 @@ describe('DataService remote fallback', () => {
 
         const result = await DataService.getPaymentLedger('store_a', 'u_demo', 10);
 
-        expect(result.length).toBe(1);
-        expect(mock.getPaymentLedger).toHaveBeenCalledWith('store_a', 'u_demo', 10);
-        expect(storageMock.setApiToken).toHaveBeenCalledWith('');
+        expect(result).toHaveLength(1);
+        expect(api.getPaymentLedger).toHaveBeenCalledWith('store_a', 'u_demo', 10);
     });
 });

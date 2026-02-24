@@ -3,6 +3,7 @@ const taroMock = {
     setStorageSync: jest.fn(),
     removeStorageSync: jest.fn(),
     request: jest.fn(),
+    login: jest.fn(async () => ({ code: 'wx_code_demo' })),
     reLaunch: jest.fn(),
     navigateTo: jest.fn(),
     scanCode: jest.fn(),
@@ -33,6 +34,7 @@ export const setStorageSync = taroMock.setStorageSync;
 export const getStorageSync = taroMock.getStorageSync;
 export const removeStorageSync = taroMock.removeStorageSync;
 export const request = taroMock.request;
+export const login = taroMock.login;
 export const reLaunch = taroMock.reLaunch;
 export const navigateTo = taroMock.navigateTo;
 export const scanCode = taroMock.scanCode;

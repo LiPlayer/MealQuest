@@ -343,14 +343,6 @@ export const MerchantApi = {
     return result;
   },
 
-  requestMerchantLoginCode: async (phone: string) => {
-    return requestPublicJson<MerchantPhoneCodeResult>(
-      'POST',
-      '/api/auth/merchant/request-code',
-      { phone },
-    );
-  },
-
   loginByPhone: async (payload: {
     phone: string;
     code: string;
@@ -363,17 +355,12 @@ export const MerchantApi = {
     );
   },
 
-  loginAsMerchant: async (merchantId = runtimeMerchantId) => {
-    const response = await fetch(`${BASE_URL}/api/auth/mock-login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role: 'OWNER', merchantId }),
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data?.error || 'merchant login failed');
-    }
-    return data.token as string;
+  requestMerchantLoginCode: async (phone: string) => {
+    return requestPublicJson<MerchantPhoneCodeResult>(
+      'POST',
+      '/api/auth/merchant/request-code',
+      { phone },
+    );
   },
 
   getState: async (token: string, merchantId = runtimeMerchantId) => {

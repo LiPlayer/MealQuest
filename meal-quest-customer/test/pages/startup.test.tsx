@@ -1,7 +1,8 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import Startup from '@/pages/startup/index';
 import { storage } from '@/utils/storage';
+import { ApiDataService } from '@/services/ApiDataService';
 import Taro from '@tarojs/taro';
 
 // Mock Storage (Local mock is fine for specific test behavior)
@@ -9,6 +10,14 @@ jest.mock('@/utils/storage', () => ({
     storage: {
         setLastStoreId: jest.fn(),
         getLastStoreId: jest.fn(),
+        removeLastStoreId: jest.fn(),
+    },
+}));
+
+jest.mock('@/services/ApiDataService', () => ({
+    ApiDataService: {
+        isConfigured: jest.fn(() => true),
+        isMerchantAvailable: jest.fn(async () => true),
     },
 }));
 
@@ -25,8 +34,7 @@ describe('Startup Page', () => {
         render(<Startup />);
 
         // 3. Assertions
-        expect(screen.getByText('欢迎使用')).toBeInTheDocument();
-        expect(screen.getByText('扫一扫')).toBeInTheDocument();
+        expect(document.getElementById('startup-scan-button')).toBeInTheDocument();
         // Should NOT redirect
         expect(Taro.reLaunch).not.toHaveBeenCalled();
     });
@@ -39,8 +47,9 @@ describe('Startup Page', () => {
         render(<Startup />);
 
         // 3. Assertions
-        // Should verify redirection happened
-        expect(Taro.reLaunch).toHaveBeenCalledWith({ url: '/pages/index/index' });
+        return waitFor(() => {
+            expect(Taro.reLaunch).toHaveBeenCalledWith({ url: '/pages/index/index' });
+        });
     });
 
     it('Scan Action: saves store ID and redirects', () => {
@@ -48,9 +57,33 @@ describe('Startup Page', () => {
         render(<Startup />);
 
         // Simulate click
-        fireEvent.click(screen.getByText('扫一扫'));
+        const scanButton = document.getElementById('startup-scan-button');
+        expect(scanButton).not.toBeNull();
+        fireEvent.click(scanButton as Element);
 
         // Verify scanCode called
         expect(Taro.scanCode).toHaveBeenCalled();
+    });
+
+    it('Scan Action: blocks unknown merchant id', async () => {
+        (storage.getLastStoreId as jest.Mock).mockReturnValue(null);
+        (ApiDataService.isConfigured as jest.Mock).mockReturnValue(true);
+        (ApiDataService.isMerchantAvailable as jest.Mock).mockResolvedValue(false);
+        (Taro.scanCode as jest.Mock).mockImplementation(({ success }) => {
+            success({ result: 'm_not_exists' });
+        });
+
+        render(<Startup />);
+        const scanButton = document.getElementById('startup-scan-button');
+        expect(scanButton).not.toBeNull();
+        fireEvent.click(scanButton as Element);
+
+        await waitFor(() => {
+            expect(ApiDataService.isMerchantAvailable).toHaveBeenCalledWith('m_not_exists');
+            expect(storage.setLastStoreId).not.toHaveBeenCalled();
+            expect(Taro.showToast).toHaveBeenCalledWith(
+                expect.objectContaining({ title: 'Store not found' }),
+            );
+        });
     });
 });

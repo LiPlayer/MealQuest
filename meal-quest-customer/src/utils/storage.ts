@@ -2,7 +2,8 @@ import Taro from '@tarojs/taro';
 
 const LAST_STORE_ID_KEY = 'mq_last_store_id';
 const API_TOKEN_KEY = 'mq_api_token';
-const USE_REMOTE_API_KEY = 'mq_use_remote_api';
+const API_TOKEN_MERCHANT_KEY = 'mq_api_token_merchant_id';
+const CUSTOMER_USER_ID_KEY = 'mq_customer_user_id';
 const HOME_SNAPSHOT_CACHE_PREFIX = 'mq_home_snapshot';
 
 const buildHomeSnapshotKey = (storeId: string, userId: string) =>
@@ -35,12 +36,20 @@ export const storage = {
         return Taro.getStorageSync(API_TOKEN_KEY) || null;
     },
 
-    setUseRemoteApi: (enabled: boolean) => {
-        Taro.setStorageSync(USE_REMOTE_API_KEY, enabled ? '1' : '0');
+    setApiTokenMerchantId: (merchantId: string) => {
+        Taro.setStorageSync(API_TOKEN_MERCHANT_KEY, merchantId);
     },
 
-    getUseRemoteApi: (): boolean => {
-        return Taro.getStorageSync(USE_REMOTE_API_KEY) === '1';
+    getApiTokenMerchantId: (): string | null => {
+        return Taro.getStorageSync(API_TOKEN_MERCHANT_KEY) || null;
+    },
+
+    setCustomerUserId: (userId: string) => {
+        Taro.setStorageSync(CUSTOMER_USER_ID_KEY, userId);
+    },
+
+    getCustomerUserId: (): string | null => {
+        return Taro.getStorageSync(CUSTOMER_USER_ID_KEY) || null;
     },
 
     setCachedHomeSnapshot: (storeId: string, userId: string, snapshot: unknown) => {
@@ -66,6 +75,8 @@ export const storage = {
     clearCustomerSession: (storeId: string, userId: string) => {
         storage.clearCachedHomeSnapshot(storeId, userId);
         storage.setApiToken('');
+        Taro.removeStorageSync(API_TOKEN_MERCHANT_KEY);
+        Taro.removeStorageSync(CUSTOMER_USER_ID_KEY);
         storage.removeLastStoreId();
     },
 
@@ -75,6 +86,7 @@ export const storage = {
     clear: () => {
         Taro.removeStorageSync(LAST_STORE_ID_KEY);
         Taro.removeStorageSync(API_TOKEN_KEY);
-        Taro.removeStorageSync(USE_REMOTE_API_KEY);
+        Taro.removeStorageSync(API_TOKEN_MERCHANT_KEY);
+        Taro.removeStorageSync(CUSTOMER_USER_ID_KEY);
     }
 };

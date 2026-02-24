@@ -50,8 +50,7 @@ describeIfRunnable('Customer core flow e2e', () => {
             return;
         }
         await miniProgram.evaluate(() => {
-            wx.setStorageSync('mq_last_store_id', 'store_a');
-            wx.setStorageSync('mq_use_remote_api', '0');
+            wx.setStorageSync('mq_last_store_id', 'm_store_001');
         });
 
         const indexPage = await miniProgram.reLaunch('/pages/index/index');

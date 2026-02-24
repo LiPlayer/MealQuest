@@ -1,16 +1,22 @@
 const requestMock = jest.fn();
+const loginMock = jest.fn();
 
 jest.mock('@tarojs/taro', () => ({
     __esModule: true,
     default: {
-        request: requestMock
+        request: requestMock,
+        login: loginMock
     }
 }));
 
 jest.mock('@/utils/storage', () => ({
     storage: {
         getApiToken: jest.fn(),
+        getApiTokenMerchantId: jest.fn(),
+        getCustomerUserId: jest.fn(),
         setApiToken: jest.fn(),
+        setApiTokenMerchantId: jest.fn(),
+        setCustomerUserId: jest.fn(),
         setCachedHomeSnapshot: jest.fn()
     }
 }));
@@ -22,6 +28,8 @@ describe('ApiDataService activities mapping', () => {
         jest.resetModules();
         process.env.TARO_APP_SERVER_URL = 'http://127.0.0.1:3030';
         requestMock.mockReset();
+        loginMock.mockReset();
+        loginMock.mockResolvedValue({ code: 'wx_code_demo' });
     });
 
     afterEach(() => {
@@ -35,7 +43,7 @@ describe('ApiDataService activities mapping', () => {
     it('uses server activities when provided', async () => {
         requestMock.mockResolvedValueOnce({
             statusCode: 200,
-            data: { token: 'token_demo' }
+            data: { token: 'token_demo', profile: { userId: 'u_demo', phone: '+8613900000001' } }
         });
         requestMock.mockResolvedValueOnce({
             statusCode: 200,

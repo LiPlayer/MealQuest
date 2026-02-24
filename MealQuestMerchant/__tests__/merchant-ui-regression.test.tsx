@@ -27,7 +27,8 @@ jest.mock('react-native-qrcode-svg', () => {
 jest.mock('../src/services/merchantApi', () => ({
   MerchantApi: {
     isConfigured: jest.fn(() => true),
-    loginAsMerchant: jest.fn(async () => 'token_demo'),
+    requestMerchantLoginCode: jest.fn(async () => ({ phone: '+8613800000000', expiresInSec: 300, debugCode: '123456' })),
+    loginByPhone: jest.fn(async () => ({ token: 'token_demo', profile: { role: 'OWNER', merchantId: 'm_store_001', phone: '+8613800000000' } })),
     getState: jest.fn(async () => ({
       merchantId: 'm_store_001',
       merchantName: 'Demo Merchant',
@@ -299,4 +300,5 @@ describe('merchant ui regression flow', () => {
     expect(String(qrPayload.props.children)).toContain('https://mealquest.app/startup?id=m_store_001');
   });
 });
+
 

@@ -28,8 +28,7 @@ export default defineConfig<'webpack5'>(async (merge, { command: _command, mode:
     ],
     defineConstants: {
       TARO_APP_SERVER_URL: JSON.stringify(process.env.TARO_APP_SERVER_URL || ''),
-      TARO_APP_USE_REMOTE_API: JSON.stringify(process.env.TARO_APP_USE_REMOTE_API || 'false'),
-      TARO_APP_DEFAULT_STORE_ID: JSON.stringify(process.env.TARO_APP_DEFAULT_STORE_ID || 'store_a')
+      TARO_APP_DEFAULT_STORE_ID: JSON.stringify(process.env.TARO_APP_DEFAULT_STORE_ID || 'm_store_001')
     },
     copy: {
       patterns: [

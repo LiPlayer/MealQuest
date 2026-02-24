@@ -1,4 +1,4 @@
-﻿# 餐餐有戏 - 服务端技术架构规范 (Master-Aligned V2.0)
+# 餐餐有戏 - 服务端技术架构规范 (Master-Aligned V2.0)
 
 > 依据：`MealQuest_Spec.md`（唯一标准）
 > 目标：构建可运行的核心后端闭环，承载资产账本、支付核销、退款回溯、TCA 执行与策略确认。
@@ -124,9 +124,13 @@
 
 ## 5.1.1 鉴权
 
-1. `POST /api/auth/mock-login`：获取测试令牌（开发联调用）。
-2. 除 `/health` 与登录接口外，其余接口均要求 `Authorization: Bearer <token>`。
-3. 角色约束：
+1. `POST /api/auth/customer/wechat-login`：小程序微信登录换取顾客令牌。
+2. `POST /api/auth/merchant/request-code`：商户端请求手机号验证码。
+3. `POST /api/auth/merchant/phone-login`：商户端手机号验证码登录换取运营令牌。
+4. 用户端手机号作为顾客唯一凭证，由服务端在 `wechat-login` 过程中自动绑定。
+   - 若登录阶段无法获得手机号，服务端拒绝登录，不允许继续操作。
+5. 除 `/health` 与登录接口外，其余接口均要求 `Authorization: Bearer <token>`。
+6. 角色约束：
    - `CUSTOMER`：可支付报价/支付执行/读取自身状态。
    - `CLERK`：可看驾驶舱、可执行收银，不可确认提案/熔断。
    - `MANAGER`：可退款、可触发 TCA，不可熔断与最终提案确认。

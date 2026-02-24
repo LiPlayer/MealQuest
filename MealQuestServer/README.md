@@ -1,4 +1,4 @@
-﻿# MealQuestServer
+# MealQuestServer
 
 Minimal runnable backend implementation for MealQuest.
 
@@ -47,6 +47,9 @@ MQ_DB_STATE_TABLE=mealquest_state_snapshots
 MQ_DB_SNAPSHOT_KEY=main
 MQ_DB_AUTO_CREATE=true
 MQ_DB_ADMIN_URL=
+MQ_AUTH_WECHAT_MINI_APP_ID=
+MQ_AUTH_WECHAT_MINI_APP_SECRET=
+MQ_AUTH_HTTP_TIMEOUT_MS=10000
 ```
 
 Notes:
@@ -84,13 +87,19 @@ Example body:
 }
 ```
 
-## Auth and Debug Login
+## Auth
 
 ```text
-POST /api/auth/mock-login
+POST /api/auth/customer/wechat-login
 POST /api/auth/merchant/request-code
 POST /api/auth/merchant/phone-login
 ```
+
+Notes:
+
+1. `customer/wechat-login` exchanges mini-program `code` with WeChat, then auto-binds a phone identity for merchant-scoped customer sessions.
+2. `merchant/phone-login` issues OWNER token by `phone + code`, with optional `merchantId` for scoped session.
+3. If no phone is available at login time, server rejects the login request.
 
 Optional protection for onboarding APIs:
 

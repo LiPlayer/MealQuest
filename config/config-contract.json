@@ -3,7 +3,14 @@
   "domains": {
     "server": {
       "source": "system env / k8s config",
-      "requiredKeys": ["MQ_JWT_SECRET", "MQ_PAYMENT_CALLBACK_SECRET", "PORT", "MQ_DB_URL"]
+      "requiredKeys": [
+        "MQ_JWT_SECRET",
+        "MQ_PAYMENT_CALLBACK_SECRET",
+        "PORT",
+        "MQ_DB_URL",
+        "MQ_AUTH_WECHAT_MINI_APP_ID",
+        "MQ_AUTH_WECHAT_MINI_APP_SECRET"
+      ]
     },
     "merchant_rn": {
       "source": "react-native-config (.env)",
@@ -13,7 +20,6 @@
       "source": "taro env (.env.development*)",
       "requiredKeys": [
         "TARO_APP_SERVER_URL",
-        "TARO_APP_USE_REMOTE_API",
         "TARO_APP_DEFAULT_STORE_ID"
       ]
     }

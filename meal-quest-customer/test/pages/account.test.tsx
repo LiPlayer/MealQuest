@@ -17,6 +17,7 @@ jest.mock('@/services/DataService', () => ({
 jest.mock('@/utils/storage', () => ({
     storage: {
         getLastStoreId: jest.fn(),
+        getCustomerUserId: jest.fn(),
         clearCustomerSession: jest.fn()
     }
 }));
@@ -28,6 +29,7 @@ describe('Account page', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         storageMock.getLastStoreId.mockReturnValue('m_store_001');
+        storageMock.getCustomerUserId.mockReturnValue('u_demo');
         dataServiceMock.getHomeSnapshot.mockResolvedValue({
             store: {
                 id: 'm_store_001',

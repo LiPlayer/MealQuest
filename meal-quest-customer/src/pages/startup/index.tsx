@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { View, Text } from '@tarojs/components';
 import Taro, { useRouter } from '@tarojs/taro';
 import { storage } from '../../utils/storage';
+import { ApiDataService } from '../../services/ApiDataService';
 import './index.scss';
 
 export default function Startup() {
@@ -39,6 +40,41 @@ export default function Startup() {
         return '';
     };
 
+    const validateMerchantId = async (storeId: string) => {
+        if (!storeId) {
+            return false;
+        }
+        if (!ApiDataService.isConfigured()) {
+            Taro.showToast({ title: 'Service not configured', icon: 'none' });
+            return false;
+        }
+        try {
+            const ok = await ApiDataService.isMerchantAvailable(storeId);
+            if (!ok) {
+                Taro.showToast({ title: 'Store not found', icon: 'none' });
+            }
+            return ok;
+        } catch (error) {
+            console.warn('[Startup] merchant validation failed', error);
+            Taro.showToast({ title: 'Store validation failed', icon: 'none' });
+            return false;
+        }
+    };
+
+    const enterStoreIfValid = async (candidate: string) => {
+        const storeId = resolveStoreIdFromScan(candidate);
+        if (!storeId) {
+            return false;
+        }
+        const ok = await validateMerchantId(storeId);
+        if (!ok) {
+            return false;
+        }
+        storage.setLastStoreId(storeId);
+        redirectToHome();
+        return true;
+    };
+
     const redirectToHome = () => {
         Taro.nextTick(() => {
             Taro.reLaunch({
@@ -50,39 +86,61 @@ export default function Startup() {
     const router = useRouter();
 
     useEffect(() => {
-        const handleStartup = () => {
+        let active = true;
+
+        const handleStartup = async () => {
             console.log('Startup [useEffect] firing...');
             const options = router.params;
             console.log('Startup options:', options);
-            const storeId = options.id || options.scene;
+            const entryCandidate =
+                options.id ||
+                options.storeId ||
+                options.merchantId ||
+                options.scene ||
+                '';
 
-            if (storeId) {
-                console.log('Found storeId in options:', storeId);
-                storage.setLastStoreId(storeId);
-                redirectToHome();
-            } else {
-                const lastId = storage.getLastStoreId();
-                console.log('Checking storage for lastId:', lastId);
-                if (lastId) {
-                    console.log('Redirecting to home with lastId...');
-                    redirectToHome();
-                } else {
-                    console.log('No storeId found, setting isNewUser=true');
+            if (entryCandidate) {
+                console.log('Found storeId in options:', entryCandidate);
+                const entered = await enterStoreIfValid(entryCandidate);
+                if (!entered && active) {
                     setIsNewUser(true);
                 }
+                return;
+            }
+
+            const lastId = storage.getLastStoreId();
+            console.log('Checking storage for lastId:', lastId);
+            if (lastId) {
+                const entered = await enterStoreIfValid(lastId);
+                if (entered) {
+                    return;
+                }
+                storage.removeLastStoreId();
+            }
+
+            if (active) {
+                console.log('No storeId found, setting isNewUser=true');
+                setIsNewUser(true);
             }
         };
 
-        handleStartup();
+        handleStartup().catch((error) => {
+            console.warn('[Startup] handleStartup failed', error);
+            if (active) {
+                setIsNewUser(true);
+            }
+        });
+
+        return () => {
+            active = false;
+        };
     }, [router.params]);
 
     const handleScanQR = () => {
         Taro.scanCode({
-            success: (res) => {
-                const storeId = resolveStoreIdFromScan(res.result);
-                if (storeId) {
-                    storage.setLastStoreId(storeId);
-                    redirectToHome();
+            success: async (res) => {
+                const entered = await enterStoreIfValid(String(res.result || ''));
+                if (entered) {
                     return;
                 }
                 Taro.showToast({ title: '二维码无效，请重试', icon: 'none' });
