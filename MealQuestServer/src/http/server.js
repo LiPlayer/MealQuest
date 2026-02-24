@@ -3421,6 +3421,48 @@ async function createAppServerAsync(options = {}) {
 
 if (require.main === module) {
   const runtimeEnv = resolveServerRuntimeEnv(process.env);
+  let appInstance = null;
+  let shuttingDown = false;
+
+  const shutdownGracefully = async (signal) => {
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
+
+    // eslint-disable-next-line no-console
+    console.log(`[server] received ${signal}, shutting down gracefully...`);
+
+    const forceExitTimer = setTimeout(() => {
+      // eslint-disable-next-line no-console
+      console.error("[server] graceful shutdown timeout, forcing exit.");
+      process.exit(1);
+    }, 10000);
+    if (typeof forceExitTimer.unref === "function") {
+      forceExitTimer.unref();
+    }
+
+    try {
+      if (appInstance && typeof appInstance.stop === "function") {
+        await appInstance.stop();
+      }
+      clearTimeout(forceExitTimer);
+      process.exit(0);
+    } catch (error) {
+      clearTimeout(forceExitTimer);
+      // eslint-disable-next-line no-console
+      console.error("[server] graceful shutdown failed:", error);
+      process.exit(1);
+    }
+  };
+
+  process.once("SIGINT", () => {
+    shutdownGracefully("SIGINT");
+  });
+  process.once("SIGTERM", () => {
+    shutdownGracefully("SIGTERM");
+  });
+
   createAppServerAsync({
     postgresOptions: {
       connectionString: runtimeEnv.dbUrl,
@@ -3439,16 +3481,26 @@ if (require.main === module) {
       providers: runtimeEnv.authProviders
     }
   })
-    .then((app) => app.start(runtimeEnv.port, runtimeEnv.host))
+    .then((app) => {
+      appInstance = app;
+      return app.start(runtimeEnv.port, runtimeEnv.host);
+    })
     .then((startedPort) => {
       // eslint-disable-next-line no-console
       console.log(`MealQuestServer listening on ${runtimeEnv.host}:${startedPort}`);
       // eslint-disable-next-line no-console
       console.log("[db] driver=postgres");
     })
-    .catch((error) => {
+    .catch(async (error) => {
       // eslint-disable-next-line no-console
       console.error("Failed to start server:", error);
+      if (appInstance && typeof appInstance.stop === "function") {
+        try {
+          await appInstance.stop();
+        } catch {
+          // ignore stop errors during startup failure
+        }
+      }
       process.exit(1);
     });
 }
