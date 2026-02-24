@@ -65,7 +65,13 @@ function createFakeSocialAuthService() {
       subject: `wxmini_${String(code || "")}`,
       unionId: null,
       phone: "+8613900000001"
-    })
+    }),
+    verifyAlipayCode: async (code) => ({
+      provider: "ALIPAY",
+      subject: `alipay_${String(code || "")}`,
+      unionId: null,
+      phone: "+8613900000001"
+    }),
   };
 }
 
@@ -75,7 +81,12 @@ function createFakeSocialAuthServiceWithoutPhone() {
       provider: "WECHAT_MINIAPP",
       subject: `wxmini_${String(code || "")}`,
       unionId: null
-    })
+    }),
+    verifyAlipayCode: async (code) => ({
+      provider: "ALIPAY",
+      subject: `alipay_${String(code || "")}`,
+      unionId: null
+    }),
   };
 }
 
@@ -390,6 +401,36 @@ test("customer wechat login is rejected when provider phone is missing", async (
     });
     assert.equal(login.status, 400);
     assert.equal(login.data.error, "phone is required for customer login");
+  } finally {
+    await app.stop();
+  }
+});
+
+test("customer alipay login merges to same account when phone is the same", async () => {
+  const app = createAppServer({
+    persist: false,
+    socialAuthService: createFakeSocialAuthService()
+  });
+  const port = await app.start(0);
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const wechatLogin = await postJson(baseUrl, "/api/auth/customer/wechat-login", {
+      merchantId: "m_store_001",
+      code: "mini_code_shared_phone"
+    });
+    assert.equal(wechatLogin.status, 200);
+    assert.equal(wechatLogin.data.profile.phone, "+8613900000001");
+    assert.ok(wechatLogin.data.profile.userId);
+
+    const alipayLogin = await postJson(baseUrl, "/api/auth/customer/alipay-login", {
+      merchantId: "m_store_001",
+      code: "alipay_code_shared_phone"
+    });
+    assert.equal(alipayLogin.status, 200);
+    assert.equal(alipayLogin.data.profile.phone, "+8613900000001");
+    assert.equal(alipayLogin.data.profile.userId, wechatLogin.data.profile.userId);
+    assert.equal(alipayLogin.data.isNewUser, false);
   } finally {
     await app.stop();
   }

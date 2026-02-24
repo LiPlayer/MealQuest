@@ -16,7 +16,9 @@ interface MerchantCatalogItem {
     merchantId: string;
 }
 
-interface CustomerWechatLoginResponse {
+type CustomerAuthProvider = 'WECHAT' | 'ALIPAY';
+
+interface CustomerLoginResponse {
     token: string;
     profile?: {
         userId?: string;
@@ -63,6 +65,33 @@ const getServerBaseUrl = () => {
     return getEnv('TARO_APP_SERVER_URL').trim();
 };
 
+const resolveCustomerAuthProvider = (): CustomerAuthProvider => {
+    const configuredProvider = getEnv('TARO_APP_AUTH_PROVIDER').trim().toUpperCase();
+    if (configuredProvider === 'ALIPAY') {
+        return 'ALIPAY';
+    }
+    if (configuredProvider === 'WECHAT') {
+        return 'WECHAT';
+    }
+
+    const taroEnv =
+        typeof (Taro as any).getEnv === 'function'
+            ? String((Taro as any).getEnv() || '').trim().toUpperCase()
+            : '';
+    if (taroEnv.includes('ALIPAY')) {
+        return 'ALIPAY';
+    }
+    if (taroEnv.includes('WEAPP') || taroEnv.includes('WECHAT')) {
+        return 'WECHAT';
+    }
+
+    const buildEnv = getEnv('TARO_ENV').trim().toUpperCase();
+    if (buildEnv === 'ALIPAY') {
+        return 'ALIPAY';
+    }
+    return 'WECHAT';
+};
+
 const requestJson = async ({ method, path, data, token }: RequestOptions) => {
     const baseUrl = getServerBaseUrl();
     if (!baseUrl) {
@@ -87,11 +116,15 @@ const requestJson = async ({ method, path, data, token }: RequestOptions) => {
     return response.data as any;
 };
 
-const requestWeChatLoginCode = async () => {
+const requestLoginCode = async (provider: CustomerAuthProvider) => {
     const loginResult = await Taro.login();
-    const code = String((loginResult as any)?.code || '').trim();
+    const rawCode =
+        provider === 'ALIPAY'
+            ? (loginResult as any)?.authCode || (loginResult as any)?.code
+            : (loginResult as any)?.code || (loginResult as any)?.authCode;
+    const code = String(rawCode || '').trim();
     if (!code) {
-        throw new Error('WeChat login code is missing');
+        throw new Error(`${provider} login code is missing`);
     }
     return code;
 };
@@ -114,16 +147,21 @@ const ensureCustomerSession = async (
         return { token: cachedToken, userId: cachedUserId };
     }
 
-    const code = await requestWeChatLoginCode();
+    const authProvider = resolveCustomerAuthProvider();
+    const code = await requestLoginCode(authProvider);
+    const loginPath =
+        authProvider === 'ALIPAY'
+            ? '/api/auth/customer/alipay-login'
+            : '/api/auth/customer/wechat-login';
     const login = await requestJson({
         method: 'POST',
-        path: '/api/auth/customer/wechat-login',
+        path: loginPath,
         data: {
             merchantId: normalizedMerchantId,
             code
         }
     });
-    const typedLogin = login as CustomerWechatLoginResponse;
+    const typedLogin = login as CustomerLoginResponse;
     const token = String(typedLogin?.token || '').trim();
     const serverUserId = normalizeUserId(typedLogin?.profile?.userId || '');
     const userId = serverUserId;

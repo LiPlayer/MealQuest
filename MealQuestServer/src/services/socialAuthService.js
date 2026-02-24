@@ -1,4 +1,5 @@
 const CUSTOMER_PROVIDER_WECHAT_MINIAPP = "WECHAT_MINIAPP";
+const CUSTOMER_PROVIDER_ALIPAY = "ALIPAY";
 
 function assertCode(rawCode, fieldName) {
   const code = String(rawCode || "").trim();
@@ -40,6 +41,7 @@ function createSocialAuthService({
   }
 
   const wechatMini = providers.wechatMini || {};
+  const alipay = providers.alipay || {};
 
   async function fetchWithTimeout(url, options = {}, label = "request") {
     const controller = new AbortController();
@@ -103,13 +105,59 @@ function createSocialAuthService({
     };
   }
 
+  async function verifyAlipayCode(code) {
+    throwIfMissingConfig(
+      Boolean(alipay.verifyUrl),
+      "Alipay auth is not configured"
+    );
+    const response = await fetchWithTimeout(
+      String(alipay.verifyUrl),
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          code: assertCode(code, "code"),
+          appId: alipay.appId || "",
+          appSecret: alipay.appSecret || ""
+        })
+      },
+      "alipay code exchange"
+    );
+    const payload = await parseJsonResponse(response, "alipay code exchange");
+    if (!response.ok) {
+      const error = new Error(
+        `Alipay auth failed: ${payload.error || response.statusText || "unknown error"}`
+      );
+      error.statusCode = 401;
+      throw error;
+    }
+    const subject = payload.subject || payload.userId || payload.user_id || payload.openid;
+    if (!subject) {
+      const error = new Error("Alipay auth failed: subject missing");
+      error.statusCode = 401;
+      throw error;
+    }
+    const phone = typeof payload.phone === "string" ? payload.phone : payload.mobile;
+    return {
+      provider: CUSTOMER_PROVIDER_ALIPAY,
+      subject: String(subject),
+      unionId: null,
+      phone: phone ? String(phone) : null
+    };
+  }
+
   return {
     CUSTOMER_PROVIDER_WECHAT_MINIAPP,
-    verifyWeChatMiniAppCode
+    CUSTOMER_PROVIDER_ALIPAY,
+    verifyWeChatMiniAppCode,
+    verifyAlipayCode
   };
 }
 
 module.exports = {
   CUSTOMER_PROVIDER_WECHAT_MINIAPP,
+  CUSTOMER_PROVIDER_ALIPAY,
   createSocialAuthService
 };

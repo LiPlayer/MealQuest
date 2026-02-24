@@ -58,7 +58,10 @@ function resolveServerRuntimeEnv(env = process.env) {
   const onboardSecret = asString(env.MQ_ONBOARD_SECRET);
   const dbUrl = asString(env.MQ_DB_URL);
   const dbSchema = asString(env.MQ_DB_SCHEMA) || "public";
-  const dbStateTable = asString(env.MQ_DB_STATE_TABLE) || "mealquest_state_snapshots";
+  const dbStateTable =
+    asString(env.MQ_DB_LEGACY_SNAPSHOT_TABLE) ||
+    asString(env.MQ_DB_STATE_TABLE) ||
+    "mealquest_state_snapshots";
   const dbSnapshotKey = asString(env.MQ_DB_SNAPSHOT_KEY) || "main";
   const dbPoolMax = parsePositiveInt(env.MQ_DB_POOL_MAX, 5);
   const dbAutoCreate = parseBoolean(env.MQ_DB_AUTO_CREATE, true);
@@ -66,6 +69,9 @@ function resolveServerRuntimeEnv(env = process.env) {
   const authHttpTimeoutMs = parsePositiveInt(env.MQ_AUTH_HTTP_TIMEOUT_MS, 10000);
   const authWeChatMiniAppId = asString(env.MQ_AUTH_WECHAT_MINI_APP_ID);
   const authWeChatMiniAppSecret = asString(env.MQ_AUTH_WECHAT_MINI_APP_SECRET);
+  const authAlipayVerifyUrl = asString(env.MQ_AUTH_ALIPAY_VERIFY_URL);
+  const authAlipayAppId = asString(env.MQ_AUTH_ALIPAY_APP_ID);
+  const authAlipayAppSecret = asString(env.MQ_AUTH_ALIPAY_APP_SECRET);
 
   const errors = [];
   if (isProduction && !jwtSecret) {
@@ -77,10 +83,13 @@ function resolveServerRuntimeEnv(env = process.env) {
   if (!dbUrl) {
     errors.push("MQ_DB_URL is required");
   }
-  const hasCustomerAuth = Boolean(authWeChatMiniAppId && authWeChatMiniAppSecret);
+  const hasCustomerAuth = Boolean(
+    (authWeChatMiniAppId && authWeChatMiniAppSecret) ||
+      authAlipayVerifyUrl
+  );
   if (isProduction && !hasCustomerAuth) {
     errors.push(
-      "MQ_AUTH_WECHAT_MINI_APP_ID and MQ_AUTH_WECHAT_MINI_APP_SECRET are required in production"
+      "At least one customer auth provider is required in production (WeChat or Alipay)"
     );
   }
   if (errors.length > 0) {
@@ -107,6 +116,11 @@ function resolveServerRuntimeEnv(env = process.env) {
       wechatMini: {
         appId: authWeChatMiniAppId,
         appSecret: authWeChatMiniAppSecret
+      },
+      alipay: {
+        verifyUrl: authAlipayVerifyUrl,
+        appId: authAlipayAppId,
+        appSecret: authAlipayAppSecret
       }
     }
   };

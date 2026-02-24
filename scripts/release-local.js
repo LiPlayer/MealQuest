@@ -81,6 +81,12 @@ function main() {
       cwd: path.join(repoRoot, "meal-quest-customer"),
       command: "npm",
       args: ["run", "build:weapp"]
+    },
+    {
+      name: "Customer Build Alipay",
+      cwd: path.join(repoRoot, "meal-quest-customer"),
+      command: "npm",
+      args: ["run", "build:alipay"]
     }
   ];
 

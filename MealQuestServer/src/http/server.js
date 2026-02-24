@@ -23,6 +23,7 @@ const { createSupplierService } = require("../services/supplierService");
 const { createTreatPayService } = require("../services/treatPayService");
 const {
   CUSTOMER_PROVIDER_WECHAT_MINIAPP,
+  CUSTOMER_PROVIDER_ALIPAY,
   createSocialAuthService
 } = require("../services/socialAuthService");
 const { createInMemoryDb } = require("../store/inMemoryDb");
@@ -1455,6 +1456,61 @@ function createAppServer({
           provider: identity.provider,
           subject: identity.subject,
           unionId: identity.unionId || null,
+          displayName: body.displayName || "",
+          phone: String(body.phone || "").trim() || providerPhone
+        });
+        const token = issueToken(
+          {
+            role: "CUSTOMER",
+            merchantId,
+            userId: binding.userId,
+            phone: binding.phone
+          },
+          jwtSecret
+        );
+        sendJson(res, 200, {
+          token,
+          profile: {
+            role: "CUSTOMER",
+            merchantId,
+            userId: binding.userId,
+            phone: binding.phone
+          },
+          isNewUser: binding.created
+        });
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/api/auth/customer/alipay-login") {
+        const body = await readJsonBody(req);
+        const merchantIdInput = body.merchantId || body.storeId;
+        if (!merchantIdInput) {
+          sendJson(res, 400, { error: "merchantId is required" });
+          return;
+        }
+        const merchantId = sanitizeMerchantId(merchantIdInput);
+        if (!tenantRepository.getMerchant(merchantId)) {
+          sendJson(res, 404, { error: "merchant not found" });
+          return;
+        }
+        if (typeof activeSocialAuthService.verifyAlipayCode !== "function") {
+          sendJson(res, 503, { error: "Alipay auth service is not available" });
+          return;
+        }
+        const identity = await activeSocialAuthService.verifyAlipayCode(body.code);
+        if (!identity || identity.provider !== CUSTOMER_PROVIDER_ALIPAY || !identity.subject) {
+          sendJson(res, 401, { error: "invalid alipay identity" });
+          return;
+        }
+
+        const scopedDb = tenantRouter.getDbForMerchant(merchantId);
+        const providerPhone =
+          identity && typeof identity.phone === "string" ? String(identity.phone).trim() : "";
+        const binding = bindCustomerPhoneIdentity(scopedDb, {
+          merchantId,
+          provider: identity.provider,
+          subject: identity.subject,
+          unionId: null,
           displayName: body.displayName || "",
           phone: String(body.phone || "").trim() || providerPhone
         });
