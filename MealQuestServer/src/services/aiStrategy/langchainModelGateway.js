@@ -53,11 +53,6 @@ function createLangChainModelGateway(options = {}) {
     },
     modelKwargs: provider === "bigmodel" ? { thinking: { type: "disabled" } } : {},
   };
-  const plannerModel = new ChatOpenAI({
-    ...sharedOptions,
-    temperature: 0.2,
-    maxTokens: 512,
-  });
   const chatModel = new ChatOpenAI({
     ...sharedOptions,
     temperature: 0.2,
@@ -71,16 +66,11 @@ function createLangChainModelGateway(options = {}) {
     return parseJsonLoose(content);
   }
 
-  function invokePlanner(messages) {
-    return invokeJson(messages, plannerModel);
-  }
-
   function invokeChat(messages) {
     return invokeJson(messages, chatModel);
   }
 
   return {
-    invokePlanner,
     invokeChat,
     getRuntimeInfo() {
       return {

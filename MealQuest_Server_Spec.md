@@ -112,12 +112,10 @@
 1. `GET /health`
 2. `GET /api/state?merchantId=&userId=`
 3. `GET /api/merchant/dashboard?merchantId=`
-4. `GET /api/merchant/strategy-library?merchantId=`
-5. `GET /api/merchant/strategy-configs?merchantId=`
-6. `GET /api/audit/logs?merchantId=&limit=&cursor=&startTime=&endTime=&action=&status=`
-7. `GET /api/ws/status?merchantId=`（商户在线状态）
-8. `GET /api/merchant/alliance-config?merchantId=`
-9. `GET /api/merchant/stores?merchantId=`
+4. `GET /api/audit/logs?merchantId=&limit=&cursor=&startTime=&endTime=&action=&status=`
+5. `GET /api/ws/status?merchantId=`（商户在线状态）
+6. `GET /api/merchant/alliance-config?merchantId=`
+7. `GET /api/merchant/stores?merchantId=`
 
 ## 5.1.1 鉴权
 
@@ -344,4 +342,3 @@
 1. 绝大多数商户在早期是长尾负载，全量分库会带来过高运维与数据治理成本。
 2. 共享库阶段更利于快速迭代业务规则与审计模型，降低架构冻结风险。
 3. 热点优先分库可在收益最大处优先消除瓶颈，投入产出比更高。
-

@@ -32,38 +32,6 @@ function createMerchantRoutesHandler({
       return true;
     }
 
-    if (method === "GET" && url.pathname === "/api/merchant/strategy-library") {
-      ensureRole(auth, MERCHANT_ROLES);
-      const merchantId = url.searchParams.get("merchantId") || auth.merchantId;
-      if (!merchantId) {
-        sendJson(res, 400, { error: "merchantId is required" });
-        return true;
-      }
-      if (auth.merchantId && auth.merchantId !== merchantId) {
-        sendJson(res, 403, { error: "merchant scope denied" });
-        return true;
-      }
-      const { merchantService } = getServicesForMerchant(merchantId);
-      sendJson(res, 200, merchantService.listStrategyLibrary({ merchantId }));
-      return true;
-    }
-
-    if (method === "GET" && url.pathname === "/api/merchant/strategy-configs") {
-      ensureRole(auth, MERCHANT_ROLES);
-      const merchantId = url.searchParams.get("merchantId") || auth.merchantId;
-      if (!merchantId) {
-        sendJson(res, 400, { error: "merchantId is required" });
-        return true;
-      }
-      if (auth.merchantId && auth.merchantId !== merchantId) {
-        sendJson(res, 403, { error: "merchant scope denied" });
-        return true;
-      }
-      const { merchantService } = getServicesForMerchant(merchantId);
-      sendJson(res, 200, merchantService.listStrategyConfigs({ merchantId }));
-      return true;
-    }
-
     if (method === "GET" && url.pathname === "/api/merchant/strategy-chat/session") {
       ensureRole(auth, ["MANAGER", "OWNER"]);
       const merchantId = url.searchParams.get("merchantId") || auth.merchantId;

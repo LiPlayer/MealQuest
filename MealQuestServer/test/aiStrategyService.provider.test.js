@@ -26,11 +26,13 @@ test("ai strategy provider: bigmodel without api key returns AI_UNAVAILABLE", as
     apiKey: "",
   });
 
-  const result = await service.generateStrategyPlan({
+  const result = await service.generateStrategyChatTurn({
     merchantId: "m_store_001",
-    templateId: "activation_contextual_drop",
-    branchId: "COOLING",
-    intent: "high temperature campaign",
+    sessionId: "sc_test",
+    userMessage: "Please draft a cooling strategy.",
+    history: [],
+    activeCampaigns: [],
+    approvedStrategies: [],
   });
 
   assert.equal(result.status, "AI_UNAVAILABLE");
@@ -54,13 +56,17 @@ test("ai strategy provider: retries transient upstream failures and then succeed
           {
             message: {
               content: JSON.stringify({
-                templateId: "activation_contextual_drop",
-                branchId: "COOLING",
-                title: "Recovered Strategy",
-                rationale: "retry path works",
-                confidence: 0.79,
-                campaignPatch: {
-                  name: "Recovered Strategy",
+                mode: "PROPOSAL",
+                assistantMessage: "Recovered after retries.",
+                proposal: {
+                  templateId: "activation_contextual_drop",
+                  branchId: "COOLING",
+                  title: "Recovered Strategy",
+                  rationale: "retry path works",
+                  confidence: 0.79,
+                  campaignPatch: {
+                    name: "Recovered Strategy",
+                  },
                 },
               }),
             },
@@ -85,14 +91,16 @@ test("ai strategy provider: retries transient upstream failures and then succeed
       timeoutMs: 3000,
     });
 
-    const result = await service.generateStrategyPlan({
+    const result = await service.generateStrategyChatTurn({
       merchantId: "m_store_001",
-      templateId: "activation_contextual_drop",
-      branchId: "COOLING",
-      intent: "high temperature campaign",
+      sessionId: "sc_retry",
+      userMessage: "Please create a cooling proposal.",
+      history: [],
+      activeCampaigns: [],
+      approvedStrategies: [],
     });
 
-    assert.equal(result.status, "PROPOSALS");
+    assert.equal(result.status, "PROPOSAL_READY");
     assert.equal(callCount, 3);
     assert.equal(service.getRuntimeInfo().retryPolicy.maxRetries, 3);
   } finally {

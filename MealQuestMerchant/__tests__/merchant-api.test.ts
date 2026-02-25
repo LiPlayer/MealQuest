@@ -67,26 +67,6 @@
     expect(url).toContain('endTime=2026-02-21T00%3A00%3A00.000Z');
   });
 
-  it('loads strategy library with merchant scope', async () => {
-    const fetchMock = global.fetch as jest.Mock;
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        merchantId: 'm_store_001',
-        templates: [],
-      }),
-    });
-
-    const {MerchantApi} = require('../src/services/merchantApi');
-    await MerchantApi.getStrategyLibrary('token_demo', 'm_store_001');
-
-    const [url, options] = fetchMock.mock.calls[0];
-    expect(url).toContain('/api/merchant/strategy-library?merchantId=m_store_001');
-    expect(options.method).toBe('GET');
-    expect(options.headers.Authorization).toBe('Bearer token_demo');
-  });
-
   it('sends strategy chat message to the single chat endpoint', async () => {
     const fetchMock = global.fetch as jest.Mock;
     fetchMock.mockResolvedValue({

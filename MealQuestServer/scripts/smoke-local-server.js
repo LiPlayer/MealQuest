@@ -438,18 +438,7 @@ async function runSmoke(baseUrl, options = {}) {
   expectStatus(statusAfterRollback, 200, "migration status after rollback");
   assert.equal(statusAfterRollback.data.dedicatedDbAttached, false);
 
-  console.log("[smoke] scenario G: strategy library + chat proposal + review + status");
-  const strategyLibrary = await getJson(
-    baseUrl,
-    "/api/merchant/strategy-library?merchantId=m_store_001",
-    { Authorization: `Bearer ${ownerToken}` }
-  );
-  expectStatus(strategyLibrary, 200, "strategy library");
-  assert.ok(
-    Array.isArray(strategyLibrary.data.templates) &&
-      strategyLibrary.data.templates.length >= 10,
-    "strategy templates should be available"
-  );
+  console.log("[smoke] scenario G: strategy chat proposal + review + status");
 
   const strategySession = await postJson(
     baseUrl,

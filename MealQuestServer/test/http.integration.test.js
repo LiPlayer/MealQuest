@@ -1968,7 +1968,7 @@ test("customer can cancel account and keep transactional records anonymized", as
   }
 });
 
-test("strategy library supports proposal generation, confirm and campaign status control", async () => {
+test("strategy chat supports proposal generation, confirm and campaign status control", async () => {
   const aiStub = await startMockAiServer();
   const app = createAppServer({
     persist: false,
@@ -1986,17 +1986,6 @@ test("strategy library supports proposal generation, confirm and campaign status
     const ownerToken = await mockLogin(baseUrl, "OWNER", {
       merchantId: "m_store_001"
     });
-
-    const library = await getJson(
-      baseUrl,
-      "/api/merchant/strategy-library?merchantId=m_store_001",
-      { Authorization: `Bearer ${ownerToken}` }
-    );
-    assert.equal(library.status, 200);
-    assert.ok(library.data.templates.length >= 10);
-    assert.ok(
-      library.data.templates.some((item) => item.templateId === "activation_contextual_drop")
-    );
 
     const proposal = await createStrategyProposalThroughChat(baseUrl, ownerToken, {
       merchantId: "m_store_001",

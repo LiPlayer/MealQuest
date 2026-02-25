@@ -47,7 +47,6 @@ jest.mock('../src/services/merchantApi', () => ({
         },
       ],
     })),
-    getStrategyLibrary: jest.fn(async () => ({merchantId: 'm_store_001', templates: []})),
     getAuditLogs: jest.fn(async () => ({
       merchantId: 'm_store_001',
       items: [],
@@ -152,7 +151,6 @@ jest.mock('../src/services/merchantApi', () => ({
       activeCampaigns: [],
       approvedStrategies: [],
     })),
-    approveProposal: jest.fn(),
     setKillSwitch: jest.fn(),
     triggerEvent: jest.fn(async () => ({blockedByKillSwitch: false, executed: []})),
   },

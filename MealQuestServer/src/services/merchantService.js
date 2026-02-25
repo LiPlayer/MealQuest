@@ -1,6 +1,5 @@
 ﻿const {
-  findTemplate,
-  listStrategyTemplates
+  findTemplate
 } = require("./strategyLibrary");
 
 function createMerchantService(db, options = {}) {
@@ -346,37 +345,6 @@ function createMerchantService(db, options = {}) {
     return {
       merchantId,
       killSwitchEnabled: merchant.killSwitchEnabled
-    };
-  }
-
-  function listStrategyLibrary({ merchantId }) {
-    const merchant = db.merchants[merchantId];
-    if (!merchant) {
-      throw new Error("merchant not found");
-    }
-    const configs = ensureStrategyBucket(merchantId);
-    return {
-      merchantId,
-      aiRuntime:
-        aiStrategyService && typeof aiStrategyService.getRuntimeInfo === "function"
-          ? aiStrategyService.getRuntimeInfo()
-          : null,
-      templates: listStrategyTemplates().map((template) => ({
-        ...template,
-        currentConfig: configs[template.templateId] || null
-      }))
-    };
-  }
-
-  function listStrategyConfigs({ merchantId }) {
-    const merchant = db.merchants[merchantId];
-    if (!merchant) {
-      throw new Error("merchant not found");
-    }
-    const configs = ensureStrategyBucket(merchantId);
-    return {
-      merchantId,
-      items: Object.values(configs)
     };
   }
 
@@ -808,8 +776,6 @@ function createMerchantService(db, options = {}) {
     getDashboard,
     confirmProposal,
     setKillSwitch,
-    listStrategyLibrary,
-    listStrategyConfigs,
     createStrategyChatSession,
     getStrategyChatSession,
     sendStrategyChatMessage,

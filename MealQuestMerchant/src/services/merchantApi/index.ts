@@ -14,7 +14,6 @@ import {
   StrategyChatReviewResult,
   StrategyChatSessionResult,
   StrategyChatTurnResult,
-  StrategyTemplate,
   TriggerRainEventResult,
 } from './types';
 
@@ -64,13 +63,6 @@ export const MerchantApi = {
     });
   },
 
-  approveProposal: async (token: string, proposalId: string, merchantId = getMerchantId()) => {
-    return requestJson('POST', `/api/merchant/proposals/${proposalId}/confirm`, token, {
-      merchantId,
-      operatorId: 'staff_owner',
-    });
-  },
-
   setKillSwitch: async (token: string, enabled: boolean, merchantId = getMerchantId()) => {
     return requestJson('POST', '/api/merchant/kill-switch', token, {
       merchantId,
@@ -98,22 +90,6 @@ export const MerchantApi = {
       event,
       context,
     });
-  },
-
-  getStrategyLibrary: async (token: string, merchantId = getMerchantId()) => {
-    return requestJson<{ merchantId: string; templates: StrategyTemplate[] }>(
-      'GET',
-      `/api/merchant/strategy-library?merchantId=${encodeURIComponent(merchantId)}`,
-      token,
-    );
-  },
-
-  getStrategyConfigs: async (token: string, merchantId = getMerchantId()) => {
-    return requestJson<{ merchantId: string; items: any[] }>(
-      'GET',
-      `/api/merchant/strategy-configs?merchantId=${encodeURIComponent(merchantId)}`,
-      token,
-    );
   },
 
   getStrategyChatSession: async (
