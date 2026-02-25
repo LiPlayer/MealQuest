@@ -1,99 +1,17 @@
-function createDefaultState(now = new Date()) {
+function createDefaultState() {
   return {
     idCounters: {
       ledger: 0,
       audit: 0
     },
-    merchants: {
-      m_store_001: {
-        merchantId: "m_store_001",
-        name: "Demo Merchant",
-        killSwitchEnabled: false,
-        budgetCap: 300,
-        budgetUsed: 0,
-        staff: [
-          { uid: "staff_owner", role: "OWNER" },
-          { uid: "staff_manager", role: "MANAGER" },
-          { uid: "staff_clerk", role: "CLERK" }
-        ]
-      },
-      m_bistro: {
-        merchantId: "m_bistro",
-        name: "Bistro Harbor",
-        killSwitchEnabled: false,
-        budgetCap: 220,
-        budgetUsed: 0,
-        staff: [
-          { uid: "staff_owner", role: "OWNER" },
-          { uid: "staff_manager", role: "MANAGER" },
-          { uid: "staff_clerk", role: "CLERK" }
-        ]
-      }
-    },
-    merchantUsers: {
-      m_store_001: {},
-      m_bistro: {}
-    },
-    paymentsByMerchant: {
-      m_store_001: {},
-      m_bistro: {}
-    },
-    invoicesByMerchant: {
-      m_store_001: {},
-      m_bistro: {}
-    },
-    partnerOrders: {
-      partner_coffee: {
-        ext_order_1001: {
-          partnerId: "partner_coffee",
-          orderId: "ext_order_1001",
-          amount: 38,
-          status: "PAID",
-          paidAt: new Date(now.getTime() - 30 * 60 * 1000).toISOString()
-        }
-      }
-    },
-    strategyConfigs: {
-      m_store_001: {
-        activation_contextual_drop: {
-          templateId: "activation_contextual_drop",
-          branchId: "COMFORT",
-          status: "ACTIVE",
-          lastProposalId: "proposal_rainy",
-          lastCampaignId: "campaign_rainy_hot_soup",
-          updatedAt: now.toISOString()
-        }
-      },
-      m_bistro: {}
-    },
-    strategyChats: {
-      m_store_001: {
-        activeSessionId: null,
-        sessions: {}
-      },
-      m_bistro: {
-        activeSessionId: null,
-        sessions: {}
-      }
-    },
-    allianceConfigs: {
-      m_store_001: {
-        merchantId: "m_store_001",
-        clusterId: "cluster_demo_brand",
-        stores: ["m_store_001", "m_bistro"],
-        walletShared: false,
-        tierShared: false,
-        updatedAt: now.toISOString()
-      },
-      m_bistro: {
-        merchantId: "m_bistro",
-        clusterId: "cluster_demo_brand",
-        stores: ["m_store_001", "m_bistro"],
-        walletShared: false,
-        tierShared: false,
-        updatedAt: now.toISOString()
-      }
-    },
+    merchants: {},
+    merchantUsers: {},
+    paymentsByMerchant: {},
+    invoicesByMerchant: {},
+    partnerOrders: {},
+    strategyConfigs: {},
+    strategyChats: {},
+    allianceConfigs: {},
     phoneLoginCodes: {},
     socialAuth: {
       customerBindingsByMerchant: {},
@@ -105,64 +23,8 @@ function createDefaultState(now = new Date()) {
     tenantRouteFiles: {},
     ledger: [],
     auditLogs: [],
-    campaigns: [
-      {
-        id: "campaign_welcome",
-        merchantId: "m_store_001",
-        name: "Welcome Campaign",
-        status: "ACTIVE",
-        priority: 20,
-        trigger: { event: "USER_ENTER_SHOP" },
-        conditions: [{ field: "isNewUser", op: "eq", value: true }],
-        budget: {
-          used: 0,
-          cap: 80,
-          costPerHit: 8
-        },
-        action: {
-          type: "STORY_CARD",
-          story: {
-            templateId: "tpl_welcome",
-            narrative: "Welcome and claim your first voucher.",
-            assets: [{ kind: "voucher", id: "voucher_welcome_noodle" }],
-            triggers: ["tap_claim"]
-          }
-        }
-      }
-    ],
-    proposals: [
-      {
-        id: "proposal_rainy",
-        merchantId: "m_store_001",
-        status: "PENDING",
-        title: "Rainy Day Promotion",
-        createdAt: now.toISOString(),
-        suggestedCampaign: {
-          id: "campaign_rainy_hot_soup",
-          merchantId: "m_store_001",
-          name: "Rainy Hot Soup Campaign",
-          status: "ACTIVE",
-          priority: 90,
-          trigger: { event: "WEATHER_CHANGE" },
-          conditions: [{ field: "weather", op: "eq", value: "RAIN" }],
-          budget: {
-            used: 0,
-            cap: 60,
-            costPerHit: 12
-          },
-          action: {
-            type: "STORY_CARD",
-            story: {
-              templateId: "tpl_rain",
-              narrative: "A warm soup for rainy days.",
-              assets: [{ kind: "voucher", id: "voucher_hot_soup" }],
-              triggers: ["tap_pay"]
-            }
-          },
-          ttlUntil: new Date(now.getTime() + 4 * 60 * 60 * 1000).toISOString()
-        }
-      }
-    ]
+    campaigns: [],
+    proposals: []
   };
 }
 
@@ -180,7 +42,9 @@ function migrateLegacyShape(state) {
     next.merchantUsers = {};
   }
   if (next.users && Object.keys(next.merchantUsers).length === 0) {
-    next.merchantUsers.m_store_001 = next.users;
+    const fallbackMerchantId =
+      Object.keys(next.merchants || {})[0] || "m_legacy_default";
+    next.merchantUsers[fallbackMerchantId] = next.users;
   }
 
   if (!next.paymentsByMerchant || typeof next.paymentsByMerchant !== "object") {
@@ -188,7 +52,10 @@ function migrateLegacyShape(state) {
   }
   if (next.payments && Object.keys(next.paymentsByMerchant).length === 0) {
     for (const [paymentTxnId, payment] of Object.entries(next.payments)) {
-      const merchantId = payment && payment.merchantId ? payment.merchantId : "m_store_001";
+      const merchantId =
+        payment && payment.merchantId
+          ? payment.merchantId
+          : Object.keys(next.merchants || {})[0] || "m_legacy_default";
       if (!next.paymentsByMerchant[merchantId]) {
         next.paymentsByMerchant[merchantId] = {};
       }

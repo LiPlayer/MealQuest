@@ -8,7 +8,7 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
         getItem: jest.fn(async (key: string) => {
             if (key === 'mq_merchant_entry_done') return '1';
             if (key === 'mq_merchant_entry_merchant_id') return 'm_store_001';
-            if (key === 'mq_merchant_entry_auth_token') return 'token_demo';
+            if (key === 'mq_merchant_entry_auth_token') return 'token_fixture';
             return null;
         }),
         setItem: jest.fn(async () => undefined),

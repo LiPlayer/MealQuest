@@ -103,10 +103,11 @@ Example body:
 {
   "merchantId": "m_my_first_store",
   "name": "My First Store",
-  "budgetCap": 500,
-  "seedDemoUsers": true
+  "budgetCap": 500
 }
 ```
+
+Server starts with an empty merchant dataset by default. Create stores through onboarding for real-scenario testing.
 
 ## Auth
 

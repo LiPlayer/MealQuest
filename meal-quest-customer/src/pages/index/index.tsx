@@ -14,7 +14,7 @@ import { buildSmartCheckoutQuote } from '../../domain/smartCheckout';
 import './index.scss';
 
 const DEFAULT_STORE_ID =
-    (typeof process !== 'undefined' && process.env && process.env.TARO_APP_DEFAULT_STORE_ID) || 'm_store_001';
+    (typeof process !== 'undefined' && process.env && process.env.TARO_APP_DEFAULT_STORE_ID) || '';
 
 const DEFAULT_ORDER_AMOUNT = 52;
 
@@ -86,20 +86,18 @@ export default function Index() {
 
     useEffect(() => {
         const loadData = async () => {
-            const storeId = storage.getLastStoreId();
+            const storeId = storage.getLastStoreId() || DEFAULT_STORE_ID;
+            if (!storeId) {
+                Taro.reLaunch({ url: '/pages/startup/index' });
+                return;
+            }
 
-            if (storeId) {
-                try {
-                    const homeSnapshot = await DataService.getHomeSnapshot(storeId);
-                    setSnapshot(homeSnapshot);
-                    setRefreshTrigger(v => v + 1);
-                } catch (err) {
-                    console.error('Error fetching store data:', err);
-                }
-            } else {
-                const defaultSnapshot = await DataService.getHomeSnapshot(DEFAULT_STORE_ID);
-                setSnapshot(defaultSnapshot);
+            try {
+                const homeSnapshot = await DataService.getHomeSnapshot(storeId);
+                setSnapshot(homeSnapshot);
                 setRefreshTrigger(v => v + 1);
+            } catch (err) {
+                console.error('Error fetching store data:', err);
             }
         };
 

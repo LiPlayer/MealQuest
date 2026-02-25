@@ -256,9 +256,7 @@ function createPreAuthRoutesHandler({
           status: "SUCCESS",
           role: "SYSTEM",
           operatorId: "bootstrap",
-          details: {
-            seededUsers: result.seededUsers.length,
-          },
+          details: {},
         });
         sendJson(res, 201, result);
         return true;

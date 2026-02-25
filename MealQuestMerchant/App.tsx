@@ -13,9 +13,6 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import {
   createInitialMerchantState,
-  smartCashierVerify,
-  toggleKillSwitch,
-  triggerCampaigns,
 } from './src/domain/merchantEngine';
 import {
   AllianceConfig,
@@ -515,86 +512,16 @@ function MerchantConsoleApp({
     setLastAction(`跨店用户同步完成：${response.syncedStores.join(', ')}`);
   };
 
-  const onTriggerEvent = async (
-    event: string,
-    context: Record<string, string | boolean | number>,
-    label: string,
-  ) => {
-    if (remoteToken) {
-      const targetUserId = customerUserId.trim();
-      if (!targetUserId) {
-        setLastAction('Please input customer user ID first');
-        return;
-      }
-      const triggerResult = await MerchantApi.triggerEvent(
-        remoteToken,
-        event,
-        context,
-        targetUserId,
-      );
-      const executed = triggerResult.executed || [];
-      await refreshRemoteState(remoteToken);
-      await refreshAuditLogs(remoteToken);
-      if (triggerResult.blockedByKillSwitch) {
-        setLastAction('熔断中，策略未执行');
-      } else if (executed.length > 0) {
-        setLastAction(`${label}执行：${executed.join(', ')}`);
-      } else {
-        setLastAction(`${label}无匹配策略`);
-      }
-      return;
-    }
-
-    if (event !== 'WEATHER_CHANGE') {
-      setLastAction('本地模式仅支持 WEATHER_CHANGE 演练');
-      return;
-    }
-    setMerchantState(prev => {
-      const result = triggerCampaigns(prev, 'WEATHER_CHANGE', {
-        weather: context.weather as string,
-      });
-      if (result.blockedByKillSwitch) {
-        setLastAction('熔断中，策略未执行');
-      } else if (result.executedIds.length > 0) {
-        setLastAction(`已执行策略：${result.executedIds.join(', ')}`);
-      } else {
-        setLastAction('无匹配策略执行');
-      }
-      return result.nextState;
-    });
-  };
-
   const onToggleKillSwitch = async () => {
-    if (remoteToken) {
-      const targetEnabled = !merchantState.killSwitchEnabled;
-      await MerchantApi.setKillSwitch(remoteToken, targetEnabled);
-      await refreshRemoteState(remoteToken);
-      await refreshAuditLogs(remoteToken);
-      setLastAction(targetEnabled ? '已开启预算熔断' : '已关闭预算熔断');
+    if (!remoteToken) {
+      setLastAction('Server connection is not ready.');
       return;
     }
-
-    setMerchantState(prev => {
-      const nextEnabled = !prev.killSwitchEnabled;
-      setLastAction(nextEnabled ? '已开启预算熔断' : '已关闭预算熔断');
-      return toggleKillSwitch(prev, nextEnabled);
-    });
-  };
-
-  const onTriggerRainyEvent = async () => {
-    await onTriggerEvent('WEATHER_CHANGE', { weather: 'RAIN' }, '暴雨事件');
-  };
-
-  const onVerifyCashier = () => {
-    const settlement = smartCashierVerify({
-      orderAmount: 52,
-      voucherValue: 18,
-      bonusBalance: 10,
-      principalBalance: 20,
-    });
-    setLastAction(
-      `智能核销完成，外部支付 ¥${settlement.payable.toFixed(2)}（券 ${settlement.deduction.voucher.toFixed(2)}）`,
-    );
+    const targetEnabled = !merchantState.killSwitchEnabled;
+    await MerchantApi.setKillSwitch(remoteToken, targetEnabled);
+    await refreshRemoteState(remoteToken);
+    await refreshAuditLogs(remoteToken);
+    setLastAction(targetEnabled ? '已开启预算熔断' : '已关闭预算熔断');
   };
 
   const onGenerateMerchantQr = () => {
@@ -819,7 +746,7 @@ function MerchantConsoleApp({
                     testID="alliance-user-id-input"
                     value={customerUserId}
                     onChangeText={setCustomerUserId}
-                    placeholder="Customer User ID (required for sync and trigger)"
+                    placeholder="Customer User ID (required for alliance sync)"
                     style={styles.entryInput}
                   />
                   <View style={styles.filterRow}>
@@ -835,23 +762,13 @@ function MerchantConsoleApp({
                     testID="alliance-sync-user"
                     style={styles.filterButton}
                     onPress={onSyncAllianceUser}>
-                    <Text style={styles.filterButtonText}>同步示例用户</Text>
+                    <Text style={styles.filterButtonText}>同步用户</Text>
                   </Pressable>
                 </View>
               </>
             )}
           </SectionCard>
 
-          <SectionCard title="收银台模拟">
-            <Text style={styles.dataLine}>测试账单：¥52.00</Text>
-            <Text style={styles.mutedText}>规则：临期券优先 -&gt; 赠送金 -&gt; 本金 -&gt; 外部支付</Text>
-            <Pressable
-              testID="verify-cashier-btn"
-              style={styles.primaryButton}
-              onPress={onVerifyCashier}>
-              <Text style={styles.primaryButtonText}>执行智能核销</Text>
-            </Pressable>
-          </SectionCard>
           <SectionCard title="Merchant QR Code">
             <Text style={styles.mutedText}>
               Compatible with customer startup parser. External WeChat/Alipay scan will open payment page automatically.
@@ -860,7 +777,7 @@ function MerchantConsoleApp({
               testID="merchant-qr-store-id-input"
               value={qrStoreId}
               onChangeText={setQrStoreId}
-              placeholder="Store ID (for example: m_store_001)"
+              placeholder="Store ID (for example: m_my_first_store)"
               style={styles.entryInput}
             />
             <TextInput
@@ -902,36 +819,6 @@ function MerchantConsoleApp({
                 {qrPayload}
               </Text>
             ) : null}
-          </SectionCard>
-
-          <SectionCard title="TCA 触发演练">
-            <Text style={styles.mutedText}>可触发天气/进店/库存等事件检验策略执行</Text>
-            <View style={styles.filterRow}>
-              <Pressable
-                testID="trigger-rain-event"
-                style={styles.primaryButton}
-                onPress={onTriggerRainyEvent}>
-                <Text style={styles.primaryButtonText}>暴雨事件</Text>
-              </Pressable>
-              <Pressable
-                style={styles.secondaryButton}
-                onPress={() =>
-                  onTriggerEvent('APP_OPEN', { weather: 'RAIN', temperature: 18 }, '开屏触发')
-                }>
-                <Text style={styles.secondaryButtonText}>开屏触发</Text>
-              </Pressable>
-              <Pressable
-                style={styles.secondaryButton}
-                onPress={() =>
-                  onTriggerEvent(
-                    'INVENTORY_ALERT',
-                    { targetSku: 'sku_hot_soup', inventoryBacklog: 12 },
-                    '库存预警',
-                  )
-                }>
-                <Text style={styles.secondaryButtonText}>库存预警</Text>
-              </Pressable>
-            </View>
           </SectionCard>
 
           <SectionCard title="执行日志">
@@ -1161,13 +1048,14 @@ function MerchantEntryFlow({
   onComplete: (payload: { merchantId: string; token: string }) => void;
 }) {
   const [step, setStep] = useState<MerchantEntryStep>('PHONE_LOGIN');
-  const [contactPhone, setContactPhone] = useState('+8613800000000');
+  const [contactPhone, setContactPhone] = useState('');
   const [phoneCode, setPhoneCode] = useState('');
   const [merchantId, setMerchantId] = useState('');
-  const [merchantName, setMerchantName] = useState('My First Store');
-  const [companyName, setCompanyName] = useState('My Catering Company');
-  const [licenseNo, setLicenseNo] = useState('91310000MA1TEST001');
-  const [settlementAccount, setSettlementAccount] = useState('6222020202020202');
+  const [merchantName, setMerchantName] = useState('');
+  const [onboardingBudgetCap, setOnboardingBudgetCap] = useState('500');
+  const [companyName, setCompanyName] = useState('');
+  const [licenseNo, setLicenseNo] = useState('');
+  const [settlementAccount, setSettlementAccount] = useState('');
   const [loading, setLoading] = useState(false);
   const [token, setToken] = useState('');
   const [hint, setHint] = useState('');
@@ -1186,12 +1074,8 @@ function MerchantEntryFlow({
     }
     setLoading(true);
     try {
-      const result = await MerchantApi.requestMerchantLoginCode(contactPhone.trim());
-      setHint(
-        result.debugCode
-          ? `Code sent (debug: ${result.debugCode})`
-          : 'Code sent, please check SMS',
-      );
+      await MerchantApi.requestMerchantLoginCode(contactPhone.trim());
+      setHint('Code sent, please check SMS');
     } catch (err: any) {
       setError(err?.message || 'Failed to request code');
     } finally {
@@ -1238,13 +1122,18 @@ function MerchantEntryFlow({
       setError('Please enter a store name');
       return;
     }
+    const budgetCap = Number(onboardingBudgetCap);
+    if (!Number.isFinite(budgetCap) || budgetCap <= 0) {
+      setError('Please enter a valid budget cap');
+      return;
+    }
     setLoading(true);
     try {
       const generatedMerchantId = buildMerchantIdFromName(merchantName);
       const result = await MerchantApi.onboardMerchant({
         merchantId: generatedMerchantId,
-        name: merchantName,
-        budgetCap: 500,
+        name: merchantName.trim(),
+        budgetCap,
       });
       const nextMerchantId = result.merchant.merchantId;
       MerchantApi.setMerchantId(nextMerchantId);
@@ -1286,7 +1175,9 @@ function MerchantEntryFlow({
           <View style={styles.entryHero}>
             <Text style={styles.entryHeroKicker}>MealQuest Merchant</Text>
             <Text style={styles.entryTitle}>Merchant Onboarding</Text>
-            <Text style={styles.entrySubtitle}>Phone Login - Guide - Store Onboarding - Contract</Text>
+            <Text style={styles.entrySubtitle}>
+              No preloaded store. Complete phone login, create store, and submit contract.
+            </Text>
           </View>
 
           {step === 'PHONE_LOGIN' && (
@@ -1337,6 +1228,13 @@ function MerchantEntryFlow({
                 onChangeText={setMerchantName}
                 placeholder="Store Name"
                 style={styles.entryInput}
+              />
+              <TextInput
+                value={onboardingBudgetCap}
+                onChangeText={setOnboardingBudgetCap}
+                placeholder="Marketing Budget Cap (e.g. 500)"
+                style={styles.entryInput}
+                keyboardType="number-pad"
               />
               <Text style={styles.mutedText}>Auto generated store ID: {suggestedMerchantId}</Text>
               <Pressable style={styles.primaryButton} onPress={onOpenStore}>

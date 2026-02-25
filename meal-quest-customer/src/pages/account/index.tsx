@@ -9,7 +9,7 @@ import { storage } from '@/utils/storage';
 import './index.scss';
 
 const DEFAULT_STORE_ID =
-    (typeof process !== 'undefined' && process.env && process.env.TARO_APP_DEFAULT_STORE_ID) || 'm_store_001';
+    (typeof process !== 'undefined' && process.env && process.env.TARO_APP_DEFAULT_STORE_ID) || '';
 
 const toMoney = (value: number) => `¥${Number(value || 0).toFixed(2)}`;
 
@@ -22,10 +22,15 @@ export default function AccountPage() {
     const [canceling, setCanceling] = useState(false);
     const [customerUserId, setCustomerUserId] = useState('');
 
-    const storeId = useMemo(() => storage.getLastStoreId() || DEFAULT_STORE_ID, []);
+    const storeId = useMemo(() => storage.getLastStoreId() || DEFAULT_STORE_ID || '', []);
     const getResolvedUserId = () => String(storage.getCustomerUserId() || '').trim();
 
     const loadData = useCallback(async () => {
+        if (!storeId) {
+            setLoading(false);
+            Taro.reLaunch({ url: '/pages/startup/index' });
+            return;
+        }
         setLoading(true);
         try {
             const userId = getResolvedUserId();

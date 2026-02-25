@@ -1,4 +1,4 @@
-﻿const test = require("node:test");
+const test = require("node:test");
 const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
 const http = require("node:http");
@@ -11,20 +11,166 @@ const TEST_JWT_SECRET = process.env.MQ_JWT_SECRET || "mealquest-dev-secret";
 const activeApps = new Set();
 
 function seedLegacyTestUsers(db) {
-  if (!db || !db.merchantUsers || typeof db.merchantUsers !== "object") {
+  if (!db || typeof db !== "object") {
     return;
   }
-  const ensureMerchant = (merchantId) => {
-    if (!db.merchantUsers[merchantId] || typeof db.merchantUsers[merchantId] !== "object") {
-      db.merchantUsers[merchantId] = {};
+
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const ensureObjectMap = (key) => {
+    if (!db[key] || typeof db[key] !== "object") {
+      db[key] = {};
     }
-    return db.merchantUsers[merchantId];
+    return db[key];
   };
-  const mStore = ensureMerchant("m_store_001");
-  if (!mStore.u_demo) {
-    mStore.u_demo = {
-      uid: "u_demo",
-      displayName: "Demo User",
+  const ensureMerchantRecord = (merchantId, name, budgetCap) => {
+    const merchants = ensureObjectMap("merchants");
+    if (!merchants[merchantId]) {
+      merchants[merchantId] = {
+        merchantId,
+        name,
+        killSwitchEnabled: false,
+        budgetCap,
+        budgetUsed: 0,
+        staff: [
+          { uid: "staff_owner", role: "OWNER" },
+          { uid: "staff_manager", role: "MANAGER" },
+          { uid: "staff_clerk", role: "CLERK" },
+        ],
+        onboardedAt: nowIso,
+      };
+    }
+  };
+  const ensureMerchantBucket = (key, merchantId, defaultValue = {}) => {
+    const map = ensureObjectMap(key);
+    if (!map[merchantId] || typeof map[merchantId] !== "object") {
+      map[merchantId] = defaultValue;
+    }
+    return map[merchantId];
+  };
+
+  ensureMerchantRecord("m_store_001", "Fixture Merchant", 300);
+  ensureMerchantRecord("m_bistro", "Bistro Harbor", 220);
+
+  const mStore = ensureMerchantBucket("merchantUsers", "m_store_001");
+  ensureMerchantBucket("merchantUsers", "m_bistro");
+  ensureMerchantBucket("paymentsByMerchant", "m_store_001");
+  ensureMerchantBucket("paymentsByMerchant", "m_bistro");
+  ensureMerchantBucket("invoicesByMerchant", "m_store_001");
+  ensureMerchantBucket("invoicesByMerchant", "m_bistro");
+  const strategyConfigs = ensureMerchantBucket("strategyConfigs", "m_store_001");
+  ensureMerchantBucket("strategyConfigs", "m_bistro");
+  ensureMerchantBucket("strategyChats", "m_store_001", {
+    activeSessionId: null,
+    sessions: {},
+  });
+  ensureMerchantBucket("strategyChats", "m_bistro", {
+    activeSessionId: null,
+    sessions: {},
+  });
+  ensureMerchantBucket("allianceConfigs", "m_store_001", {
+    merchantId: "m_store_001",
+    clusterId: "cluster_fixture_brand",
+    stores: ["m_store_001", "m_bistro"],
+    walletShared: false,
+    tierShared: false,
+    updatedAt: nowIso,
+  });
+  ensureMerchantBucket("allianceConfigs", "m_bistro", {
+    merchantId: "m_bistro",
+    clusterId: "cluster_fixture_brand",
+    stores: ["m_store_001", "m_bistro"],
+    walletShared: false,
+    tierShared: false,
+    updatedAt: nowIso,
+  });
+
+  if (!strategyConfigs.activation_contextual_drop) {
+    strategyConfigs.activation_contextual_drop = {
+      templateId: "activation_contextual_drop",
+      branchId: "COMFORT",
+      status: "ACTIVE",
+      lastProposalId: "proposal_rainy",
+      lastCampaignId: "campaign_rainy_hot_soup",
+      updatedAt: nowIso,
+    };
+  }
+
+  if (!Array.isArray(db.campaigns)) {
+    db.campaigns = [];
+  }
+  if (!db.campaigns.find((item) => item && item.id === "campaign_welcome")) {
+    db.campaigns.push({
+      id: "campaign_welcome",
+      merchantId: "m_store_001",
+      name: "Welcome Campaign",
+      status: "ACTIVE",
+      priority: 20,
+      trigger: { event: "USER_ENTER_SHOP" },
+      conditions: [{ field: "isNewUser", op: "eq", value: true }],
+      budget: { used: 0, cap: 80, costPerHit: 8 },
+      action: {
+        type: "STORY_CARD",
+        story: {
+          templateId: "tpl_welcome",
+          narrative: "Welcome and claim your first voucher.",
+          assets: [{ kind: "voucher", id: "voucher_welcome_noodle" }],
+          triggers: ["tap_claim"],
+        },
+      },
+    });
+  }
+  if (!Array.isArray(db.proposals)) {
+    db.proposals = [];
+  }
+  if (!db.proposals.find((item) => item && item.id === "proposal_rainy")) {
+    db.proposals.push({
+      id: "proposal_rainy",
+      merchantId: "m_store_001",
+      status: "PENDING",
+      title: "Rainy Day Promotion",
+      createdAt: nowIso,
+      suggestedCampaign: {
+        id: "campaign_rainy_hot_soup",
+        merchantId: "m_store_001",
+        name: "Rainy Hot Soup Campaign",
+        status: "ACTIVE",
+        priority: 90,
+        trigger: { event: "WEATHER_CHANGE" },
+        conditions: [{ field: "weather", op: "eq", value: "RAIN" }],
+        budget: { used: 0, cap: 60, costPerHit: 12 },
+        action: {
+          type: "STORY_CARD",
+          story: {
+            templateId: "tpl_rain",
+            narrative: "A warm soup for rainy days.",
+            assets: [{ kind: "voucher", id: "voucher_hot_soup" }],
+            triggers: ["tap_pay"],
+          },
+        },
+        ttlUntil: new Date(now.getTime() + 4 * 60 * 60 * 1000).toISOString(),
+      },
+    });
+  }
+
+  const partnerOrders = ensureObjectMap("partnerOrders");
+  if (!partnerOrders.partner_coffee || typeof partnerOrders.partner_coffee !== "object") {
+    partnerOrders.partner_coffee = {};
+  }
+  if (!partnerOrders.partner_coffee.ext_order_1001) {
+    partnerOrders.partner_coffee.ext_order_1001 = {
+      partnerId: "partner_coffee",
+      orderId: "ext_order_1001",
+      amount: 38,
+      status: "PAID",
+      paidAt: new Date(now.getTime() - 30 * 60 * 1000).toISOString(),
+    };
+  }
+
+  if (!mStore.u_fixture_001) {
+    mStore.u_fixture_001 = {
+      uid: "u_fixture_001",
+      displayName: "Fixture User",
       wallet: { principal: 120, bonus: 36, silver: 88 },
       tags: ["REGULAR", "SPICY_LOVER"],
       fragments: { spicy: 2, noodle: 3 },
@@ -50,21 +196,21 @@ function seedLegacyTestUsers(db) {
       ],
     };
   }
-  if (!mStore.u_friend) {
-    mStore.u_friend = {
-      uid: "u_friend",
-      displayName: "Demo Friend",
+  if (!mStore.u_fixture_002) {
+    mStore.u_fixture_002 = {
+      uid: "u_fixture_002",
+      displayName: "Fixture Friend",
       wallet: { principal: 40, bonus: 8, silver: 52 },
       tags: ["REGULAR"],
       fragments: { spicy: 0, noodle: 1 },
       vouchers: [],
     };
   }
-  const mBistro = ensureMerchant("m_bistro");
-  if (!mBistro.u_demo) {
-    mBistro.u_demo = {
-      uid: "u_demo",
-      displayName: "Demo User",
+  const mBistro = ensureMerchantBucket("merchantUsers", "m_bistro");
+  if (!mBistro.u_fixture_001) {
+    mBistro.u_fixture_001 = {
+      uid: "u_fixture_001",
+      displayName: "Fixture User",
       wallet: { principal: 80, bonus: 12, silver: 36 },
       tags: ["REGULAR"],
       fragments: { spicy: 1, noodle: 1 },
@@ -93,6 +239,15 @@ function createAppServer(options = {}) {
   }
   activeApps.add(app);
   return app;
+}
+
+function getIssuedPhoneCode(app, phone) {
+  const record =
+    app &&
+    app.db &&
+    app.db.phoneLoginCodes &&
+    app.db.phoneLoginCodes[String(phone || "").trim()];
+  return record && record.code ? String(record.code) : "";
 }
 
 test.after(async () => {
@@ -214,7 +369,7 @@ function operatorIdForRole(role) {
 
 async function mockLogin(_baseUrl, role, options = {}) {
   const merchantId = options.merchantId || "m_store_001";
-  const userId = options.userId || "u_demo";
+  const userId = options.userId || "u_fixture_001";
   return issueToken(
     {
       role,
@@ -495,7 +650,7 @@ test("http flow: quote -> verify -> refund -> confirm proposal -> trigger", asyn
       "/api/payment/quote",
       {
         merchantId: "m_store_001",
-        userId: "u_demo",
+        userId: "u_fixture_001",
         orderAmount: 52
       },
       { Authorization: `Bearer ${customerToken}` }
@@ -508,7 +663,7 @@ test("http flow: quote -> verify -> refund -> confirm proposal -> trigger", asyn
       "/api/payment/verify",
       {
         merchantId: "m_store_001",
-        userId: "u_demo",
+        userId: "u_fixture_001",
         orderAmount: 52
       },
       {
@@ -524,7 +679,7 @@ test("http flow: quote -> verify -> refund -> confirm proposal -> trigger", asyn
       "/api/payment/refund",
       {
         merchantId: "m_store_001",
-        userId: "u_demo",
+        userId: "u_fixture_001",
         paymentTxnId: verify.data.paymentTxnId,
         refundAmount: 20
       },
@@ -553,7 +708,7 @@ test("http flow: quote -> verify -> refund -> confirm proposal -> trigger", asyn
       "/api/tca/trigger",
       {
         merchantId: "m_store_001",
-        userId: "u_demo",
+        userId: "u_fixture_001",
         event: "WEATHER_CHANGE",
         context: { weather: "RAIN" }
       },
@@ -579,7 +734,7 @@ test("rbac: clerk cannot confirm proposal, manager can refund", async () => {
     const verify = await postJson(
       baseUrl,
       "/api/payment/verify",
-      { merchantId: "m_store_001", userId: "u_demo", orderAmount: 52 },
+      { merchantId: "m_store_001", userId: "u_fixture_001", orderAmount: 52 },
       {
         Authorization: `Bearer ${customerToken}`,
         "Idempotency-Key": "rbac_pay_1"
@@ -601,7 +756,7 @@ test("rbac: clerk cannot confirm proposal, manager can refund", async () => {
       "/api/payment/refund",
       {
         merchantId: "m_store_001",
-        userId: "u_demo",
+        userId: "u_fixture_001",
         paymentTxnId: verify.data.paymentTxnId,
         refundAmount: 5
       },
@@ -650,7 +805,7 @@ test("websocket push receives payment event", async () => {
     await postJson(
       baseUrl,
       "/api/payment/verify",
-      { merchantId: "m_store_001", userId: "u_demo", orderAmount: 30 },
+      { merchantId: "m_store_001", userId: "u_fixture_001", orderAmount: 30 },
       {
         Authorization: `Bearer ${customerToken}`,
         "Idempotency-Key": "ws_pay_1"
@@ -674,7 +829,7 @@ test("protected endpoint rejects missing token", async () => {
   try {
     const res = await postJson(baseUrl, "/api/payment/quote", {
       merchantId: "m_store_001",
-      userId: "u_demo",
+      userId: "u_fixture_001",
       orderAmount: 30
     });
     assert.equal(res.status, 401);
@@ -785,10 +940,12 @@ test("merchant phone login issues owner token and enforces merchant scope", asyn
       phone: "+8613900000000"
     });
     assert.equal(requestCode.status, 200);
+    const ownerLoginCode = getIssuedPhoneCode(app, "+8613900000000");
+    assert.ok(ownerLoginCode);
 
     const login = await postJson(baseUrl, "/api/auth/merchant/phone-login", {
       phone: "+8613900000000",
-      code: requestCode.data.debugCode,
+      code: ownerLoginCode,
       merchantId: "m_store_001",
     });
     assert.equal(login.status, 200);
@@ -815,9 +972,11 @@ test("merchant phone login issues owner token and enforces merchant scope", asyn
       phone: "+8613900000000",
     });
     assert.equal(requestCodeUnknownMerchant.status, 200);
+    const unknownMerchantCode = getIssuedPhoneCode(app, "+8613900000000");
+    assert.ok(unknownMerchantCode);
     const unknownMerchant = await postJson(baseUrl, "/api/auth/merchant/phone-login", {
       phone: "+8613900000000",
-      code: requestCodeUnknownMerchant.data.debugCode,
+      code: unknownMerchantCode,
       merchantId: "m_not_exists"
     });
     assert.equal(unknownMerchant.status, 404);
@@ -827,9 +986,11 @@ test("merchant phone login issues owner token and enforces merchant scope", asyn
       phone: "+8613900000000"
     });
     assert.equal(requestCodeNoScope.status, 200);
+    const noScopeCode = getIssuedPhoneCode(app, "+8613900000000");
+    assert.ok(noScopeCode);
     const unscopedLogin = await postJson(baseUrl, "/api/auth/merchant/phone-login", {
       phone: "+8613900000000",
-      code: requestCodeNoScope.data.debugCode
+      code: noScopeCode
     });
     assert.equal(unscopedLogin.status, 200);
     assert.equal(unscopedLogin.data.profile.merchantId, null);
@@ -864,10 +1025,12 @@ test("merchant phone login resolves merchantId automatically by bound contact ph
       phone: bindPhone
     });
     assert.equal(requestCode.status, 200);
+    const bindLoginCode = getIssuedPhoneCode(app, bindPhone);
+    assert.ok(bindLoginCode);
 
     const login = await postJson(baseUrl, "/api/auth/merchant/phone-login", {
       phone: bindPhone,
-      code: requestCode.data.debugCode,
+      code: bindLoginCode,
     });
     assert.equal(login.status, 200);
     assert.equal(login.data.profile.role, "OWNER");
@@ -907,17 +1070,18 @@ test("merchant onboarding api allows custom store creation for end-to-end testin
     assert.equal(onboard.status, 201);
     assert.equal(onboard.data.merchant.merchantId, merchantId);
     assert.equal(onboard.data.merchant.name, "Custom Test Store");
-    assert.deepEqual(onboard.data.seededUsers, []);
+    assert.equal(Object.prototype.hasOwnProperty.call(onboard.data, "seededUsers"), false);
 
     const requestCode = await postJson(baseUrl, "/api/auth/merchant/request-code", {
       phone: "+8613800000000"
     });
     assert.equal(requestCode.status, 200);
-    assert.ok(requestCode.data.debugCode);
+    const onboardLoginCode = getIssuedPhoneCode(app, "+8613800000000");
+    assert.ok(onboardLoginCode);
 
     const phoneLogin = await postJson(baseUrl, "/api/auth/merchant/phone-login", {
       phone: "+8613800000000",
-      code: requestCode.data.debugCode
+      code: onboardLoginCode
     });
     assert.equal(phoneLogin.status, 200);
     assert.ok(phoneLogin.data.token);
@@ -984,7 +1148,7 @@ test("persistent mode keeps state across restarts", async () => {
     "/api/payment/verify",
     {
       merchantId: "m_store_001",
-      userId: "u_demo",
+      userId: "u_fixture_001",
       orderAmount: 52
     },
     {
@@ -1002,7 +1166,7 @@ test("persistent mode keeps state across restarts", async () => {
   try {
     const customerToken2 = await mockLogin(base2, "CUSTOMER");
     const stateRes = await fetch(
-      `${base2}/api/state?merchantId=m_store_001&userId=u_demo`,
+      `${base2}/api/state?merchantId=m_store_001&userId=u_fixture_001`,
       {
         headers: {
           Authorization: `Bearer ${customerToken2}`
@@ -1069,7 +1233,7 @@ test("persistent mode keeps tenant policy across restarts", async () => {
       "/api/payment/verify",
       {
         merchantId: "m_store_001",
-        userId: "u_demo",
+        userId: "u_fixture_001",
         orderAmount: 20
       },
       {
@@ -1109,14 +1273,14 @@ test("persistent mode keeps tenant dedicated route after cutover", async () => {
 
   const customerToken = await mockLogin(base1, "CUSTOMER", {
     merchantId: "m_store_001",
-    userId: "u_demo"
+    userId: "u_fixture_001"
   });
   const verifyAfterCutover = await postJson(
     base1,
     "/api/payment/verify",
     {
       merchantId: "m_store_001",
-      userId: "u_demo",
+      userId: "u_fixture_001",
       orderAmount: 12
     },
     {
@@ -1154,14 +1318,14 @@ test("persistent mode keeps tenant dedicated route after cutover", async () => {
 
     const customerToken2 = await mockLogin(base2, "CUSTOMER", {
       merchantId: "m_store_001",
-      userId: "u_demo"
+      userId: "u_fixture_001"
     });
     const verifyAfterRestart = await postJson(
       base2,
       "/api/payment/verify",
       {
         merchantId: "m_store_001",
-        userId: "u_demo",
+        userId: "u_fixture_001",
         orderAmount: 11
       },
       {
@@ -1195,7 +1359,7 @@ test("migration rollback moves merchant traffic back to shared db", async () => 
     });
     const customerToken = await mockLogin(baseUrl, "CUSTOMER", {
       merchantId: "m_store_001",
-      userId: "u_demo"
+      userId: "u_fixture_001"
     });
 
     const cutover = await postJson(
@@ -1212,7 +1376,7 @@ test("migration rollback moves merchant traffic back to shared db", async () => 
       "/api/payment/verify",
       {
         merchantId: "m_store_001",
-        userId: "u_demo",
+        userId: "u_fixture_001",
         orderAmount: 13
       },
       {
@@ -1249,7 +1413,7 @@ test("migration rollback moves merchant traffic back to shared db", async () => 
       "/api/payment/verify",
       {
         merchantId: "m_store_001",
-        userId: "u_demo",
+        userId: "u_fixture_001",
         orderAmount: 14
       },
       {
@@ -1271,13 +1435,13 @@ test("tenant isolation: same user id is scoped by merchant", async () => {
   const baseUrl = `http://127.0.0.1:${port}`;
 
   try {
-    const customerDemoToken = await mockLogin(baseUrl, "CUSTOMER", {
+    const customerFixtureToken = await mockLogin(baseUrl, "CUSTOMER", {
       merchantId: "m_store_001",
-      userId: "u_demo"
+      userId: "u_fixture_001"
     });
     const customerBistroToken = await mockLogin(baseUrl, "CUSTOMER", {
       merchantId: "m_bistro",
-      userId: "u_demo"
+      userId: "u_fixture_001"
     });
     const bistroOwnerToken = await mockLogin(baseUrl, "OWNER", {
       merchantId: "m_bistro"
@@ -1287,7 +1451,7 @@ test("tenant isolation: same user id is scoped by merchant", async () => {
       "/api/payment/verify",
       {
         merchantId: "m_bistro",
-        userId: "u_demo",
+        userId: "u_fixture_001",
         orderAmount: 1
       },
       {
@@ -1299,30 +1463,30 @@ test("tenant isolation: same user id is scoped by merchant", async () => {
 
     const bistroStateBefore = await getJson(
       baseUrl,
-      "/api/state?merchantId=m_bistro&userId=u_demo",
+      "/api/state?merchantId=m_bistro&userId=u_fixture_001",
       { Authorization: `Bearer ${customerBistroToken}` }
     );
     assert.equal(bistroStateBefore.status, 200);
     const bistroPrincipalBefore = bistroStateBefore.data.user.wallet.principal;
 
-    const demoVerify = await postJson(
+    const fixtureVerify = await postJson(
       baseUrl,
       "/api/payment/verify",
       {
         merchantId: "m_store_001",
-        userId: "u_demo",
+        userId: "u_fixture_001",
         orderAmount: 52
       },
       {
-        Authorization: `Bearer ${customerDemoToken}`,
-        "Idempotency-Key": "tenant_demo_pay_1"
+        Authorization: `Bearer ${customerFixtureToken}`,
+        "Idempotency-Key": "tenant_fixture_pay_1"
       }
     );
-    assert.equal(demoVerify.status, 200);
+    assert.equal(fixtureVerify.status, 200);
 
     const bistroStateAfter = await getJson(
       baseUrl,
-      "/api/state?merchantId=m_bistro&userId=u_demo",
+      "/api/state?merchantId=m_bistro&userId=u_fixture_001",
       { Authorization: `Bearer ${customerBistroToken}` }
     );
     assert.equal(bistroStateAfter.status, 200);
@@ -1333,8 +1497,8 @@ test("tenant isolation: same user id is scoped by merchant", async () => {
       "/api/payment/refund",
       {
         merchantId: "m_bistro",
-        userId: "u_demo",
-        paymentTxnId: demoVerify.data.paymentTxnId,
+        userId: "u_fixture_001",
+        paymentTxnId: fixtureVerify.data.paymentTxnId,
         refundAmount: 5
       },
       {
@@ -1352,15 +1516,17 @@ test("tenant isolation: same user id is scoped by merchant", async () => {
 test("tenant router: routes merchant to dedicated db", async () => {
   const defaultDb = createInMemoryDb();
   const bistroDb = createInMemoryDb();
-  bistroDb.merchantUsers.m_bistro.u_demo = {
-    uid: "u_demo",
-    displayName: "Demo User",
+  seedLegacyTestUsers(defaultDb);
+  seedLegacyTestUsers(bistroDb);
+  bistroDb.merchantUsers.m_bistro.u_fixture_001 = {
+    uid: "u_fixture_001",
+    displayName: "Fixture User",
     wallet: { principal: 80, bonus: 0, silver: 0 },
     tags: ["REGULAR"],
     fragments: { spicy: 0, noodle: 0 },
     vouchers: [],
   };
-  bistroDb.merchantUsers.m_bistro.u_demo.wallet.principal = 999;
+  bistroDb.merchantUsers.m_bistro.u_fixture_001.wallet.principal = 999;
 
   const app = createAppServer({
     db: defaultDb,
@@ -1374,12 +1540,12 @@ test("tenant router: routes merchant to dedicated db", async () => {
   try {
     const bistroCustomer = await mockLogin(baseUrl, "CUSTOMER", {
       merchantId: "m_bistro",
-      userId: "u_demo"
+      userId: "u_fixture_001"
     });
 
     const before = await getJson(
       baseUrl,
-      "/api/state?merchantId=m_bistro&userId=u_demo",
+      "/api/state?merchantId=m_bistro&userId=u_fixture_001",
       { Authorization: `Bearer ${bistroCustomer}` }
     );
     assert.equal(before.status, 200);
@@ -1390,7 +1556,7 @@ test("tenant router: routes merchant to dedicated db", async () => {
       "/api/payment/verify",
       {
         merchantId: "m_bistro",
-        userId: "u_demo",
+        userId: "u_fixture_001",
         orderAmount: 20
       },
       {
@@ -1400,7 +1566,7 @@ test("tenant router: routes merchant to dedicated db", async () => {
     );
     assert.equal(verify.status, 200);
 
-    assert.equal(defaultDb.merchantUsers.m_bistro.u_demo.wallet.principal, 80);
+    assert.equal(defaultDb.merchantUsers.m_bistro.u_fixture_001.wallet.principal, 80);
     assert.ok(
       bistroDb.paymentsByMerchant.m_bistro[verify.data.paymentTxnId],
       "payment should be stored in dedicated bistro db"
@@ -1427,7 +1593,7 @@ test("audit log records success and denied high-risk operations", async () => {
     const verify = await postJson(
       baseUrl,
       "/api/payment/verify",
-      { merchantId: "m_store_001", userId: "u_demo", orderAmount: 25 },
+      { merchantId: "m_store_001", userId: "u_fixture_001", orderAmount: 25 },
       {
         Authorization: `Bearer ${customerToken}`,
         "Idempotency-Key": "audit_pay_1"
@@ -1473,7 +1639,7 @@ test("audit log endpoint supports pagination and denies customer access", async 
     await postJson(
       baseUrl,
       "/api/payment/verify",
-      { merchantId: "m_store_001", userId: "u_demo", orderAmount: 21 },
+      { merchantId: "m_store_001", userId: "u_fixture_001", orderAmount: 21 },
       {
         Authorization: `Bearer ${customerToken}`,
         "Idempotency-Key": "audit_page_pay_1"
@@ -1624,7 +1790,7 @@ test("migration runbook api: freeze/unfreeze updates policy and status", async (
     });
     const customerToken = await mockLogin(baseUrl, "CUSTOMER", {
       merchantId: "m_store_001",
-      userId: "u_demo"
+      userId: "u_fixture_001"
     });
 
     const initialStatus = await getJson(
@@ -1652,7 +1818,7 @@ test("migration runbook api: freeze/unfreeze updates policy and status", async (
     const verifyBlocked = await postJson(
       baseUrl,
       "/api/payment/verify",
-      { merchantId: "m_store_001", userId: "u_demo", orderAmount: 10 },
+      { merchantId: "m_store_001", userId: "u_fixture_001", orderAmount: 10 },
       {
         Authorization: `Bearer ${customerToken}`,
         "Idempotency-Key": "migration_freeze_pay_1"
@@ -1678,7 +1844,7 @@ test("migration runbook api: freeze/unfreeze updates policy and status", async (
     const verifyRecovered = await postJson(
       baseUrl,
       "/api/payment/verify",
-      { merchantId: "m_store_001", userId: "u_demo", orderAmount: 10 },
+      { merchantId: "m_store_001", userId: "u_fixture_001", orderAmount: 10 },
       {
         Authorization: `Bearer ${customerToken}`,
         "Idempotency-Key": "migration_unfreeze_pay_1"
@@ -1726,7 +1892,7 @@ test("tenant policy: read-only merchant blocks write operations", async () => {
     const quote = await postJson(
       baseUrl,
       "/api/payment/quote",
-      { merchantId: "m_store_001", userId: "u_demo", orderAmount: 30 },
+      { merchantId: "m_store_001", userId: "u_fixture_001", orderAmount: 30 },
       { Authorization: `Bearer ${customerToken}` }
     );
     assert.equal(quote.status, 200);
@@ -1734,7 +1900,7 @@ test("tenant policy: read-only merchant blocks write operations", async () => {
     const verifyBlocked = await postJson(
       baseUrl,
       "/api/payment/verify",
-      { merchantId: "m_store_001", userId: "u_demo", orderAmount: 30 },
+      { merchantId: "m_store_001", userId: "u_fixture_001", orderAmount: 30 },
       {
         Authorization: `Bearer ${customerToken}`,
         "Idempotency-Key": "policy_read_only_pay_1"
@@ -1777,21 +1943,21 @@ test("tenant policy: per-merchant write rate limit returns 429", async () => {
   const baseUrl = `http://127.0.0.1:${port}`;
 
   try {
-    const demoCustomer = await mockLogin(baseUrl, "CUSTOMER", {
+    const fixtureCustomer = await mockLogin(baseUrl, "CUSTOMER", {
       merchantId: "m_store_001",
-      userId: "u_demo"
+      userId: "u_fixture_001"
     });
     const bistroCustomer = await mockLogin(baseUrl, "CUSTOMER", {
       merchantId: "m_bistro",
-      userId: "u_demo"
+      userId: "u_fixture_001"
     });
 
     const firstVerify = await postJson(
       baseUrl,
       "/api/payment/verify",
-      { merchantId: "m_store_001", userId: "u_demo", orderAmount: 10 },
+      { merchantId: "m_store_001", userId: "u_fixture_001", orderAmount: 10 },
       {
-        Authorization: `Bearer ${demoCustomer}`,
+        Authorization: `Bearer ${fixtureCustomer}`,
         "Idempotency-Key": "policy_limit_pay_1"
       }
     );
@@ -1800,9 +1966,9 @@ test("tenant policy: per-merchant write rate limit returns 429", async () => {
     const secondVerify = await postJson(
       baseUrl,
       "/api/payment/verify",
-      { merchantId: "m_store_001", userId: "u_demo", orderAmount: 9 },
+      { merchantId: "m_store_001", userId: "u_fixture_001", orderAmount: 9 },
       {
-        Authorization: `Bearer ${demoCustomer}`,
+        Authorization: `Bearer ${fixtureCustomer}`,
         "Idempotency-Key": "policy_limit_pay_2"
       }
     );
@@ -1812,7 +1978,7 @@ test("tenant policy: per-merchant write rate limit returns 429", async () => {
     const bistroVerify = await postJson(
       baseUrl,
       "/api/payment/verify",
-      { merchantId: "m_bistro", userId: "u_demo", orderAmount: 8 },
+      { merchantId: "m_bistro", userId: "u_fixture_001", orderAmount: 8 },
       {
         Authorization: `Bearer ${bistroCustomer}`,
         "Idempotency-Key": "policy_limit_bistro_pay_1"
@@ -1840,7 +2006,7 @@ test("external callback signature settles pending payment and enables invoice/re
     const verifyPending = await postJson(
       baseUrl,
       "/api/payment/verify",
-      { merchantId: "m_store_001", userId: "u_demo", orderAmount: 500 },
+      { merchantId: "m_store_001", userId: "u_fixture_001", orderAmount: 500 },
       {
         Authorization: `Bearer ${customerToken}`,
         "Idempotency-Key": "external_pending_pay_1"
@@ -1916,7 +2082,7 @@ test("external callback signature settles pending payment and enables invoice/re
       "/api/payment/refund",
       {
         merchantId: "m_store_001",
-        userId: "u_demo",
+        userId: "u_fixture_001",
         paymentTxnId: verifyPending.data.paymentTxnId,
         refundAmount: 10
       },
@@ -1939,7 +2105,7 @@ test("customer can query own payment ledger and invoices with strict scope", asy
   try {
     const customerToken = await mockLogin(baseUrl, "CUSTOMER", {
       merchantId: "m_store_001",
-      userId: "u_demo"
+      userId: "u_fixture_001"
     });
     const ownerToken = await mockLogin(baseUrl, "OWNER", {
       merchantId: "m_store_001"
@@ -1950,7 +2116,7 @@ test("customer can query own payment ledger and invoices with strict scope", asy
       "/api/payment/verify",
       {
         merchantId: "m_store_001",
-        userId: "u_demo",
+        userId: "u_fixture_001",
         orderAmount: 1
       },
       {
@@ -1982,7 +2148,7 @@ test("customer can query own payment ledger and invoices with strict scope", asy
     assert.equal(customerLedger.status, 200);
     assert.ok(Array.isArray(customerLedger.data.items));
     assert.ok(customerLedger.data.items.length >= 1);
-    assert.ok(customerLedger.data.items.every((row) => row.userId === "u_demo"));
+    assert.ok(customerLedger.data.items.every((row) => row.userId === "u_fixture_001"));
 
     const customerInvoices = await getJson(
       baseUrl,
@@ -1995,7 +2161,7 @@ test("customer can query own payment ledger and invoices with strict scope", asy
 
     const customerInvoiceDeniedByUserScope = await getJson(
       baseUrl,
-      "/api/invoice/list?merchantId=m_store_001&userId=u_friend",
+      "/api/invoice/list?merchantId=m_store_001&userId=u_fixture_002",
       { Authorization: `Bearer ${customerToken}` }
     );
     assert.equal(customerInvoiceDeniedByUserScope.status, 403);
@@ -2023,7 +2189,7 @@ test("privacy export and delete are owner-only and scoped", async () => {
     const managerToken = await mockLogin(baseUrl, "MANAGER", { merchantId: "m_store_001" });
     const customerToken = await mockLogin(baseUrl, "CUSTOMER", {
       merchantId: "m_store_001",
-      userId: "u_demo",
+      userId: "u_fixture_001",
     });
 
     const verify = await postJson(
@@ -2031,7 +2197,7 @@ test("privacy export and delete are owner-only and scoped", async () => {
       "/api/payment/verify",
       {
         merchantId: "m_store_001",
-        userId: "u_demo",
+        userId: "u_fixture_001",
         orderAmount: 1,
       },
       {
@@ -2044,7 +2210,7 @@ test("privacy export and delete are owner-only and scoped", async () => {
     const managerDenied = await postJson(
       baseUrl,
       "/api/privacy/export-user",
-      { merchantId: "m_store_001", userId: "u_demo" },
+      { merchantId: "m_store_001", userId: "u_fixture_001" },
       { Authorization: `Bearer ${managerToken}` }
     );
     assert.equal(managerDenied.status, 403);
@@ -2053,16 +2219,16 @@ test("privacy export and delete are owner-only and scoped", async () => {
     const exported = await postJson(
       baseUrl,
       "/api/privacy/export-user",
-      { merchantId: "m_store_001", userId: "u_demo" },
+      { merchantId: "m_store_001", userId: "u_fixture_001" },
       { Authorization: `Bearer ${ownerToken}` }
     );
     assert.equal(exported.status, 200);
-    assert.equal(exported.data.user.uid, "u_demo");
+    assert.equal(exported.data.user.uid, "u_fixture_001");
 
     const deleted = await postJson(
       baseUrl,
       "/api/privacy/delete-user",
-      { merchantId: "m_store_001", userId: "u_demo" },
+      { merchantId: "m_store_001", userId: "u_fixture_001" },
       { Authorization: `Bearer ${ownerToken}` }
     );
     assert.equal(deleted.status, 200);
@@ -2071,7 +2237,7 @@ test("privacy export and delete are owner-only and scoped", async () => {
     const exportedAfterDelete = await postJson(
       baseUrl,
       "/api/privacy/export-user",
-      { merchantId: "m_store_001", userId: "u_demo" },
+      { merchantId: "m_store_001", userId: "u_fixture_001" },
       { Authorization: `Bearer ${ownerToken}` }
     );
     assert.equal(exportedAfterDelete.status, 200);
@@ -2090,7 +2256,7 @@ test("customer can cancel account and keep transactional records anonymized", as
   try {
     const customerToken = await mockLogin(baseUrl, "CUSTOMER", {
       merchantId: "m_store_001",
-      userId: "u_demo"
+      userId: "u_fixture_001"
     });
     const ownerToken = await mockLogin(baseUrl, "OWNER", {
       merchantId: "m_store_001"
@@ -2101,7 +2267,7 @@ test("customer can cancel account and keep transactional records anonymized", as
       "/api/payment/verify",
       {
         merchantId: "m_store_001",
-        userId: "u_demo",
+        userId: "u_fixture_001",
         orderAmount: 24
       },
       {
@@ -2123,26 +2289,26 @@ test("customer can cancel account and keep transactional records anonymized", as
     assert.equal(cancel.data.deleted, true);
     assert.equal(
       cancel.data.anonymizedUserId,
-      "DELETED_m_store_001_u_demo"
+      "DELETED_m_store_001_u_fixture_001"
     );
 
     const stateAfterCancel = await getJson(
       baseUrl,
-      "/api/state?merchantId=m_store_001&userId=u_demo",
+      "/api/state?merchantId=m_store_001&userId=u_fixture_001",
       { Authorization: `Bearer ${customerToken}` }
     );
     assert.equal(stateAfterCancel.status, 404);
     assert.equal(stateAfterCancel.data.error, "user not found");
 
     const payment = app.db.paymentsByMerchant.m_store_001[verify.data.paymentTxnId];
-    assert.equal(payment.userId, "DELETED_m_store_001_u_demo");
+    assert.equal(payment.userId, "DELETED_m_store_001_u_fixture_001");
 
     const ownerExportAfterCancel = await postJson(
       baseUrl,
       "/api/privacy/export-user",
       {
         merchantId: "m_store_001",
-        userId: "u_demo"
+        userId: "u_fixture_001"
       },
       { Authorization: `Bearer ${ownerToken}` }
     );
@@ -2218,7 +2384,7 @@ test("strategy chat supports proposal generation, confirm and campaign status co
       "/api/tca/trigger",
       {
         merchantId: "m_store_001",
-        userId: "u_demo",
+        userId: "u_fixture_001",
         event: "APP_OPEN",
         context: {
           weather: "SUNNY",
@@ -2247,7 +2413,7 @@ test("strategy chat supports proposal generation, confirm and campaign status co
       "/api/tca/trigger",
       {
         merchantId: "m_store_001",
-        userId: "u_demo",
+        userId: "u_fixture_001",
         event: "APP_OPEN",
         context: {
           weather: "SUNNY",
@@ -2296,7 +2462,7 @@ test("strategy proposal supports intent-only AI generation", async () => {
 
     const state = await getJson(
       baseUrl,
-      "/api/state?merchantId=m_store_001&userId=u_demo",
+      "/api/state?merchantId=m_store_001&userId=u_fixture_001",
       { Authorization: `Bearer ${ownerToken}` }
     );
     assert.equal(state.status, 200);
@@ -2331,7 +2497,7 @@ test("strategy proposal returns AI_UNAVAILABLE when remote ai is unavailable", a
     });
     const beforeState = await getJson(
       baseUrl,
-      "/api/state?merchantId=m_store_001&userId=u_demo",
+      "/api/state?merchantId=m_store_001&userId=u_fixture_001",
       { Authorization: `Bearer ${ownerToken}` },
     );
     assert.equal(beforeState.status, 200);
@@ -2349,7 +2515,7 @@ test("strategy proposal returns AI_UNAVAILABLE when remote ai is unavailable", a
 
     const afterState = await getJson(
       baseUrl,
-      "/api/state?merchantId=m_store_001&userId=u_demo",
+      "/api/state?merchantId=m_store_001&userId=u_fixture_001",
       { Authorization: `Bearer ${ownerToken}` },
     );
     assert.equal(afterState.status, 200);
@@ -2382,7 +2548,7 @@ test("strategy proposal asks clarification when intent is ambiguous", async () =
     });
     const beforeState = await getJson(
       baseUrl,
-      "/api/state?merchantId=m_store_001&userId=u_demo",
+      "/api/state?merchantId=m_store_001&userId=u_fixture_001",
       { Authorization: `Bearer ${ownerToken}` },
     );
     assert.equal(beforeState.status, 200);
@@ -2401,7 +2567,7 @@ test("strategy proposal asks clarification when intent is ambiguous", async () =
 
     const afterState = await getJson(
       baseUrl,
-      "/api/state?merchantId=m_store_001&userId=u_demo",
+      "/api/state?merchantId=m_store_001&userId=u_fixture_001",
       { Authorization: `Bearer ${ownerToken}` },
     );
     assert.equal(afterState.status, 200);
@@ -2662,7 +2828,7 @@ test("supplier verify and fire-sale endpoints work in merchant scope", async () 
       "/api/tca/trigger",
       {
         merchantId: "m_store_001",
-        userId: "u_demo",
+        userId: "u_fixture_001",
         event: "INVENTORY_ALERT",
         context: {
           targetSku: "sku_hot_soup",
@@ -2684,59 +2850,59 @@ test("alliance wallet sharing can be enabled across stores", async () => {
   const baseUrl = `http://127.0.0.1:${port}`;
 
   try {
-    const demoOwner = await mockLogin(baseUrl, "OWNER", { merchantId: "m_store_001" });
+    const fixtureOwner = await mockLogin(baseUrl, "OWNER", { merchantId: "m_store_001" });
     const bistroOwner = await mockLogin(baseUrl, "OWNER", { merchantId: "m_bistro" });
-    const demoCustomer = await mockLogin(baseUrl, "CUSTOMER", {
+    const fixtureCustomer = await mockLogin(baseUrl, "CUSTOMER", {
       merchantId: "m_store_001",
-      userId: "u_demo"
+      userId: "u_fixture_001"
     });
     const bistroCustomer = await mockLogin(baseUrl, "CUSTOMER", {
       merchantId: "m_bistro",
-      userId: "u_demo"
+      userId: "u_fixture_001"
     });
-    const seedDemoUser = await postJson(
+    const seedFixtureUser = await postJson(
       baseUrl,
       "/api/payment/verify",
       {
         merchantId: "m_store_001",
-        userId: "u_demo",
+        userId: "u_fixture_001",
         orderAmount: 1
       },
       {
-        Authorization: `Bearer ${demoCustomer}`,
-        "Idempotency-Key": "alliance_demo_seed_pay_1"
+        Authorization: `Bearer ${fixtureCustomer}`,
+        "Idempotency-Key": "alliance_fixture_seed_pay_1"
       }
     );
-    assert.equal(seedDemoUser.status, 200);
+    assert.equal(seedFixtureUser.status, 200);
 
-    const beforeDemoState = await getJson(
+    const beforeFixtureState = await getJson(
       baseUrl,
-      "/api/state?merchantId=m_store_001&userId=u_demo",
-      { Authorization: `Bearer ${demoCustomer}` }
+      "/api/state?merchantId=m_store_001&userId=u_fixture_001",
+      { Authorization: `Bearer ${fixtureCustomer}` }
     );
-    assert.equal(beforeDemoState.status, 200);
-    const beforePrincipal = beforeDemoState.data.user.wallet.principal;
+    assert.equal(beforeFixtureState.status, 200);
+    const beforePrincipal = beforeFixtureState.data.user.wallet.principal;
 
-    const setDemoAlliance = await postJson(
+    const setFixtureAlliance = await postJson(
       baseUrl,
       "/api/merchant/alliance-config",
       {
         merchantId: "m_store_001",
-        clusterId: "cluster_demo_brand",
+        clusterId: "cluster_fixture_brand",
         stores: ["m_store_001", "m_bistro"],
         walletShared: true
       },
-      { Authorization: `Bearer ${demoOwner}` }
+      { Authorization: `Bearer ${fixtureOwner}` }
     );
-    assert.equal(setDemoAlliance.status, 200);
-    assert.equal(setDemoAlliance.data.walletShared, true);
+    assert.equal(setFixtureAlliance.status, 200);
+    assert.equal(setFixtureAlliance.data.walletShared, true);
 
     const setBistroAlliance = await postJson(
       baseUrl,
       "/api/merchant/alliance-config",
       {
         merchantId: "m_bistro",
-        clusterId: "cluster_demo_brand",
+        clusterId: "cluster_fixture_brand",
         stores: ["m_store_001", "m_bistro"],
         walletShared: true
       },
@@ -2750,7 +2916,7 @@ test("alliance wallet sharing can be enabled across stores", async () => {
       "/api/payment/verify",
       {
         merchantId: "m_bistro",
-        userId: "u_demo",
+        userId: "u_fixture_001",
         orderAmount: 70
       },
       {
@@ -2762,18 +2928,18 @@ test("alliance wallet sharing can be enabled across stores", async () => {
     assert.equal(bistroPay.data.walletScope.walletShared, true);
     assert.equal(bistroPay.data.walletScope.walletMerchantId, "m_store_001");
 
-    const afterDemoState = await getJson(
+    const afterFixtureState = await getJson(
       baseUrl,
-      "/api/state?merchantId=m_store_001&userId=u_demo",
-      { Authorization: `Bearer ${demoCustomer}` }
+      "/api/state?merchantId=m_store_001&userId=u_fixture_001",
+      { Authorization: `Bearer ${fixtureCustomer}` }
     );
-    assert.equal(afterDemoState.status, 200);
-    assert.ok(afterDemoState.data.user.wallet.principal < beforePrincipal);
+    assert.equal(afterFixtureState.status, 200);
+    assert.ok(afterFixtureState.data.user.wallet.principal < beforePrincipal);
 
     const stores = await getJson(
       baseUrl,
       "/api/merchant/stores?merchantId=m_store_001",
-      { Authorization: `Bearer ${demoOwner}` }
+      { Authorization: `Bearer ${fixtureOwner}` }
     );
     assert.equal(stores.status, 200);
     assert.equal(stores.data.walletShared, true);
@@ -2790,9 +2956,9 @@ test("social and treat endpoints are removed", async () => {
 
   try {
     const owner = await mockLogin(baseUrl, "OWNER", { merchantId: "m_store_001" });
-    const demoCustomer = await mockLogin(baseUrl, "CUSTOMER", {
+    const fixtureCustomer = await mockLogin(baseUrl, "CUSTOMER", {
       merchantId: "m_store_001",
-      userId: "u_demo"
+      userId: "u_fixture_001"
     });
 
     const transfer = await postJson(
@@ -2800,12 +2966,12 @@ test("social and treat endpoints are removed", async () => {
       "/api/social/transfer",
       {
         merchantId: "m_store_001",
-        fromUserId: "u_demo",
-        toUserId: "u_friend",
+        fromUserId: "u_fixture_001",
+        toUserId: "u_fixture_002",
         amount: 1
       },
       {
-        Authorization: `Bearer ${demoCustomer}`,
+        Authorization: `Bearer ${fixtureCustomer}`,
         "Idempotency-Key": "social_transfer_removed"
       }
     );
@@ -2817,12 +2983,12 @@ test("social and treat endpoints are removed", async () => {
       "/api/social/red-packets",
       {
         merchantId: "m_store_001",
-        senderUserId: "u_demo",
+        senderUserId: "u_fixture_001",
         totalAmount: 10,
         totalSlots: 2
       },
       {
-        Authorization: `Bearer ${demoCustomer}`,
+        Authorization: `Bearer ${fixtureCustomer}`,
         "Idempotency-Key": "social_red_packet_removed"
       }
     );
@@ -2834,11 +3000,11 @@ test("social and treat endpoints are removed", async () => {
       "/api/social/treat/sessions",
       {
         merchantId: "m_store_001",
-        initiatorUserId: "u_demo",
+        initiatorUserId: "u_fixture_001",
         mode: "GROUP_PAY",
         orderAmount: 60
       },
-      { Authorization: `Bearer ${demoCustomer}` }
+      { Authorization: `Bearer ${fixtureCustomer}` }
     );
     assert.equal(treatCreate.status, 404);
     assert.equal(treatCreate.data.error, "Not Found");

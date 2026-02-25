@@ -51,9 +51,6 @@ function parseAiProvider(raw) {
   if (!normalized) {
     return "openai_compatible";
   }
-  if (normalized === "mock") {
-    return "openai_compatible";
-  }
   if (["bigmodel", "zhipu", "zhipuai"].includes(normalized)) {
     return "bigmodel";
   }

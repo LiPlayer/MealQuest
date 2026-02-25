@@ -1,5 +1,5 @@
 import { HomeSnapshot, StoreData } from '../dataTypes';
-import { DEFAULT_ACTIVITIES, DEFAULT_THEME } from './env';
+import { DEFAULT_THEME } from './env';
 
 export const toStoreData = (merchant: any): StoreData => ({
   id: merchant.merchantId,
@@ -41,5 +41,5 @@ export const toHomeSnapshot = (stateData: any): HomeSnapshot => ({
           textColor: item.textColor || 'text-slate-600',
           tag: item.tag || 'AI',
         }))
-      : DEFAULT_ACTIVITIES,
+      : [],
 });

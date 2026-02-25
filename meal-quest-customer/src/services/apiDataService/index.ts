@@ -9,8 +9,11 @@ import { toHomeSnapshot } from './mappers';
 import { ensureCustomerSession } from './session';
 
 const getHomeSnapshot = async (storeId: string, userId = ''): Promise<HomeSnapshot> => {
-  const targetStoreId = storeId || getEnv('TARO_APP_DEFAULT_STORE_ID') || 'm_store_001';
-  const targetStoreIdStr = String(targetStoreId);
+  const targetStoreId = storeId || getEnv('TARO_APP_DEFAULT_STORE_ID');
+  const targetStoreIdStr = String(targetStoreId || '').trim();
+  if (!targetStoreIdStr) {
+    throw new Error('storeId is required');
+  }
   const session = await ensureCustomerSession(targetStoreIdStr, userId);
   const stateData = await requestJson({
     method: 'GET',

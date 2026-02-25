@@ -30,10 +30,6 @@ function normalizeProvider(value) {
   if (!normalized) {
     return DEFAULT_REMOTE_PROVIDER;
   }
-  // Backward-compatible alias.
-  if (normalized === "mock") {
-    return DEFAULT_REMOTE_PROVIDER;
-  }
   if (["bigmodel", "zhipu", "zhipuai"].includes(normalized)) {
     return "bigmodel";
   }

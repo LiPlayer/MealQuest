@@ -157,14 +157,12 @@ export interface MerchantOnboardResult {
     budgetUsed: number;
     killSwitchEnabled: boolean;
   };
-  seededUsers: string[];
   allianceConfig: AllianceConfig;
 }
 
 export interface MerchantPhoneCodeResult {
   phone: string;
   expiresInSec: number;
-  debugCode?: string;
 }
 
 export interface MerchantPhoneLoginResult {

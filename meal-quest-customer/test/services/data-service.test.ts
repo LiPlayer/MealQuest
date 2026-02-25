@@ -1,4 +1,4 @@
-﻿import { DataService } from '@/services/DataService';
+import { DataService } from '@/services/DataService';
 import { ApiDataService } from '@/services/ApiDataService';
 import { storage } from '@/utils/storage';
 
@@ -41,7 +41,7 @@ describe('DataService remote only', () => {
     it('throws when api base url is not configured', async () => {
         api.isConfigured.mockReturnValue(false);
 
-        await expect(DataService.getHomeSnapshot('store_a', 'u_demo')).rejects.toThrow(
+        await expect(DataService.getHomeSnapshot('store_a', 'u_fixture_001')).rejects.toThrow(
             'Missing TARO_APP_SERVER_URL',
         );
     });
@@ -55,15 +55,15 @@ describe('DataService remote only', () => {
             remainingWallet: { principal: 0, bonus: 0, silver: 0 }
         });
 
-        await DataService.getCheckoutQuote('store_a', 52, 'u_demo');
+        await DataService.getCheckoutQuote('store_a', 52, 'u_fixture_001');
 
-        expect(api.getCheckoutQuote).toHaveBeenCalledWith('store_a', 52, 'u_demo');
+        expect(api.getCheckoutQuote).toHaveBeenCalledWith('store_a', 52, 'u_fixture_001');
     });
 
     it('clears token and rethrows when remote executeCheckout fails', async () => {
         api.executeCheckout.mockRejectedValue(new Error('remote failed'));
 
-        await expect(DataService.executeCheckout('store_a', 52, 'u_demo')).rejects.toThrow(
+        await expect(DataService.executeCheckout('store_a', 52, 'u_fixture_001')).rejects.toThrow(
             'remote failed',
         );
 
@@ -77,16 +77,16 @@ describe('DataService remote only', () => {
             {
                 txnId: 'txn_1',
                 merchantId: 'store_a',
-                userId: 'u_demo',
+                userId: 'u_fixture_001',
                 type: 'PAYMENT',
                 amount: 10,
                 timestamp: new Date().toISOString()
             }
         ] as any);
 
-        const result = await DataService.getPaymentLedger('store_a', 'u_demo', 10);
+        const result = await DataService.getPaymentLedger('store_a', 'u_fixture_001', 10);
 
         expect(result).toHaveLength(1);
-        expect(api.getPaymentLedger).toHaveBeenCalledWith('store_a', 'u_demo', 10);
+        expect(api.getPaymentLedger).toHaveBeenCalledWith('store_a', 'u_fixture_001', 10);
     });
 });

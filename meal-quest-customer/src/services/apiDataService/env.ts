@@ -8,26 +8,7 @@ export const DEFAULT_THEME = {
   backgroundColor: '#FAFAFA',
 };
 
-export const DEFAULT_ACTIVITIES = [
-  {
-    id: 'remote_rainy',
-    title: '雨天热汤补给',
-    desc: '服务端策略触发，实时下发口福红包',
-    icon: '🌧️',
-    color: 'bg-blue-50',
-    textColor: 'text-blue-600',
-    tag: 'TCA',
-  },
-  {
-    id: 'remote_recharge',
-    title: '聚宝金库限时礼',
-    desc: '充值立享赠送金，支持智能抵扣',
-    icon: '💰',
-    color: 'bg-amber-50',
-    textColor: 'text-amber-600',
-    tag: 'HOT',
-  },
-];
+export const DEFAULT_ACTIVITIES = [];
 
 export const getEnv = (name: string): string => {
   if (typeof process === 'undefined' || !process.env) {
@@ -59,3 +40,4 @@ export const resolveCustomerAuthProvider = (): CustomerAuthProvider => {
   }
   return 'WECHAT';
 };
+

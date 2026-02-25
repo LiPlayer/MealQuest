@@ -28,18 +28,18 @@ jest.mock('../src/services/merchantApi', () => ({
   MerchantApi: {
     isConfigured: jest.fn(() => true),
     requestMerchantLoginCode: jest.fn(async () => ({ phone: '+8613800000000', expiresInSec: 300, debugCode: '123456' })),
-    loginByPhone: jest.fn(async () => ({ token: 'token_demo', profile: { role: 'OWNER', merchantId: 'm_store_001', phone: '+8613800000000' } })),
+    loginByPhone: jest.fn(async () => ({ token: 'token_fixture', profile: { role: 'OWNER', merchantId: 'm_store_001', phone: '+8613800000000' } })),
     getState: jest.fn(async () => ({
       merchantId: 'm_store_001',
-      merchantName: 'Demo Merchant',
+      merchantName: 'Fixture Merchant',
       killSwitchEnabled: false,
       budgetCap: 300,
       budgetUsed: 50,
       pendingProposals: [],
       activeCampaigns: [
         {
-          id: 'campaign_demo',
-          name: 'Demo Campaign',
+          id: 'campaign_fixture',
+          name: 'Fixture Campaign',
           status: 'ACTIVE',
           triggerEvent: 'APP_OPEN',
           condition: {field: 'weather', equals: 'RAIN'},
@@ -54,7 +54,7 @@ jest.mock('../src/services/merchantApi', () => ({
     })),
     getAllianceConfig: jest.fn(async () => ({
       merchantId: 'm_store_001',
-      clusterId: 'cluster_demo_brand',
+      clusterId: 'cluster_fixture_brand',
       stores: ['m_store_001', 'm_bistro'],
       walletShared: false,
       tierShared: false,
@@ -62,23 +62,23 @@ jest.mock('../src/services/merchantApi', () => ({
     })),
     listStores: jest.fn(async () => ({
       merchantId: 'm_store_001',
-      clusterId: 'cluster_demo_brand',
+      clusterId: 'cluster_fixture_brand',
       walletShared: false,
       tierShared: false,
       stores: [
-        {merchantId: 'm_store_001', name: 'Demo Merchant'},
+        {merchantId: 'm_store_001', name: 'Fixture Merchant'},
         {merchantId: 'm_bistro', name: 'Bistro Harbor'},
       ],
     })),
     getWsUrl: jest.fn(() => ''),
     setCampaignStatus: jest.fn(async () => ({
       merchantId: 'm_store_001',
-      campaignId: 'campaign_demo',
+      campaignId: 'campaign_fixture',
       status: 'PAUSED',
     })),
     setAllianceConfig: jest.fn(async () => ({
       merchantId: 'm_store_001',
-      clusterId: 'cluster_demo_brand',
+      clusterId: 'cluster_fixture_brand',
       stores: ['m_store_001', 'm_bistro'],
       walletShared: true,
       tierShared: false,
@@ -183,12 +183,12 @@ describe('merchant ui regression flow', () => {
 
     await ReactTestRenderer.act(async () => {
       tree!.root
-        .findByProps({testID: 'campaign-toggle-campaign_demo'})
+        .findByProps({testID: 'campaign-toggle-campaign_fixture'})
         .props.onPress();
       await flush(4);
     });
-    expect(mockApi.setCampaignStatus).toHaveBeenCalledWith('token_demo', {
-      campaignId: 'campaign_demo',
+    expect(mockApi.setCampaignStatus).toHaveBeenCalledWith('token_fixture', {
+      campaignId: 'campaign_fixture',
       status: 'PAUSED',
     });
 
@@ -209,7 +209,7 @@ describe('merchant ui regression flow', () => {
       tree!.root.findByProps({testID: 'alliance-sync-user'}).props.onPress();
       await flush(4);
     });
-    expect(mockApi.syncAllianceUser).toHaveBeenCalledWith('token_demo', {
+    expect(mockApi.syncAllianceUser).toHaveBeenCalledWith('token_fixture', {
       userId: 'u_customer_001',
     });
 

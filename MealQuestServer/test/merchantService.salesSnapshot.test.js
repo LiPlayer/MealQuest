@@ -7,11 +7,39 @@ const { createMerchantService } = require("../src/services/merchantService");
 test("merchant strategy chat forwards payment-based sales snapshot", async () => {
   const db = createInMemoryDb();
   const now = Date.now();
+  db.merchants.m_store_001 = {
+    merchantId: "m_store_001",
+    name: "Snapshot Test Merchant",
+    killSwitchEnabled: false,
+    budgetCap: 300,
+    budgetUsed: 0,
+    staff: [
+      { uid: "staff_owner", role: "OWNER" },
+      { uid: "staff_manager", role: "MANAGER" },
+      { uid: "staff_clerk", role: "CLERK" },
+    ],
+  };
+  db.merchantUsers.m_store_001 = {};
+  db.paymentsByMerchant.m_store_001 = {};
+  db.invoicesByMerchant.m_store_001 = {};
+  db.strategyConfigs.m_store_001 = {};
+  db.strategyChats.m_store_001 = {
+    activeSessionId: null,
+    sessions: {},
+  };
+  db.allianceConfigs.m_store_001 = {
+    merchantId: "m_store_001",
+    clusterId: "cluster_snapshot_test",
+    stores: ["m_store_001"],
+    walletShared: false,
+    tierShared: false,
+    updatedAt: new Date(now).toISOString(),
+  };
 
   db.setPayment("m_store_001", "txn_recent_paid_wallet", {
     paymentTxnId: "txn_recent_paid_wallet",
     merchantId: "m_store_001",
-    userId: "u_demo",
+    userId: "u_fixture_001",
     status: "PAID",
     orderAmount: 100,
     refundedAmount: 20,
@@ -21,7 +49,7 @@ test("merchant strategy chat forwards payment-based sales snapshot", async () =>
   db.setPayment("m_store_001", "txn_old_paid_external", {
     paymentTxnId: "txn_old_paid_external",
     merchantId: "m_store_001",
-    userId: "u_demo",
+    userId: "u_fixture_001",
     status: "PAID",
     orderAmount: 50,
     refundedAmount: 0,
@@ -36,7 +64,7 @@ test("merchant strategy chat forwards payment-based sales snapshot", async () =>
   db.setPayment("m_store_001", "txn_pending_external", {
     paymentTxnId: "txn_pending_external",
     merchantId: "m_store_001",
-    userId: "u_demo",
+    userId: "u_fixture_001",
     status: "PENDING_EXTERNAL",
     orderAmount: 60,
     refundedAmount: 0,

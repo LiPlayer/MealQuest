@@ -13,9 +13,9 @@ jest.mock('@tarojs/taro', () => ({
 
 jest.mock('@/utils/storage', () => ({
     storage: {
-        getApiToken: jest.fn(() => 'token_demo'),
+        getApiToken: jest.fn(() => 'token_fixture'),
         getApiTokenMerchantId: jest.fn(() => 'm_store_001'),
-        getCustomerUserId: jest.fn(() => 'u_demo'),
+        getCustomerUserId: jest.fn(() => 'u_fixture_001'),
         setApiToken: jest.fn(),
         setApiTokenMerchantId: jest.fn(),
         setCustomerUserId: jest.fn(),
@@ -31,7 +31,7 @@ describe('ApiDataService customer center', () => {
         process.env.TARO_APP_SERVER_URL = 'http://127.0.0.1:3030';
         requestMock.mockReset();
         loginMock.mockReset();
-        loginMock.mockResolvedValue({ code: 'wx_code_demo' });
+        loginMock.mockResolvedValue({ code: 'wx_code_fixture' });
     });
 
     afterEach(() => {
@@ -50,7 +50,7 @@ describe('ApiDataService customer center', () => {
                     {
                         txnId: 'txn_1',
                         merchantId: 'm_store_001',
-                        userId: 'u_demo',
+                        userId: 'u_fixture_001',
                         type: 'PAYMENT',
                         amount: 12.5,
                         timestamp: '2026-02-21T00:00:00.000Z'
@@ -60,7 +60,7 @@ describe('ApiDataService customer center', () => {
         });
 
         const { ApiDataService } = require('@/services/ApiDataService');
-        const rows = await ApiDataService.getPaymentLedger('m_store_001', 'u_demo', 10);
+        const rows = await ApiDataService.getPaymentLedger('m_store_001', 'u_fixture_001', 10);
 
         expect(rows.length).toBe(1);
         expect(rows[0].txnId).toBe('txn_1');
@@ -80,7 +80,7 @@ describe('ApiDataService customer center', () => {
                     {
                         invoiceNo: 'INV_1',
                         merchantId: 'm_store_001',
-                        userId: 'u_demo',
+                        userId: 'u_fixture_001',
                         paymentTxnId: 'txn_1',
                         amount: 12.5,
                         status: 'ISSUED',
@@ -92,7 +92,7 @@ describe('ApiDataService customer center', () => {
         });
 
         const { ApiDataService } = require('@/services/ApiDataService');
-        const rows = await ApiDataService.getInvoices('m_store_001', 'u_demo', 10);
+        const rows = await ApiDataService.getInvoices('m_store_001', 'u_fixture_001', 10);
 
         expect(rows.length).toBe(1);
         expect(rows[0].invoiceNo).toBe('INV_1');
@@ -110,12 +110,12 @@ describe('ApiDataService customer center', () => {
             data: {
                 deleted: true,
                 deletedAt: '2026-02-21T00:00:00.000Z',
-                anonymizedUserId: 'DELETED_m_store_001_u_demo'
+                anonymizedUserId: 'DELETED_m_store_001_u_fixture_001'
             }
         });
 
         const { ApiDataService } = require('@/services/ApiDataService');
-        const result = await ApiDataService.cancelAccount('m_store_001', 'u_demo');
+        const result = await ApiDataService.cancelAccount('m_store_001', 'u_fixture_001');
 
         expect(result.deleted).toBe(true);
         expect(requestMock).toHaveBeenCalledWith(

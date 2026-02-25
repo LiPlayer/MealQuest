@@ -6,7 +6,6 @@ function parseArgs(argv) {
     merchantId: "",
     name: "",
     budgetCap: "",
-    seedDemoUsers: "true",
     onboardSecret: process.env.MQ_ONBOARD_SECRET || ""
   };
 
@@ -33,11 +32,6 @@ function parseArgs(argv) {
       index += 1;
       continue;
     }
-    if (current === "--seed-demo-users" && next) {
-      args.seedDemoUsers = next;
-      index += 1;
-      continue;
-    }
     if (current === "--onboard-secret" && next) {
       args.onboardSecret = next;
       index += 1;
@@ -60,11 +54,6 @@ async function main() {
   if (args.budgetCap !== "") {
     body.budgetCap = Number(args.budgetCap);
   }
-  if (args.seedDemoUsers !== "") {
-    const normalized = String(args.seedDemoUsers).trim().toLowerCase();
-    body.seedDemoUsers = normalized === "1" || normalized === "true";
-  }
-
   const headers = {
     "Content-Type": "application/json"
   };
@@ -90,8 +79,7 @@ async function main() {
       {
         ok: true,
         merchantId: payload.merchant.merchantId,
-        merchantName: payload.merchant.name,
-        seededUsers: payload.seededUsers
+        merchantName: payload.merchant.name
       },
       null,
       2

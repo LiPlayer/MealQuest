@@ -37,7 +37,7 @@ describe('ApiDataService activities mapping', () => {
         loginMock.mockReset();
         getEnvMock.mockReset();
         getEnvMock.mockReturnValue('WEAPP');
-        loginMock.mockResolvedValue({ code: 'wx_code_demo' });
+        loginMock.mockResolvedValue({ code: 'wx_code_fixture' });
     });
 
     afterEach(() => {
@@ -56,12 +56,12 @@ describe('ApiDataService activities mapping', () => {
     it('uses server activities when provided', async () => {
         requestMock.mockResolvedValueOnce({
             statusCode: 200,
-            data: { token: 'token_demo', profile: { userId: 'u_demo', phone: '+8613900000001' } }
+            data: { token: 'token_fixture', profile: { userId: 'u_fixture_001', phone: '+8613900000001' } }
         });
         requestMock.mockResolvedValueOnce({
             statusCode: 200,
             data: {
-                merchant: { merchantId: 'm_store_001', name: 'Demo Merchant' },
+                merchant: { merchantId: 'm_store_001', name: 'Fixture Merchant' },
                 user: {
                     wallet: { principal: 120, bonus: 30, silver: 66 },
                     fragments: { noodle: 3, spicy: 1 },
@@ -82,7 +82,7 @@ describe('ApiDataService activities mapping', () => {
         });
 
         const { ApiDataService } = require('@/services/ApiDataService');
-        const snapshot = await ApiDataService.getHomeSnapshot('m_store_001', 'u_demo');
+        const snapshot = await ApiDataService.getHomeSnapshot('m_store_001', 'u_fixture_001');
 
         expect(snapshot.activities.length).toBe(1);
         expect(snapshot.activities[0].id).toBe('campaign_1');
@@ -91,15 +91,15 @@ describe('ApiDataService activities mapping', () => {
 
     it('uses alipay login endpoint when running in alipay env', async () => {
         getEnvMock.mockReturnValue('ALIPAY');
-        loginMock.mockResolvedValue({ authCode: 'ali_code_demo' });
+        loginMock.mockResolvedValue({ authCode: 'ali_code_fixture' });
         requestMock.mockResolvedValueOnce({
             statusCode: 200,
-            data: { token: 'token_demo', profile: { userId: 'u_demo', phone: '+8613900000001' } }
+            data: { token: 'token_fixture', profile: { userId: 'u_fixture_001', phone: '+8613900000001' } }
         });
         requestMock.mockResolvedValueOnce({
             statusCode: 200,
             data: {
-                merchant: { merchantId: 'm_store_001', name: 'Demo Merchant' },
+                merchant: { merchantId: 'm_store_001', name: 'Fixture Merchant' },
                 user: {
                     wallet: { principal: 120, bonus: 30, silver: 66 },
                     fragments: { noodle: 3, spicy: 1 },
@@ -110,7 +110,7 @@ describe('ApiDataService activities mapping', () => {
         });
 
         const { ApiDataService } = require('@/services/ApiDataService');
-        await ApiDataService.getHomeSnapshot('m_store_001', 'u_demo');
+        await ApiDataService.getHomeSnapshot('m_store_001', 'u_fixture_001');
 
         expect(requestMock).toHaveBeenCalledWith(
             expect.objectContaining({
@@ -118,7 +118,7 @@ describe('ApiDataService activities mapping', () => {
                 url: 'http://127.0.0.1:3030/api/auth/customer/alipay-login',
                 data: expect.objectContaining({
                     merchantId: 'm_store_001',
-                    code: 'ali_code_demo'
+                    code: 'ali_code_fixture'
                 })
             })
         );

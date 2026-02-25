@@ -1,4 +1,4 @@
-﻿describe('merchantApi audit logs', () => {
+describe('merchantApi audit logs', () => {
   beforeEach(() => {
     jest.resetModules();
     process.env.MQ_SERVER_URL = 'http://127.0.0.1:3030';
@@ -22,7 +22,7 @@
     });
 
     const {MerchantApi} = require('../src/services/merchantApi');
-    await MerchantApi.getAuditLogs('token_demo', {
+    await MerchantApi.getAuditLogs('token_fixture', {
       merchantId: 'm_store_001',
       limit: 2,
       cursor: 'cursor_1',
@@ -35,7 +35,7 @@
     expect(url).toContain('limit=2');
     expect(url).toContain('cursor=cursor_1');
     expect(options.method).toBe('GET');
-    expect(options.headers.Authorization).toBe('Bearer token_demo');
+    expect(options.headers.Authorization).toBe('Bearer token_fixture');
   });
 
   it('includes action/status/time filters when provided', async () => {
@@ -51,7 +51,7 @@
     });
 
     const {MerchantApi} = require('../src/services/merchantApi');
-    await MerchantApi.getAuditLogs('token_demo', {
+    await MerchantApi.getAuditLogs('token_fixture', {
       merchantId: 'm_store_001',
       limit: 5,
       action: 'KILL_SWITCH_SET',
@@ -84,7 +84,7 @@
     });
 
     const {MerchantApi} = require('../src/services/merchantApi');
-    await MerchantApi.sendStrategyChatMessage('token_demo', {
+    await MerchantApi.sendStrategyChatMessage('token_fixture', {
       merchantId: 'm_store_001',
       sessionId: 'sc_1',
       content: 'Need lunch acquisition strategy under budget 200',
@@ -111,7 +111,7 @@
     });
 
     const {MerchantApi} = require('../src/services/merchantApi');
-    await MerchantApi.setCampaignStatus('token_demo', {
+    await MerchantApi.setCampaignStatus('token_fixture', {
       merchantId: 'm_store_001',
       campaignId: 'campaign_1',
       status: 'PAUSED',
@@ -131,7 +131,7 @@
       status: 200,
       json: async () => ({
         merchantId: 'm_store_001',
-        clusterId: 'cluster_demo_brand',
+        clusterId: 'cluster_fixture_brand',
         stores: ['m_store_001', 'm_bistro'],
         walletShared: true,
         tierShared: false,
@@ -139,7 +139,7 @@
     });
 
     const {MerchantApi} = require('../src/services/merchantApi');
-    await MerchantApi.setAllianceConfig('token_demo', {
+    await MerchantApi.setAllianceConfig('token_fixture', {
       merchantId: 'm_store_001',
       stores: ['m_store_001', 'm_bistro'],
       walletShared: true,

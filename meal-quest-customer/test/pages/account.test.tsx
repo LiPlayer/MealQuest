@@ -29,14 +29,14 @@ describe('Account page', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         storageMock.getLastStoreId.mockReturnValue('m_store_001');
-        storageMock.getCustomerUserId.mockReturnValue('u_demo');
+        storageMock.getCustomerUserId.mockReturnValue('u_fixture_001');
         dataServiceMock.getHomeSnapshot.mockResolvedValue({
             store: {
                 id: 'm_store_001',
-                name: 'Demo Merchant',
+                name: 'Fixture Merchant',
                 branchName: 'Main',
-                slogan: 'demo',
-                logo: 'demo',
+                slogan: 'fixture',
+                logo: 'fixture',
                 theme: {
                     primaryColor: '#000',
                     secondaryColor: '#111',
@@ -53,7 +53,7 @@ describe('Account page', () => {
             {
                 txnId: 'txn_1',
                 merchantId: 'm_store_001',
-                userId: 'u_demo',
+                userId: 'u_fixture_001',
                 type: 'PAYMENT',
                 amount: 12,
                 timestamp: '2026-02-21T00:00:00.000Z'
@@ -63,7 +63,7 @@ describe('Account page', () => {
             {
                 invoiceNo: 'INV_1',
                 merchantId: 'm_store_001',
-                userId: 'u_demo',
+                userId: 'u_fixture_001',
                 paymentTxnId: 'txn_1',
                 amount: 12,
                 status: 'ISSUED',
@@ -80,7 +80,7 @@ describe('Account page', () => {
             expect(screen.getByText('账户中心')).toBeInTheDocument();
         });
         await waitFor(() => {
-            expect(dataServiceMock.getInvoices).toHaveBeenCalledWith('m_store_001', 'u_demo', 20);
+            expect(dataServiceMock.getInvoices).toHaveBeenCalledWith('m_store_001', 'u_fixture_001', 20);
         });
         expect(screen.getByText('支付流水')).toBeInTheDocument();
         expect(screen.getByText('电子发票')).toBeInTheDocument();
@@ -90,7 +90,7 @@ describe('Account page', () => {
         dataServiceMock.cancelAccount.mockResolvedValue({
             deleted: true,
             deletedAt: '2026-02-21T00:00:00.000Z',
-            anonymizedUserId: 'DELETED_m_store_001_u_demo'
+            anonymizedUserId: 'DELETED_m_store_001_u_fixture_001'
         });
 
         render(<AccountPage />);
@@ -101,9 +101,9 @@ describe('Account page', () => {
 
         fireEvent.click(screen.getByText('确认注销'));
         await waitFor(() => {
-            expect(dataServiceMock.cancelAccount).toHaveBeenCalledWith('m_store_001', 'u_demo');
+            expect(dataServiceMock.cancelAccount).toHaveBeenCalledWith('m_store_001', 'u_fixture_001');
         });
-        expect(storageMock.clearCustomerSession).toHaveBeenCalledWith('m_store_001', 'u_demo');
+        expect(storageMock.clearCustomerSession).toHaveBeenCalledWith('m_store_001', 'u_fixture_001');
         expect(Taro.reLaunch).toHaveBeenCalledWith({ url: '/pages/startup/index' });
     });
 });

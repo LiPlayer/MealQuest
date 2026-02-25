@@ -3,7 +3,7 @@ const taroMock = {
     setStorageSync: jest.fn(),
     removeStorageSync: jest.fn(),
     request: jest.fn(),
-    login: jest.fn(async () => ({ code: 'wx_code_demo' })),
+    login: jest.fn(async () => ({ code: 'wx_code_fixture' })),
     reLaunch: jest.fn(),
     navigateTo: jest.fn(),
     scanCode: jest.fn(),

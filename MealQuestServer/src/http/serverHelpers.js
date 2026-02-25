@@ -608,7 +608,6 @@ function onboardMerchant(db, payload = {}) {
   db.save();
   return {
     merchant: db.merchants[merchantId],
-    seededUsers: Object.keys(db.merchantUsers[merchantId] || {}),
     allianceConfig: db.allianceConfigs[merchantId]
   };
 }
@@ -636,8 +635,7 @@ function issuePhoneCode(db, phone) {
   db.save();
   return {
     phone,
-    expiresInSec: 300,
-    debugCode: code
+    expiresInSec: 300
   };
 }
 

@@ -9,7 +9,7 @@ describe('audit log view model', () => {
       action: 'PAYMENT_VERIFY',
       status: 'SUCCESS',
       role: 'CUSTOMER',
-      operatorId: 'u_demo',
+      operatorId: 'u_fixture_001',
       details: {paymentTxnId: 'txn_1', orderAmount: 52},
     });
 
