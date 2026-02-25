@@ -4,7 +4,9 @@ const {
 } = require("./strategyLibrary");
 
 const DEFAULT_REMOTE_PROVIDER = "openai_compatible";
-const REMOTE_PROVIDERS = new Set(["deepseek", "openai_compatible"]);
+const REMOTE_PROVIDERS = new Set(["deepseek", "openai_compatible", "bigmodel"]);
+const BIGMODEL_BASE_URL = "https://open.bigmodel.cn/api/paas/v4";
+const BIGMODEL_DEFAULT_MODEL = "glm-4.7-flash";
 
 const SLOT_QUESTION_BANK = {
   goal: "你这次更想要哪个目标：拉新、召回、提客单还是去库存？",
@@ -25,6 +27,9 @@ function normalizeProvider(value) {
   // Backward-compatible alias.
   if (normalized === "mock") {
     return DEFAULT_REMOTE_PROVIDER;
+  }
+  if (["bigmodel", "zhipu", "zhipuai"].includes(normalized)) {
+    return "bigmodel";
   }
   if (REMOTE_PROVIDERS.has(normalized)) {
     return normalized;
@@ -540,14 +545,23 @@ function createAiStrategyService(options = {}) {
   const provider = normalizeProvider(
     options.provider || process.env.MQ_AI_PROVIDER || DEFAULT_REMOTE_PROVIDER,
   );
-  const model = asString(options.model || process.env.MQ_AI_MODEL || "qwen2.5:7b-instruct");
+  const model = asString(
+    options.model ||
+      process.env.MQ_AI_MODEL ||
+      (provider === "bigmodel" ? BIGMODEL_DEFAULT_MODEL : "qwen2.5:7b-instruct"),
+  );
   const baseUrl = asString(
-    options.baseUrl || process.env.MQ_AI_BASE_URL || "http://127.0.0.1:11434/v1",
+    options.baseUrl ||
+      process.env.MQ_AI_BASE_URL ||
+      (provider === "bigmodel" ? BIGMODEL_BASE_URL : "http://127.0.0.1:11434/v1"),
   );
   const apiKey = asString(options.apiKey || process.env.MQ_AI_API_KEY);
   const timeoutMs = Number(options.timeoutMs || process.env.MQ_AI_TIMEOUT_MS || 15000);
 
   async function resolveRemoteDecision(input, templates) {
+    if (provider === "bigmodel" && !apiKey) {
+      throw new Error("MQ_AI_API_KEY is required for provider=bigmodel");
+    }
     const safeTimeoutMs =
       Number.isFinite(timeoutMs) && timeoutMs > 0 ? Math.floor(timeoutMs) : 15000;
     const prompt = buildPromptPayload({

@@ -463,33 +463,37 @@ async function runSmoke(baseUrl, options = {}) {
     { Authorization: `Bearer ${ownerToken}` }
   );
   expectStatus(strategyProposal, 200, "strategy proposal create");
-  assert.equal(strategyProposal.data.status, "PENDING");
+  if (strategyProposal.data.status === "AI_UNAVAILABLE") {
+    console.log("[smoke] scenario G fallback: AI_UNAVAILABLE, skipping proposal confirm/status checks.");
+  } else {
+    assert.equal(strategyProposal.data.status, "PENDING");
 
-  const strategyConfirm = await postJson(
-    baseUrl,
-    `/api/merchant/proposals/${encodeURIComponent(strategyProposal.data.proposalId)}/confirm`,
-    { merchantId: "m_store_001" },
-    { Authorization: `Bearer ${ownerToken}` }
-  );
-  expectStatus(strategyConfirm, 200, "strategy proposal confirm");
+    const strategyConfirm = await postJson(
+      baseUrl,
+      `/api/merchant/proposals/${encodeURIComponent(strategyProposal.data.proposalId)}/confirm`,
+      { merchantId: "m_store_001" },
+      { Authorization: `Bearer ${ownerToken}` }
+    );
+    expectStatus(strategyConfirm, 200, "strategy proposal confirm");
 
-  const pauseCampaign = await postJson(
-    baseUrl,
-    `/api/merchant/campaigns/${encodeURIComponent(strategyConfirm.data.campaignId)}/status`,
-    { merchantId: "m_store_001", status: "PAUSED" },
-    { Authorization: `Bearer ${ownerToken}` }
-  );
-  expectStatus(pauseCampaign, 200, "campaign pause");
-  assert.equal(pauseCampaign.data.status, "PAUSED");
+    const pauseCampaign = await postJson(
+      baseUrl,
+      `/api/merchant/campaigns/${encodeURIComponent(strategyConfirm.data.campaignId)}/status`,
+      { merchantId: "m_store_001", status: "PAUSED" },
+      { Authorization: `Bearer ${ownerToken}` }
+    );
+    expectStatus(pauseCampaign, 200, "campaign pause");
+    assert.equal(pauseCampaign.data.status, "PAUSED");
 
-  const resumeCampaign = await postJson(
-    baseUrl,
-    `/api/merchant/campaigns/${encodeURIComponent(strategyConfirm.data.campaignId)}/status`,
-    { merchantId: "m_store_001", status: "ACTIVE" },
-    { Authorization: `Bearer ${ownerToken}` }
-  );
-  expectStatus(resumeCampaign, 200, "campaign resume");
-  assert.equal(resumeCampaign.data.status, "ACTIVE");
+    const resumeCampaign = await postJson(
+      baseUrl,
+      `/api/merchant/campaigns/${encodeURIComponent(strategyConfirm.data.campaignId)}/status`,
+      { merchantId: "m_store_001", status: "ACTIVE" },
+      { Authorization: `Bearer ${ownerToken}` }
+    );
+    expectStatus(resumeCampaign, 200, "campaign resume");
+    assert.equal(resumeCampaign.data.status, "ACTIVE");
+  }
 
   console.log("[smoke] scenario H: supplier verify + fire sale");
   const supplierVerifyPass = await postJson(

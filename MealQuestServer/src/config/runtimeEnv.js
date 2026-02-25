@@ -54,6 +54,9 @@ function parseAiProvider(raw) {
   if (normalized === "mock") {
     return "openai_compatible";
   }
+  if (["bigmodel", "zhipu", "zhipuai"].includes(normalized)) {
+    return "bigmodel";
+  }
   if (["deepseek", "openai_compatible"].includes(normalized)) {
     return normalized;
   }
@@ -87,8 +90,14 @@ function resolveServerRuntimeEnv(env = process.env) {
   const authAlipayAppId = asString(env.MQ_AUTH_ALIPAY_APP_ID);
   const authAlipayAppSecret = asString(env.MQ_AUTH_ALIPAY_APP_SECRET);
   const aiProvider = parseAiProvider(env.MQ_AI_PROVIDER);
-  const aiBaseUrl = asString(env.MQ_AI_BASE_URL) || "http://127.0.0.1:11434/v1";
-  const aiModel = asString(env.MQ_AI_MODEL) || "qwen2.5:7b-instruct";
+  const aiBaseUrl =
+    asString(env.MQ_AI_BASE_URL) ||
+    (aiProvider === "bigmodel"
+      ? "https://open.bigmodel.cn/api/paas/v4"
+      : "http://127.0.0.1:11434/v1");
+  const aiModel =
+    asString(env.MQ_AI_MODEL) ||
+    (aiProvider === "bigmodel" ? "glm-4.7-flash" : "qwen2.5:7b-instruct");
   const aiApiKey = asString(env.MQ_AI_API_KEY);
   const aiTimeoutMs = parsePositiveInt(env.MQ_AI_TIMEOUT_MS, 15000);
 
@@ -110,6 +119,9 @@ function resolveServerRuntimeEnv(env = process.env) {
     errors.push(
       "At least one customer auth provider is required in production (WeChat or Alipay)"
     );
+  }
+  if (isProduction && aiProvider === "bigmodel" && !aiApiKey) {
+    errors.push("MQ_AI_API_KEY is required when MQ_AI_PROVIDER=bigmodel in production");
   }
   if (errors.length > 0) {
     throw new Error(`Invalid server env: ${errors.join("; ")}`);

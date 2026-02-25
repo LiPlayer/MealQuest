@@ -54,9 +54,9 @@ MQ_AUTH_ALIPAY_VERIFY_URL=
 MQ_AUTH_ALIPAY_APP_ID=
 MQ_AUTH_ALIPAY_APP_SECRET=
 MQ_AUTH_HTTP_TIMEOUT_MS=10000
-MQ_AI_PROVIDER=openai_compatible
-MQ_AI_BASE_URL=http://127.0.0.1:11434/v1
-MQ_AI_MODEL=qwen2.5:7b-instruct
+MQ_AI_PROVIDER=bigmodel
+MQ_AI_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+MQ_AI_MODEL=glm-4.7-flash
 MQ_AI_API_KEY=
 MQ_AI_TIMEOUT_MS=15000
 ```
@@ -69,8 +69,8 @@ Notes:
 4. Migration cutover and rollback keep working with tenant snapshot keys.
 5. When `MQ_DB_AUTO_CREATE=true`, server auto-creates the target database if it is missing.
 6. If the app user has no `CREATEDB` privilege, set `MQ_DB_ADMIN_URL` with an admin connection.
-7. `MQ_AI_PROVIDER=openai_compatible` is recommended for self-hosted small model endpoints.
-8. `MQ_AI_API_KEY` is optional for local model servers that do not require auth.
+7. `MQ_AI_PROVIDER=bigmodel` is supported with BigModel chat completions endpoint.
+8. `MQ_AI_API_KEY` is required for BigModel (`provider=bigmodel`), optional for local openai-compatible servers.
 9. If model inference is unavailable, strategy proposal API returns `AI_UNAVAILABLE` (no local fallback strategy is generated).
 
 ## Merchant Onboarding
