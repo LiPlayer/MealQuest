@@ -60,11 +60,7 @@ MQ_AI_BASE_URL=https://open.bigmodel.cn/api/paas/v4
 MQ_AI_MODEL=glm-4.7-flash
 MQ_AI_API_KEY=
 MQ_AI_TIMEOUT_MS=45000
-MQ_AI_MAX_CONCURRENCY=1
 MQ_AI_MAX_RETRIES=2
-MQ_AI_RETRY_BACKOFF_MS=180
-MQ_AI_CIRCUIT_BREAKER_THRESHOLD=4
-MQ_AI_CIRCUIT_BREAKER_COOLDOWN_MS=30000
 ```
 
 Notes:
@@ -78,10 +74,8 @@ Notes:
 7. `MQ_AI_PROVIDER=bigmodel` is supported with BigModel chat completions endpoint.
 8. `MQ_AI_API_KEY` is required for BigModel (`provider=bigmodel`), optional for local openai-compatible servers.
 9. If model inference is unavailable, strategy proposal API returns `AI_UNAVAILABLE` (no local fallback strategy is generated).
-10. `MQ_AI_MAX_CONCURRENCY` controls in-process AI request queue parallelism (set `1` for strict serial execution).
-11. `MQ_AI_MAX_RETRIES` and `MQ_AI_RETRY_BACKOFF_MS` control transient upstream retry behavior.
-12. `MQ_AI_CIRCUIT_BREAKER_*` prevents repeated upstream failures from cascading across requests.
-13. Strategy planning is orchestrated by LangGraph (`prepare_input -> remote_decide -> assemble_plan`).
+10. `MQ_AI_MAX_RETRIES` controls LangChain model retry attempts (`@langchain/openai`).
+11. Strategy planning is orchestrated by LangGraph (`prepare_input -> remote_decide -> assemble_plan`).
 
 ## Merchant Onboarding
 
@@ -101,7 +95,7 @@ GET  /api/merchant/catalog
 
 Engineering reference:
 
-- `docs/AI_STRATEGY_ENGINEERING.md` (AI strategy architecture, resilience, rollout)
+- `docs/AI_STRATEGY_ENGINEERING.md` (AI strategy architecture and rollout)
 
 Example body:
 

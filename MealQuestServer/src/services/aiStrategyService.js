@@ -4,12 +4,6 @@ const {
 } = require("./strategyLibrary");
 const { Annotation, StateGraph, START, END } = require("@langchain/langgraph");
 const { createLangChainModelGateway } = require("./aiStrategy/langchainModelGateway");
-const {
-  DEFAULT_RETRY_MAX_ATTEMPTS,
-  DEFAULT_RETRY_BACKOFF_MS,
-  DEFAULT_CIRCUIT_FAILURE_THRESHOLD,
-  DEFAULT_CIRCUIT_COOLDOWN_MS,
-} = require("./aiStrategy/resilience");
 
 const DEFAULT_REMOTE_PROVIDER = "openai_compatible";
 const REMOTE_PROVIDERS = new Set(["deepseek", "openai_compatible", "bigmodel"]);
@@ -17,11 +11,7 @@ const BIGMODEL_BASE_URL = "https://open.bigmodel.cn/api/paas/v4";
 const BIGMODEL_DEFAULT_MODEL = "glm-4.7-flash";
 const BIGMODEL_DEFAULT_TIMEOUT_MS = 45000;
 const DEFAULT_TIMEOUT_MS = 15000;
-const DEFAULT_MAX_CONCURRENCY = 1;
-const DEFAULT_MAX_RETRIES = DEFAULT_RETRY_MAX_ATTEMPTS;
-const DEFAULT_RETRY_BACKOFF = DEFAULT_RETRY_BACKOFF_MS;
-const DEFAULT_CIRCUIT_BREAKER_THRESHOLD = DEFAULT_CIRCUIT_FAILURE_THRESHOLD;
-const DEFAULT_CIRCUIT_BREAKER_COOLDOWN_MS = DEFAULT_CIRCUIT_COOLDOWN_MS;
+const DEFAULT_MAX_RETRIES = 2;
 
 const SLOT_QUESTION_BANK = {
   goal: "你这次更想要哪个目标：拉新、召回、提客单还是去库存？",
@@ -567,46 +557,6 @@ function buildChatPromptPayload({
   };
 }
 
-function createConcurrencyQueue(maxConcurrency) {
-  const safeMaxConcurrency = toPositiveInt(maxConcurrency, DEFAULT_MAX_CONCURRENCY);
-  const pending = [];
-  let activeCount = 0;
-
-  function scheduleNext() {
-    if (activeCount >= safeMaxConcurrency) {
-      return;
-    }
-    const item = pending.shift();
-    if (!item) {
-      return;
-    }
-    activeCount += 1;
-    Promise.resolve()
-      .then(item.task)
-      .then(item.resolve, item.reject)
-      .finally(() => {
-        activeCount -= 1;
-        scheduleNext();
-      });
-  }
-
-  return {
-    run(task) {
-      return new Promise((resolve, reject) => {
-        pending.push({ task, resolve, reject });
-        scheduleNext();
-      });
-    },
-    snapshot() {
-      return {
-        maxConcurrency: safeMaxConcurrency,
-        activeCount,
-        pendingCount: pending.length,
-      };
-    },
-  };
-}
-
 function createStrategyPlannerGraph({
   provider,
   model,
@@ -901,27 +851,10 @@ function createAiStrategyService(options = {}) {
       process.env.MQ_AI_TIMEOUT_MS ||
       (provider === "bigmodel" ? BIGMODEL_DEFAULT_TIMEOUT_MS : DEFAULT_TIMEOUT_MS),
   );
-  const maxConcurrency = toPositiveInt(
-    options.maxConcurrency || process.env.MQ_AI_MAX_CONCURRENCY,
-    DEFAULT_MAX_CONCURRENCY,
-  );
   const maxRetries = toPositiveInt(
     options.maxRetries || process.env.MQ_AI_MAX_RETRIES,
     DEFAULT_MAX_RETRIES,
   );
-  const retryBackoffMs = toPositiveInt(
-    options.retryBackoffMs || process.env.MQ_AI_RETRY_BACKOFF_MS,
-    DEFAULT_RETRY_BACKOFF,
-  );
-  const circuitFailureThreshold = toPositiveInt(
-    options.circuitFailureThreshold || process.env.MQ_AI_CIRCUIT_BREAKER_THRESHOLD,
-    DEFAULT_CIRCUIT_BREAKER_THRESHOLD,
-  );
-  const circuitCooldownMs = toPositiveInt(
-    options.circuitCooldownMs || process.env.MQ_AI_CIRCUIT_BREAKER_COOLDOWN_MS,
-    DEFAULT_CIRCUIT_BREAKER_COOLDOWN_MS,
-  );
-  const remoteQueue = createConcurrencyQueue(maxConcurrency);
   const modelGateway = createLangChainModelGateway({
     provider,
     model,
@@ -929,10 +862,6 @@ function createAiStrategyService(options = {}) {
     apiKey,
     timeoutMs,
     maxRetries,
-    retryBackoffMs,
-    circuitFailureThreshold,
-    circuitCooldownMs,
-    queue: remoteQueue,
     parseJsonLoose,
   });
   const strategyPlannerGraph = createStrategyPlannerGraph({
@@ -1020,7 +949,6 @@ function createAiStrategyService(options = {}) {
 
   function getRuntimeInfo() {
     const remoteEnabled = REMOTE_PROVIDERS.has(provider);
-    const queue = remoteQueue.snapshot();
     const gatewayInfo = modelGateway.getRuntimeInfo();
     return {
       provider,
@@ -1030,11 +958,8 @@ function createAiStrategyService(options = {}) {
       remoteEnabled,
       remoteConfigured: remoteEnabled ? Boolean(apiKey) : false,
       plannerEngine: "langgraph",
-      maxConcurrency: queue.maxConcurrency,
-      queueActive: queue.activeCount,
-      queuePending: queue.pendingCount,
       retryPolicy: gatewayInfo.retry,
-      circuitBreaker: gatewayInfo.circuitBreaker,
+      modelClient: gatewayInfo.modelClient,
     };
   }
 
