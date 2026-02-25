@@ -86,4 +86,24 @@ describe('Startup Page', () => {
             );
         });
     });
+
+    it('Scan Action: redirects to payment page when payload contains action=pay', async () => {
+        (storage.getLastStoreId as jest.Mock).mockReturnValue(null);
+        (ApiDataService.isConfigured as jest.Mock).mockReturnValue(true);
+        (ApiDataService.isMerchantAvailable as jest.Mock).mockResolvedValue(true);
+        (Taro.scanCode as jest.Mock).mockImplementation(({ success }) => {
+            success({ result: 'https://mealquest.app/startup?id=m_store_001&action=pay&orderAmount=88' });
+        });
+
+        render(<Startup />);
+        const scanButton = document.getElementById('startup-scan-button');
+        expect(scanButton).not.toBeNull();
+        fireEvent.click(scanButton as Element);
+
+        await waitFor(() => {
+            expect(Taro.reLaunch).toHaveBeenCalledWith({
+                url: '/pages/index/index?autoPay=1&orderAmount=88',
+            });
+        });
+    });
 });

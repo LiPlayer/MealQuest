@@ -66,14 +66,6 @@ const getServerBaseUrl = () => {
 };
 
 const resolveCustomerAuthProvider = (): CustomerAuthProvider => {
-    const configuredProvider = getEnv('TARO_APP_AUTH_PROVIDER').trim().toUpperCase();
-    if (configuredProvider === 'ALIPAY') {
-        return 'ALIPAY';
-    }
-    if (configuredProvider === 'WECHAT') {
-        return 'WECHAT';
-    }
-
     const taroEnv =
         typeof (Taro as any).getEnv === 'function'
             ? String((Taro as any).getEnv() || '').trim().toUpperCase()

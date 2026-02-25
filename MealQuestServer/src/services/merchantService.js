@@ -1,10 +1,11 @@
 const {
-  createCampaignFromTemplate,
   findTemplate,
   listStrategyTemplates
 } = require("./strategyLibrary");
 
-function createMerchantService(db) {
+function createMerchantService(db, options = {}) {
+  const aiStrategyService = options.aiStrategyService;
+
   function ensureStrategyBucket(merchantId) {
     if (!db.strategyConfigs || typeof db.strategyConfigs !== "object") {
       db.strategyConfigs = {};
@@ -119,6 +120,10 @@ function createMerchantService(db) {
     const configs = ensureStrategyBucket(merchantId);
     return {
       merchantId,
+      aiRuntime:
+        aiStrategyService && typeof aiStrategyService.getRuntimeInfo === "function"
+          ? aiStrategyService.getRuntimeInfo()
+          : null,
       templates: listStrategyTemplates().map((template) => ({
         ...template,
         currentConfig: configs[template.templateId] || null
@@ -138,7 +143,7 @@ function createMerchantService(db) {
     };
   }
 
-  function createStrategyProposal({
+  async function createStrategyProposal({
     merchantId,
     templateId,
     branchId,
@@ -150,19 +155,24 @@ function createMerchantService(db) {
     if (!merchant) {
       throw new Error("merchant not found");
     }
+    if (!aiStrategyService || typeof aiStrategyService.generateStrategyProposal !== "function") {
+      throw new Error("ai strategy service is not configured");
+    }
 
-    const { campaign, template, branch } = createCampaignFromTemplate({
+    const aiResult = await aiStrategyService.generateStrategyProposal({
       merchantId,
       templateId,
       branchId,
+      intent,
       overrides
     });
+    const { campaign, template, branch, strategyMeta } = aiResult;
     const proposalId = `proposal_${template.templateId}_${Date.now()}`;
     const proposal = {
       id: proposalId,
       merchantId,
       status: "PENDING",
-      title: `${template.name} · ${branch.name}`,
+      title: aiResult.title || `${template.name} · ${branch.name}`,
       createdAt: new Date().toISOString(),
       intent: String(intent || ""),
       strategyMeta: {
@@ -172,7 +182,15 @@ function createMerchantService(db) {
         phase: template.phase,
         branchId: branch.branchId,
         branchName: branch.name,
-        operatorId: operatorId || "system"
+        operatorId: operatorId || "system",
+        source: strategyMeta && strategyMeta.source ? strategyMeta.source : "AI_MODEL",
+        provider: strategyMeta && strategyMeta.provider ? strategyMeta.provider : "MOCK",
+        model: strategyMeta && strategyMeta.model ? strategyMeta.model : "unknown",
+        rationale: strategyMeta && strategyMeta.rationale ? strategyMeta.rationale : "",
+        confidence:
+          strategyMeta && Number.isFinite(strategyMeta.confidence)
+            ? strategyMeta.confidence
+            : null
       },
       suggestedCampaign: campaign
     };

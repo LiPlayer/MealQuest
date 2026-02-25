@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { View, Text, Slot } from '@tarojs/components';
-import Taro, { useReady } from '@tarojs/taro';
+import Taro, { useReady, useRouter } from '@tarojs/taro';
 
 import ShopBrand from '../../components/ShopBrand';
 import CustomerCardStack from '../../components/CustomerCardStack';
@@ -16,6 +16,21 @@ import './index.scss';
 const DEFAULT_STORE_ID =
     (typeof process !== 'undefined' && process.env && process.env.TARO_APP_DEFAULT_STORE_ID) || 'm_store_001';
 
+const DEFAULT_ORDER_AMOUNT = 52;
+
+const toOrderAmount = (raw: unknown) => {
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+        return DEFAULT_ORDER_AMOUNT;
+    }
+    return Math.round(parsed * 100) / 100;
+};
+
+const isAutoPayEnabled = (raw: unknown) => {
+    const normalized = String(raw || '').trim().toLowerCase();
+    return ['1', 'true', 'yes', 'on', 'pay', 'payment'].includes(normalized);
+};
+
 // Add declaration for the native component
 declare global {
     namespace JSX {
@@ -29,31 +44,38 @@ declare global {
 }
 
 export default function Index() {
+    const router = useRouter();
     const [snapshot, setSnapshot] = useState<HomeSnapshot | null>(null);
     const [headerStyle, setHeaderStyle] = useState<React.CSSProperties>({});
     const [refreshTrigger, setRefreshTrigger] = useState(0);
     const [isPaying, setIsPaying] = useState(false);
     const [lastReceipt, setLastReceipt] = useState<string>('');
+    const autoPayHintShownRef = useRef(false);
 
-    const orderAmount = 52;
+    const orderAmount = useMemo(() => {
+        const params = (router.params || {}) as Record<string, unknown>;
+        const raw = params.orderAmount ?? params.amount;
+        return toOrderAmount(raw);
+    }, [router.params]);
+
+    const shouldAutoPay = useMemo(() => {
+        const params = (router.params || {}) as Record<string, unknown>;
+        return isAutoPayEnabled(params.autoPay);
+    }, [router.params]);
+
     const quote = snapshot
         ? buildSmartCheckoutQuote(orderAmount, snapshot.wallet, snapshot.vouchers)
         : null;
 
     useReady(() => {
-        console.log('Index [useReady] fired.');
-
-        // Calculate dynamic header alignment
         try {
             const capsule = Taro.getMenuButtonBoundingClientRect();
-            console.log('Capsule data [Ready]:', capsule);
             setHeaderStyle({
                 '--header-height': `${capsule.bottom + 8}px`,
                 '--nav-top': `${capsule.top}px`,
                 '--nav-height': `${capsule.height}px`
             } as React.CSSProperties);
-        } catch (e) {
-            console.warn('Failed to get capsule rect, using fallbacks:', e);
+        } catch {
             setHeaderStyle({
                 '--header-height': '88px',
                 '--nav-top': '44px',
@@ -64,37 +86,35 @@ export default function Index() {
 
     useEffect(() => {
         const loadData = async () => {
-            console.log('Index [useEffect] loading data...');
             const storeId = storage.getLastStoreId();
-            console.log('Index target storeId:', storeId);
 
             if (storeId) {
                 try {
                     const homeSnapshot = await DataService.getHomeSnapshot(storeId);
-                    console.log('Fetched snapshot [Success]:', homeSnapshot);
                     setSnapshot(homeSnapshot);
                     setRefreshTrigger(v => v + 1);
                 } catch (err) {
                     console.error('Error fetching store data:', err);
                 }
             } else {
-                console.log('Using default storeId:', DEFAULT_STORE_ID);
                 const defaultSnapshot = await DataService.getHomeSnapshot(DEFAULT_STORE_ID);
                 setSnapshot(defaultSnapshot);
                 setRefreshTrigger(v => v + 1);
             }
         };
 
-        loadData();
+        loadData().catch(error => {
+            console.error('Failed to load home snapshot:', error);
+        });
     }, []);
 
-    const handleCheckout = async () => {
+    const handleCheckout = async (targetOrderAmount = orderAmount) => {
         if (!snapshot || isPaying) {
             return;
         }
         setIsPaying(true);
         try {
-            const result = await DataService.executeCheckout(snapshot.store.id, orderAmount);
+            const result = await DataService.executeCheckout(snapshot.store.id, targetOrderAmount);
             setSnapshot(result.snapshot);
             setLastReceipt(`支付成功 ${result.paymentId}，外部支付 ¥${result.quote.payable.toFixed(2)}`);
             setRefreshTrigger(v => v + 1);
@@ -105,6 +125,14 @@ export default function Index() {
             setIsPaying(false);
         }
     };
+
+    useEffect(() => {
+        if (!shouldAutoPay || autoPayHintShownRef.current || !snapshot) {
+            return;
+        }
+        autoPayHintShownRef.current = true;
+        Taro.showToast({ title: '已打开支付页，请确认支付', icon: 'none' });
+    }, [shouldAutoPay, snapshot]);
 
     const handleOpenAccount = () => {
         Taro.navigateTo({ url: '/pages/account/index' });
@@ -117,7 +145,6 @@ export default function Index() {
             </View>
             {/* @ts-ignore */}
             <wxs-scroll-view refresh-trigger={refreshTrigger}>
-                {/* ── Header Slots ── */}
                 <Slot name="header-left">
                     <View className="avatar-wrapper transition-transform">
                         <View className='avatar-circle'>
@@ -132,7 +159,6 @@ export default function Index() {
                     </Text>
                 </Slot>
 
-                {/* ── Brand Slot ── */}
                 <Slot name="brand">
                     <ShopBrand
                         name={snapshot?.store.name}
@@ -143,7 +169,6 @@ export default function Index() {
                     />
                 </Slot>
 
-                {/* ── Card Stack Slot ── */}
                 <Slot name="cards">
                     <CustomerCardStack
                         wallet={snapshot?.wallet}
@@ -152,7 +177,6 @@ export default function Index() {
                     />
                 </Slot>
 
-                {/* ── Activity Area Slot ── */}
                 <Slot name="activity">
                     <ActivityArea activities={snapshot?.activities} />
                 </Slot>
@@ -166,8 +190,7 @@ export default function Index() {
                 </View>
             )}
 
-            {/* 底部水晶支付坞 */}
-            <CustomerBottomDock quote={quote} onPay={handleCheckout} disabled={!snapshot || isPaying} />
+            <CustomerBottomDock quote={quote} onPay={() => handleCheckout(orderAmount)} disabled={!snapshot || isPaying} />
         </View >
     );
 }

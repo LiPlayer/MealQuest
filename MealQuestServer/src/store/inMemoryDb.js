@@ -160,19 +160,6 @@ function createDefaultState(now = new Date()) {
         updatedAt: now.toISOString()
       }
     },
-    socialRedPacketsByMerchant: {
-      m_store_001: {},
-      m_bistro: {}
-    },
-    groupTreatSessionsByMerchant: {
-      m_store_001: {},
-      m_bistro: {}
-    },
-    merchantDailySubsidyUsage: {
-      m_store_001: {},
-      m_bistro: {}
-    },
-    socialTransferLogs: [],
     phoneLoginCodes: {},
     socialAuth: {
       customerBindingsByMerchant: {},
@@ -287,27 +274,6 @@ function migrateLegacyShape(state) {
   if (!next.allianceConfigs || typeof next.allianceConfigs !== "object") {
     next.allianceConfigs = {};
   }
-  if (
-    !next.socialRedPacketsByMerchant ||
-    typeof next.socialRedPacketsByMerchant !== "object"
-  ) {
-    next.socialRedPacketsByMerchant = {};
-  }
-  if (
-    !next.groupTreatSessionsByMerchant ||
-    typeof next.groupTreatSessionsByMerchant !== "object"
-  ) {
-    next.groupTreatSessionsByMerchant = {};
-  }
-  if (
-    !next.merchantDailySubsidyUsage ||
-    typeof next.merchantDailySubsidyUsage !== "object"
-  ) {
-    next.merchantDailySubsidyUsage = {};
-  }
-  if (!Array.isArray(next.socialTransferLogs)) {
-    next.socialTransferLogs = [];
-  }
   if (!next.phoneLoginCodes || typeof next.phoneLoginCodes !== "object") {
     next.phoneLoginCodes = {};
   }
@@ -357,15 +323,6 @@ function ensureMerchantBuckets(state) {
     if (!state.strategyConfigs[merchantId]) {
       state.strategyConfigs[merchantId] = {};
     }
-    if (!state.socialRedPacketsByMerchant[merchantId]) {
-      state.socialRedPacketsByMerchant[merchantId] = {};
-    }
-    if (!state.groupTreatSessionsByMerchant[merchantId]) {
-      state.groupTreatSessionsByMerchant[merchantId] = {};
-    }
-    if (!state.merchantDailySubsidyUsage[merchantId]) {
-      state.merchantDailySubsidyUsage[merchantId] = {};
-    }
   }
 }
 
@@ -411,21 +368,6 @@ function normalizeState(initialState = null) {
       ...defaults.allianceConfigs,
       ...(migrated.allianceConfigs || {})
     },
-    socialRedPacketsByMerchant: {
-      ...defaults.socialRedPacketsByMerchant,
-      ...(migrated.socialRedPacketsByMerchant || {})
-    },
-    groupTreatSessionsByMerchant: {
-      ...defaults.groupTreatSessionsByMerchant,
-      ...(migrated.groupTreatSessionsByMerchant || {})
-    },
-    merchantDailySubsidyUsage: {
-      ...defaults.merchantDailySubsidyUsage,
-      ...(migrated.merchantDailySubsidyUsage || {})
-    },
-    socialTransferLogs: Array.isArray(migrated.socialTransferLogs)
-      ? migrated.socialTransferLogs
-      : defaults.socialTransferLogs,
     phoneLoginCodes: {
       ...defaults.phoneLoginCodes,
       ...(migrated.phoneLoginCodes || {})
@@ -463,6 +405,10 @@ function normalizeState(initialState = null) {
     campaigns: Array.isArray(migrated.campaigns) ? migrated.campaigns : defaults.campaigns,
     proposals: Array.isArray(migrated.proposals) ? migrated.proposals : defaults.proposals
   };
+  // Drop removed social/treat fields when loading legacy snapshots.
+  delete normalized.groupTreatSessionsByMerchant;
+  delete normalized.merchantDailySubsidyUsage;
+  delete normalized.socialTransferLogs;
   ensureMerchantBuckets(normalized);
   return normalized;
 }
@@ -482,10 +428,6 @@ function createInMemoryDb(initialState = null) {
       partnerOrders: db.partnerOrders,
       strategyConfigs: db.strategyConfigs,
       allianceConfigs: db.allianceConfigs,
-      socialRedPacketsByMerchant: db.socialRedPacketsByMerchant,
-      groupTreatSessionsByMerchant: db.groupTreatSessionsByMerchant,
-      merchantDailySubsidyUsage: db.merchantDailySubsidyUsage,
-      socialTransferLogs: db.socialTransferLogs,
       phoneLoginCodes: db.phoneLoginCodes,
       socialAuth: db.socialAuth,
       contractApplications: db.contractApplications,

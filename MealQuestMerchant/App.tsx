@@ -42,12 +42,6 @@ type AuditActionFilter =
   | 'SUPPLIER_VERIFY'
   | 'ALLIANCE_CONFIG_SET'
   | 'ALLIANCE_SYNC_USER'
-  | 'SOCIAL_TRANSFER'
-  | 'SOCIAL_RED_PACKET_CREATE'
-  | 'SOCIAL_RED_PACKET_CLAIM'
-  | 'TREAT_SESSION_CREATE'
-  | 'TREAT_SESSION_JOIN'
-  | 'TREAT_SESSION_CLOSE'
   | 'KILL_SWITCH_SET'
   | 'TCA_TRIGGER';
 type AuditStatusFilter = 'ALL' | 'SUCCESS' | 'DENIED' | 'BLOCKED' | 'FAILED';
@@ -65,12 +59,6 @@ const AUDIT_ACTION_OPTIONS: { value: AuditActionFilter; label: string }[] = [
   { value: 'SUPPLIER_VERIFY', label: '供应商核验' },
   { value: 'ALLIANCE_CONFIG_SET', label: '联盟配置' },
   { value: 'ALLIANCE_SYNC_USER', label: '联盟同步' },
-  { value: 'SOCIAL_TRANSFER', label: '社交转赠' },
-  { value: 'SOCIAL_RED_PACKET_CREATE', label: '红包创建' },
-  { value: 'SOCIAL_RED_PACKET_CLAIM', label: '红包领取' },
-  { value: 'TREAT_SESSION_CREATE', label: '请客创建' },
-  { value: 'TREAT_SESSION_JOIN', label: '请客参与' },
-  { value: 'TREAT_SESSION_CLOSE', label: '请客结算' },
   { value: 'KILL_SWITCH_SET', label: '熔断' },
   { value: 'TCA_TRIGGER', label: 'TCA' },
 ];
@@ -138,8 +126,6 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
   const [allianceStores, setAllianceStores] = useState<
     { merchantId: string; name: string }[]
   >([]);
-  const [lastRedPacketId, setLastRedPacketId] = useState('');
-  const [lastTreatSessionId, setLastTreatSessionId] = useState('');
   const [qrStoreId, setQrStoreId] = useState('');
   const [qrScene, setQrScene] = useState('entry');
   const [qrPayload, setQrPayload] = useState('');
@@ -426,122 +412,6 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
     setLastAction(`跨店用户同步完成：${response.syncedStores.join(', ')}`);
   };
 
-  const onSocialTransferDemo = async () => {
-    if (!remoteToken) {
-      setLastAction('连接未就绪');
-      return;
-    }
-    const result = await MerchantApi.socialTransfer(remoteToken, {
-      fromUserId: 'u_demo',
-      toUserId: 'u_friend',
-      amount: 10,
-      idempotencyKey: `merchant_social_transfer_${Date.now()}`,
-    });
-    await refreshRemoteState(remoteToken);
-    await refreshAuditLogs(remoteToken);
-    setLastAction(
-      `转赠完成：${result.fromUserId} -> ${result.toUserId} (${result.amount})`,
-    );
-  };
-
-  const onCreateSocialRedPacket = async () => {
-    if (!remoteToken) {
-      setLastAction('连接未就绪');
-      return;
-    }
-    const result = await MerchantApi.createSocialRedPacket(remoteToken, {
-      senderUserId: 'u_demo',
-      totalAmount: 30,
-      totalSlots: 3,
-      expiresInMinutes: 30,
-      idempotencyKey: `merchant_social_packet_${Date.now()}`,
-    });
-    setLastRedPacketId(result.packetId);
-    await refreshRemoteState(remoteToken);
-    await refreshAuditLogs(remoteToken);
-    setLastAction(`拼手气红包已创建：${result.packetId}`);
-  };
-
-  const onClaimSocialRedPacket = async () => {
-    if (!remoteToken) {
-      setLastAction('连接未就绪');
-      return;
-    }
-    if (!lastRedPacketId) {
-      setLastAction('请先创建拼手气红包');
-      return;
-    }
-    const result = await MerchantApi.claimSocialRedPacket(remoteToken, {
-      packetId: lastRedPacketId,
-      userId: 'u_friend',
-      idempotencyKey: `merchant_social_claim_${Date.now()}`,
-    });
-    const packet = await MerchantApi.getSocialRedPacket(remoteToken, {
-      packetId: lastRedPacketId,
-    });
-    await refreshRemoteState(remoteToken);
-    await refreshAuditLogs(remoteToken);
-    setLastAction(
-      `红包领取成功：${result.claimAmount}，剩余 ${packet.remainingAmount}/${packet.remainingSlots}`,
-    );
-  };
-
-  const onCreateTreatSession = async () => {
-    if (!remoteToken) {
-      setLastAction('连接未就绪');
-      return;
-    }
-    const result = await MerchantApi.createTreatSession(remoteToken, {
-      initiatorUserId: 'u_demo',
-      mode: 'MERCHANT_SUBSIDY',
-      orderAmount: 80,
-      subsidyRate: 0.2,
-      subsidyCap: 20,
-      dailySubsidyCap: 60,
-      ttlMinutes: 60,
-    });
-    setLastTreatSessionId(result.sessionId);
-    await refreshAuditLogs(remoteToken);
-    setLastAction(`请客会话已创建：${result.sessionId}`);
-  };
-
-  const onJoinTreatSession = async (userId: string, amount: number) => {
-    if (!remoteToken) {
-      setLastAction('连接未就绪');
-      return;
-    }
-    if (!lastTreatSessionId) {
-      setLastAction('请先创建请客会话');
-      return;
-    }
-    await MerchantApi.joinTreatSession(remoteToken, {
-      sessionId: lastTreatSessionId,
-      userId,
-      amount,
-      idempotencyKey: `merchant_treat_join_${userId}_${Date.now()}`,
-    });
-    await refreshRemoteState(remoteToken);
-    await refreshAuditLogs(remoteToken);
-    setLastAction(`会话参与成功：${userId} 出资 ${amount}`);
-  };
-
-  const onCloseTreatSession = async () => {
-    if (!remoteToken) {
-      setLastAction('连接未就绪');
-      return;
-    }
-    if (!lastTreatSessionId) {
-      setLastAction('请先创建请客会话');
-      return;
-    }
-    const result = await MerchantApi.closeTreatSession(remoteToken, {
-      sessionId: lastTreatSessionId,
-    });
-    await refreshRemoteState(remoteToken);
-    await refreshAuditLogs(remoteToken);
-    setLastAction(`会话已结算：${result.status}`);
-  };
-
   const onTriggerEvent = async (
     event: string,
     context: Record<string, string | boolean | number>,
@@ -625,12 +495,12 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
       return;
     }
     const scene = qrScene.trim();
-    let payload = `https://mealquest.app/startup?id=${encodeURIComponent(storeId)}`;
+    let payload = `https://mealquest.app/startup?id=${encodeURIComponent(storeId)}&action=pay`;
     if (scene) {
       payload += `&scene=${encodeURIComponent(scene)}`;
     }
     setQrPayload(payload);
-    setLastAction(`QR generated for ${storeId}`);
+    setLastAction(`QR generated for ${storeId} (external scan opens payment page)`);
   };
 
   const activeCampaignCount = merchantState.activeCampaigns.filter(
@@ -840,66 +710,6 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
             )}
           </SectionCard>
 
-          <SectionCard title="社交裂变演练">
-            <Text style={styles.mutedText}>演练用户：u_demo -&gt; u_friend</Text>
-            <View style={styles.filterRow}>
-              <Pressable
-                testID="social-transfer-demo"
-                style={styles.filterButton}
-                onPress={onSocialTransferDemo}>
-                <Text style={styles.filterButtonText}>转赠 10 碎银</Text>
-              </Pressable>
-              <Pressable
-                testID="social-redpacket-create"
-                style={styles.filterButton}
-                onPress={onCreateSocialRedPacket}>
-                <Text style={styles.filterButtonText}>创建拼手气红包</Text>
-              </Pressable>
-              <Pressable
-                testID="social-redpacket-claim"
-                style={styles.filterButton}
-                onPress={onClaimSocialRedPacket}>
-                <Text style={styles.filterButtonText}>好友领取红包</Text>
-              </Pressable>
-            </View>
-            {lastRedPacketId ? (
-              <Text style={styles.mutedText}>最近红包：{lastRedPacketId}</Text>
-            ) : null}
-          </SectionCard>
-
-          <SectionCard title="请客买单演练">
-            <Text style={styles.mutedText}>模式：老板请客（补贴）</Text>
-            <View style={styles.filterRow}>
-              <Pressable
-                testID="treat-create"
-                style={styles.filterButton}
-                onPress={onCreateTreatSession}>
-                <Text style={styles.filterButtonText}>创建会话</Text>
-              </Pressable>
-              <Pressable
-                testID="treat-join-demo"
-                style={styles.filterButton}
-                onPress={() => onJoinTreatSession('u_demo', 30)}>
-                <Text style={styles.filterButtonText}>u_demo 出资 30</Text>
-              </Pressable>
-              <Pressable
-                testID="treat-join-friend"
-                style={styles.filterButton}
-                onPress={() => onJoinTreatSession('u_friend', 40)}>
-                <Text style={styles.filterButtonText}>u_friend 出资 40</Text>
-              </Pressable>
-              <Pressable
-                testID="treat-close"
-                style={styles.filterButton}
-                onPress={onCloseTreatSession}>
-                <Text style={styles.filterButtonText}>结算会话</Text>
-              </Pressable>
-            </View>
-            {lastTreatSessionId ? (
-              <Text style={styles.mutedText}>最近会话：{lastTreatSessionId}</Text>
-            ) : null}
-          </SectionCard>
-
           <SectionCard title="收银台模拟">
             <Text style={styles.dataLine}>测试账单：¥52.00</Text>
             <Text style={styles.mutedText}>规则：临期券优先 -&gt; 赠送金 -&gt; 本金 -&gt; 外部支付</Text>
@@ -912,7 +722,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
           </SectionCard>
           <SectionCard title="Merchant QR Code">
             <Text style={styles.mutedText}>
-              Compatible with customer startup scan parser: id/storeId/merchantId/scene.
+              Compatible with customer startup parser. External WeChat/Alipay scan will open payment page automatically.
             </Text>
             <TextInput
               testID="merchant-qr-store-id-input"
@@ -1994,5 +1804,3 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
-
-

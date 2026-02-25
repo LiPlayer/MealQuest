@@ -90,78 +90,6 @@ jest.mock('../src/services/merchantApi', () => ({
       userId: 'u_demo',
       syncedStores: ['m_store_001', 'm_bistro'],
     })),
-    socialTransfer: jest.fn(async () => ({
-      transferId: 'transfer_1',
-      merchantId: 'm_store_001',
-      fromUserId: 'u_demo',
-      toUserId: 'u_friend',
-      amount: 10,
-      createdAt: '2026-02-21T00:00:00.000Z',
-    })),
-    createSocialRedPacket: jest.fn(async () => ({
-      packetId: 'packet_1',
-      merchantId: 'm_store_001',
-      senderUserId: 'u_demo',
-      totalAmount: 30,
-      totalSlots: 3,
-      remainingAmount: 30,
-      remainingSlots: 3,
-      status: 'ACTIVE',
-    })),
-    claimSocialRedPacket: jest.fn(async () => ({
-      packetId: 'packet_1',
-      userId: 'u_friend',
-      claimAmount: 8,
-      packetStatus: 'ACTIVE',
-      remainingAmount: 22,
-      remainingSlots: 2,
-    })),
-    getSocialRedPacket: jest.fn(async () => ({
-      packetId: 'packet_1',
-      merchantId: 'm_store_001',
-      senderUserId: 'u_demo',
-      totalAmount: 30,
-      totalSlots: 3,
-      remainingAmount: 22,
-      remainingSlots: 2,
-      status: 'ACTIVE',
-    })),
-    createTreatSession: jest.fn(async () => ({
-      sessionId: 'session_1',
-      merchantId: 'm_store_001',
-      initiatorUserId: 'u_demo',
-      mode: 'MERCHANT_SUBSIDY',
-      orderAmount: 80,
-      subsidyRate: 0.2,
-      subsidyCap: 20,
-      dailySubsidyCap: 60,
-      totalContributed: 0,
-      status: 'OPEN',
-      createdAt: '2026-02-21T00:00:00.000Z',
-      expiresAt: '2026-02-21T01:00:00.000Z',
-    })),
-    joinTreatSession: jest.fn(async () => ({
-      sessionId: 'session_1',
-      merchantId: 'm_store_001',
-      userId: 'u_demo',
-      amount: 30,
-      totalContributed: 30,
-      userWallet: {principal: 1, bonus: 1, silver: 1},
-    })),
-    closeTreatSession: jest.fn(async () => ({
-      sessionId: 'session_1',
-      merchantId: 'm_store_001',
-      initiatorUserId: 'u_demo',
-      mode: 'MERCHANT_SUBSIDY',
-      orderAmount: 80,
-      subsidyRate: 0.2,
-      subsidyCap: 20,
-      dailySubsidyCap: 60,
-      totalContributed: 70,
-      status: 'SETTLED',
-      createdAt: '2026-02-21T00:00:00.000Z',
-      expiresAt: '2026-02-21T01:00:00.000Z',
-    })),
     createFireSale: jest.fn(async () => ({
       merchantId: 'm_store_001',
       campaignId: 'fire_1',
@@ -192,7 +120,7 @@ describe('merchant ui regression flow', () => {
     mockApi.getWsUrl.mockReturnValue('');
   });
 
-  it('replays campaign/alliance/social/treat actions in remote mode', async () => {
+  it('replays campaign and alliance actions in remote mode', async () => {
     let tree: ReactTestRenderer.ReactTestRenderer;
     await ReactTestRenderer.act(async () => {
       tree = ReactTestRenderer.create(<App />);
@@ -225,67 +153,6 @@ describe('merchant ui regression flow', () => {
     });
 
     await ReactTestRenderer.act(async () => {
-      tree!.root.findByProps({testID: 'social-transfer-demo'}).props.onPress();
-      await flush(4);
-    });
-    expect(mockApi.socialTransfer).toHaveBeenCalled();
-
-    await ReactTestRenderer.act(async () => {
-      tree!.root.findByProps({testID: 'social-redpacket-create'}).props.onPress();
-      await flush(4);
-    });
-    expect(mockApi.createSocialRedPacket).toHaveBeenCalled();
-
-    await ReactTestRenderer.act(async () => {
-      tree!.root.findByProps({testID: 'social-redpacket-claim'}).props.onPress();
-      await flush(4);
-    });
-    expect(mockApi.claimSocialRedPacket).toHaveBeenCalled();
-    expect(mockApi.getSocialRedPacket).toHaveBeenCalledWith('token_demo', {
-      packetId: 'packet_1',
-    });
-
-    await ReactTestRenderer.act(async () => {
-      tree!.root.findByProps({testID: 'treat-create'}).props.onPress();
-      await flush(4);
-    });
-    expect(mockApi.createTreatSession).toHaveBeenCalled();
-
-    await ReactTestRenderer.act(async () => {
-      tree!.root.findByProps({testID: 'treat-join-demo'}).props.onPress();
-      await flush(4);
-    });
-    expect(mockApi.joinTreatSession).toHaveBeenCalledWith(
-      'token_demo',
-      expect.objectContaining({
-        sessionId: 'session_1',
-        userId: 'u_demo',
-        amount: 30,
-      }),
-    );
-
-    await ReactTestRenderer.act(async () => {
-      tree!.root.findByProps({testID: 'treat-join-friend'}).props.onPress();
-      await flush(4);
-    });
-    expect(mockApi.joinTreatSession).toHaveBeenCalledWith(
-      'token_demo',
-      expect.objectContaining({
-        sessionId: 'session_1',
-        userId: 'u_friend',
-        amount: 40,
-      }),
-    );
-
-    await ReactTestRenderer.act(async () => {
-      tree!.root.findByProps({testID: 'treat-close'}).props.onPress();
-      await flush(4);
-    });
-    expect(mockApi.closeTreatSession).toHaveBeenCalledWith('token_demo', {
-      sessionId: 'session_1',
-    });
-
-    await ReactTestRenderer.act(async () => {
       tree!.root
         .findByProps({testID: 'merchant-qr-store-id-input'})
         .props.onChangeText('m_store_001');
@@ -298,7 +165,6 @@ describe('merchant ui regression flow', () => {
     tree!.root.findByProps({testID: 'merchant-qr-native'});
     const qrPayload = tree!.root.findByProps({testID: 'merchant-qr-payload-text'});
     expect(String(qrPayload.props.children)).toContain('https://mealquest.app/startup?id=m_store_001');
+    expect(String(qrPayload.props.children)).toContain('action=pay');
   });
 });
-
-

@@ -1746,7 +1746,7 @@ test("strategy library supports proposal generation, confirm and campaign status
       { Authorization: `Bearer ${ownerToken}` }
     );
     assert.equal(library.status, 200);
-    assert.ok(library.data.templates.length >= 15);
+    assert.ok(library.data.templates.length >= 10);
     assert.ok(
       library.data.templates.some((item) => item.templateId === "activation_contextual_drop")
     );
@@ -1836,6 +1836,48 @@ test("strategy library supports proposal generation, confirm and campaign status
     );
     assert.equal(triggerWhenActive.status, 200);
     assert.ok(triggerWhenActive.data.executed.includes(proposal.data.campaignId));
+  } finally {
+    await app.stop();
+  }
+});
+
+test("strategy proposal supports intent-only AI generation", async () => {
+  const app = createAppServer({ persist: false });
+  const port = await app.start(0);
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const ownerToken = await mockLogin(baseUrl, "OWNER", {
+      merchantId: "m_store_001"
+    });
+
+    const proposal = await postJson(
+      baseUrl,
+      "/api/merchant/strategy-proposals",
+      {
+        merchantId: "m_store_001",
+        intent: "天气高温，需要上清凉券"
+      },
+      { Authorization: `Bearer ${ownerToken}` }
+    );
+    assert.equal(proposal.status, 200);
+    assert.equal(proposal.data.status, "PENDING");
+    assert.ok(proposal.data.proposalId);
+    assert.ok(proposal.data.templateId);
+    assert.ok(proposal.data.branchId);
+    assert.ok(proposal.data.campaignId);
+
+    const state = await getJson(
+      baseUrl,
+      "/api/state?merchantId=m_store_001&userId=u_demo",
+      { Authorization: `Bearer ${ownerToken}` }
+    );
+    assert.equal(state.status, 200);
+    const createdProposal = (state.data.proposals || []).find(
+      (item) => item.id === proposal.data.proposalId
+    );
+    assert.ok(createdProposal);
+    assert.equal(createdProposal.strategyMeta.source, "AI_MODEL");
   } finally {
     await app.stop();
   }
@@ -2007,169 +2049,8 @@ test("alliance wallet sharing can be enabled across stores", async () => {
   }
 });
 
-test("social transfer and red packet keep asset conservation", async () => {
+test("social and treat endpoints are removed", async () => {
   const app = createAppServer({ persist: false });
-  app.db.merchantUsers.m_store_001.u_friend = {
-    uid: "u_friend",
-    displayName: "Friend",
-    wallet: {
-      principal: 20,
-      bonus: 0,
-      silver: 10
-    },
-    tags: [],
-    fragments: {},
-    vouchers: []
-  };
-  app.db.merchantUsers.m_store_001.u_other = {
-    uid: "u_other",
-    displayName: "Other",
-    wallet: {
-      principal: 20,
-      bonus: 0,
-      silver: 8
-    },
-    tags: [],
-    fragments: {},
-    vouchers: []
-  };
-  const port = await app.start(0);
-  const baseUrl = `http://127.0.0.1:${port}`;
-
-  try {
-    const demoCustomer = await mockLogin(baseUrl, "CUSTOMER", {
-      merchantId: "m_store_001",
-      userId: "u_demo"
-    });
-    const friendCustomer = await mockLogin(baseUrl, "CUSTOMER", {
-      merchantId: "m_store_001",
-      userId: "u_friend"
-    });
-    const otherCustomer = await mockLogin(baseUrl, "CUSTOMER", {
-      merchantId: "m_store_001",
-      userId: "u_other"
-    });
-
-    const socialTransfer = await postJson(
-      baseUrl,
-      "/api/social/transfer",
-      {
-        merchantId: "m_store_001",
-        fromUserId: "u_demo",
-        toUserId: "u_friend",
-        amount: 30
-      },
-      {
-        Authorization: `Bearer ${demoCustomer}`,
-        "Idempotency-Key": "social_transfer_1"
-      }
-    );
-    assert.equal(socialTransfer.status, 200);
-    assert.equal(socialTransfer.data.amount, 30);
-
-    const createPacket = await postJson(
-      baseUrl,
-      "/api/social/red-packets",
-      {
-        merchantId: "m_store_001",
-        senderUserId: "u_demo",
-        totalAmount: 50,
-        totalSlots: 3
-      },
-      {
-        Authorization: `Bearer ${demoCustomer}`,
-        "Idempotency-Key": "social_packet_create_1"
-      }
-    );
-    assert.equal(createPacket.status, 200);
-    assert.equal(createPacket.data.totalAmount, 50);
-
-    const packetId = createPacket.data.packetId;
-    const claim1 = await postJson(
-      baseUrl,
-      `/api/social/red-packets/${packetId}/claim`,
-      {
-        merchantId: "m_store_001",
-        userId: "u_friend"
-      },
-      {
-        Authorization: `Bearer ${friendCustomer}`,
-        "Idempotency-Key": "social_packet_claim_1"
-      }
-    );
-    assert.equal(claim1.status, 200);
-
-    const claim2 = await postJson(
-      baseUrl,
-      `/api/social/red-packets/${packetId}/claim`,
-      {
-        merchantId: "m_store_001",
-        userId: "u_other"
-      },
-      {
-        Authorization: `Bearer ${otherCustomer}`,
-        "Idempotency-Key": "social_packet_claim_2"
-      }
-    );
-    assert.equal(claim2.status, 200);
-
-    const claim3 = await postJson(
-      baseUrl,
-      `/api/social/red-packets/${packetId}/claim`,
-      {
-        merchantId: "m_store_001",
-        userId: "u_demo"
-      },
-      {
-        Authorization: `Bearer ${demoCustomer}`,
-        "Idempotency-Key": "social_packet_claim_3"
-      }
-    );
-    assert.equal(claim3.status, 200);
-
-    const packet = await getJson(
-      baseUrl,
-      `/api/social/red-packets/${packetId}?merchantId=m_store_001`,
-      { Authorization: `Bearer ${demoCustomer}` }
-    );
-    assert.equal(packet.status, 200);
-    assert.equal(packet.data.status, "FINISHED");
-    assert.equal(packet.data.remainingAmount, 0);
-    const claimedTotal = packet.data.claims.reduce(
-      (sum, item) => sum + Number(item.amount || 0),
-      0
-    );
-    assert.equal(claimedTotal, 50);
-
-    const socialAudit = app.db.auditLogs.filter(
-      (item) =>
-        item.merchantId === "m_store_001" &&
-        (item.action === "SOCIAL_TRANSFER" || item.action === "SOCIAL_RED_PACKET_CLAIM")
-    );
-    assert.ok(socialAudit.length >= 4);
-  } finally {
-    await app.stop();
-  }
-});
-
-test("treat paying group mode settles with crowd contributions and refunds overpay", async () => {
-  const app = createAppServer({ persist: false });
-  app.db.merchantUsers.m_store_001.u_friend = {
-    uid: "u_friend",
-    displayName: "Friend",
-    wallet: { principal: 200, bonus: 0, silver: 10 },
-    tags: [],
-    fragments: {},
-    vouchers: []
-  };
-  app.db.merchantUsers.m_store_001.u_other = {
-    uid: "u_other",
-    displayName: "Other",
-    wallet: { principal: 200, bonus: 0, silver: 8 },
-    tags: [],
-    fragments: {},
-    vouchers: []
-  };
   const port = await app.start(0);
   const baseUrl = `http://127.0.0.1:${port}`;
 
@@ -2179,16 +2060,42 @@ test("treat paying group mode settles with crowd contributions and refunds overp
       merchantId: "m_store_001",
       userId: "u_demo"
     });
-    const friendCustomer = await mockLogin(baseUrl, "CUSTOMER", {
-      merchantId: "m_store_001",
-      userId: "u_friend"
-    });
-    const otherCustomer = await mockLogin(baseUrl, "CUSTOMER", {
-      merchantId: "m_store_001",
-      userId: "u_other"
-    });
 
-    const create = await postJson(
+    const transfer = await postJson(
+      baseUrl,
+      "/api/social/transfer",
+      {
+        merchantId: "m_store_001",
+        fromUserId: "u_demo",
+        toUserId: "u_friend",
+        amount: 1
+      },
+      {
+        Authorization: `Bearer ${demoCustomer}`,
+        "Idempotency-Key": "social_transfer_removed"
+      }
+    );
+    assert.equal(transfer.status, 404);
+    assert.equal(transfer.data.error, "Not Found");
+
+    const redPacket = await postJson(
+      baseUrl,
+      "/api/social/red-packets",
+      {
+        merchantId: "m_store_001",
+        senderUserId: "u_demo",
+        totalAmount: 10,
+        totalSlots: 2
+      },
+      {
+        Authorization: `Bearer ${demoCustomer}`,
+        "Idempotency-Key": "social_red_packet_removed"
+      }
+    );
+    assert.equal(redPacket.status, 404);
+    assert.equal(redPacket.data.error, "Not Found");
+
+    const treatCreate = await postJson(
       baseUrl,
       "/api/social/treat/sessions",
       {
@@ -2199,177 +2106,16 @@ test("treat paying group mode settles with crowd contributions and refunds overp
       },
       { Authorization: `Bearer ${demoCustomer}` }
     );
-    assert.equal(create.status, 200);
-    const sessionId = create.data.sessionId;
+    assert.equal(treatCreate.status, 404);
+    assert.equal(treatCreate.data.error, "Not Found");
 
-    const join1 = await postJson(
+    const treatQuery = await getJson(
       baseUrl,
-      `/api/social/treat/sessions/${sessionId}/join`,
-      { merchantId: "m_store_001", userId: "u_demo", amount: 20 },
-      { Authorization: `Bearer ${demoCustomer}`, "Idempotency-Key": "treat_group_join_1" }
-    );
-    assert.equal(join1.status, 200);
-
-    const join2 = await postJson(
-      baseUrl,
-      `/api/social/treat/sessions/${sessionId}/join`,
-      { merchantId: "m_store_001", userId: "u_friend", amount: 25 },
-      { Authorization: `Bearer ${friendCustomer}`, "Idempotency-Key": "treat_group_join_2" }
-    );
-    assert.equal(join2.status, 200);
-
-    const join3 = await postJson(
-      baseUrl,
-      `/api/social/treat/sessions/${sessionId}/join`,
-      { merchantId: "m_store_001", userId: "u_other", amount: 20 },
-      { Authorization: `Bearer ${otherCustomer}`, "Idempotency-Key": "treat_group_join_3" }
-    );
-    assert.equal(join3.status, 200);
-
-    const close = await postJson(
-      baseUrl,
-      `/api/social/treat/sessions/${sessionId}/close`,
-      { merchantId: "m_store_001" },
+      "/api/social/treat/sessions/does_not_exist?merchantId=m_store_001",
       { Authorization: `Bearer ${owner}` }
     );
-    assert.equal(close.status, 200);
-    assert.equal(close.data.status, "SETTLED");
-    assert.equal(close.data.settlement.merchantSubsidyApplied, 0);
-    assert.equal(close.data.settlement.overPaid, 5);
-
-    const query = await getJson(
-      baseUrl,
-      `/api/social/treat/sessions/${sessionId}?merchantId=m_store_001`,
-      { Authorization: `Bearer ${owner}` }
-    );
-    assert.equal(query.status, 200);
-    assert.equal(query.data.status, "SETTLED");
-
-    const treatLedger = app.db.ledger.find(
-      (item) => item.type === "TREAT_PAY" && item.details.sessionId === sessionId
-    );
-    assert.ok(treatLedger);
-  } finally {
-    await app.stop();
-  }
-});
-
-test("treat paying merchant subsidy obeys daily cap and can fail when underfunded", async () => {
-  const app = createAppServer({ persist: false });
-  app.db.merchantUsers.m_store_001.u_friend = {
-    uid: "u_friend",
-    displayName: "Friend",
-    wallet: { principal: 300, bonus: 0, silver: 10 },
-    tags: [],
-    fragments: {},
-    vouchers: []
-  };
-  app.db.merchantUsers.m_store_001.u_other = {
-    uid: "u_other",
-    displayName: "Other",
-    wallet: { principal: 300, bonus: 0, silver: 8 },
-    tags: [],
-    fragments: {},
-    vouchers: []
-  };
-  const port = await app.start(0);
-  const baseUrl = `http://127.0.0.1:${port}`;
-
-  try {
-    const owner = await mockLogin(baseUrl, "OWNER", { merchantId: "m_store_001" });
-    const demoCustomer = await mockLogin(baseUrl, "CUSTOMER", {
-      merchantId: "m_store_001",
-      userId: "u_demo"
-    });
-    const friendCustomer = await mockLogin(baseUrl, "CUSTOMER", {
-      merchantId: "m_store_001",
-      userId: "u_friend"
-    });
-    const otherCustomer = await mockLogin(baseUrl, "CUSTOMER", {
-      merchantId: "m_store_001",
-      userId: "u_other"
-    });
-
-    const create1 = await postJson(
-      baseUrl,
-      "/api/social/treat/sessions",
-      {
-        merchantId: "m_store_001",
-        initiatorUserId: "u_demo",
-        mode: "MERCHANT_SUBSIDY",
-        orderAmount: 100,
-        subsidyRate: 0.3,
-        subsidyCap: 30,
-        dailySubsidyCap: 10
-      },
-      { Authorization: `Bearer ${demoCustomer}` }
-    );
-    assert.equal(create1.status, 200);
-    const session1 = create1.data.sessionId;
-
-    await postJson(
-      baseUrl,
-      `/api/social/treat/sessions/${session1}/join`,
-      { merchantId: "m_store_001", userId: "u_demo", amount: 50 },
-      { Authorization: `Bearer ${demoCustomer}`, "Idempotency-Key": "treat_subsidy_join_1" }
-    );
-    await postJson(
-      baseUrl,
-      `/api/social/treat/sessions/${session1}/join`,
-      { merchantId: "m_store_001", userId: "u_friend", amount: 40 },
-      { Authorization: `Bearer ${friendCustomer}`, "Idempotency-Key": "treat_subsidy_join_2" }
-    );
-    const close1 = await postJson(
-      baseUrl,
-      `/api/social/treat/sessions/${session1}/close`,
-      { merchantId: "m_store_001" },
-      { Authorization: `Bearer ${owner}` }
-    );
-    assert.equal(close1.status, 200);
-    assert.equal(close1.data.status, "SETTLED");
-    assert.equal(close1.data.settlement.merchantSubsidyApplied, 10);
-
-    const create2 = await postJson(
-      baseUrl,
-      "/api/social/treat/sessions",
-      {
-        merchantId: "m_store_001",
-        initiatorUserId: "u_demo",
-        mode: "MERCHANT_SUBSIDY",
-        orderAmount: 100,
-        subsidyRate: 0.3,
-        subsidyCap: 30,
-        dailySubsidyCap: 10
-      },
-      { Authorization: `Bearer ${demoCustomer}` }
-    );
-    assert.equal(create2.status, 200);
-    const session2 = create2.data.sessionId;
-
-    await postJson(
-      baseUrl,
-      `/api/social/treat/sessions/${session2}/join`,
-      { merchantId: "m_store_001", userId: "u_demo", amount: 40 },
-      { Authorization: `Bearer ${demoCustomer}`, "Idempotency-Key": "treat_subsidy_join_3" }
-    );
-    await postJson(
-      baseUrl,
-      `/api/social/treat/sessions/${session2}/join`,
-      { merchantId: "m_store_001", userId: "u_other", amount: 50 },
-      { Authorization: `Bearer ${otherCustomer}`, "Idempotency-Key": "treat_subsidy_join_4" }
-    );
-    const beforePrincipal = app.db.merchantUsers.m_store_001.u_other.wallet.principal;
-    const close2 = await postJson(
-      baseUrl,
-      `/api/social/treat/sessions/${session2}/close`,
-      { merchantId: "m_store_001" },
-      { Authorization: `Bearer ${owner}` }
-    );
-    assert.equal(close2.status, 200);
-    assert.equal(close2.data.status, "FAILED");
-
-    const afterPrincipal = app.db.merchantUsers.m_store_001.u_other.wallet.principal;
-    assert.ok(afterPrincipal >= beforePrincipal);
+    assert.equal(treatQuery.status, 404);
+    assert.equal(treatQuery.data.error, "Not Found");
   } finally {
     await app.stop();
   }

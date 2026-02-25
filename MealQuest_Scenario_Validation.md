@@ -476,34 +476,27 @@
 
 ## 3.22 场景 S22：社交裂变守恒账务
 
-1. 用户 A 向用户 B 转赠碎银，A 减 B 增。
-2. 用户 A 创建拼手气红包，总额先冻结。
-3. 多用户领取后，领取总和严格等于红包总额，状态转 `FINISHED`。
+1. 本场景在当前版本已下线。
+2. `/api/social/*` 接口已从服务端移除，不再提供转赠/红包/请客能力。
 
 反推：
-1. 文档：`MealQuest_Server_Spec.md` 3.3、5.3；`MealQuest_Merchant_Spec.md` 2.6。
-2. 代码：
-   - `MealQuestServer/src/services/socialService.js`
-   - `MealQuestServer/src/http/server.js`
-3. 测试：`MealQuestServer/test/http.integration.test.js`（social transfer/red packet 用例）。
+1. 文档：`MealQuest_Server_Spec.md` 5.3（社交接口已移除说明）；`MealQuest_Merchant_Spec.md` 2.6。
+2. 代码：`MealQuestServer/src/http/server.js`（不存在 `/api/social/*` 路由）。
+3. 测试：`MealQuestServer/test/http.integration.test.js`（social/treat endpoint removed 用例）。
 
-结论：满足。
+结论：当前版本不纳入，按移除验收。
 
 ## 3.23 场景 S23：请客买单会话结算
 
-1. 发起人创建请客会话（`GROUP_PAY` 或 `MERCHANT_SUBSIDY`）。
-2. 多个用户参与出资后，店长执行结算。
-3. 群买单支持超额自动按比例退款。
-4. 老板补贴模式必须受日补贴上限约束，不足时会话失败并原路退款。
+1. 本场景在当前版本已下线。
+2. 服务端不再提供请客会话创建/参与/结算接口。
 
 反推：
-1. 文档：`MealQuest_Server_Spec.md` 5.3；`MealQuest_Merchant_Spec.md` 2.6。
-2. 代码：
-   - `MealQuestServer/src/services/treatPayService.js`
-   - `MealQuestServer/src/http/server.js`
-3. 测试：`MealQuestServer/test/http.integration.test.js`（treat paying 两个用例）。
+1. 文档：`MealQuest_Server_Spec.md` 5.3（社交接口已移除说明）；`MealQuest_Merchant_Spec.md` 2.6。
+2. 代码：`MealQuestServer/src/http/server.js`（不存在 treat session 路由）。
+3. 测试：`MealQuestServer/test/http.integration.test.js`（social/treat endpoint removed 用例）。
 
-结论：满足。
+结论：当前版本不纳入，按移除验收。
 
 ## 3.24 场景 S24：顾客自助注销与交易匿名保留
 

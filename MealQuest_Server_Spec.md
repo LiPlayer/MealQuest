@@ -57,8 +57,6 @@
 2. `ledger[]`：`PAYMENT/REFUND` 流水。
 3. `idempotencyMap`：幂等缓存。
 4. `partnerOrders[partnerId][orderId]`：异业联盟供应商订单核验缓存（用于 Cross-Promo B 分支交易校验）。
-5. `socialRedPacketsByMerchant[merchantId][packetId]`：拼手气红包状态（总额守恒）。
-6. `socialTransferLogs[]`：用户间转赠流水（频控与审计回溯）。
 
 ---
 
@@ -120,7 +118,6 @@
 7. `GET /api/ws/status?merchantId=`（商户在线状态）
 8. `GET /api/merchant/alliance-config?merchantId=`
 9. `GET /api/merchant/stores?merchantId=`
-10. `GET /api/social/red-packets/:packetId?merchantId=`
 
 ## 5.1.1 鉴权
 
@@ -182,12 +179,7 @@
 13. `POST /api/supplier/verify-order`（`CLERK+`，核验异业联盟订单真伪与门槛）
 14. `POST /api/merchant/alliance-config`（`OWNER`，配置多店连锁互通规则）
 15. `POST /api/merchant/alliance/sync-user`（`MANAGER/OWNER`，执行跨店用户资产同步）
-16. `POST /api/social/transfer`（用户资产转赠，总量守恒）
-17. `POST /api/social/red-packets`（创建拼手气红包，总量守恒）
-18. `POST /api/social/red-packets/:packetId/claim`（领取红包分账）
-19. `POST /api/social/treat/sessions`（创建请客会话：群买单/老板补贴）
-20. `POST /api/social/treat/sessions/:sessionId/join`（参与请客会话出资）
-21. `POST /api/social/treat/sessions/:sessionId/close`（结算请客会话）
+16. 社交相关接口（`/api/social/*`）当前版本已移除，不纳入服务端契约。
 
 ---
 
@@ -212,9 +204,7 @@
 17. 必须提供基础指标接口（请求数/错误数）用于上线监控接入。
 18. 策略库必须可配置完整营销策略分支，且仍遵守“无确认不执行”。
 19. 供应商核验必须可追溯并写审计日志，避免跨店伪造联盟交易。
-20. 社交裂变链路必须保证资产总量守恒，不允许增发。
-21. 社交操作必须具备幂等与频控，防止脚本刷量。
-22. 顾客侧账务查询接口（`payment/ledger`、`invoice/list`）必须执行 `merchantId + userId` 双 scope 校验。
+20. 顾客侧账务查询接口（`payment/ledger`、`invoice/list`）必须执行 `merchantId + userId` 双 scope 校验。
 
 ---
 
@@ -257,10 +247,8 @@
 26. 紧急急售：可创建 `Priority:999 + TTL` 人工接管策略并触发执行
 27. 供应商核验：联盟订单核验成功/失败均可返回并落审计
 28. 多店连锁：可配置跨店共享钱包并在支付链路生效
-29. 社交裂变：支持用户转赠与拼手气红包，校验总量守恒
-30. 请客买单：支持群买单与老板补贴，补贴受日上限约束
-31. 顾客自助注销：注销后账号不可再次登录，交易记录匿名保留
-32. 顾客账务中心：顾客可查询本人流水与发票，跨用户/跨商户查询拒绝
+29. 顾客自助注销：注销后账号不可再次登录，交易记录匿名保留
+30. 顾客账务中心：顾客可查询本人流水与发票，跨用户/跨商户查询拒绝
 
 ---
 
@@ -268,7 +256,7 @@
 
 | ID | 总规范条款 | 服务端要求 | 验收方式 |
 | :-- | :-- | :-- | :-- |
-| S-01 | 资产经济系统 | 钱包/红包/碎银统一账本 | 支付链路测试 |
+| S-01 | 资产经济系统 | 钱包/口福红包/碎银统一账本 | 支付链路测试 |
 | S-02 | 智能收银闭环 | 报价与核销可解释 | `quote/verify` 测试 |
 | S-03 | Clawback 风控 | 退款回溯赠送金优先 | `clawback` 测试 |
 | S-04 | 无确认不执行 | 提案确认后才激活策略 | API 集成测试 |

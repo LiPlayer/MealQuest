@@ -93,42 +93,11 @@ function createPrivacyService(db) {
       }
       row.userId = replaceUserRef(row.userId, userId, alias);
     }
-    for (const row of db.socialTransferLogs || []) {
-      if (row.merchantId !== merchantId) {
-        continue;
-      }
-      row.fromUserId = replaceUserRef(row.fromUserId, userId, alias);
-      row.toUserId = replaceUserRef(row.toUserId, userId, alias);
-    }
     for (const row of db.auditLogs || []) {
       if (row.merchantId !== merchantId) {
         continue;
       }
       row.operatorId = replaceUserRef(row.operatorId, userId, alias);
-    }
-
-    const packetBucket =
-      (db.socialRedPacketsByMerchant && db.socialRedPacketsByMerchant[merchantId]) || {};
-    for (const packet of Object.values(packetBucket)) {
-      packet.senderUserId = replaceUserRef(packet.senderUserId, userId, alias);
-      if (Array.isArray(packet.claims)) {
-        packet.claims = packet.claims.map((claim) => ({
-          ...claim,
-          userId: replaceUserRef(claim.userId, userId, alias)
-        }));
-      }
-    }
-
-    const treatBucket =
-      (db.groupTreatSessionsByMerchant && db.groupTreatSessionsByMerchant[merchantId]) || {};
-    for (const session of Object.values(treatBucket)) {
-      session.initiatorUserId = replaceUserRef(session.initiatorUserId, userId, alias);
-      if (Array.isArray(session.participants)) {
-        session.participants = session.participants.map((participant) => ({
-          ...participant,
-          userId: replaceUserRef(participant.userId, userId, alias)
-        }));
-      }
     }
 
     delete users[userId];

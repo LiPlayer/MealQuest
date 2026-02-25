@@ -56,36 +56,6 @@ const EVENT_META: Record<
     severity: 'warn',
     isAnomaly: true,
   },
-  SOCIAL_TRANSFERRED: {
-    label: '资产转赠',
-    severity: 'info',
-    isAnomaly: false,
-  },
-  SOCIAL_RED_PACKET_CREATED: {
-    label: '红包创建',
-    severity: 'info',
-    isAnomaly: false,
-  },
-  SOCIAL_RED_PACKET_CLAIMED: {
-    label: '红包领取',
-    severity: 'info',
-    isAnomaly: false,
-  },
-  TREAT_SESSION_CREATED: {
-    label: '请客会话创建',
-    severity: 'info',
-    isAnomaly: false,
-  },
-  TREAT_SESSION_JOINED: {
-    label: '请客会话参与',
-    severity: 'info',
-    isAnomaly: false,
-  },
-  TREAT_SESSION_CLOSED: {
-    label: '请客会话结算',
-    severity: 'warn',
-    isAnomaly: true,
-  },
   SYSTEM_WS_CONNECTED: {
     label: '实时连接',
     severity: 'info',

@@ -23,7 +23,8 @@ npm run dev:weapp
 Notes:
 
 1. The app runs in server mode only (no local mock fallback).
-2. Client uses WeChat mini-program `Taro.login()` code and exchanges token via `/api/auth/customer/wechat-login`.
+2. Client resolves auth provider from runtime/build platform automatically.
+3. WeChat uses `/api/auth/customer/wechat-login`; Alipay uses `/api/auth/customer/alipay-login`.
 
 ## Test
 

@@ -26,13 +26,11 @@ jest.mock('@/utils/storage', () => ({
 describe('ApiDataService activities mapping', () => {
     const envServerBase = process.env.TARO_APP_SERVER_URL;
     const envBuildPlatform = process.env.TARO_ENV;
-    const envAuthProvider = process.env.TARO_APP_AUTH_PROVIDER;
 
     beforeEach(() => {
         jest.resetModules();
         process.env.TARO_APP_SERVER_URL = 'http://127.0.0.1:3030';
         delete process.env.TARO_ENV;
-        delete process.env.TARO_APP_AUTH_PROVIDER;
         requestMock.mockReset();
         loginMock.mockReset();
         getEnvMock.mockReset();
@@ -50,11 +48,6 @@ describe('ApiDataService activities mapping', () => {
             process.env.TARO_ENV = envBuildPlatform;
         } else {
             delete process.env.TARO_ENV;
-        }
-        if (typeof envAuthProvider === 'string') {
-            process.env.TARO_APP_AUTH_PROVIDER = envAuthProvider;
-        } else {
-            delete process.env.TARO_APP_AUTH_PROVIDER;
         }
     });
 

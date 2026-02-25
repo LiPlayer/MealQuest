@@ -110,8 +110,6 @@ TARO_APP_DEFAULT_STORE_ID=m_my_first_store
    - Supplier verification and cross-industry alliance order validation;
    - Emergency Flash Sale `Priority:999 + TTL`;
    - Chain alliance shared wallet (cross-store payment hits);
-   - Social fission accounting (transfer / red packet splitting with total amount conservation);
-   - Group treat session (group pay / boss subsidy settlement and limit validation);
    - Customer Account Center (self-transaction / self-invoice scope validation);
    - Privacy compliance (Owner export / deletion + Customer self-deregistration);
    - Customer app build passes.

@@ -22,7 +22,7 @@ Expected:
 Current automated coverage:
 - Config contract check
 - Server full test suite
-- Server smoke scenarios `A-M`
+- Server smoke scenarios `A-I, L-M`
 - Merchant unit/regression tests + typecheck
 - Customer unit/regression tests
 - Customer build for `weapp` and `alipay`
@@ -40,8 +40,6 @@ Current automated coverage:
 - `G` strategy library + proposal + campaign status
 - `H` supplier verify + fire sale
 - `I` alliance config + wallet share + cross-store sync
-- `J` social transfer + red packet
-- `K` treat paying session
 - `L` customer center ledger + invoice list
 - `M` customer self-service cancel-account
 
@@ -88,19 +86,19 @@ Suggested check:
 2. Login with a phone number already used in WeChat flow.
 3. Verify account center shows same user asset continuity for same merchant.
 
-## 4) Optional platform override for customer auth
+## 4) Customer auth provider resolution
 
-Customer auth provider can be forced by build env:
+Customer auth provider is resolved from runtime/build platform automatically.
+No manual `TARO_APP_AUTH_PROVIDER` override is required.
 
-```powershell
-$env:TARO_APP_AUTH_PROVIDER="WECHAT" # or ALIPAY
-```
+## 5) Scope note
 
-If not set, app resolves provider from runtime/build platform automatically.
+Social features are removed from current scope:
+- merchant app no longer exposes transfer/red-packet/treat operations
+- backend no longer provides `/api/social/*` endpoints
 
-## 5) Known boundary of external integrations
+## 6) Known boundary of external integrations
 
 For local/staging validation:
 - Payment and invoice provider integrations can run in mocked or simulated mode depending on environment.
 - Login must still go through platform identity path (WeChat/Alipay) and requires phone for account continuation.
-

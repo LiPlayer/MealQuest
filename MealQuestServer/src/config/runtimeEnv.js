@@ -46,6 +46,17 @@ function parseBoolean(raw, fallback) {
   return fallback;
 }
 
+function parseAiProvider(raw) {
+  const normalized = asString(raw).toLowerCase();
+  if (!normalized) {
+    return "mock";
+  }
+  if (["mock", "deepseek", "openai_compatible"].includes(normalized)) {
+    return normalized;
+  }
+  return "mock";
+}
+
 function resolveServerRuntimeEnv(env = process.env) {
   const nodeEnv = asString(env.NODE_ENV) || "development";
   const isProduction = nodeEnv === "production";
@@ -72,6 +83,11 @@ function resolveServerRuntimeEnv(env = process.env) {
   const authAlipayVerifyUrl = asString(env.MQ_AUTH_ALIPAY_VERIFY_URL);
   const authAlipayAppId = asString(env.MQ_AUTH_ALIPAY_APP_ID);
   const authAlipayAppSecret = asString(env.MQ_AUTH_ALIPAY_APP_SECRET);
+  const aiProvider = parseAiProvider(env.MQ_AI_PROVIDER);
+  const aiBaseUrl = asString(env.MQ_AI_BASE_URL) || "https://api.deepseek.com/v1";
+  const aiModel = asString(env.MQ_AI_MODEL) || "deepseek-chat";
+  const aiApiKey = asString(env.MQ_AI_API_KEY);
+  const aiTimeoutMs = parsePositiveInt(env.MQ_AI_TIMEOUT_MS, 15000);
 
   const errors = [];
   if (isProduction && !jwtSecret) {
@@ -91,6 +107,9 @@ function resolveServerRuntimeEnv(env = process.env) {
     errors.push(
       "At least one customer auth provider is required in production (WeChat or Alipay)"
     );
+  }
+  if (isProduction && aiProvider !== "mock" && !aiApiKey) {
+    errors.push("MQ_AI_API_KEY is required for remote AI provider in production");
   }
   if (errors.length > 0) {
     throw new Error(`Invalid server env: ${errors.join("; ")}`);
@@ -122,6 +141,13 @@ function resolveServerRuntimeEnv(env = process.env) {
         appId: authAlipayAppId,
         appSecret: authAlipayAppSecret
       }
+    },
+    aiStrategy: {
+      provider: aiProvider,
+      baseUrl: aiBaseUrl,
+      model: aiModel,
+      apiKey: aiApiKey,
+      timeoutMs: aiTimeoutMs
     }
   };
 }

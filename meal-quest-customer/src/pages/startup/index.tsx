@@ -5,40 +5,152 @@ import { storage } from '../../utils/storage';
 import { ApiDataService } from '../../services/ApiDataService';
 import './index.scss';
 
+interface StartupIntent {
+    storeId: string;
+    autoPay: boolean;
+    orderAmount: number | null;
+}
+
+function decodeSafe(raw: string) {
+    try {
+        return decodeURIComponent(raw);
+    } catch {
+        return raw;
+    }
+}
+
+function isValidMerchantId(value: string) {
+    return /^[a-zA-Z0-9_-]{2,64}$/.test(value);
+}
+
+function parseOrderAmount(raw: string) {
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+        return null;
+    }
+    return Math.round(parsed * 100) / 100;
+}
+
+function isPayFlag(raw: string) {
+    const normalized = String(raw || '').trim().toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+    return ['1', 'true', 'yes', 'on', 'pay', 'payment'].includes(normalized);
+}
+
+function applyRawIntent(intent: StartupIntent, rawInput: string) {
+    const raw = String(rawInput || '').trim();
+    if (!raw) {
+        return;
+    }
+    const decoded = decodeSafe(raw);
+
+    if (!intent.storeId && isValidMerchantId(decoded)) {
+        intent.storeId = decoded;
+        return;
+    }
+
+    const applyKeyValue = (keyInput: string, valueInput: string) => {
+        const key = String(keyInput || '').trim().toLowerCase();
+        const value = decodeSafe(String(valueInput || '').trim());
+        if (!key) {
+            return;
+        }
+
+        if (key === 'id' || key === 'storeid' || key === 'merchantid') {
+            if (!intent.storeId && isValidMerchantId(value)) {
+                intent.storeId = value;
+            }
+            return;
+        }
+
+        if (key === 'scene') {
+            applyRawIntent(intent, value);
+            return;
+        }
+
+        if (key === 'pay' || key === 'autopay' || key === 'openpay') {
+            if (isPayFlag(value)) {
+                intent.autoPay = true;
+            }
+            return;
+        }
+
+        if (key === 'action' || key === 'page') {
+            if (String(value || '').toLowerCase().includes('pay')) {
+                intent.autoPay = true;
+            }
+            return;
+        }
+
+        if (key === 'amount' || key === 'orderamount' || key === 'payamount') {
+            const amount = parseOrderAmount(value);
+            if (amount !== null) {
+                intent.orderAmount = amount;
+            }
+        }
+    };
+
+    try {
+        const parsed = new URL(decoded);
+        parsed.searchParams.forEach((value, key) => applyKeyValue(key, value));
+        const tailSegment = decodeSafe(parsed.pathname.split('/').filter(Boolean).pop() || '');
+        if (!intent.storeId && isValidMerchantId(tailSegment)) {
+            intent.storeId = tailSegment;
+        }
+        return;
+    } catch {
+        // Not an absolute URL, continue parsing as query-like text.
+    }
+
+    if (decoded.includes('?') || decoded.includes('=') || decoded.includes('&')) {
+        const queryPart = decoded.includes('?') ? decoded.split('?').slice(1).join('?') : decoded;
+        const params = new URLSearchParams(queryPart);
+        params.forEach((value, key) => applyKeyValue(key, value));
+    }
+
+    const tailSegment = decoded.match(/\/([a-zA-Z0-9_-]{2,64})$/);
+    if (!intent.storeId && tailSegment && tailSegment[1]) {
+        intent.storeId = tailSegment[1];
+    }
+}
+
+function resolveStartupIntent(input: string, options: Record<string, any> = {}): StartupIntent {
+    const intent: StartupIntent = {
+        storeId: '',
+        autoPay: false,
+        orderAmount: null
+    };
+
+    applyRawIntent(intent, input);
+
+    const candidateKeys = [
+        'id',
+        'storeId',
+        'merchantId',
+        'scene',
+        'action',
+        'page',
+        'pay',
+        'autoPay',
+        'openPay',
+        'amount',
+        'orderAmount',
+        'payAmount'
+    ];
+    for (const key of candidateKeys) {
+        const value = options[key];
+        if (value !== undefined && value !== null && value !== '') {
+            applyRawIntent(intent, `${key}=${String(value)}`);
+        }
+    }
+
+    return intent;
+}
+
 export default function Startup() {
     const [isNewUser, setIsNewUser] = useState(false);
-
-    const resolveStoreIdFromScan = (rawResult: string) => {
-        const raw = String(rawResult || '').trim();
-        if (!raw) {
-            return '';
-        }
-
-        const direct = raw.match(/^[a-zA-Z0-9_-]{2,64}$/);
-        if (direct) {
-            return direct[0];
-        }
-
-        const decoded = (() => {
-            try {
-                return decodeURIComponent(raw);
-            } catch {
-                return raw;
-            }
-        })();
-
-        const queryMatch = decoded.match(/[?&](?:id|storeId|merchantId|scene)=([^&#]+)/i);
-        if (queryMatch && queryMatch[1]) {
-            return queryMatch[1].trim();
-        }
-
-        const tailSegment = decoded.match(/\/([a-zA-Z0-9_-]{2,64})$/);
-        if (tailSegment && tailSegment[1]) {
-            return tailSegment[1];
-        }
-
-        return '';
-    };
 
     const validateMerchantId = async (storeId: string) => {
         if (!storeId) {
@@ -61,26 +173,39 @@ export default function Startup() {
         }
     };
 
-    const enterStoreIfValid = async (candidate: string) => {
-        const storeId = resolveStoreIdFromScan(candidate);
-        if (!storeId) {
+    const redirectToHome = (intent?: { autoPay?: boolean; orderAmount?: number | null }) => {
+        let targetUrl = '/pages/index/index';
+        const query: string[] = [];
+
+        if (intent && intent.autoPay) {
+            query.push('autoPay=1');
+            if (intent.orderAmount !== null && intent.orderAmount !== undefined) {
+                query.push(`orderAmount=${encodeURIComponent(String(intent.orderAmount))}`);
+            }
+        }
+
+        if (query.length > 0) {
+            targetUrl += `?${query.join('&')}`;
+        }
+
+        Taro.nextTick(() => {
+            Taro.reLaunch({
+                url: targetUrl
+            });
+        });
+    };
+
+    const enterStoreIfValid = async (intent: StartupIntent) => {
+        if (!intent.storeId) {
             return false;
         }
-        const ok = await validateMerchantId(storeId);
+        const ok = await validateMerchantId(intent.storeId);
         if (!ok) {
             return false;
         }
-        storage.setLastStoreId(storeId);
-        redirectToHome();
+        storage.setLastStoreId(intent.storeId);
+        redirectToHome(intent);
         return true;
-    };
-
-    const redirectToHome = () => {
-        Taro.nextTick(() => {
-            Taro.reLaunch({
-                url: '/pages/index/index'
-            });
-        });
     };
 
     const router = useRouter();
@@ -89,9 +214,7 @@ export default function Startup() {
         let active = true;
 
         const handleStartup = async () => {
-            console.log('Startup [useEffect] firing...');
-            const options = router.params;
-            console.log('Startup options:', options);
+            const options = (router.params || {}) as Record<string, any>;
             const entryCandidate =
                 options.id ||
                 options.storeId ||
@@ -100,8 +223,8 @@ export default function Startup() {
                 '';
 
             if (entryCandidate) {
-                console.log('Found storeId in options:', entryCandidate);
-                const entered = await enterStoreIfValid(entryCandidate);
+                const intent = resolveStartupIntent(String(entryCandidate || ''), options);
+                const entered = await enterStoreIfValid(intent);
                 if (!entered && active) {
                     setIsNewUser(true);
                 }
@@ -109,9 +232,8 @@ export default function Startup() {
             }
 
             const lastId = storage.getLastStoreId();
-            console.log('Checking storage for lastId:', lastId);
             if (lastId) {
-                const entered = await enterStoreIfValid(lastId);
+                const entered = await enterStoreIfValid(resolveStartupIntent(String(lastId || '')));
                 if (entered) {
                     return;
                 }
@@ -119,7 +241,6 @@ export default function Startup() {
             }
 
             if (active) {
-                console.log('No storeId found, setting isNewUser=true');
                 setIsNewUser(true);
             }
         };
@@ -139,7 +260,8 @@ export default function Startup() {
     const handleScanQR = () => {
         Taro.scanCode({
             success: async (res) => {
-                const entered = await enterStoreIfValid(String(res.result || ''));
+                const intent = resolveStartupIntent(String(res.result || ''));
+                const entered = await enterStoreIfValid(intent);
                 if (entered) {
                     return;
                 }

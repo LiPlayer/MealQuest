@@ -59,29 +59,8 @@ export const createInitialMerchantState = (): MerchantState => ({
   merchantName: '探味轩',
   killSwitchEnabled: false,
   budgetCap: 300,
-  budgetUsed: 36,
-  pendingProposals: [
-    {
-      id: 'proposal_rainy',
-      title: '暴雨急售策略',
-      status: 'PENDING',
-      campaignDraft: {
-        id: 'campaign_rainy_hot_soup',
-        name: '雨天热汤投放',
-        status: 'ACTIVE',
-        triggerEvent: 'WEATHER_CHANGE',
-        condition: {
-          field: 'weather',
-          equals: 'RAIN',
-        },
-        budget: {
-          cap: 60,
-          used: 0,
-          costPerHit: 12,
-        },
-      },
-    },
-  ],
+  budgetUsed: 0,
+  pendingProposals: [],
   activeCampaigns: [],
 });
 
@@ -187,4 +166,3 @@ export const smartCashierVerify = (input: CashierInput): CashierSettlement => {
     payable: roundMoney(Math.max(remain, 0)),
   };
 };
-

@@ -12,10 +12,6 @@ const TABLES = {
   partnerOrders: "mq_partner_orders",
   strategyConfigs: "mq_strategy_configs",
   allianceConfigs: "mq_alliance_configs",
-  socialRedPackets: "mq_social_red_packets",
-  groupTreatSessions: "mq_group_treat_sessions",
-  merchantDailySubsidyUsage: "mq_merchant_daily_subsidy_usage",
-  socialTransferLogs: "mq_social_transfer_logs",
   phoneLoginCodes: "mq_phone_login_codes",
   customerIdentityBindings: "mq_customer_identity_bindings",
   contractApplications: "mq_contract_applications",
@@ -231,48 +227,6 @@ async function ensureRelationalTables(pool, schema) {
   `);
 
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS ${schemaSql}.${qIdent(TABLES.socialRedPackets)} (
-      scope_key TEXT NOT NULL,
-      merchant_id TEXT NOT NULL,
-      packet_id TEXT NOT NULL,
-      payload JSONB NOT NULL,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      PRIMARY KEY (scope_key, merchant_id, packet_id)
-    )
-  `);
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS ${schemaSql}.${qIdent(TABLES.groupTreatSessions)} (
-      scope_key TEXT NOT NULL,
-      merchant_id TEXT NOT NULL,
-      session_id TEXT NOT NULL,
-      payload JSONB NOT NULL,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      PRIMARY KEY (scope_key, merchant_id, session_id)
-    )
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS ${schemaSql}.${qIdent(TABLES.merchantDailySubsidyUsage)} (
-      scope_key TEXT NOT NULL,
-      merchant_id TEXT NOT NULL,
-      payload JSONB NOT NULL,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      PRIMARY KEY (scope_key, merchant_id)
-    )
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS ${schemaSql}.${qIdent(TABLES.socialTransferLogs)} (
-      scope_key TEXT NOT NULL,
-      transfer_id TEXT NOT NULL,
-      seq_no BIGINT NOT NULL,
-      payload JSONB NOT NULL,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      PRIMARY KEY (scope_key, transfer_id)
-    )
-  `);
-
-  await pool.query(`
     CREATE TABLE IF NOT EXISTS ${schemaSql}.${qIdent(TABLES.phoneLoginCodes)} (
       scope_key TEXT NOT NULL,
       phone TEXT NOT NULL,
@@ -379,10 +333,6 @@ async function ensureRelationalTables(pool, schema) {
   `);
 
   await pool.query(`
-    CREATE INDEX IF NOT EXISTS ${qIdent(`${TABLES.socialTransferLogs}_scope_seq_idx`)}
-    ON ${schemaSql}.${qIdent(TABLES.socialTransferLogs)} (scope_key, seq_no)
-  `);
-  await pool.query(`
     CREATE INDEX IF NOT EXISTS ${qIdent(`${TABLES.ledgerEntries}_scope_seq_idx`)}
     ON ${schemaSql}.${qIdent(TABLES.ledgerEntries)} (scope_key, seq_no)
   `);
@@ -446,10 +396,6 @@ function createEmptyState() {
     partnerOrders: {},
     strategyConfigs: {},
     allianceConfigs: {},
-    socialRedPacketsByMerchant: {},
-    groupTreatSessionsByMerchant: {},
-    merchantDailySubsidyUsage: {},
-    socialTransferLogs: [],
     phoneLoginCodes: {},
     socialAuth: {
       customerBindingsByMerchant: {},
@@ -579,36 +525,6 @@ async function readRelationalState(pool, schema, scopeKey) {
     state.allianceConfigs[row.merchant_id] = row.payload;
   }
 
-  const packets = await pool.query(
-    `SELECT merchant_id, packet_id, payload FROM ${schemaSql}.${qIdent(TABLES.socialRedPackets)} WHERE scope_key = $1`,
-    [scopeKey],
-  );
-  for (const row of packets.rows) {
-    if (!state.socialRedPacketsByMerchant[row.merchant_id]) {
-      state.socialRedPacketsByMerchant[row.merchant_id] = {};
-    }
-    state.socialRedPacketsByMerchant[row.merchant_id][row.packet_id] = row.payload;
-  }
-
-  const sessions = await pool.query(
-    `SELECT merchant_id, session_id, payload FROM ${schemaSql}.${qIdent(TABLES.groupTreatSessions)} WHERE scope_key = $1`,
-    [scopeKey],
-  );
-  for (const row of sessions.rows) {
-    if (!state.groupTreatSessionsByMerchant[row.merchant_id]) {
-      state.groupTreatSessionsByMerchant[row.merchant_id] = {};
-    }
-    state.groupTreatSessionsByMerchant[row.merchant_id][row.session_id] = row.payload;
-  }
-
-  const subsidyUsage = await pool.query(
-    `SELECT merchant_id, payload FROM ${schemaSql}.${qIdent(TABLES.merchantDailySubsidyUsage)} WHERE scope_key = $1`,
-    [scopeKey],
-  );
-  for (const row of subsidyUsage.rows) {
-    state.merchantDailySubsidyUsage[row.merchant_id] = row.payload || {};
-  }
-
   const phoneLoginCodes = await pool.query(
     `SELECT phone, payload FROM ${schemaSql}.${qIdent(TABLES.phoneLoginCodes)} WHERE scope_key = $1`,
     [scopeKey],
@@ -671,17 +587,6 @@ async function readRelationalState(pool, schema, scopeKey) {
   for (const row of tenantRoutes.rows) {
     state.tenantRouteFiles[row.merchant_id] = row.payload;
   }
-
-  const socialLogs = await pool.query(
-    `
-      SELECT payload
-      FROM ${schemaSql}.${qIdent(TABLES.socialTransferLogs)}
-      WHERE scope_key = $1
-      ORDER BY seq_no ASC
-    `,
-    [scopeKey],
-  );
-  state.socialTransferLogs = socialLogs.rows.map((row) => row.payload);
 
   const ledgerRows = await pool.query(
     `
@@ -846,39 +751,6 @@ async function replaceScopeState(client, schema, scopeKey, rawState) {
     );
   }
 
-  for (const [merchantId, packets] of Object.entries(normalizedState.socialRedPacketsByMerchant || {})) {
-    for (const [packetId, payload] of Object.entries(packets || {})) {
-      await insertRow(
-        client,
-        schema,
-        TABLES.socialRedPackets,
-        ["scope_key", "merchant_id", "packet_id", "payload"],
-        [scopeKey, merchantId, packetId, toJsonb(payload)],
-      );
-    }
-  }
-
-  for (const [merchantId, sessions] of Object.entries(normalizedState.groupTreatSessionsByMerchant || {})) {
-    for (const [sessionId, payload] of Object.entries(sessions || {})) {
-      await insertRow(
-        client,
-        schema,
-        TABLES.groupTreatSessions,
-        ["scope_key", "merchant_id", "session_id", "payload"],
-        [scopeKey, merchantId, sessionId, toJsonb(payload)],
-      );
-    }
-  }
-  for (const [merchantId, payload] of Object.entries(normalizedState.merchantDailySubsidyUsage || {})) {
-    await insertRow(
-      client,
-      schema,
-      TABLES.merchantDailySubsidyUsage,
-      ["scope_key", "merchant_id", "payload"],
-      [scopeKey, merchantId, toJsonb(payload || {})],
-    );
-  }
-
   for (const [phone, payload] of Object.entries(normalizedState.phoneLoginCodes || {})) {
     await insertRow(
       client,
@@ -958,24 +830,6 @@ async function replaceScopeState(client, schema, scopeKey, rawState) {
       TABLES.tenantRouteFiles,
       ["scope_key", "merchant_id", "payload"],
       [scopeKey, merchantId, toJsonb(payload)],
-    );
-  }
-
-  const socialLogs = Array.isArray(normalizedState.socialTransferLogs)
-    ? normalizedState.socialTransferLogs
-    : [];
-  for (let index = 0; index < socialLogs.length; index += 1) {
-    const payload = socialLogs[index];
-    const transferId =
-      payload && payload.transferId
-        ? String(payload.transferId)
-        : `transfer_${index + 1}`;
-    await insertRow(
-      client,
-      schema,
-      TABLES.socialTransferLogs,
-      ["scope_key", "transfer_id", "seq_no", "payload"],
-      [scopeKey, transferId, index + 1, toJsonb(payload)],
     );
   }
 

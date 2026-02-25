@@ -59,6 +59,7 @@ npm run android
 3. Realtime events come from `/ws`.
 4. Audit timeline is fetched from `/api/audit/logs` with filters and pagination.
 5. If backend is unavailable, UI shows connection status and degrades gracefully.
+6. Social operations (transfer, red packet, treat session) are removed from merchant UI and backend scope.
 
 ## Test
 

@@ -8,11 +8,10 @@ Minimal runnable backend implementation for MealQuest.
 - Payment verification with idempotency protection
 - Refund clawback (consume gifted balance first, then principal)
 - TCA engine (Trigger / Condition / Action)
-- Merchant strategy proposal and approval workflow
+- AI-driven merchant strategy proposal and approval workflow
 - Emergency fire-sale override (`Priority:999 + TTL`)
 - Supplier order verification API
 - Alliance configuration (store clusters, shared wallet, cross-store sync)
-- Social growth ledger (transfer and red packet, total amount conservation)
 - JWT auth with role scope (`CUSTOMER`, `CLERK`, `MANAGER`, `OWNER`)
 - WebSocket realtime events (payment, refund, strategy, fuse, TCA)
 - PostgreSQL relational persistence (multi-table)
@@ -55,6 +54,11 @@ MQ_AUTH_ALIPAY_VERIFY_URL=
 MQ_AUTH_ALIPAY_APP_ID=
 MQ_AUTH_ALIPAY_APP_SECRET=
 MQ_AUTH_HTTP_TIMEOUT_MS=10000
+MQ_AI_PROVIDER=mock
+MQ_AI_BASE_URL=https://api.deepseek.com/v1
+MQ_AI_MODEL=deepseek-chat
+MQ_AI_API_KEY=
+MQ_AI_TIMEOUT_MS=15000
 ```
 
 Notes:
@@ -65,6 +69,8 @@ Notes:
 4. Migration cutover and rollback keep working with tenant snapshot keys.
 5. When `MQ_DB_AUTO_CREATE=true`, server auto-creates the target database if it is missing.
 6. If the app user has no `CREATEDB` privilege, set `MQ_DB_ADMIN_URL` with an admin connection.
+7. `MQ_AI_PROVIDER=deepseek` uses DeepSeek-compatible Chat Completions endpoint.
+8. For local tests/default dev, `MQ_AI_PROVIDER=mock` avoids external network dependency.
 
 ## Merchant Onboarding
 
@@ -156,21 +162,13 @@ Supplier verification:
 POST /api/supplier/verify-order
 ```
 
-Alliance and social APIs:
+Alliance APIs:
 
 ```text
 GET  /api/merchant/alliance-config?merchantId=<id>
 POST /api/merchant/alliance-config
 GET  /api/merchant/stores?merchantId=<id>
 POST /api/merchant/alliance/sync-user
-POST /api/social/transfer
-POST /api/social/red-packets
-POST /api/social/red-packets/:packetId/claim
-GET  /api/social/red-packets/:packetId?merchantId=<id>
-POST /api/social/treat/sessions
-POST /api/social/treat/sessions/:sessionId/join
-POST /api/social/treat/sessions/:sessionId/close
-GET  /api/social/treat/sessions/:sessionId?merchantId=<id>
 ```
 
 Audit and WS status:
