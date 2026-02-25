@@ -203,6 +203,70 @@ function truncateText(value, maxLen = 240) {
   return `${text.slice(0, maxLen)}...`;
 }
 
+function toFiniteNumber(value, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function toMoney(value) {
+  return Math.round(Math.max(0, toFiniteNumber(value, 0)) * 100) / 100;
+}
+
+function toRatio(value) {
+  const parsed = toFiniteNumber(value, 0);
+  const clamped = Math.max(0, Math.min(1, parsed));
+  return Number(clamped.toFixed(4));
+}
+
+function sanitizeSalesAggregate(input) {
+  const aggregate = isObjectLike(input) ? input : {};
+  const ordersPaidCount = Math.max(0, Math.floor(toFiniteNumber(aggregate.ordersPaidCount, 0)));
+  const externalPaidCount = Math.max(0, Math.floor(toFiniteNumber(aggregate.externalPaidCount, 0)));
+  const walletOnlyPaidCount = Math.max(0, Math.floor(toFiniteNumber(aggregate.walletOnlyPaidCount, 0)));
+  return {
+    ordersPaidCount,
+    externalPaidCount,
+    walletOnlyPaidCount,
+    gmvPaid: toMoney(aggregate.gmvPaid),
+    refundAmount: toMoney(aggregate.refundAmount),
+    netRevenue: toMoney(aggregate.netRevenue),
+    aov: toMoney(aggregate.aov),
+    refundRate: toRatio(aggregate.refundRate),
+  };
+}
+
+function sanitizeSalesSnapshot(input) {
+  if (!isObjectLike(input)) {
+    return null;
+  }
+
+  const windows = Array.isArray(input.windows)
+    ? input.windows.slice(0, 3).map((item) => ({
+        days: Math.max(1, Math.floor(toFiniteNumber(item && item.days, 0))),
+        ...sanitizeSalesAggregate(item),
+      }))
+    : [];
+
+  return {
+    generatedAt: asString(input.generatedAt),
+    currency: asString(input.currency || "CNY").toUpperCase(),
+    totals: sanitizeSalesAggregate(input.totals),
+    windows,
+    paymentStatusSummary: {
+      totalPayments: Math.max(0, Math.floor(toFiniteNumber(input.paymentStatusSummary && input.paymentStatusSummary.totalPayments, 0))),
+      paidCount: Math.max(0, Math.floor(toFiniteNumber(input.paymentStatusSummary && input.paymentStatusSummary.paidCount, 0))),
+      pendingExternalCount: Math.max(
+        0,
+        Math.floor(toFiniteNumber(input.paymentStatusSummary && input.paymentStatusSummary.pendingExternalCount, 0)),
+      ),
+      failedExternalCount: Math.max(
+        0,
+        Math.floor(toFiniteNumber(input.paymentStatusSummary && input.paymentStatusSummary.failedExternalCount, 0)),
+      ),
+    },
+  };
+}
+
 function buildChatPromptPayload({
   merchantId,
   sessionId,
@@ -210,6 +274,7 @@ function buildChatPromptPayload({
   history = [],
   activeCampaigns = [],
   approvedStrategies = [],
+  salesSnapshot = null,
 }) {
   const safeHistory = Array.isArray(history)
     ? history
@@ -243,6 +308,7 @@ function buildChatPromptPayload({
         approvedAt: asString(item.approvedAt || ""),
       }))
     : [];
+  const safeSalesSnapshot = sanitizeSalesSnapshot(salesSnapshot);
 
   const userPayload = {
     task: "STRATEGY_CHAT",
@@ -252,6 +318,7 @@ function buildChatPromptPayload({
     history: safeHistory,
     activeCampaigns: safeActiveCampaigns,
     approvedStrategies: safeApprovedStrategies,
+    salesSnapshot: safeSalesSnapshot,
     outputSchema: {
       mode: "CHAT_REPLY|PROPOSAL",
       assistantMessage: "string",
@@ -282,6 +349,7 @@ function buildChatPromptPayload({
       "Use mode=PROPOSAL only when user clearly requests to create/finalize a strategy.",
       "When mode=PROPOSAL, proposal fields are required.",
       "Avoid repeating already approved strategies with the same templateId+branchId unless user asks.",
+      "Reference salesSnapshot when recommending optimization direction.",
     ],
   };
 
@@ -431,6 +499,7 @@ function createAiStrategyService(options = {}) {
       history: input.history,
       activeCampaigns: input.activeCampaigns,
       approvedStrategies: input.approvedStrategies,
+      salesSnapshot: input.salesSnapshot,
     });
     return modelGateway.invokeChat(prompt.messages);
   }

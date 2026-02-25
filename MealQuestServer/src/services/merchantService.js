@@ -8,6 +8,127 @@ function createMerchantService(db, options = {}) {
   const MAX_CHAT_HISTORY_FOR_MODEL = 24;
   const MAX_APPROVED_STRATEGY_CONTEXT = 12;
   const MAX_ACTIVE_CAMPAIGN_CONTEXT = 12;
+  const SALES_WINDOWS_DAYS = [7, 30];
+
+  function toFiniteNumber(value) {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : 0;
+  }
+
+  function roundMoney(value) {
+    return Math.round(toFiniteNumber(value) * 100) / 100;
+  }
+
+  function createSalesAggregate() {
+    return {
+      ordersPaidCount: 0,
+      externalPaidCount: 0,
+      walletOnlyPaidCount: 0,
+      gmvPaid: 0,
+      refundAmount: 0,
+      netRevenue: 0,
+      aov: 0,
+      refundRate: 0
+    };
+  }
+
+  function accumulateSalesAggregate(aggregate, payment) {
+    if (!aggregate || !payment) {
+      return;
+    }
+    const orderAmount = Math.max(0, roundMoney(payment.orderAmount));
+    const refundAmount = Math.min(orderAmount, Math.max(0, roundMoney(payment.refundedAmount)));
+    aggregate.ordersPaidCount += 1;
+    aggregate.gmvPaid = roundMoney(aggregate.gmvPaid + orderAmount);
+    aggregate.refundAmount = roundMoney(aggregate.refundAmount + refundAmount);
+    if (payment.externalPayment) {
+      aggregate.externalPaidCount += 1;
+    } else {
+      aggregate.walletOnlyPaidCount += 1;
+    }
+  }
+
+  function finalizeSalesAggregate(aggregate) {
+    const safe = aggregate || createSalesAggregate();
+    const gmvPaid = roundMoney(safe.gmvPaid);
+    const refundAmount = roundMoney(safe.refundAmount);
+    const ordersPaidCount = Math.max(0, Math.floor(toFiniteNumber(safe.ordersPaidCount)));
+    const externalPaidCount = Math.max(0, Math.floor(toFiniteNumber(safe.externalPaidCount)));
+    const walletOnlyPaidCount = Math.max(0, Math.floor(toFiniteNumber(safe.walletOnlyPaidCount)));
+    const netRevenue = roundMoney(gmvPaid - refundAmount);
+    const aov = ordersPaidCount > 0 ? roundMoney(gmvPaid / ordersPaidCount) : 0;
+    const refundRate = gmvPaid > 0 ? Number((refundAmount / gmvPaid).toFixed(4)) : 0;
+    return {
+      ordersPaidCount,
+      externalPaidCount,
+      walletOnlyPaidCount,
+      gmvPaid,
+      refundAmount,
+      netRevenue,
+      aov,
+      refundRate
+    };
+  }
+
+  function getSalesSnapshotContext(merchantId) {
+    const paymentsBucket =
+      db.paymentsByMerchant &&
+      typeof db.paymentsByMerchant === "object" &&
+      db.paymentsByMerchant[merchantId] &&
+      typeof db.paymentsByMerchant[merchantId] === "object"
+        ? db.paymentsByMerchant[merchantId]
+        : {};
+    const payments = Object.values(paymentsBucket);
+    const nowMs = Date.now();
+    const windowBuckets = SALES_WINDOWS_DAYS.map((days) => ({
+      days,
+      cutoffMs: nowMs - days * 24 * 60 * 60 * 1000,
+      aggregate: createSalesAggregate()
+    }));
+    const totals = createSalesAggregate();
+    let pendingExternalCount = 0;
+    let failedExternalCount = 0;
+
+    for (const payment of payments) {
+      const status = String(payment && payment.status ? payment.status : "").toUpperCase();
+      if (status === "PENDING_EXTERNAL") {
+        pendingExternalCount += 1;
+      } else if (status === "EXTERNAL_FAILED") {
+        failedExternalCount += 1;
+      }
+      if (status !== "PAID") {
+        continue;
+      }
+      accumulateSalesAggregate(totals, payment);
+
+      const createdAtMs = Date.parse(String(payment && payment.createdAt ? payment.createdAt : ""));
+      if (!Number.isFinite(createdAtMs)) {
+        continue;
+      }
+      for (const windowBucket of windowBuckets) {
+        if (createdAtMs >= windowBucket.cutoffMs) {
+          accumulateSalesAggregate(windowBucket.aggregate, payment);
+        }
+      }
+    }
+
+    const finalizedTotals = finalizeSalesAggregate(totals);
+    return {
+      generatedAt: new Date(nowMs).toISOString(),
+      currency: "CNY",
+      totals: finalizedTotals,
+      windows: windowBuckets.map((windowBucket) => ({
+        days: windowBucket.days,
+        ...finalizeSalesAggregate(windowBucket.aggregate)
+      })),
+      paymentStatusSummary: {
+        totalPayments: payments.length,
+        paidCount: finalizedTotals.ordersPaidCount,
+        pendingExternalCount,
+        failedExternalCount
+      }
+    };
+  }
 
   function ensureStrategyBucket(merchantId) {
     if (!db.strategyConfigs || typeof db.strategyConfigs !== "object") {
@@ -511,7 +632,8 @@ function createMerchantService(db, options = {}) {
       userMessage: text,
       history: historyForModel,
       activeCampaigns: getActiveCampaignContext(merchantId),
-      approvedStrategies: getApprovedStrategyContext(merchantId)
+      approvedStrategies: getApprovedStrategyContext(merchantId),
+      salesSnapshot: getSalesSnapshotContext(merchantId)
     });
 
     if (!aiTurn || aiTurn.status === "AI_UNAVAILABLE") {
