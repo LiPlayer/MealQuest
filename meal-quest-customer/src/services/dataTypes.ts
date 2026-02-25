@@ -1,4 +1,4 @@
-import { CheckoutQuote, CustomerWallet } from '@/domain/smartCheckout';
+import { CustomerWallet } from '@/domain/smartCheckout';
 import { Voucher } from '@/components/cards/P03_TicketCard';
 import { ActivityItem } from '@/components/ActivityArea';
 

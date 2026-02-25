@@ -291,7 +291,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
       active = false;
       realtimeClient?.close();
     };
-  }, []);
+  }, [remoteToken]);
 
   useEffect(() => {
     if (!remoteToken) {
@@ -1360,7 +1360,7 @@ export default function App() {
     return (
       <SafeAreaProvider>
         <SafeAreaView style={styles.safeArea}>
-          <View style={[styles.entryContainer, { justifyContent: 'center' }]}>
+          <View style={styles.entryContainerCentered}>
             <Text style={styles.mutedText}>加载中...</Text>
           </View>
         </SafeAreaView>
@@ -1402,6 +1402,13 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 28,
     gap: 12,
+  },
+  entryContainerCentered: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 28,
+    gap: 12,
+    justifyContent: 'center',
   },
   entryHero: {
     backgroundColor: '#0f172a',

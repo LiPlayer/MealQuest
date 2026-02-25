@@ -1,12 +1,11 @@
 ﻿import { View } from '@tarojs/components';
 import Taro from '@tarojs/taro';
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import P01_SilverCard from './cards/P01_SilverCard';
 import P02_BalanceCard from './cards/P02_BalanceCard';
-import P03_TicketCard from './cards/P03_TicketCard';
+import P03_TicketCard, { Voucher } from './cards/P03_TicketCard';
 import P04_FragmentCard from './cards/P04_FragmentCard';
-import { Voucher } from './cards/P03_TicketCard';
 
 const HEADER_H = 60; // Card header height (rpx)
 const CARD_RATIO = 1.586;
@@ -88,7 +87,7 @@ export default function CustomerCardStack({
 
     const cardTops = useMemo(
         () => cards.map((_, index) => (index * HEADER_H) + focusLayout[index]),
-        [focusLayout]
+        [cards, focusLayout]
     );
 
     const stackHeight = useMemo(

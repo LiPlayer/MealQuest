@@ -8,6 +8,18 @@ on:
   pull_request:
 
 jobs:
+  repo-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify Monorepo
+        run: npm run verify:ci
+
   server-test:
     runs-on: ubuntu-latest
     defaults:
@@ -45,10 +57,12 @@ jobs:
           cache-dependency-path: MealQuestMerchant/package-lock.json
       - name: Install
         run: npm ci
+      - name: Lint
+        run: npm run lint
       - name: Test
         run: npm test -- --runInBand
       - name: Typecheck
-        run: npx tsc --noEmit
+        run: npm run typecheck
 
   customer-test-and-build:
     runs-on: ubuntu-latest
@@ -66,6 +80,10 @@ jobs:
           cache-dependency-path: meal-quest-customer/package-lock.json
       - name: Install
         run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
       - name: Test
         run: npm test -- --runInBand
       - name: Build Weapp

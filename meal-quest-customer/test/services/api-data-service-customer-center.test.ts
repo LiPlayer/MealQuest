@@ -1,3 +1,5 @@
+export {};
+
 const requestMock = jest.fn();
 const loginMock = jest.fn();
 
@@ -36,7 +38,7 @@ describe('ApiDataService customer center', () => {
         if (typeof envServerBase === 'string') {
             process.env.TARO_APP_SERVER_URL = envServerBase;
         } else {
-            delete process.env.TARO_APP_SERVER_URL;
+            process.env.TARO_APP_SERVER_URL = undefined;
         }
     });
 

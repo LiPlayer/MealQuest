@@ -1,0 +1,14 @@
+{
+  "name": "mealquest",
+  "private": true,
+  "version": "1.0.0",
+  "description": "MealQuest monorepo engineering entrypoint",
+  "scripts": {
+    "bootstrap": "node scripts/repo-task.js bootstrap",
+    "lint": "node scripts/repo-task.js lint",
+    "typecheck": "node scripts/repo-task.js typecheck",
+    "test": "node scripts/repo-task.js test",
+    "verify": "node scripts/repo-task.js verify",
+    "verify:ci": "node scripts/repo-task.js ci"
+  }
+}

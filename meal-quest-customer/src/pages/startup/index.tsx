@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { View, Text } from '@tarojs/components';
 import Taro, { useRouter } from '@tarojs/taro';
 import { storage } from '../../utils/storage';
@@ -152,7 +152,7 @@ function resolveStartupIntent(input: string, options: Record<string, any> = {}):
 export default function Startup() {
     const [isNewUser, setIsNewUser] = useState(false);
 
-    const validateMerchantId = async (storeId: string) => {
+    const validateMerchantId = useCallback(async (storeId: string) => {
         if (!storeId) {
             return false;
         }
@@ -171,9 +171,9 @@ export default function Startup() {
             Taro.showToast({ title: 'Store validation failed', icon: 'none' });
             return false;
         }
-    };
+    }, []);
 
-    const redirectToHome = (intent?: { autoPay?: boolean; orderAmount?: number | null }) => {
+    const redirectToHome = useCallback((intent?: { autoPay?: boolean; orderAmount?: number | null }) => {
         let targetUrl = '/pages/index/index';
         const query: string[] = [];
 
@@ -193,9 +193,9 @@ export default function Startup() {
                 url: targetUrl
             });
         });
-    };
+    }, []);
 
-    const enterStoreIfValid = async (intent: StartupIntent) => {
+    const enterStoreIfValid = useCallback(async (intent: StartupIntent) => {
         if (!intent.storeId) {
             return false;
         }
@@ -206,7 +206,7 @@ export default function Startup() {
         storage.setLastStoreId(intent.storeId);
         redirectToHome(intent);
         return true;
-    };
+    }, [redirectToHome, validateMerchantId]);
 
     const router = useRouter();
 
@@ -255,7 +255,7 @@ export default function Startup() {
         return () => {
             active = false;
         };
-    }, [router.params]);
+    }, [enterStoreIfValid, router.params]);
 
     const handleScanQR = () => {
         Taro.scanCode({

@@ -1,3 +1,5 @@
+export {};
+
 const requestMock = jest.fn();
 const loginMock = jest.fn();
 const getEnvMock = jest.fn();
@@ -30,7 +32,7 @@ describe('ApiDataService activities mapping', () => {
     beforeEach(() => {
         jest.resetModules();
         process.env.TARO_APP_SERVER_URL = 'http://127.0.0.1:3030';
-        delete process.env.TARO_ENV;
+        Reflect.deleteProperty(process.env, 'TARO_ENV');
         requestMock.mockReset();
         loginMock.mockReset();
         getEnvMock.mockReset();
@@ -42,12 +44,12 @@ describe('ApiDataService activities mapping', () => {
         if (typeof envServerBase === 'string') {
             process.env.TARO_APP_SERVER_URL = envServerBase;
         } else {
-            delete process.env.TARO_APP_SERVER_URL;
+            process.env.TARO_APP_SERVER_URL = undefined;
         }
         if (typeof envBuildPlatform === 'string') {
             process.env.TARO_ENV = envBuildPlatform;
         } else {
-            delete process.env.TARO_ENV;
+            Reflect.deleteProperty(process.env, 'TARO_ENV');
         }
     });
 

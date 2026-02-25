@@ -1,6 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import React from 'react';
 import P03_TicketCard from '@/components/cards/P03_TicketCard';
 
 const mockVouchers = [

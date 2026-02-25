@@ -50,7 +50,7 @@ describe('DataService remote only', () => {
         api.getCheckoutQuote.mockResolvedValue({
             orderAmount: 52,
             selectedVoucher: null,
-            deduction: { voucher: 0, bonus: 0, principal: 0, silver: 0 },
+            deduction: { voucher: 0, bonus: 0, principal: 0, silver: 0, external: 52 },
             payable: 52,
             remainingWallet: { principal: 0, bonus: 0, silver: 0 }
         });

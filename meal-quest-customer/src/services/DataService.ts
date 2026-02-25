@@ -1,7 +1,8 @@
 import { CheckoutQuote } from '@/domain/smartCheckout';
+import { storage } from '@/utils/storage';
+
 import { ApiDataService } from './ApiDataService';
 import { HomeSnapshot, InvoiceItem, PaymentLedgerItem } from './dataTypes';
-import { storage } from '@/utils/storage';
 
 const ensureApiConfigured = () => {
     if (!ApiDataService.isConfigured()) {
