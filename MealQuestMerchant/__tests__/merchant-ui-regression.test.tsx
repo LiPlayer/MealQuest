@@ -96,6 +96,12 @@ jest.mock('../src/services/merchantApi', () => ({
       priority: 999,
       ttlUntil: '2026-02-21T01:00:00.000Z',
     })),
+    createStrategyProposal: jest.fn(async () => ({
+      proposalId: 'proposal_ai_1',
+      status: 'PENDING',
+      title: 'AI策略提案：午市拉新',
+      campaignId: 'campaign_ai_1',
+    })),
     approveProposal: jest.fn(),
     setKillSwitch: jest.fn(),
     triggerEvent: jest.fn(async () => ({blockedByKillSwitch: false, executed: []})),
@@ -166,5 +172,32 @@ describe('merchant ui regression flow', () => {
     const qrPayload = tree!.root.findByProps({testID: 'merchant-qr-payload-text'});
     expect(String(qrPayload.props.children)).toContain('https://mealquest.app/startup?id=m_store_001');
     expect(String(qrPayload.props.children)).toContain('action=pay');
+  });
+
+  it('submits free-text intent to generate AI proposal', async () => {
+    let tree: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      tree = ReactTestRenderer.create(<App />);
+      await flush(8);
+    });
+
+    await ReactTestRenderer.act(async () => {
+      tree!.root
+        .findByProps({testID: 'ai-intent-input'})
+        .props.onChangeText('明天午市拉新20桌，预算控制在200元以内');
+      await flush(2);
+    });
+
+    await ReactTestRenderer.act(async () => {
+      tree!.root.findByProps({testID: 'ai-intent-submit'}).props.onPress();
+      await flush(6);
+    });
+
+    expect(mockApi.createStrategyProposal).toHaveBeenCalledWith('token_demo', {
+      intent: '明天午市拉新20桌，预算控制在200元以内',
+    });
+
+    const actionText = tree!.root.findByProps({testID: 'last-action-text'});
+    expect(String(actionText.props.children)).toContain('AI已生成提案');
   });
 });

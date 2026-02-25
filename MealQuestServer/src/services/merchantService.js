@@ -5,6 +5,7 @@ const {
 
 function createMerchantService(db, options = {}) {
   const aiStrategyService = options.aiStrategyService;
+  const MAX_STRATEGY_CANDIDATES = 3;
 
   function ensureStrategyBucket(merchantId) {
     if (!db.strategyConfigs || typeof db.strategyConfigs !== "object") {
@@ -143,6 +144,58 @@ function createMerchantService(db, options = {}) {
     };
   }
 
+  function evaluateCampaignRisk({ campaign, merchant }) {
+    const reasons = [];
+    const budget = (campaign && campaign.budget) || {};
+    const action = (campaign && campaign.action) || {};
+    const cap = Number(budget.cap) || 0;
+    const costPerHit = Number(budget.costPerHit) || 0;
+    const priority = Number(campaign && campaign.priority);
+    const maxCap = Math.max((Number(merchant.budgetCap) || 0) * 1.5, 300);
+
+    if (!campaign || !campaign.trigger || !campaign.trigger.event) {
+      reasons.push("missing trigger event");
+    }
+    if (!Number.isFinite(cap) || cap <= 0) {
+      reasons.push("invalid budget cap");
+    } else if (cap > maxCap) {
+      reasons.push(`budget cap exceeds guardrail (${cap} > ${Math.round(maxCap)})`);
+    }
+    if (!Number.isFinite(costPerHit) || costPerHit <= 0) {
+      reasons.push("invalid cost per hit");
+    } else if (costPerHit > Math.max(60, cap * 0.6)) {
+      reasons.push("cost per hit exceeds guardrail");
+    }
+    if (!Number.isFinite(priority) || priority < 40 || priority > 999) {
+      reasons.push("priority out of safe range");
+    }
+    if (campaign && campaign.ttlUntil) {
+      const ttlTs = Date.parse(campaign.ttlUntil);
+      const nowTs = Date.now();
+      if (!Number.isFinite(ttlTs)) {
+        reasons.push("invalid ttl");
+      } else if (ttlTs > nowTs + 72 * 60 * 60 * 1000) {
+        reasons.push("ttl exceeds 72h guardrail");
+      }
+    }
+    if (
+      action.type === "GRANT_VOUCHER" &&
+      action.voucher &&
+      Number.isFinite(Number(action.voucher.value)) &&
+      Number(action.voucher.value) > 100
+    ) {
+      reasons.push("voucher value exceeds guardrail");
+    }
+    if (Array.isArray(campaign.conditions) && campaign.conditions.length > 10) {
+      reasons.push("too many conditions");
+    }
+
+    return {
+      blocked: reasons.length > 0,
+      reasons
+    };
+  }
+
   async function createStrategyProposal({
     merchantId,
     templateId,
@@ -155,60 +208,142 @@ function createMerchantService(db, options = {}) {
     if (!merchant) {
       throw new Error("merchant not found");
     }
-    if (!aiStrategyService || typeof aiStrategyService.generateStrategyProposal !== "function") {
+    if (
+      !aiStrategyService ||
+      (typeof aiStrategyService.generateStrategyPlan !== "function" &&
+        typeof aiStrategyService.generateStrategyProposal !== "function")
+    ) {
       throw new Error("ai strategy service is not configured");
     }
 
-    const aiResult = await aiStrategyService.generateStrategyProposal({
-      merchantId,
-      templateId,
-      branchId,
-      intent,
-      overrides
-    });
-    const { campaign, template, branch, strategyMeta } = aiResult;
-    const proposalId = `proposal_${template.templateId}_${Date.now()}`;
-    const proposal = {
-      id: proposalId,
-      merchantId,
-      status: "PENDING",
-      title: aiResult.title || `${template.name} · ${branch.name}`,
-      createdAt: new Date().toISOString(),
-      intent: String(intent || ""),
-      strategyMeta: {
-        templateId: template.templateId,
-        templateName: template.name,
-        category: template.category,
-        phase: template.phase,
-        branchId: branch.branchId,
-        branchName: branch.name,
-        operatorId: operatorId || "system",
-        source: strategyMeta && strategyMeta.source ? strategyMeta.source : "AI_MODEL",
-        provider: strategyMeta && strategyMeta.provider ? strategyMeta.provider : "MOCK",
-        model: strategyMeta && strategyMeta.model ? strategyMeta.model : "unknown",
-        rationale: strategyMeta && strategyMeta.rationale ? strategyMeta.rationale : "",
-        confidence:
-          strategyMeta && Number.isFinite(strategyMeta.confidence)
-            ? strategyMeta.confidence
-            : null
-      },
-      suggestedCampaign: campaign
-    };
-    db.proposals.push(proposal);
-    setStrategyConfig(merchantId, template.templateId, {
-      branchId: branch.branchId,
-      status: "PENDING_APPROVAL",
-      lastProposalId: proposalId
-    });
-    db.save();
+    const plan =
+      typeof aiStrategyService.generateStrategyPlan === "function"
+        ? await aiStrategyService.generateStrategyPlan({
+            merchantId,
+            templateId,
+            branchId,
+            intent,
+            overrides
+          })
+        : {
+            status: "PROPOSALS",
+            proposals: [
+              await aiStrategyService.generateStrategyProposal({
+                merchantId,
+                templateId,
+                branchId,
+                intent,
+                overrides
+              })
+            ]
+          };
 
+    if (plan && plan.status === "NEED_CLARIFICATION") {
+      return {
+        status: "NEED_CLARIFICATION",
+        questions: Array.isArray(plan.questions) ? plan.questions : [],
+        missingSlots: Array.isArray(plan.missingSlots) ? plan.missingSlots : [],
+        rationale: plan.rationale || "",
+        confidence: Number.isFinite(Number(plan.confidence)) ? Number(plan.confidence) : null
+      };
+    }
+    if (plan && plan.status === "AI_UNAVAILABLE") {
+      return {
+        status: "AI_UNAVAILABLE",
+        reason: plan.reason || "AI model unavailable"
+      };
+    }
+
+    const candidates = Array.isArray(plan && plan.proposals) ? plan.proposals : [];
+    if (candidates.length === 0) {
+      throw new Error("strategy planner did not return candidates");
+    }
+
+    const created = [];
+    const blocked = [];
+    const nowSeed = Date.now();
+
+    for (let index = 0; index < Math.min(candidates.length, MAX_STRATEGY_CANDIDATES); index += 1) {
+      const aiResult = candidates[index];
+      const { campaign, template, branch, strategyMeta } = aiResult || {};
+      if (!campaign || !template || !branch) {
+        blocked.push({
+          title: aiResult && aiResult.title ? aiResult.title : `candidate_${index + 1}`,
+          reasons: ["invalid candidate payload"]
+        });
+        continue;
+      }
+
+      const risk = evaluateCampaignRisk({ campaign, merchant });
+      if (risk.blocked) {
+        blocked.push({
+          title: aiResult.title || `${template.name} · ${branch.name}`,
+          reasons: risk.reasons
+        });
+        continue;
+      }
+
+      const proposalId = `proposal_${template.templateId}_${nowSeed}_${index + 1}`;
+      const proposal = {
+        id: proposalId,
+        merchantId,
+        status: "PENDING",
+        title: aiResult.title || `${template.name} · ${branch.name}`,
+        createdAt: new Date().toISOString(),
+        intent: String(intent || ""),
+        strategyMeta: {
+          templateId: template.templateId,
+          templateName: template.name,
+          category: template.category,
+          phase: template.phase,
+          branchId: branch.branchId,
+          branchName: branch.name,
+          operatorId: operatorId || "system",
+          source: strategyMeta && strategyMeta.source ? strategyMeta.source : "AI_MODEL",
+          provider: strategyMeta && strategyMeta.provider ? strategyMeta.provider : "OPENAI_COMPATIBLE",
+          model: strategyMeta && strategyMeta.model ? strategyMeta.model : "unknown",
+          rationale: strategyMeta && strategyMeta.rationale ? strategyMeta.rationale : "",
+          confidence:
+            strategyMeta && Number.isFinite(strategyMeta.confidence)
+              ? strategyMeta.confidence
+              : null
+        },
+        suggestedCampaign: campaign
+      };
+      db.proposals.push(proposal);
+      setStrategyConfig(merchantId, template.templateId, {
+        branchId: branch.branchId,
+        status: "PENDING_APPROVAL",
+        lastProposalId: proposalId
+      });
+      created.push({
+        proposalId: proposal.id,
+        title: proposal.title,
+        templateId: template.templateId,
+        branchId: branch.branchId,
+        campaignId: campaign.id
+      });
+    }
+
+    if (created.length === 0) {
+      return {
+        status: "BLOCKED",
+        reasons: blocked.flatMap((item) => item.reasons || []),
+        blocked
+      };
+    }
+
+    db.save();
+    const primary = created[0];
     return {
-      proposalId: proposal.id,
-      status: proposal.status,
-      title: proposal.title,
-      templateId: template.templateId,
-      branchId: branch.branchId,
-      campaignId: campaign.id
+      proposalId: primary.proposalId,
+      status: "PENDING",
+      title: primary.title,
+      templateId: primary.templateId,
+      branchId: primary.branchId,
+      campaignId: primary.campaignId,
+      created,
+      blocked
     };
   }
 

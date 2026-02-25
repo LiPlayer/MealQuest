@@ -129,6 +129,8 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
   const [qrStoreId, setQrStoreId] = useState('');
   const [qrScene, setQrScene] = useState('entry');
   const [qrPayload, setQrPayload] = useState('');
+  const [aiIntentDraft, setAiIntentDraft] = useState('');
+  const [aiIntentSubmitting, setAiIntentSubmitting] = useState(false);
 
   const pendingProposals = useMemo(
     () => merchantState.pendingProposals.filter(item => item.status === 'PENDING'),
@@ -344,6 +346,60 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
     await refreshAuditLogs(remoteToken);
     await refreshStrategyLibrary(remoteToken);
     setLastAction(`已生成提案：${label}`);
+  };
+
+  const onCreateIntentProposal = async () => {
+    if (!remoteToken) {
+      setLastAction('连接未就绪');
+      return;
+    }
+    const intent = aiIntentDraft.trim();
+    if (intent.length < 4) {
+      setLastAction('请输入更具体的经营需求（至少4个字）');
+      return;
+    }
+    setAiIntentSubmitting(true);
+    try {
+      const result = await MerchantApi.createStrategyProposal(remoteToken, {
+        intent,
+      });
+      if (result.status === 'NEED_CLARIFICATION') {
+        const questions = (result.questions || []).slice(0, 3).join('；');
+        setLastAction(
+          questions
+            ? `需要补充信息：${questions}`
+            : '需求还不够明确，请补充目标、人群、时段和预算',
+        );
+        return;
+      }
+      if (result.status === 'BLOCKED') {
+        const reasons = (result.reasons || []).slice(0, 2).join('；');
+        setLastAction(reasons ? `策略被风控拦截：${reasons}` : '策略被风控拦截，请调整后重试');
+        return;
+      }
+      if (result.status === 'AI_UNAVAILABLE') {
+        setLastAction(result.reason ? `AI模型不可用：${result.reason}` : 'AI模型不可用，请稍后重试');
+        return;
+      }
+      await refreshRemoteState(remoteToken);
+      await refreshAuditLogs(remoteToken);
+      await refreshStrategyLibrary(remoteToken);
+      setAiIntentDraft('');
+      const createdCount = Array.isArray(result.created)
+        ? result.created.length
+        : result.proposalId
+          ? 1
+          : 0;
+      if (createdCount > 1) {
+        setLastAction(`AI已生成 ${createdCount} 条候选策略，请到决策收件箱确认执行`);
+      } else {
+        setLastAction(`AI已生成提案：${result.title || result.proposalId}`);
+      }
+    } catch {
+      setLastAction('AI策略生成失败，请稍后重试');
+    } finally {
+      setAiIntentSubmitting(false);
+    }
   };
 
   const onCreateFireSale = async () => {
@@ -578,6 +634,37 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
                 {merchantState.killSwitchEnabled ? '关闭熔断' : '开启熔断'}
               </Text>
             </Pressable>
+          </SectionCard>
+
+          <SectionCard title="老板提需求（AI策略）">
+            {!remoteToken ? (
+              <Text style={styles.mutedText}>正在连接服务端开启 AI 提案...</Text>
+            ) : (
+              <>
+                <Text style={styles.mutedText}>
+                  先输入经营目标，AI 生成待确认策略，再到“决策收件箱”点击确认执行。
+                </Text>
+                <TextInput
+                  testID="ai-intent-input"
+                  value={aiIntentDraft}
+                  onChangeText={setAiIntentDraft}
+                  placeholder="例如：明天午市拉新20桌，预算控制在200元以内"
+                  style={styles.entryInput}
+                  multiline
+                  numberOfLines={3}
+                  textAlignVertical="top"
+                />
+                <Pressable
+                  testID="ai-intent-submit"
+                  style={styles.primaryButton}
+                  onPress={onCreateIntentProposal}
+                  disabled={aiIntentSubmitting}>
+                  <Text style={styles.primaryButtonText}>
+                    {aiIntentSubmitting ? 'AI生成中...' : '提交给AI出策略'}
+                  </Text>
+                </Pressable>
+              </>
+            )}
           </SectionCard>
 
           <SectionCard title="决策收件箱">

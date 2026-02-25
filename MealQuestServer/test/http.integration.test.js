@@ -1,6 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
+const http = require("node:http");
 
 const { createAppServer } = require("../src/http/server");
 const { issueToken } = require("../src/core/auth");
@@ -138,6 +139,123 @@ function createSnapshotBackedDbFactory(initialSnapshot = null) {
       return db;
     }
   };
+}
+
+function safeParseJson(raw) {
+  try {
+    return JSON.parse(String(raw || ""));
+  } catch {
+    return null;
+  }
+}
+
+function extractAiUserPayload(messages) {
+  if (!Array.isArray(messages)) {
+    return {};
+  }
+  const user = messages.find((item) => item && item.role === "user");
+  const parsed = safeParseJson(user && user.content);
+  return parsed && typeof parsed === "object" ? parsed : {};
+}
+
+function pickAiDecision(payload) {
+  const intent = String(payload.intent || "").toLowerCase();
+  const requestedTemplate = String(payload.templateId || "").trim();
+  const requestedBranch = String(payload.branchId || "").trim();
+  const isCoolingIntent =
+    intent.includes("高温") ||
+    intent.includes("清凉") ||
+    intent.includes("temperature") ||
+    intent.includes("weather");
+
+  const templateId =
+    requestedTemplate || (isCoolingIntent ? "activation_contextual_drop" : "activation_member_day");
+  const branchId =
+    requestedBranch ||
+    (templateId === "activation_contextual_drop" ? "COOLING" : "ASSET_BOOM");
+
+  return {
+    templateId,
+    branchId,
+    title: "AI Strategy Proposal",
+    rationale: "Mock AI response for integration testing.",
+    confidence: 0.86,
+    campaignPatch: {
+      name: "AI Strategy Draft",
+      priority: 82,
+      budget: {
+        cap: 180,
+        used: 0,
+        costPerHit: 9,
+      },
+    },
+  };
+}
+
+async function startMockAiServer() {
+  const server = http.createServer((req, res) => {
+    if (req.method !== "POST" || !/\/chat\/completions$/.test(String(req.url || ""))) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+      return;
+    }
+    let body = "";
+    req.on("data", (chunk) => {
+      body += String(chunk || "");
+    });
+    req.on("end", () => {
+      const parsed = safeParseJson(body);
+      if (!parsed || typeof parsed !== "object") {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "invalid json" }));
+        return;
+      }
+      const payload = extractAiUserPayload(parsed.messages);
+      const decision = pickAiDecision(payload);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          id: "mock-chatcmpl-1",
+          object: "chat.completion",
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: "assistant",
+                content: JSON.stringify(decision),
+              },
+              finish_reason: "stop",
+            },
+          ],
+        }),
+      );
+    });
+  });
+
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("mock ai server address unavailable");
+  }
+  return {
+    server,
+    baseUrl: `http://127.0.0.1:${address.port}/v1`,
+  };
+}
+
+async function stopServer(server) {
+  await new Promise((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
 }
 
 test("http flow: quote -> verify -> refund -> confirm proposal -> trigger", async () => {
@@ -1731,7 +1849,16 @@ test("customer can cancel account and keep transactional records anonymized", as
 });
 
 test("strategy library supports proposal generation, confirm and campaign status control", async () => {
-  const app = createAppServer({ persist: false });
+  const aiStub = await startMockAiServer();
+  const app = createAppServer({
+    persist: false,
+    aiStrategyOptions: {
+      provider: "openai_compatible",
+      baseUrl: aiStub.baseUrl,
+      model: "test-model",
+      timeoutMs: 1500,
+    },
+  });
   const port = await app.start(0);
   const baseUrl = `http://127.0.0.1:${port}`;
 
@@ -1838,11 +1965,21 @@ test("strategy library supports proposal generation, confirm and campaign status
     assert.ok(triggerWhenActive.data.executed.includes(proposal.data.campaignId));
   } finally {
     await app.stop();
+    await stopServer(aiStub.server);
   }
 });
 
 test("strategy proposal supports intent-only AI generation", async () => {
-  const app = createAppServer({ persist: false });
+  const aiStub = await startMockAiServer();
+  const app = createAppServer({
+    persist: false,
+    aiStrategyOptions: {
+      provider: "openai_compatible",
+      baseUrl: aiStub.baseUrl,
+      model: "test-model",
+      timeoutMs: 1500,
+    },
+  });
   const port = await app.start(0);
   const baseUrl = `http://127.0.0.1:${port}`;
 
@@ -1880,6 +2017,157 @@ test("strategy proposal supports intent-only AI generation", async () => {
     assert.equal(createdProposal.strategyMeta.source, "AI_MODEL");
   } finally {
     await app.stop();
+    await stopServer(aiStub.server);
+  }
+});
+
+test("strategy proposal returns AI_UNAVAILABLE when remote ai is unavailable", async () => {
+  const app = createAppServer({
+    persist: false,
+    aiStrategyOptions: {
+      provider: "deepseek",
+      baseUrl: "http://127.0.0.1:1/v1",
+      model: "deepseek-chat",
+      apiKey: "test_key",
+      timeoutMs: 200,
+    },
+  });
+  const port = await app.start(0);
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const ownerToken = await mockLogin(baseUrl, "OWNER", {
+      merchantId: "m_store_001",
+    });
+    const beforeState = await getJson(
+      baseUrl,
+      "/api/state?merchantId=m_store_001&userId=u_demo",
+      { Authorization: `Bearer ${ownerToken}` },
+    );
+    assert.equal(beforeState.status, 200);
+    const beforeCount = Array.isArray(beforeState.data.proposals)
+      ? beforeState.data.proposals.length
+      : 0;
+
+    const proposal = await postJson(
+      baseUrl,
+      "/api/merchant/strategy-proposals",
+      {
+        merchantId: "m_store_001",
+        intent: "明天午市拉新20桌，预算控制在200元以内",
+      },
+      { Authorization: `Bearer ${ownerToken}` },
+    );
+    assert.equal(proposal.status, 200);
+    assert.equal(proposal.data.status, "AI_UNAVAILABLE");
+    assert.ok(proposal.data.reason);
+
+    const afterState = await getJson(
+      baseUrl,
+      "/api/state?merchantId=m_store_001&userId=u_demo",
+      { Authorization: `Bearer ${ownerToken}` },
+    );
+    assert.equal(afterState.status, 200);
+    const afterCount = Array.isArray(afterState.data.proposals)
+      ? afterState.data.proposals.length
+      : 0;
+    assert.equal(afterCount, beforeCount);
+  } finally {
+    await app.stop();
+  }
+});
+
+test("strategy proposal asks clarification when intent is ambiguous", async () => {
+  const app = createAppServer({ persist: false });
+  const port = await app.start(0);
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const ownerToken = await mockLogin(baseUrl, "OWNER", {
+      merchantId: "m_store_001",
+    });
+    const beforeState = await getJson(
+      baseUrl,
+      "/api/state?merchantId=m_store_001&userId=u_demo",
+      { Authorization: `Bearer ${ownerToken}` },
+    );
+    assert.equal(beforeState.status, 200);
+    const beforeCount = Array.isArray(beforeState.data.proposals)
+      ? beforeState.data.proposals.length
+      : 0;
+
+    const proposal = await postJson(
+      baseUrl,
+      "/api/merchant/strategy-proposals",
+      {
+        merchantId: "m_store_001",
+        intent: "搞活动",
+      },
+      { Authorization: `Bearer ${ownerToken}` },
+    );
+    assert.equal(proposal.status, 200);
+    assert.equal(proposal.data.status, "NEED_CLARIFICATION");
+    assert.ok(Array.isArray(proposal.data.questions));
+    assert.ok(proposal.data.questions.length >= 1);
+
+    const afterState = await getJson(
+      baseUrl,
+      "/api/state?merchantId=m_store_001&userId=u_demo",
+      { Authorization: `Bearer ${ownerToken}` },
+    );
+    assert.equal(afterState.status, 200);
+    const afterCount = Array.isArray(afterState.data.proposals)
+      ? afterState.data.proposals.length
+      : 0;
+    assert.equal(afterCount, beforeCount);
+  } finally {
+    await app.stop();
+  }
+});
+
+test("strategy proposal is blocked by risk guardrail on extreme overrides", async () => {
+  const aiStub = await startMockAiServer();
+  const app = createAppServer({
+    persist: false,
+    aiStrategyOptions: {
+      provider: "openai_compatible",
+      baseUrl: aiStub.baseUrl,
+      model: "test-model",
+      timeoutMs: 1500,
+    },
+  });
+  const port = await app.start(0);
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const ownerToken = await mockLogin(baseUrl, "OWNER", {
+      merchantId: "m_store_001",
+    });
+
+    const proposal = await postJson(
+      baseUrl,
+      "/api/merchant/strategy-proposals",
+      {
+        merchantId: "m_store_001",
+        templateId: "activation_contextual_drop",
+        branchId: "COOLING",
+        intent: "高温清凉",
+        overrides: {
+          budget: {
+            cap: 8000,
+            costPerHit: 1200,
+          },
+        },
+      },
+      { Authorization: `Bearer ${ownerToken}` },
+    );
+    assert.equal(proposal.status, 200);
+    assert.equal(proposal.data.status, "BLOCKED");
+    assert.ok(Array.isArray(proposal.data.reasons));
+    assert.ok(proposal.data.reasons.length >= 1);
+  } finally {
+    await app.stop();
+    await stopServer(aiStub.server);
   }
 });
 

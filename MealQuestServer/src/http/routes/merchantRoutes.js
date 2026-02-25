@@ -97,18 +97,31 @@ function createMerchantRoutesHandler({
         intent: body.intent,
         overrides: body.overrides,
       });
+      const auditStatus =
+        result.status === "PENDING"
+          ? "SUCCESS"
+          : result.status === "BLOCKED"
+            ? "BLOCKED"
+            : "DENIED";
       appendAuditLog({
         merchantId,
         action: "STRATEGY_PROPOSAL_CREATE",
-        status: "SUCCESS",
+        status: auditStatus,
         auth,
         details: {
           templateId: body.templateId,
           branchId: body.branchId || null,
-          proposalId: result.proposalId,
+          proposalId: result.proposalId || null,
+          decisionStatus: result.status || "UNKNOWN",
+          createdCount: Array.isArray(result.created) ? result.created.length : 0,
+          missingSlots: result.missingSlots || [],
+          reasons: result.reasons || [],
+          reason: result.reason || null,
         },
       });
-      wsHub.broadcast(merchantId, "STRATEGY_PROPOSAL_CREATED", result);
+      if (Array.isArray(result.created) && result.created.length > 0) {
+        wsHub.broadcast(merchantId, "STRATEGY_PROPOSAL_CREATED", result);
+      }
       sendJson(res, 200, result);
       return true;
     }

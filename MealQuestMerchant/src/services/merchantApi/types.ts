@@ -53,12 +53,34 @@ export interface TriggerRainEventResult {
 }
 
 export interface StrategyProposalResult {
-  proposalId: string;
-  status: 'PENDING' | 'APPROVED';
+  proposalId?: string;
+  status:
+    | 'PENDING'
+    | 'APPROVED'
+    | 'NEED_CLARIFICATION'
+    | 'BLOCKED'
+    | 'AI_UNAVAILABLE';
   title?: string;
   templateId?: string;
   branchId?: string;
-  campaignId: string;
+  campaignId?: string;
+  created?: Array<{
+    proposalId: string;
+    title: string;
+    templateId: string;
+    branchId: string;
+    campaignId: string;
+  }>;
+  blocked?: Array<{
+    title: string;
+    reasons: string[];
+  }>;
+  reasons?: string[];
+  questions?: string[];
+  missingSlots?: string[];
+  rationale?: string;
+  reason?: string;
+  confidence?: number | null;
 }
 
 export interface CampaignStatusResult {
