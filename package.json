@@ -8,7 +8,10 @@
     "lint": "node scripts/repo-task.js lint",
     "typecheck": "node scripts/repo-task.js typecheck",
     "test": "node scripts/repo-task.js test",
-    "verify": "node scripts/repo-task.js verify",
-    "verify:ci": "node scripts/repo-task.js ci"
+    "check:encoding": "node scripts/check-encoding.js",
+    "check:encoding:staged": "node scripts/check-encoding.js --staged",
+    "hooks:install": "git config core.hooksPath .githooks",
+    "verify": "npm run check:encoding && node scripts/repo-task.js verify",
+    "verify:ci": "npm run check:encoding && node scripts/repo-task.js ci"
   }
 }

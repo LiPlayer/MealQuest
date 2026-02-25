@@ -1,9 +1,16 @@
-# Docs Archive
+# Documentation Index
 
-`docs/archive/` stores superseded long-form documents that were merged into root-level consolidated docs.
+Use this folder as the single documentation entry point.
 
-Active consolidated docs:
-- `MealQuest_Test_Validation.md`
-- `MealQuest_Operations_Runbook.md`
+## Active Docs
+- `docs/specs/mealquest-spec.md`
+- `docs/specs/server-spec.md`
+- `docs/specs/merchant-spec.md`
+- `docs/specs/customer-spec.md`
+- `docs/specs/game-spec.md`
+- `docs/engineering/engineering-standards.md`
+- `docs/ops/operations-runbook.md`
+- `docs/qa/test-validation.md`
 
-Archived originals are kept for history and audit traceability.
+## Archive
+- `docs/archive/` keeps superseded long-form documents for history and audit traceability.

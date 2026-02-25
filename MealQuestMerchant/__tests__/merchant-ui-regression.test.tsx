@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
 
 jest.mock('react-native-safe-area-context', () => {
@@ -132,7 +132,7 @@ jest.mock('../src/services/merchantApi', () => ({
           messageId: 'msg_1',
           role: 'USER',
           type: 'TEXT',
-          text: 'æ˜Žå¤©åˆå¸‚æ‹‰æ–°20æ¡Œï¼Œé¢„ç®—æŽ§åˆ¶åœ¨200å…ƒä»¥å†…',
+          text: '明天午市拉新20桌，预算控制在200元以内',
           proposalId: null,
           metadata: null,
           createdAt: '2026-02-25T00:00:00.000Z',
@@ -232,7 +232,7 @@ describe('merchant ui regression flow', () => {
     await ReactTestRenderer.act(async () => {
       tree!.root
         .findByProps({testID: 'ai-intent-input'})
-        .props.onChangeText('æ˜Žå¤©åˆå¸‚æ‹‰æ–°20æ¡Œï¼Œé¢„ç®—æŽ§åˆ¶åœ¨200å…ƒä»¥å†…');
+        .props.onChangeText('明天午市拉新20桌，预算控制在200元以内');
       await flush(2);
     });
 

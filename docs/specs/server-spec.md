@@ -1,6 +1,6 @@
 # 餐餐有戏 - 服务端技术架构规范 (Master-Aligned V2.0)
 
-> 依据：`MealQuest_Spec.md`（唯一标准）
+> 依据：`mealquest-spec.md`（唯一标准）
 > 目标：构建可运行的核心后端闭环，承载资产账本、支付核销、退款回溯、TCA 执行与策略确认。
 
 ---

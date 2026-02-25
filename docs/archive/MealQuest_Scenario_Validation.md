@@ -1,6 +1,6 @@
 # MealQuest 场景推演与反推验证（2026-02-21）
 
-> 基准文档：`MealQuest_Spec.md`
+> 基准文档：`mealquest-spec.md`
 > 验证目标：从“用户/商户”双角色推演，反查文档与代码是否形成闭环。
 
 ---
@@ -14,7 +14,7 @@
 3. 首页展示门店资产卡，不出现平台化门店列表。
 
 反推：
-1. 文档：`MealQuest_Customer_Spec.md` 2.1、3.3。
+1. 文档：`customer-spec.md` 2.1、3.3。
 2. 代码：`meal-quest-customer/src/pages/startup/index.tsx`。
 3. 测试：`meal-quest-customer/test/pages/startup.test.tsx`。
 
@@ -27,7 +27,7 @@
 3. 返回可解释抵扣明细与支付单号。
 
 反推：
-1. 文档：`MealQuest_Customer_Spec.md` 3.2。
+1. 文档：`customer-spec.md` 3.2。
 2. 代码：
    - `meal-quest-customer/src/domain/smartCheckout.ts`
    - `MealQuestServer/src/core/smartCheckout.js`
@@ -45,7 +45,7 @@
 3. 失效 token 被清空，避免持续使用脏凭证。
 
 反推：
-1. 文档：`MealQuest_Customer_Spec.md` 4.3、6.1。
+1. 文档：`customer-spec.md` 4.3、6.1。
 2. 代码：
    - `meal-quest-customer/src/services/DataService.ts`
    - `meal-quest-customer/src/services/ApiDataService.ts`
@@ -60,7 +60,7 @@
 3. 顾客二次确认后执行注销，成功后回到启动页并清理会话。
 
 反推：
-1. 文档：`MealQuest_Customer_Spec.md` 2.1、2.3、4.1、6.1。
+1. 文档：`customer-spec.md` 2.1、2.3、4.1、6.1。
 2. 代码：
    - `meal-quest-customer/src/pages/account/index.tsx`
    - `meal-quest-customer/src/services/DataService.ts`
@@ -83,7 +83,7 @@
 3. 天气触发后策略执行并消耗预算。
 
 反推：
-1. 文档：`MealQuest_Merchant_Spec.md` 2.2、4.1、4.2。
+1. 文档：`merchant-spec.md` 2.2、4.1、4.2。
 2. 代码：
    - `MealQuestMerchant/src/domain/merchantEngine.ts`
    - `MealQuestServer/src/services/merchantService.js`
@@ -100,7 +100,7 @@
 3. 实时事件流收到熔断状态变更。
 
 反推：
-1. 文档：`MealQuest_Merchant_Spec.md` 2.4、4.2。
+1. 文档：`merchant-spec.md` 2.4、4.2。
 2. 代码：
    - `MealQuestMerchant/App.tsx`
    - `MealQuestServer/src/core/tcaEngine.js`
@@ -119,7 +119,7 @@
 3. 点击事件可展开 payload，支持复制详情用于排障。
 
 反推：
-1. 文档：`MealQuest_Merchant_Spec.md` 2.3、5.1、6.2。
+1. 文档：`merchant-spec.md` 2.3、5.1、6.2。
 2. 代码：
    - `MealQuestMerchant/App.tsx`
    - `MealQuestMerchant/src/services/realtimeEventViewModel.ts`
@@ -137,7 +137,7 @@
 3. 点击“加载更多”获取下一页历史记录。
 
 反推：
-1. 文档：`MealQuest_Merchant_Spec.md` 2.5、5.1、6.2。
+1. 文档：`merchant-spec.md` 2.5、5.1、6.2。
 2. 代码：
    - `MealQuestMerchant/App.tsx`
    - `MealQuestMerchant/src/services/merchantApi.ts`
@@ -158,7 +158,7 @@
 2. 退款优先回收赠送金，不足回收本金。
 
 反推：
-1. 文档：`MealQuest_Server_Spec.md` 4.1、4.2、6。
+1. 文档：`server-spec.md` 4.1、4.2、6。
 2. 代码：
    - `MealQuestServer/src/core/clawback.js`
    - `MealQuestServer/src/services/paymentService.js`
@@ -175,7 +175,7 @@
 3. `OWNER` 拥有完整经营控制权限。
 
 反推：
-1. 文档：`MealQuest_Server_Spec.md` 5.1.1。
+1. 文档：`server-spec.md` 5.1.1。
 2. 代码：
    - `MealQuestServer/src/http/server.js`
    - `MealQuestServer/src/core/auth.js`
@@ -189,7 +189,7 @@
 2. 服务重启后，持久化模式仍保留已写状态。
 
 反推：
-1. 文档：`MealQuest_Server_Spec.md` 5.1.2、7.2。
+1. 文档：`server-spec.md` 5.1.2、7.2。
 2. 代码：
    - `MealQuestServer/src/core/websocketHub.js`
    - `MealQuestServer/src/store/persistentDb.js`
@@ -204,7 +204,7 @@
 3. `m_bistro` 管理员尝试退款 `m_store_001` 的支付单，应被拒绝。
 
 反推：
-1. 文档：`MealQuest_Server_Spec.md` 3.1、3.3、6、7.2。
+1. 文档：`server-spec.md` 3.1、3.3、6、7.2。
 2. 代码：
    - `MealQuestServer/src/store/inMemoryDb.js`
    - `MealQuestServer/src/services/paymentService.js`
@@ -220,7 +220,7 @@
 3. 在 `m_bistro` 支付后，支付记录落专库，不落默认库。
 
 反推：
-1. 文档：`MealQuest_Server_Spec.md` 7.2、10。
+1. 文档：`server-spec.md` 7.2、10。
 2. 代码：
    - `MealQuestServer/src/core/tenantRouter.js`
    - `MealQuestServer/src/http/server.js`
@@ -235,7 +235,7 @@
 3. 店长切换熔断，记录 `KILL_SWITCH_SET/SUCCESS`。
 
 反推：
-1. 文档：`MealQuest_Server_Spec.md` 6、7.2、10。
+1. 文档：`server-spec.md` 6、7.2、10。
 2. 代码：
    - `MealQuestServer/src/store/inMemoryDb.js`
    - `MealQuestServer/src/store/tenantRepository.js`
@@ -252,7 +252,7 @@
 4. 审计日志支持按 `action/status` 精准筛选。
 
 反推：
-1. 文档：`MealQuest_Server_Spec.md` 5.1、6、7.2。
+1. 文档：`server-spec.md` 5.1、6、7.2。
 2. 代码：
    - `MealQuestServer/src/http/server.js`
    - `MealQuestServer/src/store/tenantRepository.js`
@@ -266,7 +266,7 @@
 2. 商户越权查询其它商户在线状态应被拒绝（`merchant scope denied`）。
 
 反推：
-1. 文档：`MealQuest_Server_Spec.md` 5.1、6、7.2、10。
+1. 文档：`server-spec.md` 5.1、6、7.2、10。
 2. 代码：
    - `MealQuestServer/src/http/server.js`
 3. 测试：`MealQuestServer/test/http.integration.test.js`（websocket push 用例）。
@@ -280,7 +280,7 @@
 3. 单商户超限不应影响其他商户正常写入。
 
 反推：
-1. 文档：`MealQuest_Server_Spec.md` 6、7.2、11。
+1. 文档：`server-spec.md` 6、7.2、11。
 2. 代码：
    - `MealQuestServer/src/core/tenantPolicy.js`
    - `MealQuestServer/src/http/server.js`
@@ -295,7 +295,7 @@
 3. 非 `OWNER`（如 `MANAGER`）更新策略应返回 `permission denied`。
 
 反推：
-1. 文档：`MealQuest_Server_Spec.md` 5.3、6、7.2。
+1. 文档：`server-spec.md` 5.3、6、7.2。
 2. 代码：
    - `MealQuestServer/src/http/server.js`
    - `MealQuestServer/src/core/tenantPolicy.js`
@@ -310,7 +310,7 @@
 3. 重启后支付写接口仍被 `TENANT_WRITE_DISABLED` 阻断。
 
 反推：
-1. 文档：`MealQuest_Server_Spec.md` 3.2、7.2、10。
+1. 文档：`server-spec.md` 3.2、7.2、10。
 2. 代码：
    - `MealQuestServer/src/store/inMemoryDb.js`
    - `MealQuestServer/src/http/server.js`
@@ -325,7 +325,7 @@
 3. 执行 `UNFREEZE_WRITE` 后迁移状态变 `RUNNING`，支付写操作恢复。
 
 反推：
-1. 文档：`MealQuest_Server_Spec.md` 5.3、7.2、10。
+1. 文档：`server-spec.md` 5.3、7.2、10。
 2. 代码：
    - `MealQuestServer/src/http/server.js`
    - `MealQuestServer/src/store/inMemoryDb.js`
@@ -340,7 +340,7 @@
 3. 服务重启后商户仍绑定专库，写流量不回流共享库。
 
 反推：
-1. 文档：`MealQuest_Server_Spec.md` 3.2、5.3、7.2、10。
+1. 文档：`server-spec.md` 3.2、5.3、7.2、10。
 2. 代码：
    - `MealQuestServer/src/http/server.js`
    - `MealQuestServer/src/store/inMemoryDb.js`
@@ -356,7 +356,7 @@
 3. 回滚后新支付应落共享库，不再写入专库。
 
 反推：
-1. 文档：`MealQuest_Server_Spec.md` 5.3、7.2、10。
+1. 文档：`server-spec.md` 5.3、7.2、10。
 2. 代码：
    - `MealQuestServer/src/http/server.js`
    - `MealQuestServer/src/core/tenantRouter.js`
@@ -371,7 +371,7 @@
 3. 合法签名回调后订单状态转为 `PAID`，并可继续退款与开票流程。
 
 反推：
-1. 文档：`MealQuest_Server_Spec.md` 5.2、6、10。
+1. 文档：`server-spec.md` 5.2、6、10。
 2. 代码：
    - `MealQuestServer/src/services/paymentService.js`
    - `MealQuestServer/src/http/server.js`
@@ -386,7 +386,7 @@
 3. 发票可按商户/用户查询。
 
 反推：
-1. 文档：`MealQuest_Server_Spec.md` 5.2.1、6、10。
+1. 文档：`server-spec.md` 5.2.1、6、10。
 2. 代码：
    - `MealQuestServer/src/services/invoiceService.js`
    - `MealQuestServer/src/http/server.js`
@@ -401,7 +401,7 @@
 3. 删除动作执行后用户进入匿名化状态（`isDeleted=true`）。
 
 反推：
-1. 文档：`MealQuest_Server_Spec.md` 5.2.1、6、10。
+1. 文档：`server-spec.md` 5.2.1、6、10。
 2. 代码：
    - `MealQuestServer/src/services/privacyService.js`
    - `MealQuestServer/src/http/server.js`
@@ -417,7 +417,7 @@
 4. 将策略置为 `PAUSED` 后，相同事件不应再命中。
 
 反推：
-1. 文档：`MealQuest_Server_Spec.md` 5.3、7.2；`MealQuest_Merchant_Spec.md` 2.3、2.4。
+1. 文档：`server-spec.md` 5.3、7.2；`merchant-spec.md` 2.3、2.4。
 2. 代码：
    - `MealQuestServer/src/services/strategyLibrary.js`
    - `MealQuestServer/src/services/merchantService.js`
@@ -435,7 +435,7 @@
 4. 核验动作必须进入审计日志，支持追责。
 
 反推：
-1. 文档：`MealQuest_Server_Spec.md` 3.3、5.3、6。
+1. 文档：`server-spec.md` 3.3、5.3、6。
 2. 代码：
    - `MealQuestServer/src/services/supplierService.js`
    - `MealQuestServer/src/http/server.js`
@@ -450,7 +450,7 @@
 3. 急售策略创建动作广播实时事件并记审计。
 
 反推：
-1. 文档：`MealQuest_Server_Spec.md` 5.3、6；`MealQuest_Merchant_Spec.md` 2.4。
+1. 文档：`server-spec.md` 5.3、6；`merchant-spec.md` 2.4。
 2. 代码：
    - `MealQuestServer/src/services/merchantService.js`
    - `MealQuestServer/src/http/server.js`
@@ -465,7 +465,7 @@
 3. 支付响应返回 `walletScope`，可追溯命中的共享钱包来源。
 
 反推：
-1. 文档：`MealQuest_Server_Spec.md` 3.2、5.3；`MealQuest_Merchant_Spec.md` 2.5。
+1. 文档：`server-spec.md` 3.2、5.3；`merchant-spec.md` 2.5。
 2. 代码：
    - `MealQuestServer/src/services/allianceService.js`
    - `MealQuestServer/src/services/paymentService.js`
@@ -480,7 +480,7 @@
 2. `/api/social/*` 接口已从服务端移除，不再提供转赠/红包/请客能力。
 
 反推：
-1. 文档：`MealQuest_Server_Spec.md` 5.3（社交接口已移除说明）；`MealQuest_Merchant_Spec.md` 2.6。
+1. 文档：`server-spec.md` 5.3（社交接口已移除说明）；`merchant-spec.md` 2.6。
 2. 代码：`MealQuestServer/src/http/server.js`（不存在 `/api/social/*` 路由）。
 3. 测试：`MealQuestServer/test/http.integration.test.js`（social/treat endpoint removed 用例）。
 
@@ -492,7 +492,7 @@
 2. 服务端不再提供请客会话创建/参与/结算接口。
 
 反推：
-1. 文档：`MealQuest_Server_Spec.md` 5.3（社交接口已移除说明）；`MealQuest_Merchant_Spec.md` 2.6。
+1. 文档：`server-spec.md` 5.3（社交接口已移除说明）；`merchant-spec.md` 2.6。
 2. 代码：`MealQuestServer/src/http/server.js`（不存在 treat session 路由）。
 3. 测试：`MealQuestServer/test/http.integration.test.js`（social/treat endpoint removed 用例）。
 
@@ -505,7 +505,7 @@
 3. 历史交易记录保留但用户标识匿名化（满足合规留存与隐私删除并行）。
 
 反推：
-1. 文档：`MealQuest_Server_Spec.md` 5.2.1、6；`MealQuest_Customer_Spec.md` 6.1。
+1. 文档：`server-spec.md` 5.2.1、6；`customer-spec.md` 6.1。
 2. 代码：
    - `MealQuestServer/src/services/privacyService.js`
    - `MealQuestServer/src/http/server.js`
@@ -520,7 +520,7 @@
 3. 顾客跨商户查询应返回 `merchant scope denied`。
 
 反推：
-1. 文档：`MealQuest_Server_Spec.md` 5.2、5.2.1、6；`MealQuest_Customer_Spec.md` 4.1、6.1。
+1. 文档：`server-spec.md` 5.2、5.2.1、6；`customer-spec.md` 4.1、6.1。
 2. 代码：
    - `MealQuestServer/src/http/server.js`
    - `meal-quest-customer/src/services/ApiDataService.ts`

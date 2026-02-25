@@ -1,16 +1,16 @@
 # “餐餐有戏/MealQuest”平台产品全景定义白皮书 (V12.0 - 结构优化版)
 
 > **关联文档**:
-> *   [餐餐有戏 - 顾客端产品全景需求 (Master Customer Spec)](./MealQuest_Customer_Spec.md)
-> *   [有戏掌柜 - 商户端产品全景需求 (Master Merchant Spec)](./MealQuest_Merchant_Spec.md)
-> *   [餐餐有戏 - 服务端技术架构规范 (Master Server Spec)](./MealQuest_Server_Spec.md)
-> *   [餐餐有戏 - 游戏化全景需求 (Master Game Spec)](./MealQuest_Game_Spec.md)
-> *   [MealQuest 测试与验证总册](./MealQuest_Test_Validation.md)
-> *   [MealQuest 运维与发布总手册](./MealQuest_Operations_Runbook.md)
-> *   [MealQuest Engineering Standards](./ENGINEERING_STANDARDS.md)
-> *   [归档文档说明](./docs/README.md)
+> *   [餐餐有戏 - 顾客端产品全景需求 (Master Customer Spec)](./customer-spec.md)
+> *   [有戏掌柜 - 商户端产品全景需求 (Master Merchant Spec)](./merchant-spec.md)
+> *   [餐餐有戏 - 服务端技术架构规范 (Master Server Spec)](./server-spec.md)
+> *   [餐餐有戏 - 游戏化全景需求 (Master Game Spec)](./game-spec.md)
+> *   [MealQuest 测试与验证总册](../qa/test-validation.md)
+> *   [MealQuest 运维与发布总手册](../ops/operations-runbook.md)
+> *   [MealQuest Engineering Standards](../engineering/engineering-standards.md)
+> *   [归档文档说明](../README.md)
 >
-> **推荐阅读顺序**: `MealQuest_Spec.md` -> 三端 Master Spec -> `MealQuest_Test_Validation.md` -> `MealQuest_Operations_Runbook.md`
+> **推荐阅读顺序**: `mealquest-spec.md` -> 三端 Master Spec -> `test-validation.md` -> `operations-runbook.md`
 
 
 ## 一、 项目愿景与核心治理原则 (Vision & Principles)

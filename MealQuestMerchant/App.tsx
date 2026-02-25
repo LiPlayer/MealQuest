@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -53,35 +53,35 @@ type AuditStatusFilter = 'ALL' | 'SUCCESS' | 'DENIED' | 'BLOCKED' | 'FAILED';
 type AuditTimeRange = '24H' | '7D' | 'ALL';
 
 const AUDIT_ACTION_OPTIONS: { value: AuditActionFilter; label: string }[] = [
-  { value: 'ALL', label: 'å…¨éƒ¨åŠ¨ä½œ' },
-  { value: 'PAYMENT_VERIFY', label: 'æ”¯ä»˜' },
-  { value: 'PAYMENT_REFUND', label: 'é€€æ¬¾' },
-  { value: 'PRIVACY_CANCEL', label: 'é¡¾å®¢æ³¨é”€' },
-  { value: 'PROPOSAL_CONFIRM', label: 'ææ¡ˆç¡®è®¤' },
-  { value: 'STRATEGY_CHAT_SESSION_CREATE', label: 'å¯¹è¯ä¼šè¯åˆ›å»º' },
-  { value: 'STRATEGY_CHAT_MESSAGE', label: 'AIå¯¹è¯æ¶ˆæ¯' },
-  { value: 'STRATEGY_CHAT_REVIEW', label: 'AIç­–ç•¥å®¡æ ¸' },
-  { value: 'CAMPAIGN_STATUS_SET', label: 'æ´»åŠ¨å¯åœ' },
-  { value: 'FIRE_SALE_CREATE', label: 'æ€¥å”®' },
-  { value: 'SUPPLIER_VERIFY', label: 'ä¾›åº”å•†æ ¸éªŒ' },
-  { value: 'ALLIANCE_CONFIG_SET', label: 'è”ç›Ÿé…ç½®' },
-  { value: 'ALLIANCE_SYNC_USER', label: 'è”ç›ŸåŒæ­¥' },
-  { value: 'KILL_SWITCH_SET', label: 'ç†”æ–­' },
+  { value: 'ALL', label: '全部动作' },
+  { value: 'PAYMENT_VERIFY', label: '支付' },
+  { value: 'PAYMENT_REFUND', label: '退款' },
+  { value: 'PRIVACY_CANCEL', label: '顾客注销' },
+  { value: 'PROPOSAL_CONFIRM', label: '提案确认' },
+  { value: 'STRATEGY_CHAT_SESSION_CREATE', label: '对话会话创建' },
+  { value: 'STRATEGY_CHAT_MESSAGE', label: 'AI对话消息' },
+  { value: 'STRATEGY_CHAT_REVIEW', label: 'AI策略审核' },
+  { value: 'CAMPAIGN_STATUS_SET', label: '活动启停' },
+  { value: 'FIRE_SALE_CREATE', label: '急售' },
+  { value: 'SUPPLIER_VERIFY', label: '供应商核验' },
+  { value: 'ALLIANCE_CONFIG_SET', label: '联盟配置' },
+  { value: 'ALLIANCE_SYNC_USER', label: '联盟同步' },
+  { value: 'KILL_SWITCH_SET', label: '熔断' },
   { value: 'TCA_TRIGGER', label: 'TCA' },
 ];
 
 const AUDIT_STATUS_OPTIONS: { value: AuditStatusFilter; label: string }[] = [
-  { value: 'ALL', label: 'å…¨éƒ¨çŠ¶æ€' },
-  { value: 'SUCCESS', label: 'æˆåŠŸ' },
-  { value: 'DENIED', label: 'æ‹’ç»' },
-  { value: 'BLOCKED', label: 'é˜»æ–­' },
-  { value: 'FAILED', label: 'å¤±è´¥' },
+  { value: 'ALL', label: '全部状态' },
+  { value: 'SUCCESS', label: '成功' },
+  { value: 'DENIED', label: '拒绝' },
+  { value: 'BLOCKED', label: '阻断' },
+  { value: 'FAILED', label: '失败' },
 ];
 
 const AUDIT_TIME_OPTIONS: { value: AuditTimeRange; label: string }[] = [
-  { value: '24H', label: '24å°æ—¶' },
-  { value: '7D', label: '7å¤©' },
-  { value: 'ALL', label: 'å…¨éƒ¨æ—¶é—´' },
+  { value: '24H', label: '24小时' },
+  { value: '7D', label: '7天' },
+  { value: 'ALL', label: '全部时间' },
 ];
 
 function buildAuditStartTime(range: AuditTimeRange): string {
@@ -115,7 +115,7 @@ type StrategyChatSnapshot = Pick<
 
 function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
   const [merchantState, setMerchantState] = useState(createInitialMerchantState);
-  const [lastAction, setLastAction] = useState('æ­£åœ¨è¿žæŽ¥...');
+  const [lastAction, setLastAction] = useState('正在连接...');
   const remoteToken = initialToken || null;
 
   const [realtimeEvents, setRealtimeEvents] = useState<RealtimeEventRow[]>([]);
@@ -165,13 +165,13 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
       const clipboard = (globalThis as any)?.navigator?.clipboard;
       if (clipboard?.writeText) {
         await clipboard.writeText(detail);
-        setLastAction('å·²å¤åˆ¶è¯¦æƒ…');
+        setLastAction('已复制详情');
         return;
       }
     } catch {
       // ignore and fallback
     }
-    setLastAction('å½“å‰çŽ¯å¢ƒä¸æ”¯æŒä¸€é”®å¤åˆ¶ï¼Œè¯·é•¿æŒ‰æ–‡æœ¬å¤åˆ¶');
+    setLastAction('当前环境不支持一键复制，请长按文本复制');
   };
 
   const refreshRemoteState = async (token: string) => {
@@ -261,7 +261,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
 
     const bootstrapRemote = async () => {
       try {
-        setLastAction('å·²è¿žæŽ¥æœåŠ¡ç«¯é©¾é©¶èˆ±');
+        setLastAction('已连接服务端驾驶舱');
         await refreshRemoteState(remoteToken);
 
         const wsUrl = MerchantApi.getWsUrl(remoteToken);
@@ -273,7 +273,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
                 return;
               }
               appendRealtimeEvent(buildRealtimeEventRow(message));
-              setLastAction(`å®žæ—¶äº‹ä»¶ï¼š${message.type}`);
+              setLastAction(`实时事件：${message.type}`);
               refreshRemoteState(remoteToken).catch(() => { });
             },
             onError: () => {
@@ -283,7 +283,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
               appendRealtimeEvent(
                 buildSystemEventRow({
                   type: 'SYSTEM_WS_ERROR',
-                  detail: 'å·²ä¿æŒ HTTP è½®è¯¢æ¨¡å¼',
+                  detail: '已保持 HTTP 轮询模式',
                 }),
               );
             },
@@ -292,7 +292,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
           appendRealtimeEvent(
             buildSystemEventRow({
               type: 'SYSTEM_WS_CONNECTED',
-              detail: 'æ­£åœ¨ç›‘å¬ PAYMENT/TCA/KILL_SWITCH ç­‰äº‹ä»¶',
+              detail: '正在监听 PAYMENT/TCA/KILL_SWITCH 等事件',
             }),
           );
         }
@@ -300,7 +300,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
         if (!active) {
           return;
         }
-        setLastAction('è¿œç¨‹ä¼šè¯å¤±æ•ˆï¼Œè¯·é‡æ–°ç™»å½•');
+        setLastAction('远程会话失效，请重新登录');
       }
     };
 
@@ -335,12 +335,12 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
 
   const onCreateIntentProposal = async () => {
     if (!remoteToken) {
-      setLastAction('è¿žæŽ¥æœªå°±ç»ª');
+      setLastAction('连接未就绪');
       return;
     }
     const intent = aiIntentDraft.trim();
     if (intent.length < 4) {
-      setLastAction('è¯·è¾“å…¥æ›´å…·ä½“çš„ç»è¥éœ€æ±‚ï¼ˆè‡³å°‘4ä¸ªå­—ï¼‰');
+      setLastAction('请输入更具体的经营需求（至少4个字）');
       return;
     }
     setAiIntentSubmitting(true);
@@ -354,19 +354,19 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
       await refreshAuditLogs(remoteToken);
       setAiIntentDraft('');
       if (result.status === 'PENDING_REVIEW') {
-        setLastAction('AI å·²ç”Ÿæˆç­–ç•¥ï¼Œè¯·ç«‹å³ç¡®è®¤æˆ–æ‹’ç»');
+        setLastAction('AI 已生成策略，请立即确认或拒绝');
       } else if (result.status === 'REVIEW_REQUIRED') {
-        setLastAction('å­˜åœ¨å¾…å®¡æ ¸ç­–ç•¥ï¼Œè¯·å…ˆç¡®è®¤æˆ–æ‹’ç»');
+        setLastAction('存在待审核策略，请先确认或拒绝');
       } else if (result.status === 'BLOCKED') {
         const reasons = (result.reasons || []).slice(0, 2).join('; ');
-        setLastAction(reasons ? `ç­–ç•¥è¢«é£ŽæŽ§æ‹¦æˆªï¼š${reasons}` : 'ç­–ç•¥è¢«é£ŽæŽ§æ‹¦æˆªï¼Œè¯·è°ƒæ•´åŽé‡è¯•');
+        setLastAction(reasons ? `策略被风控拦截：${reasons}` : '策略被风控拦截，请调整后重试');
       } else if (result.status === 'AI_UNAVAILABLE') {
-        setLastAction(result.reason ? `AI æ¨¡åž‹ä¸å¯ç”¨ï¼š${result.reason}` : 'AI æ¨¡åž‹ä¸å¯ç”¨ï¼Œè¯·ç¨åŽé‡è¯•');
+        setLastAction(result.reason ? `AI 模型不可用：${result.reason}` : 'AI 模型不可用，请稍后重试');
       } else {
-        setLastAction('AI å·²å›žå¤ï¼Œè¯·ç»§ç»­å¯¹è¯');
+        setLastAction('AI 已回复，请继续对话');
       }
     } catch {
-      setLastAction('AI å¯¹è¯å¤±è´¥ï¼Œè¯·ç¨åŽé‡è¯•');
+      setLastAction('AI 对话失败，请稍后重试');
     } finally {
       setAiIntentSubmitting(false);
     }
@@ -374,11 +374,11 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
 
   const onReviewPendingStrategy = async (decision: 'APPROVE' | 'REJECT') => {
     if (!remoteToken) {
-      setLastAction('è¿žæŽ¥æœªå°±ç»ª');
+      setLastAction('连接未就绪');
       return;
     }
     if (!strategyChatPendingReview || !strategyChatPendingReview.proposalId) {
-      setLastAction('æš‚æ— å¾…å®¡æ ¸ç­–ç•¥');
+      setLastAction('暂无待审核策略');
       return;
     }
     try {
@@ -391,18 +391,18 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
       await refreshRemoteState(remoteToken);
       await refreshAuditLogs(remoteToken);
       if (result.status === 'APPROVED') {
-        setLastAction('ç­–ç•¥å·²ç¡®è®¤å¹¶ç”Ÿæ•ˆ');
+        setLastAction('策略已确认并生效');
       } else {
-        setLastAction('ç­–ç•¥å·²æ‹’ç»ï¼Œå¯ç»§ç»­å¯¹è¯è°ƒæ•´');
+        setLastAction('策略已拒绝，可继续对话调整');
       }
     } catch {
-      setLastAction('ç­–ç•¥å®¡æ ¸å¤±è´¥ï¼Œè¯·ç¨åŽé‡è¯•');
+      setLastAction('策略审核失败，请稍后重试');
     }
   };
 
   const onCreateFireSale = async () => {
     if (!remoteToken) {
-      setLastAction('è¿žæŽ¥æœªå°±ç»ª');
+      setLastAction('连接未就绪');
       return;
     }
     const response = await MerchantApi.createFireSale(remoteToken, {
@@ -413,7 +413,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
     });
     await refreshRemoteState(remoteToken);
     await refreshAuditLogs(remoteToken);
-    setLastAction(`æ€¥å”®å·²ä¸Šçº¿ï¼š${response.campaignId}`);
+    setLastAction(`急售已上线：${response.campaignId}`);
   };
 
   const onSetCampaignStatus = async (
@@ -421,7 +421,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
     status: 'ACTIVE' | 'PAUSED' | 'ARCHIVED',
   ) => {
     if (!remoteToken) {
-      setLastAction('è¿žæŽ¥æœªå°±ç»ª');
+      setLastAction('连接未就绪');
       return;
     }
     const response = await MerchantApi.setCampaignStatus(remoteToken, {
@@ -430,16 +430,16 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
     });
     await refreshRemoteState(remoteToken);
     await refreshAuditLogs(remoteToken);
-    setLastAction(`æ´»åŠ¨çŠ¶æ€å·²æ›´æ–°ï¼š${response.campaignId} -> ${response.status}`);
+    setLastAction(`活动状态已更新：${response.campaignId} -> ${response.status}`);
   };
 
   const onToggleAllianceWalletShared = async () => {
     if (!remoteToken) {
-      setLastAction('è¿žæŽ¥æœªå°±ç»ª');
+      setLastAction('连接未就绪');
       return;
     }
     if (!allianceConfig) {
-      setLastAction('è”ç›Ÿé…ç½®åŠ è½½ä¸­ï¼Œè¯·ç¨åŽ');
+      setLastAction('联盟配置加载中，请稍后');
       return;
     }
     const response = await MerchantApi.setAllianceConfig(remoteToken, {
@@ -450,12 +450,12 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
     });
     setAllianceConfig(response);
     await refreshAuditLogs(remoteToken);
-    setLastAction(`è¿žé”é’±åŒ…äº’é€šå·²${response.walletShared ? 'å¼€å¯' : 'å…³é—­'}`);
+    setLastAction(`连锁钱包互通已${response.walletShared ? '开启' : '关闭'}`);
   };
 
   const onSyncAllianceUser = async () => {
     if (!remoteToken) {
-      setLastAction('è¿žæŽ¥æœªå°±ç»ª');
+      setLastAction('连接未就绪');
       return;
     }
     const response = await MerchantApi.syncAllianceUser(remoteToken, {
@@ -463,7 +463,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
     });
     await refreshAllianceData(remoteToken);
     await refreshAuditLogs(remoteToken);
-    setLastAction(`è·¨åº—ç”¨æˆ·åŒæ­¥å®Œæˆï¼š${response.syncedStores.join(', ')}`);
+    setLastAction(`跨店用户同步完成：${response.syncedStores.join(', ')}`);
   };
 
   const onTriggerEvent = async (
@@ -481,17 +481,17 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
       await refreshRemoteState(remoteToken);
       await refreshAuditLogs(remoteToken);
       if (triggerResult.blockedByKillSwitch) {
-        setLastAction('ç†”æ–­ä¸­ï¼Œç­–ç•¥æœªæ‰§è¡Œ');
+        setLastAction('熔断中，策略未执行');
       } else if (executed.length > 0) {
-        setLastAction(`${label}æ‰§è¡Œï¼š${executed.join(', ')}`);
+        setLastAction(`${label}执行：${executed.join(', ')}`);
       } else {
-        setLastAction(`${label}æ— åŒ¹é…ç­–ç•¥`);
+        setLastAction(`${label}无匹配策略`);
       }
       return;
     }
 
     if (event !== 'WEATHER_CHANGE') {
-      setLastAction('æœ¬åœ°æ¨¡å¼ä»…æ”¯æŒ WEATHER_CHANGE æ¼”ç»ƒ');
+      setLastAction('本地模式仅支持 WEATHER_CHANGE 演练');
       return;
     }
     setMerchantState(prev => {
@@ -499,11 +499,11 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
         weather: context.weather as string,
       });
       if (result.blockedByKillSwitch) {
-        setLastAction('ç†”æ–­ä¸­ï¼Œç­–ç•¥æœªæ‰§è¡Œ');
+        setLastAction('熔断中，策略未执行');
       } else if (result.executedIds.length > 0) {
-        setLastAction(`å·²æ‰§è¡Œç­–ç•¥ï¼š${result.executedIds.join(', ')}`);
+        setLastAction(`已执行策略：${result.executedIds.join(', ')}`);
       } else {
-        setLastAction('æ— åŒ¹é…ç­–ç•¥æ‰§è¡Œ');
+        setLastAction('无匹配策略执行');
       }
       return result.nextState;
     });
@@ -515,19 +515,19 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
       await MerchantApi.setKillSwitch(remoteToken, targetEnabled);
       await refreshRemoteState(remoteToken);
       await refreshAuditLogs(remoteToken);
-      setLastAction(targetEnabled ? 'å·²å¼€å¯é¢„ç®—ç†”æ–­' : 'å·²å…³é—­é¢„ç®—ç†”æ–­');
+      setLastAction(targetEnabled ? '已开启预算熔断' : '已关闭预算熔断');
       return;
     }
 
     setMerchantState(prev => {
       const nextEnabled = !prev.killSwitchEnabled;
-      setLastAction(nextEnabled ? 'å·²å¼€å¯é¢„ç®—ç†”æ–­' : 'å·²å…³é—­é¢„ç®—ç†”æ–­');
+      setLastAction(nextEnabled ? '已开启预算熔断' : '已关闭预算熔断');
       return toggleKillSwitch(prev, nextEnabled);
     });
   };
 
   const onTriggerRainyEvent = async () => {
-    await onTriggerEvent('WEATHER_CHANGE', { weather: 'RAIN' }, 'æš´é›¨äº‹ä»¶');
+    await onTriggerEvent('WEATHER_CHANGE', { weather: 'RAIN' }, '暴雨事件');
   };
 
   const onVerifyCashier = () => {
@@ -538,7 +538,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
       principalBalance: 20,
     });
     setLastAction(
-      `æ™ºèƒ½æ ¸é”€å®Œæˆï¼Œå¤–éƒ¨æ”¯ä»˜ Â¥${settlement.payable.toFixed(2)}ï¼ˆåˆ¸ ${settlement.deduction.voucher.toFixed(2)}ï¼‰`,
+      `智能核销完成，外部支付 ¥${settlement.payable.toFixed(2)}（券 ${settlement.deduction.voucher.toFixed(2)}）`,
     );
   };
 
@@ -574,8 +574,8 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
             <View style={styles.heroHead}>
               <View style={styles.heroHeadTextWrap}>
                 <Text style={styles.heroKicker}>MealQuest Merchant OS</Text>
-                <Text style={styles.appTitle}>æœ‰æˆæŽŒæŸœé©¾é©¶èˆ±</Text>
-                <Text style={styles.appSubtitle}>èšåˆæ”¶é“¶ã€ç­–ç•¥ç¡®è®¤ã€å•†ä¸šæ´žå¯Ÿä¸€ä½“åŒ–</Text>
+                <Text style={styles.appTitle}>有戏掌柜驾驶舱</Text>
+                <Text style={styles.appSubtitle}>聚合收银、策略确认、商业洞察一体化</Text>
               </View>
               <View
                 style={[
@@ -587,49 +587,49 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
                     styles.modePillText,
                     styles.modePillTextRemote,
                   ]}>
-                  {remoteToken ? 'å·²è¿žæŽ¥' : 'è¿žæŽ¥ä¸­'}
+                  {remoteToken ? '已连接' : '连接中'}
                 </Text>
               </View>
             </View>
 
             <View style={styles.heroStatsRow}>
               <View style={styles.heroStatCard}>
-                <Text style={styles.heroStatLabel}>é¢„ç®—ä½¿ç”¨</Text>
+                <Text style={styles.heroStatLabel}>预算使用</Text>
                 <Text style={styles.heroStatValue}>{budgetUsagePercent}%</Text>
-                <Text style={styles.heroStatHint}>å‰©ä½™ Â¥{budgetRemaining.toFixed(2)}</Text>
+                <Text style={styles.heroStatHint}>剩余 ¥{budgetRemaining.toFixed(2)}</Text>
               </View>
               <View style={styles.heroStatCard}>
-                <Text style={styles.heroStatLabel}>è¿›è¡Œä¸­æ´»åŠ¨</Text>
+                <Text style={styles.heroStatLabel}>进行中活动</Text>
                 <Text style={styles.heroStatValue}>{activeCampaignCount}</Text>
                 <Text style={styles.heroStatHint}>
-                  å…± {merchantState.activeCampaigns.length} ä¸ªæ´»åŠ¨
+                  共 {merchantState.activeCampaigns.length} 个活动
                 </Text>
               </View>
               <View style={styles.heroStatCard}>
-                <Text style={styles.heroStatLabel}>å¾…åŠžç­–ç•¥</Text>
+                <Text style={styles.heroStatLabel}>待办策略</Text>
                 <Text style={styles.heroStatValue}>{pendingReviewCount}</Text>
                 <Text style={styles.heroStatHint}>
-                  {merchantState.killSwitchEnabled ? 'ç†”æ–­ä¿æŠ¤ä¸­' : 'ç³»ç»Ÿè¿è¡Œä¸­'}
+                  {merchantState.killSwitchEnabled ? '熔断保护中' : '系统运行中'}
                 </Text>
               </View>
             </View>
           </View>
 
-          <SectionCard title="ç»è¥æ€»è§ˆ">
-            <Text style={styles.dataLine}>é—¨åº—ï¼š{merchantState.merchantName}</Text>
+          <SectionCard title="经营总览">
+            <Text style={styles.dataLine}>门店：{merchantState.merchantName}</Text>
             <Text style={styles.dataLine}>
-              è¥é”€é¢„ç®—ï¼šÂ¥{merchantState.budgetUsed.toFixed(2)} / Â¥
+              营销预算：¥{merchantState.budgetUsed.toFixed(2)} / ¥
               {merchantState.budgetCap.toFixed(2)}
             </Text>
             <Text style={styles.dataLine}>
-              ç†”æ–­çŠ¶æ€ï¼š{merchantState.killSwitchEnabled ? 'å·²å¼€å¯' : 'è¿è¡Œä¸­'}
+              熔断状态：{merchantState.killSwitchEnabled ? '已开启' : '运行中'}
             </Text>
             <Pressable
               testID="kill-switch-btn"
               style={styles.secondaryButton}
               onPress={onToggleKillSwitch}>
               <Text style={styles.secondaryButtonText}>
-                {merchantState.killSwitchEnabled ? 'å…³é—­ç†”æ–­' : 'å¼€å¯ç†”æ–­'}
+                {merchantState.killSwitchEnabled ? '关闭熔断' : '开启熔断'}
               </Text>
             </Pressable>
           </SectionCard>
@@ -649,7 +649,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
                   strategyChatMessages.slice(-8).map(item => (
                     <View key={item.messageId} style={styles.listRow}>
                       <Text style={styles.mutedText}>
-                        {item.role} · {item.type}
+                        {item.role} | {item.type}
                       </Text>
                       <Text style={styles.dataLine}>{item.text}</Text>
                     </View>
@@ -708,9 +708,9 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
               </>
             )}
           </SectionCard>
-          <SectionCard title="æ´»åŠ¨å¯åœ">
+          <SectionCard title="活动启停">
             {merchantState.activeCampaigns.length === 0 ? (
-              <Text style={styles.mutedText}>æš‚æ— å·²ç”Ÿæ•ˆæ´»åŠ¨</Text>
+              <Text style={styles.mutedText}>暂无已生效活动</Text>
             ) : (
               merchantState.activeCampaigns.map(item => {
                 const status = item.status || 'ACTIVE';
@@ -730,14 +730,14 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
                           )
                         }>
                         <Text style={styles.filterButtonText}>
-                          {status === 'ACTIVE' ? 'æš‚åœ' : 'æ¢å¤'}
+                          {status === 'ACTIVE' ? '暂停' : '恢复'}
                         </Text>
                       </Pressable>
                       <Pressable
                         testID={`campaign-archive-${item.id}`}
                         style={styles.filterButton}
                         onPress={() => onSetCampaignStatus(item.id, 'ARCHIVED')}>
-                        <Text style={styles.filterButtonText}>å½’æ¡£</Text>
+                        <Text style={styles.filterButtonText}>归档</Text>
                       </Pressable>
                     </View>
                   </View>
@@ -746,19 +746,19 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
             )}
           </SectionCard>
 
-          <SectionCard title="å¤šåº—è”ç›Ÿ">
+          <SectionCard title="多店联盟">
             {!remoteToken ? (
-              <Text style={styles.mutedText}>æ­£åœ¨è¿žæŽ¥æœåŠ¡ç«¯å¼€å¯è”ç›Ÿé…ç½®...</Text>
+              <Text style={styles.mutedText}>正在连接服务端开启联盟配置...</Text>
             ) : !allianceConfig ? (
-              <Text style={styles.mutedText}>è”ç›Ÿé…ç½®åŠ è½½ä¸­...</Text>
+              <Text style={styles.mutedText}>联盟配置加载中...</Text>
             ) : (
               <>
-                <Text style={styles.dataLine}>é›†ç¾¤ï¼š{allianceConfig.clusterId}</Text>
+                <Text style={styles.dataLine}>集群：{allianceConfig.clusterId}</Text>
                 <Text style={styles.dataLine}>
-                  é’±åŒ…äº’é€šï¼š{allianceConfig.walletShared ? 'å·²å¼€å¯' : 'æœªå¼€å¯'}
+                  钱包互通：{allianceConfig.walletShared ? '已开启' : '未开启'}
                 </Text>
                 <Text style={styles.mutedText}>
-                  é—¨åº—ï¼š{allianceStores.map(item => item.name).join(' / ')}
+                  门店：{allianceStores.map(item => item.name).join(' / ')}
                 </Text>
                 <View style={styles.filterRow}>
                   <Pressable
@@ -766,28 +766,28 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
                     style={styles.filterButton}
                     onPress={onToggleAllianceWalletShared}>
                     <Text style={styles.filterButtonText}>
-                      {allianceConfig.walletShared ? 'å…³é—­é’±åŒ…äº’é€š' : 'å¼€å¯é’±åŒ…äº’é€š'}
+                      {allianceConfig.walletShared ? '关闭钱包互通' : '开启钱包互通'}
                     </Text>
                   </Pressable>
                   <Pressable
                     testID="alliance-sync-user"
                     style={styles.filterButton}
                     onPress={onSyncAllianceUser}>
-                    <Text style={styles.filterButtonText}>åŒæ­¥ç¤ºä¾‹ç”¨æˆ·</Text>
+                    <Text style={styles.filterButtonText}>同步示例用户</Text>
                   </Pressable>
                 </View>
               </>
             )}
           </SectionCard>
 
-          <SectionCard title="æ”¶é“¶å°æ¨¡æ‹Ÿ">
-            <Text style={styles.dataLine}>æµ‹è¯•è´¦å•ï¼šÂ¥52.00</Text>
-            <Text style={styles.mutedText}>è§„åˆ™ï¼šä¸´æœŸåˆ¸ä¼˜å…ˆ -&gt; èµ é€é‡‘ -&gt; æœ¬é‡‘ -&gt; å¤–éƒ¨æ”¯ä»˜</Text>
+          <SectionCard title="收银台模拟">
+            <Text style={styles.dataLine}>测试账单：¥52.00</Text>
+            <Text style={styles.mutedText}>规则：临期券优先 -&gt; 赠送金 -&gt; 本金 -&gt; 外部支付</Text>
             <Pressable
               testID="verify-cashier-btn"
               style={styles.primaryButton}
               onPress={onVerifyCashier}>
-              <Text style={styles.primaryButtonText}>æ‰§è¡Œæ™ºèƒ½æ ¸é”€</Text>
+              <Text style={styles.primaryButtonText}>执行智能核销</Text>
             </Pressable>
           </SectionCard>
           <SectionCard title="Merchant QR Code">
@@ -842,21 +842,21 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
             ) : null}
           </SectionCard>
 
-          <SectionCard title="TCA è§¦å‘æ¼”ç»ƒ">
-            <Text style={styles.mutedText}>å¯è§¦å‘å¤©æ°”/è¿›åº—/åº“å­˜ç­‰äº‹ä»¶æ£€éªŒç­–ç•¥æ‰§è¡Œ</Text>
+          <SectionCard title="TCA 触发演练">
+            <Text style={styles.mutedText}>可触发天气/进店/库存等事件检验策略执行</Text>
             <View style={styles.filterRow}>
               <Pressable
                 testID="trigger-rain-event"
                 style={styles.primaryButton}
                 onPress={onTriggerRainyEvent}>
-                <Text style={styles.primaryButtonText}>æš´é›¨äº‹ä»¶</Text>
+                <Text style={styles.primaryButtonText}>暴雨事件</Text>
               </Pressable>
               <Pressable
                 style={styles.secondaryButton}
                 onPress={() =>
-                  onTriggerEvent('APP_OPEN', { weather: 'RAIN', temperature: 18 }, 'å¼€å±è§¦å‘')
+                  onTriggerEvent('APP_OPEN', { weather: 'RAIN', temperature: 18 }, '开屏触发')
                 }>
-                <Text style={styles.secondaryButtonText}>å¼€å±è§¦å‘</Text>
+                <Text style={styles.secondaryButtonText}>开屏触发</Text>
               </Pressable>
               <Pressable
                 style={styles.secondaryButton}
@@ -864,21 +864,21 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
                   onTriggerEvent(
                     'INVENTORY_ALERT',
                     { targetSku: 'sku_hot_soup', inventoryBacklog: 12 },
-                    'åº“å­˜é¢„è­¦',
+                    '库存预警',
                   )
                 }>
-                <Text style={styles.secondaryButtonText}>åº“å­˜é¢„è­¦</Text>
+                <Text style={styles.secondaryButtonText}>库存预警</Text>
               </Pressable>
             </View>
           </SectionCard>
 
-          <SectionCard title="æ‰§è¡Œæ—¥å¿—">
+          <SectionCard title="执行日志">
             <Text testID="last-action-text" style={styles.dataLine}>
               {lastAction}
             </Text>
           </SectionCard>
 
-          <SectionCard title="å®žæ—¶äº‹ä»¶æµ">
+          <SectionCard title="实时事件流">
             <View style={styles.filterRow}>
               <Pressable
                 style={[
@@ -891,7 +891,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
                     styles.filterButtonText,
                     !showOnlyAnomaly && styles.filterButtonTextActive,
                   ]}>
-                  å…¨éƒ¨
+                  全部
                 </Text>
               </Pressable>
               <Pressable
@@ -905,13 +905,13 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
                     styles.filterButtonText,
                     showOnlyAnomaly && styles.filterButtonWarnText,
                   ]}>
-                  ä»…å¼‚å¸¸
+                  仅异常
                 </Text>
               </Pressable>
             </View>
 
             {visibleRealtimeEvents.length === 0 ? (
-              <Text style={styles.mutedText}>å°šæœªæ”¶åˆ°å®žæ—¶äº‹ä»¶</Text>
+              <Text style={styles.mutedText}>尚未收到实时事件</Text>
             ) : (
               visibleRealtimeEvents.map(item => (
                 <Pressable
@@ -939,7 +939,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
                       <Pressable
                         style={styles.copyButton}
                         onPress={() => onCopyEventDetail(item.detail)}>
-                        <Text style={styles.copyButtonText}>å¤åˆ¶è¯¦æƒ…</Text>
+                        <Text style={styles.copyButtonText}>复制详情</Text>
                       </Pressable>
                     </View>
                   )}
@@ -948,7 +948,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
             )}
           </SectionCard>
 
-          <SectionCard title="å®¡è®¡æ—¥å¿—">
+          <SectionCard title="审计日志">
             {remoteToken && (
               <>
                 <View style={styles.auditFilterRow}>
@@ -1014,9 +1014,9 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
             )}
 
             {!remoteToken ? (
-              <Text style={styles.mutedText}>æ­£åœ¨è¿žæŽ¥æœåŠ¡ç«¯å¼€å¯å®¡è®¡æµæ°´...</Text>
+              <Text style={styles.mutedText}>正在连接服务端开启审计流水...</Text>
             ) : auditLogs.length === 0 ? (
-              <Text style={styles.mutedText}>{auditLoading ? 'åŠ è½½ä¸­...' : 'æš‚æ— å®¡è®¡è®°å½•'}</Text>
+              <Text style={styles.mutedText}>{auditLoading ? '加载中...' : '暂无审计记录'}</Text>
             ) : (
               <>
                 {auditLogs.map(item => (
@@ -1045,7 +1045,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
                         <Pressable
                           style={styles.copyButton}
                           onPress={() => onCopyEventDetail(item.detail)}>
-                          <Text style={styles.copyButtonText}>å¤åˆ¶è¯¦æƒ…</Text>
+                          <Text style={styles.copyButtonText}>复制详情</Text>
                         </Pressable>
                       </View>
                     )}
@@ -1063,7 +1063,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
                       }).catch(() => { })
                     }>
                     <Text style={styles.loadMoreButtonText}>
-                      {auditLoading ? 'åŠ è½½ä¸­...' : 'åŠ è½½æ›´å¤š'}
+                      {auditLoading ? '加载中...' : '加载更多'}
                     </Text>
                   </Pressable>
                 )}
@@ -1431,7 +1431,7 @@ export default function App() {
       <SafeAreaProvider>
         <SafeAreaView style={styles.safeArea}>
           <View style={styles.entryContainerCentered}>
-            <Text style={styles.mutedText}>åŠ è½½ä¸­...</Text>
+            <Text style={styles.mutedText}>加载中...</Text>
           </View>
         </SafeAreaView>
       </SafeAreaProvider>

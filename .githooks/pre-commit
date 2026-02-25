@@ -1,0 +1,11 @@
+#!/bin/sh
+
+echo "[pre-commit] Running encoding check on staged files..."
+node scripts/check-encoding.js --staged
+status=$?
+if [ "$status" -ne 0 ]; then
+  echo "[pre-commit] Blocked: fix encoding issues before commit."
+  exit "$status"
+fi
+
+exit 0
