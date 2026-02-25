@@ -1,4 +1,4 @@
-const {
+﻿const {
   findTemplate,
   listStrategyTemplates
 } = require("./strategyLibrary");
@@ -6,6 +6,10 @@ const {
 function createMerchantService(db, options = {}) {
   const aiStrategyService = options.aiStrategyService;
   const MAX_STRATEGY_CANDIDATES = 3;
+  const MAX_CHAT_MESSAGES = 120;
+  const MAX_CHAT_HISTORY_FOR_MODEL = 24;
+  const MAX_APPROVED_STRATEGY_CONTEXT = 12;
+  const MAX_ACTIVE_CAMPAIGN_CONTEXT = 12;
 
   function ensureStrategyBucket(merchantId) {
     if (!db.strategyConfigs || typeof db.strategyConfigs !== "object") {
@@ -34,6 +38,239 @@ function createMerchantService(db, options = {}) {
       updatedAt: new Date().toISOString()
     };
     return bucket[templateId];
+  }
+
+  function cloneJson(value) {
+    return JSON.parse(JSON.stringify(value));
+  }
+
+  function ensureStrategyChatBucket(merchantId) {
+    if (!db.strategyChats || typeof db.strategyChats !== "object") {
+      db.strategyChats = {};
+    }
+    if (!db.strategyChats[merchantId] || typeof db.strategyChats[merchantId] !== "object") {
+      db.strategyChats[merchantId] = {
+        activeSessionId: null,
+        sessions: {}
+      };
+    }
+    if (!db.strategyChats[merchantId].sessions || typeof db.strategyChats[merchantId].sessions !== "object") {
+      db.strategyChats[merchantId].sessions = {};
+    }
+    return db.strategyChats[merchantId];
+  }
+
+  function createSessionId() {
+    return `sc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  function createChatMessage(session, message) {
+    session.messageSeq = Number(session.messageSeq || 0) + 1;
+    return {
+      messageId: `msg_${session.sessionId}_${session.messageSeq}`,
+      role: String(message.role || "ASSISTANT").toUpperCase(),
+      type: String(message.type || "TEXT").toUpperCase(),
+      text: String(message.text || ""),
+      proposalId: message.proposalId || null,
+      metadata: message.metadata || null,
+      createdAt: new Date().toISOString()
+    };
+  }
+
+  function appendChatMessage(session, message) {
+    const item = createChatMessage(session, message);
+    if (!Array.isArray(session.messages)) {
+      session.messages = [];
+    }
+    session.messages.push(item);
+    if (session.messages.length > MAX_CHAT_MESSAGES) {
+      session.messages = session.messages.slice(-MAX_CHAT_MESSAGES);
+    }
+    session.updatedAt = new Date().toISOString();
+    return item;
+  }
+
+  function summarizeProposalForReview(proposal) {
+    if (!proposal) {
+      return null;
+    }
+    const meta = proposal.strategyMeta || {};
+    const campaign = proposal.suggestedCampaign || {};
+    return {
+      proposalId: proposal.id,
+      status: proposal.status,
+      title: proposal.title,
+      templateId: meta.templateId || null,
+      branchId: meta.branchId || null,
+      campaignId: campaign.id || null,
+      campaignName: campaign.name || null,
+      triggerEvent: campaign.trigger && campaign.trigger.event ? campaign.trigger.event : null,
+      budget: campaign.budget || null,
+      createdAt: proposal.createdAt || null
+    };
+  }
+
+  function getApprovedStrategyContext(merchantId) {
+    return db.proposals
+      .filter((item) => item.merchantId === merchantId && item.status === "APPROVED")
+      .slice(-MAX_APPROVED_STRATEGY_CONTEXT)
+      .map((item) => ({
+        proposalId: item.id,
+        campaignId: item.suggestedCampaign && item.suggestedCampaign.id,
+        title: item.title,
+        templateId: item.strategyMeta && item.strategyMeta.templateId,
+        branchId: item.strategyMeta && item.strategyMeta.branchId,
+        approvedAt: item.approvedAt || null
+      }));
+  }
+
+  function getActiveCampaignContext(merchantId) {
+    return db.campaigns
+      .filter((item) => item.merchantId === merchantId && item.status === "ACTIVE")
+      .slice(-MAX_ACTIVE_CAMPAIGN_CONTEXT)
+      .map((item) => ({
+        id: item.id,
+        name: item.name,
+        status: item.status,
+        trigger: item.trigger || null,
+        priority: item.priority || 0
+      }));
+  }
+
+  function resolveStrategyChatSession({ merchantId, sessionId, autoCreate = true, operatorId = "system" }) {
+    const bucket = ensureStrategyChatBucket(merchantId);
+    const targetSessionId = String(sessionId || bucket.activeSessionId || "").trim();
+    if (targetSessionId && bucket.sessions[targetSessionId]) {
+      bucket.activeSessionId = targetSessionId;
+      return bucket.sessions[targetSessionId];
+    }
+    if (!autoCreate) {
+      return null;
+    }
+    const nowIso = new Date().toISOString();
+    const nextSessionId = createSessionId();
+    const session = {
+      sessionId: nextSessionId,
+      merchantId,
+      status: "ACTIVE",
+      messageSeq: 0,
+      pendingProposalId: null,
+      createdBy: operatorId || "system",
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      messages: []
+    };
+    bucket.sessions = {
+      [nextSessionId]: session
+    };
+    bucket.activeSessionId = nextSessionId;
+    appendChatMessage(session, {
+      role: "SYSTEM",
+      type: "TEXT",
+      text: "New strategy session created. You can discuss goals and request a strategy proposal."
+    });
+    return session;
+  }
+
+  function buildStrategyChatSessionResponse({ merchantId, session }) {
+    const pendingProposal =
+      session && session.pendingProposalId
+        ? db.proposals.find(
+            (item) =>
+              item.merchantId === merchantId &&
+              item.id === session.pendingProposalId &&
+              item.status === "PENDING"
+          ) || null
+        : null;
+    return {
+      merchantId,
+      sessionId: session ? session.sessionId : null,
+      pendingReview: summarizeProposalForReview(pendingProposal),
+      messages: session && Array.isArray(session.messages) ? cloneJson(session.messages) : [],
+      activeCampaigns: getActiveCampaignContext(merchantId),
+      approvedStrategies: getApprovedStrategyContext(merchantId)
+    };
+  }
+
+  function createProposalFromAiCandidate({
+    merchantId,
+    aiResult,
+    operatorId,
+    intent = "",
+    source = "API",
+    sourceSessionId = null
+  }) {
+    const merchant = db.merchants[merchantId];
+    if (!merchant) {
+      throw new Error("merchant not found");
+    }
+
+    const { campaign, template, branch, strategyMeta } = aiResult || {};
+    if (!campaign || !template || !branch) {
+      return {
+        status: "BLOCKED",
+        reasons: ["invalid candidate payload"],
+        blocked: [{ title: "candidate", reasons: ["invalid candidate payload"] }]
+      };
+    }
+
+    const risk = evaluateCampaignRisk({ campaign, merchant });
+    if (risk.blocked) {
+      return {
+        status: "BLOCKED",
+        reasons: risk.reasons,
+        blocked: [{ title: aiResult.title || `${template.name} Â· ${branch.name}`, reasons: risk.reasons }]
+      };
+    }
+
+    const proposalId = `proposal_${template.templateId}_${Date.now()}_${Math.random()
+      .toString(36)
+      .slice(2, 6)}`;
+    const proposal = {
+      id: proposalId,
+      merchantId,
+      status: "PENDING",
+      title: aiResult.title || `${template.name} Â· ${branch.name}`,
+      createdAt: new Date().toISOString(),
+      intent: String(intent || ""),
+      strategyMeta: {
+        templateId: template.templateId,
+        templateName: template.name,
+        category: template.category,
+        phase: template.phase,
+        branchId: branch.branchId,
+        branchName: branch.name,
+        operatorId: operatorId || "system",
+        source: strategyMeta && strategyMeta.source ? strategyMeta.source : "AI_MODEL",
+        provider: strategyMeta && strategyMeta.provider ? strategyMeta.provider : "OPENAI_COMPATIBLE",
+        model: strategyMeta && strategyMeta.model ? strategyMeta.model : "unknown",
+        rationale: strategyMeta && strategyMeta.rationale ? strategyMeta.rationale : "",
+        confidence:
+          strategyMeta && Number.isFinite(strategyMeta.confidence) ? strategyMeta.confidence : null,
+        sourceChannel: source,
+        sourceSessionId: sourceSessionId || null
+      },
+      suggestedCampaign: campaign
+    };
+
+    db.proposals.push(proposal);
+    setStrategyConfig(merchantId, template.templateId, {
+      branchId: branch.branchId,
+      status: "PENDING_APPROVAL",
+      lastProposalId: proposal.id
+    });
+
+    return {
+      status: "PENDING",
+      proposal,
+      created: {
+        proposalId: proposal.id,
+        title: proposal.title,
+        templateId: template.templateId,
+        branchId: branch.branchId,
+        campaignId: campaign.id
+      }
+    };
   }
 
   function getDashboard({ merchantId }) {
@@ -261,71 +498,23 @@ function createMerchantService(db, options = {}) {
 
     const created = [];
     const blocked = [];
-    const nowSeed = Date.now();
 
     for (let index = 0; index < Math.min(candidates.length, MAX_STRATEGY_CANDIDATES); index += 1) {
       const aiResult = candidates[index];
-      const { campaign, template, branch, strategyMeta } = aiResult || {};
-      if (!campaign || !template || !branch) {
-        blocked.push({
-          title: aiResult && aiResult.title ? aiResult.title : `candidate_${index + 1}`,
-          reasons: ["invalid candidate payload"]
-        });
-        continue;
-      }
-
-      const risk = evaluateCampaignRisk({ campaign, merchant });
-      if (risk.blocked) {
-        blocked.push({
-          title: aiResult.title || `${template.name} · ${branch.name}`,
-          reasons: risk.reasons
-        });
-        continue;
-      }
-
-      const proposalId = `proposal_${template.templateId}_${nowSeed}_${index + 1}`;
-      const proposal = {
-        id: proposalId,
+      const createdProposal = createProposalFromAiCandidate({
         merchantId,
-        status: "PENDING",
-        title: aiResult.title || `${template.name} · ${branch.name}`,
-        createdAt: new Date().toISOString(),
-        intent: String(intent || ""),
-        strategyMeta: {
-          templateId: template.templateId,
-          templateName: template.name,
-          category: template.category,
-          phase: template.phase,
-          branchId: branch.branchId,
-          branchName: branch.name,
-          operatorId: operatorId || "system",
-          source: strategyMeta && strategyMeta.source ? strategyMeta.source : "AI_MODEL",
-          provider: strategyMeta && strategyMeta.provider ? strategyMeta.provider : "OPENAI_COMPATIBLE",
-          model: strategyMeta && strategyMeta.model ? strategyMeta.model : "unknown",
-          rationale: strategyMeta && strategyMeta.rationale ? strategyMeta.rationale : "",
-          confidence:
-            strategyMeta && Number.isFinite(strategyMeta.confidence)
-              ? strategyMeta.confidence
-              : null
-        },
-        suggestedCampaign: campaign
-      };
-      db.proposals.push(proposal);
-      setStrategyConfig(merchantId, template.templateId, {
-        branchId: branch.branchId,
-        status: "PENDING_APPROVAL",
-        lastProposalId: proposalId
+        aiResult,
+        operatorId,
+        intent,
+        source: "API"
       });
-      created.push({
-        proposalId: proposal.id,
-        title: proposal.title,
-        templateId: template.templateId,
-        branchId: branch.branchId,
-        campaignId: campaign.id
-      });
+      if (createdProposal.status !== "PENDING") {
+        blocked.push(...(createdProposal.blocked || []));
+        continue;
+      }
+      created.push(createdProposal.created);
     }
-
-    if (created.length === 0) {
+if (created.length === 0) {
       return {
         status: "BLOCKED",
         reasons: blocked.flatMap((item) => item.reasons || []),
@@ -344,6 +533,290 @@ function createMerchantService(db, options = {}) {
       campaignId: primary.campaignId,
       created,
       blocked
+    };
+  }
+
+  function createStrategyChatSession({ merchantId, operatorId = "system" }) {
+    const merchant = db.merchants[merchantId];
+    if (!merchant) {
+      throw new Error("merchant not found");
+    }
+    const bucket = ensureStrategyChatBucket(merchantId);
+    const nowIso = new Date().toISOString();
+    const session = {
+      sessionId: createSessionId(),
+      merchantId,
+      status: "ACTIVE",
+      messageSeq: 0,
+      pendingProposalId: null,
+      createdBy: operatorId || "system",
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      messages: []
+    };
+    bucket.sessions = {
+      [session.sessionId]: session
+    };
+    bucket.activeSessionId = session.sessionId;
+    appendChatMessage(session, {
+      role: "SYSTEM",
+      type: "TEXT",
+      text: "New strategy session created. You can discuss goals and request a strategy proposal."
+    });
+    db.save();
+    return buildStrategyChatSessionResponse({ merchantId, session });
+  }
+
+  function getStrategyChatSession({ merchantId, sessionId = "" }) {
+    const merchant = db.merchants[merchantId];
+    if (!merchant) {
+      throw new Error("merchant not found");
+    }
+    const session = resolveStrategyChatSession({
+      merchantId,
+      sessionId,
+      autoCreate: true,
+      operatorId: "system"
+    });
+    if (!session) {
+      throw new Error("strategy chat session not found");
+    }
+    return buildStrategyChatSessionResponse({ merchantId, session });
+  }
+
+  async function sendStrategyChatMessage({
+    merchantId,
+    sessionId = "",
+    operatorId = "system",
+    content = ""
+  }) {
+    const merchant = db.merchants[merchantId];
+    if (!merchant) {
+      throw new Error("merchant not found");
+    }
+    const text = String(content || "").trim();
+    if (!text) {
+      throw new Error("content is required");
+    }
+
+    const session = resolveStrategyChatSession({
+      merchantId,
+      sessionId,
+      autoCreate: true,
+      operatorId
+    });
+
+    if (session.pendingProposalId) {
+      const pendingProposal = db.proposals.find(
+        (item) =>
+          item.id === session.pendingProposalId &&
+          item.merchantId === merchantId &&
+          item.status === "PENDING"
+      );
+      if (pendingProposal) {
+        return {
+          status: "REVIEW_REQUIRED",
+          message: "A pending proposal requires immediate review (approve/reject) before continuing.",
+          ...buildStrategyChatSessionResponse({ merchantId, session })
+        };
+      }
+      session.pendingProposalId = null;
+    }
+
+    appendChatMessage(session, {
+      role: "USER",
+      type: "TEXT",
+      text
+    });
+
+    if (!aiStrategyService || typeof aiStrategyService.generateStrategyChatTurn !== "function") {
+      throw new Error("ai strategy chat service is not configured");
+    }
+
+    const historyForModel = (session.messages || []).slice(-MAX_CHAT_HISTORY_FOR_MODEL).map((item) => ({
+      role: item.role,
+      type: item.type,
+      text: item.text,
+      proposalId: item.proposalId || null,
+      createdAt: item.createdAt
+    }));
+
+    const aiTurn = await aiStrategyService.generateStrategyChatTurn({
+      merchantId,
+      sessionId: session.sessionId,
+      userMessage: text,
+      history: historyForModel,
+      activeCampaigns: getActiveCampaignContext(merchantId),
+      approvedStrategies: getApprovedStrategyContext(merchantId)
+    });
+
+    if (!aiTurn || aiTurn.status === "AI_UNAVAILABLE") {
+      appendChatMessage(session, {
+        role: "ASSISTANT",
+        type: "TEXT",
+        text: "AI is temporarily unavailable. Please retry in a moment."
+      });
+      db.save();
+      return {
+        status: "AI_UNAVAILABLE",
+        reason: aiTurn && aiTurn.reason ? aiTurn.reason : "AI model unavailable",
+        ...buildStrategyChatSessionResponse({ merchantId, session })
+      };
+    }
+
+    if (aiTurn.status === "CHAT_REPLY") {
+      appendChatMessage(session, {
+        role: "ASSISTANT",
+        type: "TEXT",
+        text: String(aiTurn.assistantMessage || "Please provide more details.")
+      });
+      db.save();
+      return {
+        status: "CHAT_REPLY",
+        ...buildStrategyChatSessionResponse({ merchantId, session })
+      };
+    }
+
+    if (aiTurn.status === "PROPOSAL_READY" && aiTurn.proposal) {
+      const createdProposal = createProposalFromAiCandidate({
+        merchantId,
+        aiResult: aiTurn.proposal,
+        operatorId,
+        intent: text,
+        source: "CHAT_SESSION",
+        sourceSessionId: session.sessionId
+      });
+
+      if (createdProposal.status !== "PENDING") {
+        const blockedReasons = (createdProposal.reasons || []).join("; ");
+        appendChatMessage(session, {
+          role: "ASSISTANT",
+          type: "TEXT",
+          text: blockedReasons
+            ? `I drafted a strategy but it is blocked by guardrails: ${blockedReasons}`
+            : "I drafted a strategy but it is blocked by risk guardrails."
+        });
+        db.save();
+        return {
+          status: "BLOCKED",
+          reasons: createdProposal.reasons || [],
+          ...buildStrategyChatSessionResponse({ merchantId, session })
+        };
+      }
+
+      session.pendingProposalId = createdProposal.proposal.id;
+      appendChatMessage(session, {
+        role: "ASSISTANT",
+        type: "PROPOSAL_CARD",
+        text: String(aiTurn.assistantMessage || "Strategy proposal drafted. Please review now."),
+        proposalId: createdProposal.proposal.id,
+        metadata: summarizeProposalForReview(createdProposal.proposal)
+      });
+      db.save();
+      return {
+        status: "PENDING_REVIEW",
+        ...buildStrategyChatSessionResponse({ merchantId, session })
+      };
+    }
+
+    appendChatMessage(session, {
+      role: "ASSISTANT",
+      type: "TEXT",
+      text: "I can continue helping with strategy details."
+    });
+    db.save();
+    return {
+      status: "CHAT_REPLY",
+      ...buildStrategyChatSessionResponse({ merchantId, session })
+    };
+  }
+
+  function reviewStrategyChatProposal({
+    merchantId,
+    sessionId = "",
+    proposalId,
+    decision,
+    operatorId = "system"
+  }) {
+    const merchant = db.merchants[merchantId];
+    if (!merchant) {
+      throw new Error("merchant not found");
+    }
+    const normalizedDecision = String(decision || "").trim().toUpperCase();
+    if (!["APPROVE", "REJECT"].includes(normalizedDecision)) {
+      throw new Error("decision must be APPROVE or REJECT");
+    }
+
+    const session = resolveStrategyChatSession({
+      merchantId,
+      sessionId,
+      autoCreate: false,
+      operatorId
+    });
+    if (!session) {
+      throw new Error("strategy chat session not found");
+    }
+
+    const targetProposalId = String(proposalId || "").trim();
+    if (!targetProposalId) {
+      throw new Error("proposalId is required");
+    }
+    if (session.pendingProposalId && session.pendingProposalId !== targetProposalId) {
+      throw new Error("proposal review mismatch with current pending proposal");
+    }
+
+    const proposal = db.proposals.find(
+      (item) => item.id === targetProposalId && item.merchantId === merchantId
+    );
+    if (!proposal) {
+      throw new Error("proposal not found");
+    }
+    if (proposal.status !== "PENDING") {
+      throw new Error("proposal already handled");
+    }
+
+    if (normalizedDecision === "APPROVE") {
+      const confirm = confirmProposal({
+        merchantId,
+        proposalId: targetProposalId,
+        operatorId
+      });
+      session.pendingProposalId = null;
+      appendChatMessage(session, {
+        role: "SYSTEM",
+        type: "PROPOSAL_REVIEW",
+        text: `Proposal approved and activated: ${proposal.title}`,
+        proposalId: targetProposalId
+      });
+      db.save();
+      return {
+        status: "APPROVED",
+        campaignId: confirm.campaignId,
+        ...buildStrategyChatSessionResponse({ merchantId, session })
+      };
+    }
+
+    proposal.status = "REJECTED";
+    proposal.rejectedBy = operatorId;
+    proposal.rejectedAt = new Date().toISOString();
+    if (proposal.strategyMeta && proposal.strategyMeta.templateId) {
+      setStrategyConfig(merchantId, proposal.strategyMeta.templateId, {
+        branchId: proposal.strategyMeta.branchId,
+        status: "REJECTED",
+        lastProposalId: proposal.id
+      });
+    }
+    session.pendingProposalId = null;
+    appendChatMessage(session, {
+      role: "SYSTEM",
+      type: "PROPOSAL_REVIEW",
+      text: `Proposal rejected: ${proposal.title}`,
+      proposalId: targetProposalId
+    });
+    db.save();
+    return {
+      status: "REJECTED",
+      ...buildStrategyChatSessionResponse({ merchantId, session })
     };
   }
 
@@ -391,7 +864,7 @@ function createMerchantService(db, options = {}) {
     const campaign = {
       id: `campaign_fire_sale_${Date.now()}`,
       merchantId,
-      name: `定向急售-${targetSku}`,
+      name: `å®šå‘æ€¥å”®-${targetSku}`,
       status: "ACTIVE",
       priority: 999,
       trigger: { event: "INVENTORY_ALERT" },
@@ -409,7 +882,7 @@ function createMerchantService(db, options = {}) {
         voucher: {
           id: `voucher_fire_sale_${Date.now()}`,
           type: "DISCOUNT_CARD",
-          name: `${targetSku} 急售券`,
+          name: `${targetSku} æ€¥å”®åˆ¸`,
           value: 0,
           discountRate: 0.5,
           minSpend: 0
@@ -418,9 +891,9 @@ function createMerchantService(db, options = {}) {
       ttlUntil: new Date(now.getTime() + durationMinutes * 60 * 1000).toISOString(),
       strategyMeta: {
         templateId: "manual_fire_sale",
-        templateName: "定向急售",
+        templateName: "å®šå‘æ€¥å”®",
         branchId: "MANUAL",
-        branchName: "人工接管",
+        branchName: "äººå·¥æŽ¥ç®¡",
         category: "REVENUE"
       }
     };
@@ -442,6 +915,10 @@ function createMerchantService(db, options = {}) {
     listStrategyLibrary,
     listStrategyConfigs,
     createStrategyProposal,
+    createStrategyChatSession,
+    getStrategyChatSession,
+    sendStrategyChatMessage,
+    reviewStrategyChatProposal,
     setCampaignStatus,
     createFireSaleCampaign,
     findTemplate

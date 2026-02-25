@@ -11,6 +11,7 @@ const TABLES = {
   invoices: "mq_invoices",
   partnerOrders: "mq_partner_orders",
   strategyConfigs: "mq_strategy_configs",
+  strategyChats: "mq_strategy_chats",
   allianceConfigs: "mq_alliance_configs",
   phoneLoginCodes: "mq_phone_login_codes",
   customerIdentityBindings: "mq_customer_identity_bindings",
@@ -217,6 +218,16 @@ async function ensureRelationalTables(pool, schema) {
   `);
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS ${schemaSql}.${qIdent(TABLES.strategyChats)} (
+      scope_key TEXT NOT NULL,
+      merchant_id TEXT NOT NULL,
+      payload JSONB NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (scope_key, merchant_id)
+    )
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS ${schemaSql}.${qIdent(TABLES.allianceConfigs)} (
       scope_key TEXT NOT NULL,
       merchant_id TEXT NOT NULL,
@@ -395,6 +406,7 @@ function createEmptyState() {
     invoicesByMerchant: {},
     partnerOrders: {},
     strategyConfigs: {},
+    strategyChats: {},
     allianceConfigs: {},
     phoneLoginCodes: {},
     socialAuth: {
@@ -515,6 +527,14 @@ async function readRelationalState(pool, schema, scopeKey) {
       state.strategyConfigs[row.merchant_id] = {};
     }
     state.strategyConfigs[row.merchant_id][row.template_id] = row.payload;
+  }
+
+  const strategyChats = await pool.query(
+    `SELECT merchant_id, payload FROM ${schemaSql}.${qIdent(TABLES.strategyChats)} WHERE scope_key = $1`,
+    [scopeKey],
+  );
+  for (const row of strategyChats.rows) {
+    state.strategyChats[row.merchant_id] = row.payload;
   }
 
   const allianceConfigs = await pool.query(
@@ -739,6 +759,16 @@ async function replaceScopeState(client, schema, scopeKey, rawState) {
         [scopeKey, merchantId, templateId, toJsonb(payload)],
       );
     }
+  }
+
+  for (const [merchantId, payload] of Object.entries(normalizedState.strategyChats || {})) {
+    await insertRow(
+      client,
+      schema,
+      TABLES.strategyChats,
+      ["scope_key", "merchant_id", "payload"],
+      [scopeKey, merchantId, toJsonb(payload)],
+    );
   }
 
   for (const [merchantId, payload] of Object.entries(normalizedState.allianceConfigs || {})) {

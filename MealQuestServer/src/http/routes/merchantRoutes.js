@@ -64,6 +64,181 @@ function createMerchantRoutesHandler({
       return true;
     }
 
+    if (method === "GET" && url.pathname === "/api/merchant/strategy-chat/session") {
+      ensureRole(auth, ["MANAGER", "OWNER"]);
+      const merchantId = url.searchParams.get("merchantId") || auth.merchantId;
+      const sessionId = url.searchParams.get("sessionId") || "";
+      if (!merchantId) {
+        sendJson(res, 400, { error: "merchantId is required" });
+        return true;
+      }
+      if (auth.merchantId && auth.merchantId !== merchantId) {
+        sendJson(res, 403, { error: "merchant scope denied" });
+        return true;
+      }
+      const { merchantService } = getServicesForMerchant(merchantId);
+      sendJson(
+        res,
+        200,
+        merchantService.getStrategyChatSession({
+          merchantId,
+          sessionId
+        })
+      );
+      return true;
+    }
+
+    if (method === "POST" && url.pathname === "/api/merchant/strategy-chat/sessions") {
+      ensureRole(auth, ["MANAGER", "OWNER"]);
+      const body = await readJsonBody(req);
+      const merchantId = auth.merchantId || body.merchantId;
+      if (!merchantId) {
+        sendJson(res, 400, { error: "merchantId is required" });
+        return true;
+      }
+      if (auth.merchantId && auth.merchantId !== merchantId) {
+        sendJson(res, 403, { error: "merchant scope denied" });
+        return true;
+      }
+      if (
+        !enforceTenantPolicyForHttp({
+          tenantPolicyManager,
+          merchantId,
+          operation: "STRATEGY_PROPOSAL_CREATE",
+          res,
+          auth,
+          appendAuditLog,
+        })
+      ) {
+        return true;
+      }
+      const { merchantService } = getServicesForMerchant(merchantId);
+      const result = merchantService.createStrategyChatSession({
+        merchantId,
+        operatorId: auth.operatorId || "system",
+      });
+      appendAuditLog({
+        merchantId,
+        action: "STRATEGY_CHAT_SESSION_CREATE",
+        status: "SUCCESS",
+        auth,
+        details: {
+          sessionId: result.sessionId || null,
+        },
+      });
+      wsHub.broadcast(merchantId, "STRATEGY_CHAT_SESSION_CREATED", result);
+      sendJson(res, 200, result);
+      return true;
+    }
+
+    if (method === "POST" && url.pathname === "/api/merchant/strategy-chat/messages") {
+      ensureRole(auth, ["MANAGER", "OWNER"]);
+      const body = await readJsonBody(req);
+      const merchantId = auth.merchantId || body.merchantId;
+      if (!merchantId) {
+        sendJson(res, 400, { error: "merchantId is required" });
+        return true;
+      }
+      if (auth.merchantId && auth.merchantId !== merchantId) {
+        sendJson(res, 403, { error: "merchant scope denied" });
+        return true;
+      }
+      if (
+        !enforceTenantPolicyForHttp({
+          tenantPolicyManager,
+          merchantId,
+          operation: "STRATEGY_PROPOSAL_CREATE",
+          res,
+          auth,
+          appendAuditLog,
+        })
+      ) {
+        return true;
+      }
+      const { merchantService } = getServicesForMerchant(merchantId);
+      const result = await merchantService.sendStrategyChatMessage({
+        merchantId,
+        sessionId: body.sessionId,
+        operatorId: auth.operatorId || "system",
+        content: body.content,
+      });
+      appendAuditLog({
+        merchantId,
+        action: "STRATEGY_CHAT_MESSAGE",
+        status:
+          result.status === "AI_UNAVAILABLE"
+            ? "FAILED"
+            : result.status === "REVIEW_REQUIRED"
+              ? "BLOCKED"
+              : "SUCCESS",
+        auth,
+        details: {
+          sessionId: result.sessionId || body.sessionId || null,
+          turnStatus: result.status || "UNKNOWN",
+          pendingProposalId:
+            result.pendingReview && result.pendingReview.proposalId
+              ? result.pendingReview.proposalId
+              : null,
+        },
+      });
+      wsHub.broadcast(merchantId, "STRATEGY_CHAT_MESSAGE", result);
+      sendJson(res, 200, result);
+      return true;
+    }
+
+    const strategyChatReviewMatch = url.pathname.match(
+      /^\/api\/merchant\/strategy-chat\/proposals\/([^/]+)\/review$/
+    );
+    if (method === "POST" && strategyChatReviewMatch) {
+      ensureRole(auth, ["OWNER"]);
+      const body = await readJsonBody(req);
+      const merchantId = auth.merchantId || body.merchantId;
+      const proposalId = strategyChatReviewMatch[1];
+      if (!merchantId) {
+        sendJson(res, 400, { error: "merchantId is required" });
+        return true;
+      }
+      if (auth.merchantId && auth.merchantId !== merchantId) {
+        sendJson(res, 403, { error: "merchant scope denied" });
+        return true;
+      }
+      if (
+        !enforceTenantPolicyForHttp({
+          tenantPolicyManager,
+          merchantId,
+          operation: "PROPOSAL_CONFIRM",
+          res,
+          auth,
+          appendAuditLog,
+        })
+      ) {
+        return true;
+      }
+      const { merchantService } = getServicesForMerchant(merchantId);
+      const result = merchantService.reviewStrategyChatProposal({
+        merchantId,
+        sessionId: body.sessionId,
+        proposalId,
+        decision: body.decision,
+        operatorId: auth.operatorId || "system",
+      });
+      appendAuditLog({
+        merchantId,
+        action: "STRATEGY_CHAT_REVIEW",
+        status: "SUCCESS",
+        auth,
+        details: {
+          sessionId: result.sessionId || body.sessionId || null,
+          proposalId,
+          reviewStatus: result.status || null,
+          campaignId: result.campaignId || null,
+        },
+      });
+      wsHub.broadcast(merchantId, "STRATEGY_CHAT_REVIEWED", result);
+      sendJson(res, 200, result);
+      return true;
+    }
+
     if (method === "POST" && url.pathname === "/api/merchant/strategy-proposals") {
       ensureRole(auth, ["MANAGER", "OWNER"]);
       const body = await readJsonBody(req);

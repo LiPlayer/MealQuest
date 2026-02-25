@@ -142,6 +142,16 @@ function createDefaultState(now = new Date()) {
       },
       m_bistro: {}
     },
+    strategyChats: {
+      m_store_001: {
+        activeSessionId: null,
+        sessions: {}
+      },
+      m_bistro: {
+        activeSessionId: null,
+        sessions: {}
+      }
+    },
     allianceConfigs: {
       m_store_001: {
         merchantId: "m_store_001",
@@ -271,6 +281,9 @@ function migrateLegacyShape(state) {
   if (!next.strategyConfigs || typeof next.strategyConfigs !== "object") {
     next.strategyConfigs = {};
   }
+  if (!next.strategyChats || typeof next.strategyChats !== "object") {
+    next.strategyChats = {};
+  }
   if (!next.allianceConfigs || typeof next.allianceConfigs !== "object") {
     next.allianceConfigs = {};
   }
@@ -323,6 +336,12 @@ function ensureMerchantBuckets(state) {
     if (!state.strategyConfigs[merchantId]) {
       state.strategyConfigs[merchantId] = {};
     }
+    if (!state.strategyChats[merchantId]) {
+      state.strategyChats[merchantId] = {
+        activeSessionId: null,
+        sessions: {}
+      };
+    }
   }
 }
 
@@ -363,6 +382,10 @@ function normalizeState(initialState = null) {
     strategyConfigs: {
       ...defaults.strategyConfigs,
       ...(migrated.strategyConfigs || {})
+    },
+    strategyChats: {
+      ...defaults.strategyChats,
+      ...(migrated.strategyChats || {})
     },
     allianceConfigs: {
       ...defaults.allianceConfigs,
@@ -427,6 +450,7 @@ function createInMemoryDb(initialState = null) {
       invoicesByMerchant: db.invoicesByMerchant,
       partnerOrders: db.partnerOrders,
       strategyConfigs: db.strategyConfigs,
+      strategyChats: db.strategyChats,
       allianceConfigs: db.allianceConfigs,
       phoneLoginCodes: db.phoneLoginCodes,
       socialAuth: db.socialAuth,

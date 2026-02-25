@@ -9,7 +9,7 @@ Keep `createHttpRequestHandler` as a thin dispatcher and move business routes in
 - `paymentRoutes.js`: payment quote/verify/refund/ledger endpoints.
 - `invoiceRoutes.js`: invoice issue and list endpoints.
 - `privacyRoutes.js`: privacy export/delete/cancel endpoints.
-- `merchantRoutes.js`: merchant dashboard, strategy, campaign, contract, supplier, kill-switch, TCA endpoints.
+- `merchantRoutes.js`: merchant dashboard, strategy (including strategy chat), campaign, contract, supplier, kill-switch, TCA endpoints.
 - `allianceRoutes.js`: alliance config/store/sync endpoints.
 - `tenantRoutes.js`: tenant policy and migration endpoints.
 

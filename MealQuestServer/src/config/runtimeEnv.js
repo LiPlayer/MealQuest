@@ -101,6 +101,7 @@ function resolveServerRuntimeEnv(env = process.env) {
   const aiApiKey = asString(env.MQ_AI_API_KEY);
   const aiTimeoutDefault = aiProvider === "bigmodel" ? 45000 : 15000;
   const aiTimeoutMs = parsePositiveInt(env.MQ_AI_TIMEOUT_MS, aiTimeoutDefault);
+  const aiMaxConcurrency = parsePositiveInt(env.MQ_AI_MAX_CONCURRENCY, 1);
 
   const errors = [];
   if (isProduction && !jwtSecret) {
@@ -160,7 +161,8 @@ function resolveServerRuntimeEnv(env = process.env) {
       baseUrl: aiBaseUrl,
       model: aiModel,
       apiKey: aiApiKey,
-      timeoutMs: aiTimeoutMs
+      timeoutMs: aiTimeoutMs,
+      maxConcurrency: aiMaxConcurrency
     }
   };
 }

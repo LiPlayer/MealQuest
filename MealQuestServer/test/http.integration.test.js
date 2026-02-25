@@ -192,6 +192,53 @@ function pickAiDecision(payload) {
   };
 }
 
+function pickAiChatDecision(payload) {
+  const message = String(payload.userMessage || "").toLowerCase();
+  const approvedCount = Array.isArray(payload.approvedStrategies)
+    ? payload.approvedStrategies.length
+    : 0;
+
+  const shouldDraft =
+    message.includes("生成") ||
+    message.includes("出一个") ||
+    message.includes("create") ||
+    message.includes("draft");
+
+  if (!shouldDraft) {
+    return {
+      mode: "CHAT_REPLY",
+      assistantMessage:
+        approvedCount > 0
+          ? `Noted. You already approved ${approvedCount} strategy(ies). Tell me what to optimize next.`
+          : "Please share goal, budget, and time window. I can then draft a strategy.",
+    };
+  }
+
+  const proposalBranch = approvedCount > 0 ? "COMFORT" : "COOLING";
+  const proposalTitle = approvedCount > 0 ? "Second Wave Strategy" : "First Wave Strategy";
+
+  return {
+    mode: "PROPOSAL",
+    assistantMessage: "I drafted a strategy proposal card. Please approve or reject now.",
+    proposal: {
+      templateId: "activation_contextual_drop",
+      branchId: proposalBranch,
+      title: proposalTitle,
+      rationale: "Mock chat strategy proposal.",
+      confidence: 0.81,
+      campaignPatch: {
+        name: proposalTitle,
+        priority: approvedCount > 0 ? 84 : 82,
+        budget: {
+          cap: approvedCount > 0 ? 140 : 120,
+          used: 0,
+          costPerHit: 10,
+        },
+      },
+    },
+  };
+}
+
 async function startMockAiServer() {
   const server = http.createServer((req, res) => {
     if (req.method !== "POST" || !/\/chat\/completions$/.test(String(req.url || ""))) {
@@ -211,7 +258,10 @@ async function startMockAiServer() {
         return;
       }
       const payload = extractAiUserPayload(parsed.messages);
-      const decision = pickAiDecision(payload);
+      const decision =
+        payload && payload.task === "STRATEGY_CHAT"
+          ? pickAiChatDecision(payload)
+          : pickAiDecision(payload);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(
         JSON.stringify({
@@ -2165,6 +2215,161 @@ test("strategy proposal is blocked by risk guardrail on extreme overrides", asyn
     assert.equal(proposal.data.status, "BLOCKED");
     assert.ok(Array.isArray(proposal.data.reasons));
     assert.ok(proposal.data.reasons.length >= 1);
+  } finally {
+    await app.stop();
+    await stopServer(aiStub.server);
+  }
+});
+
+test("strategy chat supports multi-turn proposal drafting, immediate review, and new session reset", async () => {
+  const aiStub = await startMockAiServer();
+  const app = createAppServer({
+    persist: false,
+    aiStrategyOptions: {
+      provider: "openai_compatible",
+      baseUrl: aiStub.baseUrl,
+      model: "test-model",
+      timeoutMs: 1500,
+    },
+  });
+  const port = await app.start(0);
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const ownerToken = await mockLogin(baseUrl, "OWNER", {
+      merchantId: "m_store_001",
+    });
+
+    const createSession = await postJson(
+      baseUrl,
+      "/api/merchant/strategy-chat/sessions",
+      {
+        merchantId: "m_store_001",
+      },
+      { Authorization: `Bearer ${ownerToken}` },
+    );
+    assert.equal(createSession.status, 200);
+    assert.ok(createSession.data.sessionId);
+    assert.equal(createSession.data.pendingReview, null);
+    assert.ok(Array.isArray(createSession.data.messages));
+    assert.ok(createSession.data.messages.length >= 1);
+    const sessionId = createSession.data.sessionId;
+
+    const turn1 = await postJson(
+      baseUrl,
+      "/api/merchant/strategy-chat/messages",
+      {
+        merchantId: "m_store_001",
+        sessionId,
+        content: "We need to improve afternoon traffic.",
+      },
+      { Authorization: `Bearer ${ownerToken}` },
+    );
+    assert.equal(turn1.status, 200);
+    assert.equal(turn1.data.status, "CHAT_REPLY");
+    assert.equal(turn1.data.sessionId, sessionId);
+
+    const turn2 = await postJson(
+      baseUrl,
+      "/api/merchant/strategy-chat/messages",
+      {
+        merchantId: "m_store_001",
+        sessionId,
+        content: "Please create a strategy proposal now.",
+      },
+      { Authorization: `Bearer ${ownerToken}` },
+    );
+    assert.equal(turn2.status, 200);
+    assert.equal(turn2.data.status, "PENDING_REVIEW");
+    assert.ok(turn2.data.pendingReview);
+    assert.ok(turn2.data.pendingReview.proposalId);
+    const firstProposalId = turn2.data.pendingReview.proposalId;
+
+    const blockedByReview = await postJson(
+      baseUrl,
+      "/api/merchant/strategy-chat/messages",
+      {
+        merchantId: "m_store_001",
+        sessionId,
+        content: "Create one more before review.",
+      },
+      { Authorization: `Bearer ${ownerToken}` },
+    );
+    assert.equal(blockedByReview.status, 200);
+    assert.equal(blockedByReview.data.status, "REVIEW_REQUIRED");
+    assert.equal(blockedByReview.data.pendingReview.proposalId, firstProposalId);
+
+    const reject = await postJson(
+      baseUrl,
+      `/api/merchant/strategy-chat/proposals/${encodeURIComponent(firstProposalId)}/review`,
+      {
+        merchantId: "m_store_001",
+        sessionId,
+        decision: "REJECT",
+      },
+      { Authorization: `Bearer ${ownerToken}` },
+    );
+    assert.equal(reject.status, 200);
+    assert.equal(reject.data.status, "REJECTED");
+    assert.equal(reject.data.pendingReview, null);
+
+    const turn3 = await postJson(
+      baseUrl,
+      "/api/merchant/strategy-chat/messages",
+      {
+        merchantId: "m_store_001",
+        sessionId,
+        content: "Create another strategy draft.",
+      },
+      { Authorization: `Bearer ${ownerToken}` },
+    );
+    assert.equal(turn3.status, 200);
+    assert.equal(turn3.data.status, "PENDING_REVIEW");
+    assert.ok(turn3.data.pendingReview);
+    const secondProposalId = turn3.data.pendingReview.proposalId;
+
+    const approve = await postJson(
+      baseUrl,
+      `/api/merchant/strategy-chat/proposals/${encodeURIComponent(secondProposalId)}/review`,
+      {
+        merchantId: "m_store_001",
+        sessionId,
+        decision: "APPROVE",
+      },
+      { Authorization: `Bearer ${ownerToken}` },
+    );
+    assert.equal(approve.status, 200);
+    assert.equal(approve.data.status, "APPROVED");
+    assert.ok(approve.data.campaignId);
+
+    const turn4 = await postJson(
+      baseUrl,
+      "/api/merchant/strategy-chat/messages",
+      {
+        merchantId: "m_store_001",
+        sessionId,
+        content: "Create another strategy draft.",
+      },
+      { Authorization: `Bearer ${ownerToken}` },
+    );
+    assert.equal(turn4.status, 200);
+    assert.equal(turn4.data.status, "PENDING_REVIEW");
+    assert.ok(turn4.data.pendingReview);
+    assert.equal(turn4.data.pendingReview.branchId, "COMFORT");
+
+    const newSession = await postJson(
+      baseUrl,
+      "/api/merchant/strategy-chat/sessions",
+      {
+        merchantId: "m_store_001",
+      },
+      { Authorization: `Bearer ${ownerToken}` },
+    );
+    assert.equal(newSession.status, 200);
+    assert.notEqual(newSession.data.sessionId, sessionId);
+    assert.equal(newSession.data.pendingReview, null);
+    assert.ok(Array.isArray(newSession.data.messages));
+    assert.equal(newSession.data.messages.length, 1);
   } finally {
     await app.stop();
     await stopServer(aiStub.server);

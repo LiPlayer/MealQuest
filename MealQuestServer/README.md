@@ -9,6 +9,7 @@ Minimal runnable backend implementation for MealQuest.
 - Refund clawback (consume gifted balance first, then principal)
 - TCA engine (Trigger / Condition / Action)
 - AI-driven merchant strategy proposal and approval workflow
+- LangGraph-based strategy planning orchestration
 - Emergency fire-sale override (`Priority:999 + TTL`)
 - Supplier order verification API
 - Alliance configuration (store clusters, shared wallet, cross-store sync)
@@ -59,6 +60,7 @@ MQ_AI_BASE_URL=https://open.bigmodel.cn/api/paas/v4
 MQ_AI_MODEL=glm-4.7-flash
 MQ_AI_API_KEY=
 MQ_AI_TIMEOUT_MS=45000
+MQ_AI_MAX_CONCURRENCY=1
 ```
 
 Notes:
@@ -72,6 +74,8 @@ Notes:
 7. `MQ_AI_PROVIDER=bigmodel` is supported with BigModel chat completions endpoint.
 8. `MQ_AI_API_KEY` is required for BigModel (`provider=bigmodel`), optional for local openai-compatible servers.
 9. If model inference is unavailable, strategy proposal API returns `AI_UNAVAILABLE` (no local fallback strategy is generated).
+10. `MQ_AI_MAX_CONCURRENCY` controls in-process AI request queue parallelism (set `1` for strict serial execution).
+11. Strategy planning is orchestrated by LangGraph (`prepare_input -> remote_decide -> assemble_plan`).
 
 ## Merchant Onboarding
 
@@ -153,9 +157,20 @@ Strategy library and operations:
 GET  /api/merchant/strategy-library?merchantId=<id>
 GET  /api/merchant/strategy-configs?merchantId=<id>
 POST /api/merchant/strategy-proposals
+GET  /api/merchant/strategy-chat/session?merchantId=<id>&sessionId=<optional>
+POST /api/merchant/strategy-chat/sessions
+POST /api/merchant/strategy-chat/messages
+POST /api/merchant/strategy-chat/proposals/:id/review
 POST /api/merchant/campaigns/:id/status
 POST /api/merchant/fire-sale
 ```
+
+Strategy chat behavior:
+
+1. Strategy chat is continuous within the active session (`strategy-chat/session`).
+2. When AI drafts a proposal card, session enters `PENDING_REVIEW`.
+3. Merchant must immediately `APPROVE` or `REJECT` via `strategy-chat/proposals/:id/review` before sending next message.
+4. Creating a new session resets chat context (history sessions are not exposed by API).
 
 Supplier verification:
 

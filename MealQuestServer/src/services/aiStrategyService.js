@@ -2,6 +2,7 @@ const {
   createCampaignFromTemplate,
   listStrategyTemplates,
 } = require("./strategyLibrary");
+const { Annotation, StateGraph, START, END } = require("@langchain/langgraph");
 
 const DEFAULT_REMOTE_PROVIDER = "openai_compatible";
 const REMOTE_PROVIDERS = new Set(["deepseek", "openai_compatible", "bigmodel"]);
@@ -9,6 +10,7 @@ const BIGMODEL_BASE_URL = "https://open.bigmodel.cn/api/paas/v4";
 const BIGMODEL_DEFAULT_MODEL = "glm-4.7-flash";
 const BIGMODEL_DEFAULT_TIMEOUT_MS = 45000;
 const DEFAULT_TIMEOUT_MS = 15000;
+const DEFAULT_MAX_CONCURRENCY = 1;
 
 const SLOT_QUESTION_BANK = {
   goal: "你这次更想要哪个目标：拉新、召回、提客单还是去库存？",
@@ -19,6 +21,14 @@ const SLOT_QUESTION_BANK = {
 
 function asString(value) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function toPositiveInt(value, fallback) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return Math.floor(parsed);
 }
 
 function normalizeProvider(value) {
@@ -471,6 +481,346 @@ function createAiUnavailableResult(reason) {
   };
 }
 
+function truncateText(value, maxLen = 240) {
+  const text = asString(value);
+  if (!text) {
+    return "";
+  }
+  if (text.length <= maxLen) {
+    return text;
+  }
+  return `${text.slice(0, maxLen)}...`;
+}
+
+function buildChatPromptPayload({
+  merchantId,
+  sessionId,
+  userMessage,
+  history = [],
+  activeCampaigns = [],
+  approvedStrategies = [],
+}) {
+  const safeHistory = Array.isArray(history)
+    ? history
+        .slice(-24)
+        .map((item) => ({
+          role: asString(item.role || "ASSISTANT").toUpperCase(),
+          type: asString(item.type || "TEXT").toUpperCase(),
+          text: truncateText(item.text || "", 320),
+          proposalId: asString(item.proposalId || ""),
+          createdAt: asString(item.createdAt || ""),
+        }))
+    : [];
+
+  const safeActiveCampaigns = Array.isArray(activeCampaigns)
+    ? activeCampaigns.slice(0, 12).map((item) => ({
+        id: asString(item.id),
+        name: truncateText(item.name || "", 120),
+        status: asString(item.status || "UNKNOWN").toUpperCase(),
+        triggerEvent: asString(item.trigger && item.trigger.event),
+        priority: Number(item.priority) || 0,
+      }))
+    : [];
+
+  const safeApprovedStrategies = Array.isArray(approvedStrategies)
+    ? approvedStrategies.slice(0, 12).map((item) => ({
+        proposalId: asString(item.proposalId),
+        campaignId: asString(item.campaignId),
+        title: truncateText(item.title || "", 120),
+        templateId: asString(item.templateId),
+        branchId: asString(item.branchId),
+        approvedAt: asString(item.approvedAt || ""),
+      }))
+    : [];
+
+  const userPayload = {
+    task: "STRATEGY_CHAT",
+    merchantId,
+    sessionId,
+    userMessage: asString(userMessage),
+    history: safeHistory,
+    activeCampaigns: safeActiveCampaigns,
+    approvedStrategies: safeApprovedStrategies,
+    outputSchema: {
+      mode: "CHAT_REPLY|PROPOSAL",
+      assistantMessage: "string",
+      proposal: {
+        templateId: "string",
+        branchId: "string",
+        title: "string",
+        rationale: "string",
+        confidence: "number",
+        campaignPatch: {
+          name: "string",
+          priority: "number",
+          trigger: { event: "string" },
+          conditions: [
+            { field: "string", op: "eq|neq|gte|lte|includes", value: "any" },
+          ],
+          budget: { cap: "number", used: "number", costPerHit: "number" },
+          ttlHours: "number",
+          action: {
+            type: "GRANT_SILVER|GRANT_BONUS|GRANT_PRINCIPAL|GRANT_FRAGMENT|GRANT_VOUCHER|STORY_CARD|COMPOSITE",
+          },
+        },
+      },
+    },
+    rules: [
+      "Keep assistantMessage concise and practical.",
+      "Output strict JSON only.",
+      "Use mode=PROPOSAL only when user clearly requests to create/finalize a strategy.",
+      "When mode=PROPOSAL, proposal fields are required.",
+      "Avoid repeating already approved strategies with the same templateId+branchId unless user asks.",
+    ],
+  };
+
+  return {
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are MealQuest merchant strategy copilot. Continue multi-turn conversation and return strict JSON.",
+      },
+      {
+        role: "user",
+        content: JSON.stringify(userPayload),
+      },
+    ],
+  };
+}
+
+function createConcurrencyQueue(maxConcurrency) {
+  const safeMaxConcurrency = toPositiveInt(maxConcurrency, DEFAULT_MAX_CONCURRENCY);
+  const pending = [];
+  let activeCount = 0;
+
+  function scheduleNext() {
+    if (activeCount >= safeMaxConcurrency) {
+      return;
+    }
+    const item = pending.shift();
+    if (!item) {
+      return;
+    }
+    activeCount += 1;
+    Promise.resolve()
+      .then(item.task)
+      .then(item.resolve, item.reject)
+      .finally(() => {
+        activeCount -= 1;
+        scheduleNext();
+      });
+  }
+
+  return {
+    run(task) {
+      return new Promise((resolve, reject) => {
+        pending.push({ task, resolve, reject });
+        scheduleNext();
+      });
+    },
+    snapshot() {
+      return {
+        maxConcurrency: safeMaxConcurrency,
+        activeCount,
+        pendingCount: pending.length,
+      };
+    },
+  };
+}
+
+function createStrategyPlannerGraph({
+  provider,
+  model,
+  resolveRemoteDecision,
+  normalizeAiDecision,
+  buildCandidateDecisionSet,
+}) {
+  const PlannerState = Annotation.Root({
+    input: Annotation(),
+    templates: Annotation({ default: () => [] }),
+    profile: Annotation({ default: () => null }),
+    clarification: Annotation({ default: () => null }),
+    baseDecision: Annotation({ default: () => null }),
+    plan: Annotation({ default: () => null }),
+  });
+
+  const prepareInput = (state) => {
+    const input = isObjectLike(state.input) ? state.input : {};
+    const templates = listStrategyTemplates();
+    const profile = buildIntentProfile(input.intent);
+    const clarification = shouldClarifyIntent({ input, profile });
+
+    if (clarification) {
+      return {
+        input,
+        templates,
+        profile,
+        clarification,
+        plan: clarification,
+      };
+    }
+    return {
+      input,
+      templates,
+      profile,
+    };
+  };
+
+  const remoteDecide = async (state) => {
+    if (state.plan && state.plan.status === "NEED_CLARIFICATION") {
+      return {};
+    }
+
+    try {
+      const remoteDecision = await resolveRemoteDecision(state.input, state.templates);
+      return {
+        baseDecision: isObjectLike(remoteDecision) ? remoteDecision : {},
+      };
+    } catch (error) {
+      return {
+        plan: createAiUnavailableResult(summarizeError(error)),
+      };
+    }
+  };
+
+  const assemblePlan = (state) => {
+    if (state.plan && state.plan.status === "AI_UNAVAILABLE") {
+      return {};
+    }
+    if (state.clarification) {
+      return {
+        plan: state.clarification,
+      };
+    }
+
+    const input = isObjectLike(state.input) ? state.input : {};
+    const templates =
+      Array.isArray(state.templates) && state.templates.length > 0
+        ? state.templates
+        : listStrategyTemplates();
+    const profile = state.profile || buildIntentProfile(input.intent);
+    const baseDecision = isObjectLike(state.baseDecision) ? state.baseDecision : {};
+
+    const decisionSet = buildCandidateDecisionSet({
+      input,
+      baseDecision,
+      profile,
+    });
+
+    const proposals = decisionSet.map((decision) =>
+      normalizeAiDecision({
+        input,
+        rawDecision: decision,
+        provider,
+        model,
+        templates,
+      }),
+    );
+
+    return {
+      plan: {
+        status: "PROPOSALS",
+        proposals,
+        confidence: Number(baseDecision.confidence) || null,
+        rationale: asString(baseDecision.rationale),
+        sourceProvider: provider.toUpperCase(),
+        sourceModel: asString(model) || "unknown",
+      },
+    };
+  };
+
+  return new StateGraph(PlannerState)
+    .addNode("prepare_input", prepareInput)
+    .addNode("remote_decide", remoteDecide)
+    .addNode("assemble_plan", assemblePlan)
+    .addEdge(START, "prepare_input")
+    .addEdge("prepare_input", "remote_decide")
+    .addEdge("remote_decide", "assemble_plan")
+    .addEdge("assemble_plan", END)
+    .compile();
+}
+
+function createStrategyChatGraph({
+  resolveRemoteChatDecision,
+  normalizeAiDecision,
+  provider,
+  model,
+}) {
+  const ChatState = Annotation.Root({
+    input: Annotation(),
+    remoteDecision: Annotation({ default: () => null }),
+    turn: Annotation({ default: () => null }),
+  });
+
+  const prepareInput = (state) => ({
+    input: isObjectLike(state.input) ? state.input : {},
+  });
+
+  const remoteDecide = async (state) => {
+    try {
+      const remoteDecision = await resolveRemoteChatDecision(state.input);
+      return {
+        remoteDecision: isObjectLike(remoteDecision) ? remoteDecision : {},
+      };
+    } catch (error) {
+      return {
+        turn: createAiUnavailableResult(summarizeError(error)),
+      };
+    }
+  };
+
+  const finalizeTurn = (state) => {
+    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
+      return {};
+    }
+
+    const decision = isObjectLike(state.remoteDecision) ? state.remoteDecision : {};
+    const mode = asString(decision.mode || "").toUpperCase();
+    const assistantMessage = asString(decision.assistantMessage);
+
+    if (mode === "PROPOSAL" && isObjectLike(decision.proposal)) {
+      const input = isObjectLike(state.input) ? state.input : {};
+      const normalized = normalizeAiDecision({
+        input: {
+          merchantId: input.merchantId,
+          templateId: asString(decision.proposal.templateId) || input.templateId,
+          branchId: asString(decision.proposal.branchId) || input.branchId,
+          overrides: {},
+        },
+        rawDecision: decision.proposal,
+        provider,
+        model,
+        templates: listStrategyTemplates(),
+      });
+      return {
+        turn: {
+          status: "PROPOSAL_READY",
+          assistantMessage: assistantMessage || "Strategy proposal drafted. Please review immediately.",
+          proposal: normalized,
+        },
+      };
+    }
+
+    return {
+      turn: {
+        status: "CHAT_REPLY",
+        assistantMessage: assistantMessage || "Please tell me your goal, budget, and expected time window.",
+      },
+    };
+  };
+
+  return new StateGraph(ChatState)
+    .addNode("prepare_input", prepareInput)
+    .addNode("remote_decide", remoteDecide)
+    .addNode("finalize_turn", finalizeTurn)
+    .addEdge(START, "prepare_input")
+    .addEdge("prepare_input", "remote_decide")
+    .addEdge("remote_decide", "finalize_turn")
+    .addEdge("finalize_turn", END)
+    .compile();
+}
+
 function createVariantPatch(basePatch, variantKey, indexSeed) {
   const patch = deepClone(basePatch || {});
   const budget = patch.budget || {};
@@ -573,6 +923,24 @@ function createAiStrategyService(options = {}) {
       process.env.MQ_AI_TIMEOUT_MS ||
       (provider === "bigmodel" ? BIGMODEL_DEFAULT_TIMEOUT_MS : DEFAULT_TIMEOUT_MS),
   );
+  const maxConcurrency = toPositiveInt(
+    options.maxConcurrency || process.env.MQ_AI_MAX_CONCURRENCY,
+    DEFAULT_MAX_CONCURRENCY,
+  );
+  const remoteQueue = createConcurrencyQueue(maxConcurrency);
+  const strategyPlannerGraph = createStrategyPlannerGraph({
+    provider,
+    model,
+    resolveRemoteDecision,
+    normalizeAiDecision,
+    buildCandidateDecisionSet,
+  });
+  const strategyChatGraph = createStrategyChatGraph({
+    resolveRemoteChatDecision,
+    normalizeAiDecision,
+    provider,
+    model,
+  });
 
   async function resolveRemoteDecision(input, templates) {
     if (provider === "bigmodel" && !apiKey) {
@@ -591,19 +959,62 @@ function createAiStrategyService(options = {}) {
       templates,
     });
 
-    const remote = await callOpenAiCompatible({
-      apiKey,
-      baseUrl,
-      model,
-      timeoutMs: safeTimeoutMs,
-      payload: {
+    const remote = await remoteQueue.run(() =>
+      callOpenAiCompatible({
+        apiKey,
+        baseUrl,
         model,
-        temperature: 0.2,
-        max_tokens: 512,
-        ...(provider === "bigmodel" ? { thinking: { type: "disabled" } } : {}),
-        messages: prompt.messages,
-      },
+        timeoutMs: safeTimeoutMs,
+        payload: {
+          model,
+          temperature: 0.2,
+          max_tokens: 512,
+          ...(provider === "bigmodel" ? { thinking: { type: "disabled" } } : {}),
+          messages: prompt.messages,
+        },
+      }),
+    );
+    const content =
+      remote &&
+      Array.isArray(remote.choices) &&
+      remote.choices[0] &&
+      remote.choices[0].message &&
+      remote.choices[0].message.content;
+    return parseJsonLoose(content);
+  }
+
+  async function resolveRemoteChatDecision(input) {
+    if (provider === "bigmodel" && !apiKey) {
+      throw new Error("MQ_AI_API_KEY is required for provider=bigmodel");
+    }
+    const safeTimeoutMs =
+      Number.isFinite(timeoutMs) && timeoutMs > 0
+        ? Math.floor(timeoutMs)
+        : (provider === "bigmodel" ? BIGMODEL_DEFAULT_TIMEOUT_MS : DEFAULT_TIMEOUT_MS);
+    const prompt = buildChatPromptPayload({
+      merchantId: input.merchantId,
+      sessionId: input.sessionId,
+      userMessage: input.userMessage,
+      history: input.history,
+      activeCampaigns: input.activeCampaigns,
+      approvedStrategies: input.approvedStrategies,
     });
+
+    const remote = await remoteQueue.run(() =>
+      callOpenAiCompatible({
+        apiKey,
+        baseUrl,
+        model,
+        timeoutMs: safeTimeoutMs,
+        payload: {
+          model,
+          temperature: 0.2,
+          max_tokens: 768,
+          ...(provider === "bigmodel" ? { thinking: { type: "disabled" } } : {}),
+          messages: prompt.messages,
+        },
+      }),
+    );
     const content =
       remote &&
       Array.isArray(remote.choices) &&
@@ -614,45 +1025,17 @@ function createAiStrategyService(options = {}) {
   }
 
   async function generateStrategyPlan(input) {
-    const templates = listStrategyTemplates();
-    const profile = buildIntentProfile(input.intent);
-    const clarify = shouldClarifyIntent({ input, profile });
-    if (clarify) {
-      return clarify;
-    }
-
-    let baseDecision;
     try {
-      const remoteDecision = await resolveRemoteDecision(input, templates);
-      baseDecision = isObjectLike(remoteDecision) ? remoteDecision : {};
+      const result = await strategyPlannerGraph.invoke({
+        input: isObjectLike(input) ? input : {},
+      });
+      if (result && isObjectLike(result.plan)) {
+        return result.plan;
+      }
+      return createAiUnavailableResult("strategy planner returned empty result");
     } catch (error) {
-      return createAiUnavailableResult(summarizeError(error));
+      return createAiUnavailableResult(`langgraph planner failed: ${summarizeError(error)}`);
     }
-
-    const decisionSet = buildCandidateDecisionSet({
-      input,
-      baseDecision,
-      profile,
-    });
-
-    const proposals = decisionSet.map((decision) =>
-      normalizeAiDecision({
-        input,
-        rawDecision: decision,
-        provider,
-        model,
-        templates,
-      }),
-    );
-
-    return {
-      status: "PROPOSALS",
-      proposals,
-      confidence: Number(baseDecision.confidence) || null,
-      rationale: asString(baseDecision.rationale),
-      sourceProvider: provider.toUpperCase(),
-      sourceModel: asString(model) || "unknown",
-    };
   }
 
   async function generateStrategyProposal(input) {
@@ -666,8 +1049,23 @@ function createAiStrategyService(options = {}) {
     return plan.proposals[0];
   }
 
+  async function generateStrategyChatTurn(input) {
+    try {
+      const result = await strategyChatGraph.invoke({
+        input: isObjectLike(input) ? input : {},
+      });
+      if (result && isObjectLike(result.turn)) {
+        return result.turn;
+      }
+      return createAiUnavailableResult("strategy chat returned empty result");
+    } catch (error) {
+      return createAiUnavailableResult(`langgraph strategy chat failed: ${summarizeError(error)}`);
+    }
+  }
+
   function getRuntimeInfo() {
     const remoteEnabled = REMOTE_PROVIDERS.has(provider);
+    const queue = remoteQueue.snapshot();
     return {
       provider,
       model,
@@ -675,12 +1073,17 @@ function createAiStrategyService(options = {}) {
       configured: true,
       remoteEnabled,
       remoteConfigured: remoteEnabled ? Boolean(apiKey) : false,
+      plannerEngine: "langgraph",
+      maxConcurrency: queue.maxConcurrency,
+      queueActive: queue.activeCount,
+      queuePending: queue.pendingCount,
     };
   }
 
   return {
     generateStrategyPlan,
     generateStrategyProposal,
+    generateStrategyChatTurn,
     getRuntimeInfo,
   };
 }

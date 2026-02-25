@@ -114,6 +114,15 @@ function resolveAuditAction(method, pathname) {
   if (method === "POST" && pathname === "/api/merchant/strategy-proposals") {
     return "STRATEGY_PROPOSAL_CREATE";
   }
+  if (method === "POST" && pathname === "/api/merchant/strategy-chat/sessions") {
+    return "STRATEGY_CHAT_SESSION_CREATE";
+  }
+  if (method === "POST" && pathname === "/api/merchant/strategy-chat/messages") {
+    return "STRATEGY_CHAT_MESSAGE";
+  }
+  if (method === "POST" && /^\/api\/merchant\/strategy-chat\/proposals\/[^/]+\/review$/.test(pathname)) {
+    return "STRATEGY_CHAT_REVIEW";
+  }
   if (method === "POST" && /^\/api\/merchant\/campaigns\/[^/]+\/status$/.test(pathname)) {
     return "CAMPAIGN_STATUS_SET";
   }
@@ -304,6 +313,14 @@ function buildMerchantSnapshotSummary(db, merchantId) {
       db.strategyConfigs[merchantId] &&
       Object.values(db.strategyConfigs[merchantId])) ||
     [];
+  const strategyChat =
+    (db.strategyChats && db.strategyChats[merchantId]) || { activeSessionId: null, sessions: {} };
+  const strategyChatSessionsCount = Object.keys(strategyChat.sessions || {}).length;
+  const strategyChatMessageCount = Object.values(strategyChat.sessions || {}).reduce(
+    (sum, session) =>
+      sum + (Array.isArray(session && session.messages) ? session.messages.length : 0),
+    0,
+  );
   const allianceConfig =
     (db.allianceConfigs && db.allianceConfigs[merchantId]) || null;
   const ledger = (db.ledger || []).filter((item) => item.merchantId === merchantId);
@@ -334,6 +351,8 @@ function buildMerchantSnapshotSummary(db, merchantId) {
     campaignsCount: campaigns.length,
     proposalsCount: proposals.length,
     strategyConfigCount: strategyConfigs.length,
+    strategyChatSessionsCount,
+    strategyChatMessageCount,
     allianceWalletShared: Boolean(allianceConfig && allianceConfig.walletShared),
     ledgerCount: ledger.length,
     auditCount: auditLogs.length,
@@ -506,6 +525,9 @@ function ensureMerchantContainers(db, merchantId) {
   if (!db.strategyConfigs || typeof db.strategyConfigs !== "object") {
     db.strategyConfigs = {};
   }
+  if (!db.strategyChats || typeof db.strategyChats !== "object") {
+    db.strategyChats = {};
+  }
   if (!db.allianceConfigs || typeof db.allianceConfigs !== "object") {
     db.allianceConfigs = {};
   }
@@ -530,6 +552,12 @@ function ensureMerchantContainers(db, merchantId) {
   }
   if (!db.strategyConfigs[merchantId]) {
     db.strategyConfigs[merchantId] = {};
+  }
+  if (!db.strategyChats[merchantId]) {
+    db.strategyChats[merchantId] = {
+      activeSessionId: null,
+      sessions: {}
+    };
   }
 }
 
@@ -854,6 +882,15 @@ function copyMerchantSlice({ sourceDb, targetDb, merchantId }) {
   }
   targetDb.strategyConfigs[merchantId] = jsonClone(
     (sourceDb.strategyConfigs && sourceDb.strategyConfigs[merchantId]) || {}
+  );
+  if (!targetDb.strategyChats || typeof targetDb.strategyChats !== "object") {
+    targetDb.strategyChats = {};
+  }
+  targetDb.strategyChats[merchantId] = jsonClone(
+    (sourceDb.strategyChats && sourceDb.strategyChats[merchantId]) || {
+      activeSessionId: null,
+      sessions: {}
+    }
   );
 
   if (!targetDb.partnerOrders || typeof targetDb.partnerOrders !== "object") {
