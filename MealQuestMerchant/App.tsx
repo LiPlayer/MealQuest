@@ -113,7 +113,25 @@ type StrategyChatSnapshot = Pick<
   'sessionId' | 'messages' | 'pendingReview'
 >;
 
-function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
+function isTokenExpiredError(err: unknown) {
+  const message =
+    err && typeof err === 'object' && 'message' in err
+      ? String((err as any).message || '').toLowerCase()
+      : '';
+  return (
+    message.includes('token expired') ||
+    message.includes('invalid token') ||
+    message.includes('authorization bearer token is required')
+  );
+}
+
+function MerchantConsoleApp({
+  initialToken,
+  onAuthExpired,
+}: {
+  initialToken: string;
+  onAuthExpired: () => void;
+}) {
   const [merchantState, setMerchantState] = useState(createInitialMerchantState);
   const [lastAction, setLastAction] = useState('正在连接...');
   const remoteToken = initialToken || null;
@@ -136,6 +154,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
   const [allianceStores, setAllianceStores] = useState<
     { merchantId: string; name: string }[]
   >([]);
+  const [customerUserId, setCustomerUserId] = useState('');
   const [qrStoreId, setQrStoreId] = useState('');
   const [qrScene, setQrScene] = useState('entry');
   const [qrPayload, setQrPayload] = useState('');
@@ -186,12 +205,21 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
   };
 
   const ensureStrategyChatSession = async (token: string): Promise<string> => {
+    const merchantId = String(
+      (typeof MerchantApi.getMerchantId === 'function'
+        ? MerchantApi.getMerchantId()
+        : merchantState.merchantId) || '',
+    ).trim();
+    if (!merchantId) {
+      throw new Error('merchantId missing. Please complete onboarding/login first.');
+    }
     const activeSessionId = String(strategyChatSessionId || '').trim();
     const response = activeSessionId
       ? await MerchantApi.getStrategyChatSession(token, {
+        merchantId,
         sessionId: activeSessionId,
       })
-      : await MerchantApi.createStrategyChatSession(token);
+      : await MerchantApi.createStrategyChatSession(token, { merchantId });
     applyStrategyChatSnapshot(response);
     return String(response.sessionId || '').trim();
   };
@@ -296,8 +324,12 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
             }),
           );
         }
-      } catch {
+      } catch (err) {
         if (!active) {
+          return;
+        }
+        if (isTokenExpiredError(err)) {
+          onAuthExpired();
           return;
         }
         setLastAction('远程会话失效，请重新登录');
@@ -323,7 +355,14 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
     if (!remoteToken) {
       return;
     }
-    ensureStrategyChatSession(remoteToken).catch(() => { });
+    ensureStrategyChatSession(remoteToken).catch((err: any) => {
+      if (isTokenExpiredError(err)) {
+        onAuthExpired();
+        return;
+      }
+      const detail = err?.message ? String(err.message) : 'session init failed';
+      setLastAction(`AI session init failed: ${detail}`);
+    });
     refreshAllianceData(remoteToken).catch(() => { });
   }, [remoteToken]);
 
@@ -365,8 +404,13 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
       } else {
         setLastAction('AI 已回复，请继续对话');
       }
-    } catch {
-      setLastAction('AI 对话失败，请稍后重试');
+    } catch (err: any) {
+      if (isTokenExpiredError(err)) {
+        onAuthExpired();
+        return;
+      }
+      const detail = err?.message ? String(err.message) : '';
+      setLastAction(detail ? `AI request failed: ${detail}` : 'AI request failed, please retry.');
     } finally {
       setAiIntentSubmitting(false);
     }
@@ -458,8 +502,13 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
       setLastAction('连接未就绪');
       return;
     }
+    const targetUserId = customerUserId.trim();
+    if (!targetUserId) {
+      setLastAction('Please input customer user ID first');
+      return;
+    }
     const response = await MerchantApi.syncAllianceUser(remoteToken, {
-      userId: 'u_demo',
+      userId: targetUserId,
     });
     await refreshAllianceData(remoteToken);
     await refreshAuditLogs(remoteToken);
@@ -472,10 +521,16 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
     label: string,
   ) => {
     if (remoteToken) {
+      const targetUserId = customerUserId.trim();
+      if (!targetUserId) {
+        setLastAction('Please input customer user ID first');
+        return;
+      }
       const triggerResult = await MerchantApi.triggerEvent(
         remoteToken,
         event,
         context,
+        targetUserId,
       );
       const executed = triggerResult.executed || [];
       await refreshRemoteState(remoteToken);
@@ -760,10 +815,17 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
                 <Text style={styles.mutedText}>
                   门店：{allianceStores.map(item => item.name).join(' / ')}
                 </Text>
-                <View style={styles.filterRow}>
-                  <Pressable
-                    testID="alliance-wallet-toggle"
-                    style={styles.filterButton}
+                  <TextInput
+                    testID="alliance-user-id-input"
+                    value={customerUserId}
+                    onChangeText={setCustomerUserId}
+                    placeholder="Customer User ID (required for sync and trigger)"
+                    style={styles.entryInput}
+                  />
+                  <View style={styles.filterRow}>
+                    <Pressable
+                      testID="alliance-wallet-toggle"
+                      style={styles.filterButton}
                     onPress={onToggleAllianceWalletShared}>
                     <Text style={styles.filterButtonText}>
                       {allianceConfig.walletShared ? '关闭钱包互通' : '开启钱包互通'}
@@ -1153,15 +1215,16 @@ function MerchantEntryFlow({
       const result = await MerchantApi.loginByPhone({
         phone: contactPhone.trim(),
         code: phoneCode.trim(),
-        merchantId: merchantId || undefined,
       });
       setToken(result.token);
       if (result.profile.merchantId) {
         MerchantApi.setMerchantId(result.profile.merchantId);
         setMerchantId(result.profile.merchantId);
+        onComplete({ merchantId: result.profile.merchantId, token: result.token });
+        return;
       }
       setStep('GUIDE');
-      setHint('Phone login verified');
+      setHint('Phone login verified. No store is bound yet, continue onboarding.');
     } catch (err: any) {
       setError(err?.message || 'Phone login failed');
     } finally {
@@ -1182,7 +1245,6 @@ function MerchantEntryFlow({
         merchantId: generatedMerchantId,
         name: merchantName,
         budgetCap: 500,
-        seedDemoUsers: true,
       });
       const nextMerchantId = result.merchant.merchantId;
       MerchantApi.setMerchantId(nextMerchantId);
@@ -1230,12 +1292,6 @@ function MerchantEntryFlow({
           {step === 'PHONE_LOGIN' && (
             <View style={styles.entryCard}>
               <Text style={styles.entryCardTitle}>1. Phone Login</Text>
-              <TextInput
-                value={merchantId}
-                onChangeText={setMerchantId}
-                placeholder="Existing merchantId (optional)"
-                style={styles.entryInput}
-              />
               <TextInput
                 value={contactPhone}
                 onChangeText={setContactPhone}
@@ -1380,6 +1436,18 @@ const persistEntryState = async (merchantId: string, authToken: string) => {
   ]);
 };
 
+const clearEntryState = async () => {
+  const storage = getSimpleStorage();
+  if (!storage) {
+    return;
+  }
+  await Promise.all([
+    storage.setItem(ENTRY_DONE_KEY, '0'),
+    storage.setItem(ENTRY_MERCHANT_ID_KEY, ''),
+    storage.setItem(ENTRY_AUTH_TOKEN_KEY, ''),
+  ]);
+};
+
 export default function App() {
   const [entryBootstrapped, setEntryBootstrapped] = useState(false);
   const [ready, setReady] = useState(false);
@@ -1403,8 +1471,26 @@ export default function App() {
           setMerchantId(state.merchantId);
         }
         if (state.done && state.merchantId && state.authToken) {
-          setAuthToken(state.authToken);
-          setReady(true);
+          try {
+            // Validate persisted auth eagerly on app launch to avoid delayed failures on first action.
+            await MerchantApi.getState(state.authToken, state.merchantId);
+            setAuthToken(state.authToken);
+            setReady(true);
+          } catch (err) {
+            if (isTokenExpiredError(err)) {
+              await clearEntryState();
+              if (typeof MerchantApi.setMerchantId === 'function') {
+                MerchantApi.setMerchantId('');
+              }
+              setMerchantId('');
+              setAuthToken('');
+              setReady(false);
+            } else {
+              // Keep previous behavior for transient connectivity errors.
+              setAuthToken(state.authToken);
+              setReady(true);
+            }
+          }
         }
       } catch {
         // Ignore bootstrap failures and fall back to entry flow.
@@ -1453,7 +1539,21 @@ export default function App() {
       />
     );
   }
-  return <MerchantConsoleApp key={`merchant-console-${merchantId}`} initialToken={authToken} />;
+  return (
+    <MerchantConsoleApp
+      key={`merchant-console-${merchantId}`}
+      initialToken={authToken}
+      onAuthExpired={() => {
+        if (typeof MerchantApi.setMerchantId === 'function') {
+          MerchantApi.setMerchantId('');
+        }
+        setMerchantId('');
+        setAuthToken('');
+        clearEntryState().catch(() => { });
+        setReady(false);
+      }}
+    />
+  );
 }
 
 const styles = StyleSheet.create({

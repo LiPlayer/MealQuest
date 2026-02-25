@@ -63,6 +63,9 @@ function createCampaignService(db) {
   }
 
   function triggerEvent({ merchantId, userId, event, context }) {
+    if (!String(userId || "").trim()) {
+      throw new Error("userId is required");
+    }
     const merchant = db.merchants[merchantId];
     const user = db.getMerchantUser(merchantId, userId);
     if (!merchant) {

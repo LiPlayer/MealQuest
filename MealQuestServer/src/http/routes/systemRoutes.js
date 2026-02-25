@@ -18,8 +18,12 @@ function createSystemRoutesHandler({
     if (method === "GET" && url.pathname === "/api/state") {
       const merchantId = url.searchParams.get("merchantId");
       const userId = url.searchParams.get("userId");
-      if (!merchantId || !userId) {
-        sendJson(res, 400, { error: "merchantId and userId are required" });
+      if (!merchantId) {
+        sendJson(res, 400, { error: "merchantId is required" });
+        return true;
+      }
+      if (auth.role === "CUSTOMER" && !userId) {
+        sendJson(res, 400, { error: "userId is required for customer role" });
         return true;
       }
       if (auth.merchantId && auth.merchantId !== merchantId) {
@@ -34,9 +38,13 @@ function createSystemRoutesHandler({
       const scopedDb = tenantRouter.getDbForMerchant(merchantId);
       const { merchantService, allianceService } = getServicesForDb(scopedDb);
       const merchant = tenantRepository.getMerchant(merchantId);
-      const user = tenantRepository.getMerchantUser(merchantId, userId);
-      if (!merchant || !user) {
-        sendJson(res, 404, { error: "merchant or user not found" });
+      const user = userId ? tenantRepository.getMerchantUser(merchantId, userId) : null;
+      if (!merchant) {
+        sendJson(res, 404, { error: "merchant not found" });
+        return true;
+      }
+      if (userId && !user && auth.role === "CUSTOMER") {
+        sendJson(res, 404, { error: "user not found" });
         return true;
       }
 

@@ -86,7 +86,7 @@ jest.mock('../src/services/merchantApi', () => ({
     })),
     syncAllianceUser: jest.fn(async () => ({
       merchantId: 'm_store_001',
-      userId: 'u_demo',
+      userId: 'u_customer_001',
       syncedStores: ['m_store_001', 'm_bistro'],
     })),
     createFireSale: jest.fn(async () => ({
@@ -199,11 +199,18 @@ describe('merchant ui regression flow', () => {
     expect(mockApi.setAllianceConfig).toHaveBeenCalled();
 
     await ReactTestRenderer.act(async () => {
+      tree!.root
+        .findByProps({testID: 'alliance-user-id-input'})
+        .props.onChangeText('u_customer_001');
+      await flush(2);
+    });
+
+    await ReactTestRenderer.act(async () => {
       tree!.root.findByProps({testID: 'alliance-sync-user'}).props.onPress();
       await flush(4);
     });
     expect(mockApi.syncAllianceUser).toHaveBeenCalledWith('token_demo', {
-      userId: 'u_demo',
+      userId: 'u_customer_001',
     });
 
     await ReactTestRenderer.act(async () => {

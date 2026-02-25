@@ -563,7 +563,6 @@ function onboardMerchant(db, payload = {}) {
   const merchantName = sanitizeMerchantName(payload.name || payload.merchantName);
   const budgetCap = sanitizeBudgetCap(payload.budgetCap, 300);
   const clusterId = String(payload.clusterId || `cluster_${merchantId}`).trim();
-  const seedDemoUsers = payload.seedDemoUsers !== false;
   const now = new Date();
 
   if (!db.merchants || typeof db.merchants !== "object") {
@@ -590,22 +589,6 @@ function onboardMerchant(db, payload = {}) {
   };
 
   ensureMerchantContainers(db, merchantId);
-  if (seedDemoUsers) {
-    db.merchantUsers[merchantId].u_demo = createSeedCustomer(now, {
-      uid: "u_demo",
-      displayName: "Demo User",
-      principal: 120,
-      bonus: 30,
-      silver: 88
-    });
-    db.merchantUsers[merchantId].u_friend = createSeedCustomer(now, {
-      uid: "u_friend",
-      displayName: "Demo Friend",
-      principal: 60,
-      bonus: 12,
-      silver: 40
-    });
-  }
 
   db.allianceConfigs[merchantId] = {
     merchantId,
@@ -842,6 +825,34 @@ function buildContractApplication(payload = {}, now = new Date()) {
     submittedAt: now.toISOString(),
     status: "PENDING_REVIEW"
   };
+}
+
+function listMerchantIdsByOwnerPhone(db, phone) {
+  const normalizedPhone = sanitizePhone(phone);
+  const applications =
+    db && db.contractApplications && typeof db.contractApplications === "object"
+      ? db.contractApplications
+      : {};
+  const matched = [];
+  for (const [merchantId, item] of Object.entries(applications)) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    const contactPhone = String(item.contactPhone || "").trim();
+    if (!contactPhone) {
+      continue;
+    }
+    let normalizedContactPhone = "";
+    try {
+      normalizedContactPhone = sanitizePhone(contactPhone);
+    } catch {
+      continue;
+    }
+    if (normalizedContactPhone === normalizedPhone) {
+      matched.push(merchantId);
+    }
+  }
+  return matched;
 }
 
 function copyMerchantSlice({ sourceDb, targetDb, merchantId }) {
@@ -1195,6 +1206,7 @@ module.exports = {
   createCustomerProfile,
   bindCustomerPhoneIdentity,
   buildContractApplication,
+  listMerchantIdsByOwnerPhone,
   copyMerchantSlice,
   cutoverMerchantToDedicatedDb,
   rollbackMerchantToSharedDb,

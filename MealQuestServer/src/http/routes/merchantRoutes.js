@@ -3,6 +3,7 @@ const {
   sendJson,
   ensureRole,
   buildContractApplication,
+  listMerchantIdsByOwnerPhone,
   enforceTenantPolicyForHttp,
 } = require("../serverHelpers");
 
@@ -356,6 +357,14 @@ function createMerchantRoutesHandler({
       }
 
       const application = buildContractApplication(body);
+      const phoneBoundMerchants = listMerchantIdsByOwnerPhone(
+        actualDb,
+        application.contactPhone,
+      ).filter((id) => id !== merchantId);
+      if (phoneBoundMerchants.length > 0) {
+        sendJson(res, 409, { error: "contactPhone already bound to another merchant" });
+        return true;
+      }
       if (!actualDb.contractApplications || typeof actualDb.contractApplications !== "object") {
         actualDb.contractApplications = {};
       }

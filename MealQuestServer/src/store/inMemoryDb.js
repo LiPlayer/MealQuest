@@ -31,84 +31,8 @@ function createDefaultState(now = new Date()) {
       }
     },
     merchantUsers: {
-      m_store_001: {
-        u_demo: {
-          uid: "u_demo",
-          displayName: "Demo User",
-          wallet: {
-            principal: 120,
-            bonus: 36,
-            silver: 88
-          },
-          tags: ["REGULAR", "SPICY_LOVER"],
-          fragments: {
-            spicy: 2,
-            noodle: 3
-          },
-          vouchers: [
-            {
-              id: "voucher_soon",
-              type: "ITEM_WARRANT",
-              name: "Noodle Voucher",
-              value: 18,
-              minSpend: 0,
-              status: "ACTIVE",
-              expiresAt: new Date(now.getTime() + 60 * 60 * 1000).toISOString()
-            },
-            {
-              id: "voucher_big",
-              type: "NO_THRESHOLD_VOUCHER",
-              name: "No Threshold Voucher",
-              value: 30,
-              minSpend: 20,
-              status: "ACTIVE",
-              expiresAt: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString()
-            }
-          ]
-        },
-        u_friend: {
-          uid: "u_friend",
-          displayName: "Demo Friend",
-          wallet: {
-            principal: 40,
-            bonus: 8,
-            silver: 52
-          },
-          tags: ["REGULAR"],
-          fragments: {
-            spicy: 0,
-            noodle: 1
-          },
-          vouchers: []
-        }
-      },
-      m_bistro: {
-        u_demo: {
-          uid: "u_demo",
-          displayName: "Demo User",
-          wallet: {
-            principal: 80,
-            bonus: 12,
-            silver: 36
-          },
-          tags: ["REGULAR"],
-          fragments: {
-            spicy: 1,
-            noodle: 1
-          },
-          vouchers: [
-            {
-              id: "bistro_voucher_soon",
-              type: "ITEM_WARRANT",
-              name: "Soup Voucher",
-              value: 10,
-              minSpend: 0,
-              status: "ACTIVE",
-              expiresAt: new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString()
-            }
-          ]
-        }
-      }
+      m_store_001: {},
+      m_bistro: {}
     },
     paymentsByMerchant: {
       m_store_001: {},

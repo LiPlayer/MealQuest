@@ -31,7 +31,6 @@ export const MerchantApi = {
     merchantId: string;
     name: string;
     budgetCap?: number;
-    seedDemoUsers?: boolean;
   }) => {
     const result = await requestPublicJson<MerchantOnboardResult>('POST', '/api/merchant/onboard', payload);
     setMerchantId(result.merchant.merchantId);
@@ -41,7 +40,6 @@ export const MerchantApi = {
   loginByPhone: async (payload: {
     phone: string;
     code: string;
-    merchantId?: string;
   }) => {
     return requestPublicJson<MerchantPhoneLoginResult>('POST', '/api/auth/merchant/phone-login', payload);
   },
@@ -53,7 +51,7 @@ export const MerchantApi = {
   getState: async (token: string, merchantId = getMerchantId()) => {
     const state = await requestJson<any>(
       'GET',
-      `/api/state?merchantId=${encodeURIComponent(merchantId)}&userId=${encodeURIComponent('u_demo')}`,
+      `/api/state?merchantId=${encodeURIComponent(merchantId)}`,
       token,
     );
     return toMerchantState({
@@ -72,17 +70,18 @@ export const MerchantApi = {
 
   triggerRainEvent: async (
     token: string,
+    userId: string,
     merchantId = getMerchantId(),
   ): Promise<TriggerRainEventResult> => {
-    return MerchantApi.triggerEvent(token, 'WEATHER_CHANGE', { weather: 'RAIN' }, merchantId);
+    return MerchantApi.triggerEvent(token, 'WEATHER_CHANGE', { weather: 'RAIN' }, userId, merchantId);
   },
 
   triggerEvent: async (
     token: string,
     event: string,
     context: Record<string, string | boolean | number>,
+    userId: string,
     merchantId = getMerchantId(),
-    userId = 'u_demo',
   ): Promise<TriggerRainEventResult> => {
     return requestJson<TriggerRainEventResult>('POST', '/api/tca/trigger', token, {
       merchantId,

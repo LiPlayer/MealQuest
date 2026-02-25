@@ -55,10 +55,13 @@ function createPaymentService(db, options = {}) {
   }
 
   function getMerchantAndUser({ merchantId, userId }) {
+    if (!String(userId || "").trim()) {
+      throw new Error("userId is required");
+    }
     const merchant = db.merchants[merchantId];
     const scope = resolveWalletScope(merchantId);
-    const user = db.getMerchantUser(scope.walletMerchantId, userId);
     assertEntity(merchant, "merchant");
+    const user = db.getMerchantUser(scope.walletMerchantId, userId);
     assertEntity(user, "user");
     return {
       merchant,

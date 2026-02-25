@@ -14,6 +14,7 @@ const {
   issuePhoneCode,
   sanitizePhone,
   verifyPhoneCode,
+  listMerchantIdsByOwnerPhone,
 } = require("../serverHelpers");
 
 function createPreAuthRoutesHandler({
@@ -68,11 +69,26 @@ function createPreAuthRoutesHandler({
         phone: body.phone,
         code: body.code,
       });
+      const resolvedMerchants = listMerchantIdsByOwnerPhone(actualDb, phone);
       const merchantIdRaw = body.merchantId;
-      const merchantId =
+      let merchantId =
         merchantIdRaw === undefined || merchantIdRaw === null || merchantIdRaw === ""
           ? undefined
           : sanitizeMerchantId(merchantIdRaw);
+      if (!merchantId) {
+        if (resolvedMerchants.length === 1) {
+          merchantId = resolvedMerchants[0];
+        } else if (resolvedMerchants.length > 1) {
+          sendJson(res, 409, { error: "phone bound to multiple merchants, contact support" });
+          return true;
+        }
+      } else if (
+        resolvedMerchants.length > 0 &&
+        !resolvedMerchants.includes(merchantId)
+      ) {
+        sendJson(res, 403, { error: "phone not bound to the target merchant" });
+        return true;
+      }
       if (merchantId && !tenantRepository.getMerchant(merchantId)) {
         sendJson(res, 404, { error: "merchant not found" });
         return true;
