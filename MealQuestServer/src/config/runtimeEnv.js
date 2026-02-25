@@ -102,6 +102,16 @@ function resolveServerRuntimeEnv(env = process.env) {
   const aiTimeoutDefault = aiProvider === "bigmodel" ? 45000 : 15000;
   const aiTimeoutMs = parsePositiveInt(env.MQ_AI_TIMEOUT_MS, aiTimeoutDefault);
   const aiMaxConcurrency = parsePositiveInt(env.MQ_AI_MAX_CONCURRENCY, 1);
+  const aiMaxRetries = parsePositiveInt(env.MQ_AI_MAX_RETRIES, 2);
+  const aiRetryBackoffMs = parsePositiveInt(env.MQ_AI_RETRY_BACKOFF_MS, 180);
+  const aiCircuitBreakerThreshold = parsePositiveInt(
+    env.MQ_AI_CIRCUIT_BREAKER_THRESHOLD,
+    4,
+  );
+  const aiCircuitBreakerCooldownMs = parsePositiveInt(
+    env.MQ_AI_CIRCUIT_BREAKER_COOLDOWN_MS,
+    30000,
+  );
 
   const errors = [];
   if (isProduction && !jwtSecret) {
@@ -162,7 +172,11 @@ function resolveServerRuntimeEnv(env = process.env) {
       model: aiModel,
       apiKey: aiApiKey,
       timeoutMs: aiTimeoutMs,
-      maxConcurrency: aiMaxConcurrency
+      maxConcurrency: aiMaxConcurrency,
+      maxRetries: aiMaxRetries,
+      retryBackoffMs: aiRetryBackoffMs,
+      circuitFailureThreshold: aiCircuitBreakerThreshold,
+      circuitCooldownMs: aiCircuitBreakerCooldownMs,
     }
   };
 }

@@ -31,6 +31,25 @@ test("runtime env: ai max concurrency can be configured", () => {
   assert.equal(env.aiStrategy.maxConcurrency, 3);
 });
 
+test("runtime env: ai resilience controls can be configured", () => {
+  const env = resolveServerRuntimeEnv({
+    NODE_ENV: "development",
+    MQ_DB_URL: "postgres://postgres:postgres@127.0.0.1:5432/mealquest",
+    MQ_AUTH_WECHAT_MINI_APP_ID: "wx_demo",
+    MQ_AUTH_WECHAT_MINI_APP_SECRET: "wx_secret",
+    MQ_AI_PROVIDER: "openai_compatible",
+    MQ_AI_MAX_RETRIES: "5",
+    MQ_AI_RETRY_BACKOFF_MS: "240",
+    MQ_AI_CIRCUIT_BREAKER_THRESHOLD: "7",
+    MQ_AI_CIRCUIT_BREAKER_COOLDOWN_MS: "60000",
+  });
+
+  assert.equal(env.aiStrategy.maxRetries, 5);
+  assert.equal(env.aiStrategy.retryBackoffMs, 240);
+  assert.equal(env.aiStrategy.circuitFailureThreshold, 7);
+  assert.equal(env.aiStrategy.circuitCooldownMs, 60000);
+});
+
 test("runtime env: production bigmodel requires api key", () => {
   assert.throws(
     () =>

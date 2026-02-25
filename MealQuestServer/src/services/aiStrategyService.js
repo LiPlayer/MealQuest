@@ -3,6 +3,13 @@ const {
   listStrategyTemplates,
 } = require("./strategyLibrary");
 const { Annotation, StateGraph, START, END } = require("@langchain/langgraph");
+const { createLangChainModelGateway } = require("./aiStrategy/langchainModelGateway");
+const {
+  DEFAULT_RETRY_MAX_ATTEMPTS,
+  DEFAULT_RETRY_BACKOFF_MS,
+  DEFAULT_CIRCUIT_FAILURE_THRESHOLD,
+  DEFAULT_CIRCUIT_COOLDOWN_MS,
+} = require("./aiStrategy/resilience");
 
 const DEFAULT_REMOTE_PROVIDER = "openai_compatible";
 const REMOTE_PROVIDERS = new Set(["deepseek", "openai_compatible", "bigmodel"]);
@@ -11,6 +18,10 @@ const BIGMODEL_DEFAULT_MODEL = "glm-4.7-flash";
 const BIGMODEL_DEFAULT_TIMEOUT_MS = 45000;
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_MAX_CONCURRENCY = 1;
+const DEFAULT_MAX_RETRIES = DEFAULT_RETRY_MAX_ATTEMPTS;
+const DEFAULT_RETRY_BACKOFF = DEFAULT_RETRY_BACKOFF_MS;
+const DEFAULT_CIRCUIT_BREAKER_THRESHOLD = DEFAULT_CIRCUIT_FAILURE_THRESHOLD;
+const DEFAULT_CIRCUIT_BREAKER_COOLDOWN_MS = DEFAULT_CIRCUIT_COOLDOWN_MS;
 
 const SLOT_QUESTION_BANK = {
   goal: "你这次更想要哪个目标：拉新、召回、提客单还是去库存？",
@@ -307,39 +318,6 @@ function resolveTemplateAndBranch({
     templateId: template.templateId,
     branchId: branch.branchId,
   };
-}
-
-async function callOpenAiCompatible({
-  apiKey,
-  baseUrl,
-  model,
-  timeoutMs,
-  payload,
-}) {
-  const endpoint = `${baseUrl.replace(/\/+$/, "")}/chat/completions`;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const headers = {
-      "Content-Type": "application/json",
-    };
-    if (apiKey) {
-      headers.Authorization = `Bearer ${apiKey}`;
-    }
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-    const raw = await response.text();
-    if (!response.ok) {
-      throw new Error(`ai provider http ${response.status}: ${raw.slice(0, 240)}`);
-    }
-    return JSON.parse(raw);
-  } finally {
-    clearTimeout(timeout);
-  }
 }
 
 function buildPromptPayload({
@@ -927,7 +905,36 @@ function createAiStrategyService(options = {}) {
     options.maxConcurrency || process.env.MQ_AI_MAX_CONCURRENCY,
     DEFAULT_MAX_CONCURRENCY,
   );
+  const maxRetries = toPositiveInt(
+    options.maxRetries || process.env.MQ_AI_MAX_RETRIES,
+    DEFAULT_MAX_RETRIES,
+  );
+  const retryBackoffMs = toPositiveInt(
+    options.retryBackoffMs || process.env.MQ_AI_RETRY_BACKOFF_MS,
+    DEFAULT_RETRY_BACKOFF,
+  );
+  const circuitFailureThreshold = toPositiveInt(
+    options.circuitFailureThreshold || process.env.MQ_AI_CIRCUIT_BREAKER_THRESHOLD,
+    DEFAULT_CIRCUIT_BREAKER_THRESHOLD,
+  );
+  const circuitCooldownMs = toPositiveInt(
+    options.circuitCooldownMs || process.env.MQ_AI_CIRCUIT_BREAKER_COOLDOWN_MS,
+    DEFAULT_CIRCUIT_BREAKER_COOLDOWN_MS,
+  );
   const remoteQueue = createConcurrencyQueue(maxConcurrency);
+  const modelGateway = createLangChainModelGateway({
+    provider,
+    model,
+    baseUrl,
+    apiKey,
+    timeoutMs,
+    maxRetries,
+    retryBackoffMs,
+    circuitFailureThreshold,
+    circuitCooldownMs,
+    queue: remoteQueue,
+    parseJsonLoose,
+  });
   const strategyPlannerGraph = createStrategyPlannerGraph({
     provider,
     model,
@@ -946,10 +953,6 @@ function createAiStrategyService(options = {}) {
     if (provider === "bigmodel" && !apiKey) {
       throw new Error("MQ_AI_API_KEY is required for provider=bigmodel");
     }
-    const safeTimeoutMs =
-      Number.isFinite(timeoutMs) && timeoutMs > 0
-        ? Math.floor(timeoutMs)
-        : (provider === "bigmodel" ? BIGMODEL_DEFAULT_TIMEOUT_MS : DEFAULT_TIMEOUT_MS);
     const prompt = buildPromptPayload({
       merchantId: input.merchantId,
       templateId: input.templateId,
@@ -958,39 +961,13 @@ function createAiStrategyService(options = {}) {
       overrides: input.overrides,
       templates,
     });
-
-    const remote = await remoteQueue.run(() =>
-      callOpenAiCompatible({
-        apiKey,
-        baseUrl,
-        model,
-        timeoutMs: safeTimeoutMs,
-        payload: {
-          model,
-          temperature: 0.2,
-          max_tokens: 512,
-          ...(provider === "bigmodel" ? { thinking: { type: "disabled" } } : {}),
-          messages: prompt.messages,
-        },
-      }),
-    );
-    const content =
-      remote &&
-      Array.isArray(remote.choices) &&
-      remote.choices[0] &&
-      remote.choices[0].message &&
-      remote.choices[0].message.content;
-    return parseJsonLoose(content);
+    return modelGateway.invokePlanner(prompt.messages);
   }
 
   async function resolveRemoteChatDecision(input) {
     if (provider === "bigmodel" && !apiKey) {
       throw new Error("MQ_AI_API_KEY is required for provider=bigmodel");
     }
-    const safeTimeoutMs =
-      Number.isFinite(timeoutMs) && timeoutMs > 0
-        ? Math.floor(timeoutMs)
-        : (provider === "bigmodel" ? BIGMODEL_DEFAULT_TIMEOUT_MS : DEFAULT_TIMEOUT_MS);
     const prompt = buildChatPromptPayload({
       merchantId: input.merchantId,
       sessionId: input.sessionId,
@@ -999,29 +976,7 @@ function createAiStrategyService(options = {}) {
       activeCampaigns: input.activeCampaigns,
       approvedStrategies: input.approvedStrategies,
     });
-
-    const remote = await remoteQueue.run(() =>
-      callOpenAiCompatible({
-        apiKey,
-        baseUrl,
-        model,
-        timeoutMs: safeTimeoutMs,
-        payload: {
-          model,
-          temperature: 0.2,
-          max_tokens: 768,
-          ...(provider === "bigmodel" ? { thinking: { type: "disabled" } } : {}),
-          messages: prompt.messages,
-        },
-      }),
-    );
-    const content =
-      remote &&
-      Array.isArray(remote.choices) &&
-      remote.choices[0] &&
-      remote.choices[0].message &&
-      remote.choices[0].message.content;
-    return parseJsonLoose(content);
+    return modelGateway.invokeChat(prompt.messages);
   }
 
   async function generateStrategyPlan(input) {
@@ -1066,6 +1021,7 @@ function createAiStrategyService(options = {}) {
   function getRuntimeInfo() {
     const remoteEnabled = REMOTE_PROVIDERS.has(provider);
     const queue = remoteQueue.snapshot();
+    const gatewayInfo = modelGateway.getRuntimeInfo();
     return {
       provider,
       model,
@@ -1077,6 +1033,8 @@ function createAiStrategyService(options = {}) {
       maxConcurrency: queue.maxConcurrency,
       queueActive: queue.activeCount,
       queuePending: queue.pendingCount,
+      retryPolicy: gatewayInfo.retry,
+      circuitBreaker: gatewayInfo.circuitBreaker,
     };
   }
 
