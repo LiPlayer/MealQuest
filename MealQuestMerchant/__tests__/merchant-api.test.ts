@@ -1,4 +1,4 @@
-describe('merchantApi audit logs', () => {
+﻿describe('merchantApi audit logs', () => {
   beforeEach(() => {
     jest.resetModules();
     process.env.MQ_SERVER_URL = 'http://127.0.0.1:3030';
@@ -87,33 +87,35 @@ describe('merchantApi audit logs', () => {
     expect(options.headers.Authorization).toBe('Bearer token_demo');
   });
 
-  it('creates strategy proposal with template and branch', async () => {
+  it('sends strategy chat message to the single chat endpoint', async () => {
     const fetchMock = global.fetch as jest.Mock;
     fetchMock.mockResolvedValue({
       ok: true,
       status: 200,
       json: async () => ({
-        proposalId: 'proposal_1',
-        status: 'PENDING',
+        merchantId: 'm_store_001',
+        sessionId: 'sc_1',
+        status: 'CHAT_REPLY',
+        pendingReview: null,
+        messages: [],
+        activeCampaigns: [],
+        approvedStrategies: [],
       }),
     });
 
     const {MerchantApi} = require('../src/services/merchantApi');
-    await MerchantApi.createStrategyProposal('token_demo', {
+    await MerchantApi.sendStrategyChatMessage('token_demo', {
       merchantId: 'm_store_001',
-      templateId: 'activation_contextual_drop',
-      branchId: 'COOLING',
-      intent: '高温活动',
-      overrides: {budget: {cap: 80}},
+      sessionId: 'sc_1',
+      content: 'Need lunch acquisition strategy under budget 200',
     });
 
     const [url, options] = fetchMock.mock.calls[0];
-    expect(url).toContain('/api/merchant/strategy-proposals');
+    expect(url).toContain('/api/merchant/strategy-chat/messages');
     expect(options.method).toBe('POST');
     const payload = JSON.parse(options.body);
-    expect(payload.templateId).toBe('activation_contextual_drop');
-    expect(payload.branchId).toBe('COOLING');
-    expect(payload.overrides.budget.cap).toBe(80);
+    expect(payload.sessionId).toBe('sc_1');
+    expect(payload.content).toContain('lunch acquisition');
   });
 
   it('updates campaign status', async () => {

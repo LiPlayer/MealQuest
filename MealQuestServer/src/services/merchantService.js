@@ -5,7 +5,6 @@
 
 function createMerchantService(db, options = {}) {
   const aiStrategyService = options.aiStrategyService;
-  const MAX_STRATEGY_CANDIDATES = 3;
   const MAX_CHAT_MESSAGES = 120;
   const MAX_CHAT_HISTORY_FOR_MODEL = 24;
   const MAX_APPROVED_STRATEGY_CONTEXT = 12;
@@ -433,109 +432,6 @@ function createMerchantService(db, options = {}) {
     };
   }
 
-  async function createStrategyProposal({
-    merchantId,
-    templateId,
-    branchId,
-    operatorId,
-    intent = "",
-    overrides = {}
-  }) {
-    const merchant = db.merchants[merchantId];
-    if (!merchant) {
-      throw new Error("merchant not found");
-    }
-    if (
-      !aiStrategyService ||
-      (typeof aiStrategyService.generateStrategyPlan !== "function" &&
-        typeof aiStrategyService.generateStrategyProposal !== "function")
-    ) {
-      throw new Error("ai strategy service is not configured");
-    }
-
-    const plan =
-      typeof aiStrategyService.generateStrategyPlan === "function"
-        ? await aiStrategyService.generateStrategyPlan({
-            merchantId,
-            templateId,
-            branchId,
-            intent,
-            overrides
-          })
-        : {
-            status: "PROPOSALS",
-            proposals: [
-              await aiStrategyService.generateStrategyProposal({
-                merchantId,
-                templateId,
-                branchId,
-                intent,
-                overrides
-              })
-            ]
-          };
-
-    if (plan && plan.status === "NEED_CLARIFICATION") {
-      return {
-        status: "NEED_CLARIFICATION",
-        questions: Array.isArray(plan.questions) ? plan.questions : [],
-        missingSlots: Array.isArray(plan.missingSlots) ? plan.missingSlots : [],
-        rationale: plan.rationale || "",
-        confidence: Number.isFinite(Number(plan.confidence)) ? Number(plan.confidence) : null
-      };
-    }
-    if (plan && plan.status === "AI_UNAVAILABLE") {
-      return {
-        status: "AI_UNAVAILABLE",
-        reason: plan.reason || "AI model unavailable"
-      };
-    }
-
-    const candidates = Array.isArray(plan && plan.proposals) ? plan.proposals : [];
-    if (candidates.length === 0) {
-      throw new Error("strategy planner did not return candidates");
-    }
-
-    const created = [];
-    const blocked = [];
-
-    for (let index = 0; index < Math.min(candidates.length, MAX_STRATEGY_CANDIDATES); index += 1) {
-      const aiResult = candidates[index];
-      const createdProposal = createProposalFromAiCandidate({
-        merchantId,
-        aiResult,
-        operatorId,
-        intent,
-        source: "API"
-      });
-      if (createdProposal.status !== "PENDING") {
-        blocked.push(...(createdProposal.blocked || []));
-        continue;
-      }
-      created.push(createdProposal.created);
-    }
-if (created.length === 0) {
-      return {
-        status: "BLOCKED",
-        reasons: blocked.flatMap((item) => item.reasons || []),
-        blocked
-      };
-    }
-
-    db.save();
-    const primary = created[0];
-    return {
-      proposalId: primary.proposalId,
-      status: "PENDING",
-      title: primary.title,
-      templateId: primary.templateId,
-      branchId: primary.branchId,
-      campaignId: primary.campaignId,
-      created,
-      blocked
-    };
-  }
-
   function createStrategyChatSession({ merchantId, operatorId = "system" }) {
     const merchant = db.merchants[merchantId];
     if (!merchant) {
@@ -914,7 +810,6 @@ if (created.length === 0) {
     setKillSwitch,
     listStrategyLibrary,
     listStrategyConfigs,
-    createStrategyProposal,
     createStrategyChatSession,
     getStrategyChatSession,
     sendStrategyChatMessage,

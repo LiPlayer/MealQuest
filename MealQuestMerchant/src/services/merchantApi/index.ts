@@ -11,7 +11,9 @@ import {
   MerchantOnboardResult,
   MerchantPhoneCodeResult,
   MerchantPhoneLoginResult,
-  StrategyProposalResult,
+  StrategyChatReviewResult,
+  StrategyChatSessionResult,
+  StrategyChatTurnResult,
   StrategyTemplate,
   TriggerRainEventResult,
 } from './types';
@@ -114,23 +116,71 @@ export const MerchantApi = {
     );
   },
 
-  createStrategyProposal: async (
+  getStrategyChatSession: async (
+    token: string,
+    options: {
+      merchantId?: string;
+      sessionId?: string;
+    } = {},
+  ) => {
+    const merchantId = options.merchantId || getMerchantId();
+    const query = new URLSearchParams();
+    query.set('merchantId', merchantId);
+    if (options.sessionId) {
+      query.set('sessionId', options.sessionId);
+    }
+    return requestJson<StrategyChatSessionResult>(
+      'GET',
+      `/api/merchant/strategy-chat/session?${query.toString()}`,
+      token,
+    );
+  },
+
+  createStrategyChatSession: async (
+    token: string,
+    options: {
+      merchantId?: string;
+    } = {},
+  ) => {
+    return requestJson<StrategyChatSessionResult>('POST', '/api/merchant/strategy-chat/sessions', token, {
+      merchantId: options.merchantId || getMerchantId(),
+    });
+  },
+
+  sendStrategyChatMessage: async (
     token: string,
     payload: {
-      templateId?: string;
-      branchId?: string;
-      intent?: string;
-      overrides?: Record<string, unknown>;
       merchantId?: string;
+      sessionId?: string;
+      content: string;
     },
   ) => {
-    return requestJson<StrategyProposalResult>('POST', '/api/merchant/strategy-proposals', token, {
+    return requestJson<StrategyChatTurnResult>('POST', '/api/merchant/strategy-chat/messages', token, {
       merchantId: payload.merchantId || getMerchantId(),
-      templateId: payload.templateId,
-      branchId: payload.branchId,
-      intent: payload.intent,
-      overrides: payload.overrides || {},
+      sessionId: payload.sessionId,
+      content: payload.content,
     });
+  },
+
+  reviewStrategyChatProposal: async (
+    token: string,
+    payload: {
+      proposalId: string;
+      decision: 'APPROVE' | 'REJECT';
+      merchantId?: string;
+      sessionId?: string;
+    },
+  ) => {
+    return requestJson<StrategyChatReviewResult>(
+      'POST',
+      `/api/merchant/strategy-chat/proposals/${encodeURIComponent(payload.proposalId)}/review`,
+      token,
+      {
+        merchantId: payload.merchantId || getMerchantId(),
+        sessionId: payload.sessionId,
+        decision: payload.decision,
+      },
+    );
   },
 
   setCampaignStatus: async (

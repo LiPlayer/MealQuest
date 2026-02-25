@@ -52,35 +52,65 @@ export interface TriggerRainEventResult {
   executed?: string[];
 }
 
-export interface StrategyProposalResult {
-  proposalId?: string;
-  status:
-    | 'PENDING'
-    | 'APPROVED'
-    | 'NEED_CLARIFICATION'
-    | 'BLOCKED'
-    | 'AI_UNAVAILABLE';
-  title?: string;
-  templateId?: string;
-  branchId?: string;
-  campaignId?: string;
-  created?: Array<{
+export interface StrategyChatPendingReview {
+  proposalId: string;
+  status: string;
+  title: string;
+  templateId: string | null;
+  branchId: string | null;
+  campaignId: string | null;
+  campaignName: string | null;
+  triggerEvent: string | null;
+  budget: {
+    cap?: number;
+    used?: number;
+    costPerHit?: number;
+  } | null;
+  createdAt: string | null;
+}
+
+export interface StrategyChatMessage {
+  messageId: string;
+  role: 'SYSTEM' | 'USER' | 'ASSISTANT';
+  type: 'TEXT' | 'PROPOSAL_CARD' | 'PROPOSAL_REVIEW';
+  text: string;
+  proposalId: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface StrategyChatSessionResult {
+  merchantId: string;
+  sessionId: string | null;
+  pendingReview: StrategyChatPendingReview | null;
+  messages: StrategyChatMessage[];
+  activeCampaigns: Array<{
+    id: string;
+    name: string;
+    status: string;
+    trigger: Record<string, unknown> | null;
+    priority: number;
+  }>;
+  approvedStrategies: Array<{
     proposalId: string;
+    campaignId: string;
     title: string;
     templateId: string;
     branchId: string;
-    campaignId: string;
+    approvedAt: string | null;
   }>;
-  blocked?: Array<{
-    title: string;
-    reasons: string[];
-  }>;
-  reasons?: string[];
-  questions?: string[];
-  missingSlots?: string[];
-  rationale?: string;
+}
+
+export interface StrategyChatTurnResult extends StrategyChatSessionResult {
+  status: 'CHAT_REPLY' | 'PENDING_REVIEW' | 'REVIEW_REQUIRED' | 'BLOCKED' | 'AI_UNAVAILABLE';
   reason?: string;
-  confidence?: number | null;
+  reasons?: string[];
+  message?: string;
+}
+
+export interface StrategyChatReviewResult extends StrategyChatSessionResult {
+  status: 'APPROVED' | 'REJECTED';
+  campaignId?: string;
 }
 
 export interface CampaignStatusResult {

@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
 
 jest.mock('react-native-safe-area-context', () => {
@@ -96,11 +96,61 @@ jest.mock('../src/services/merchantApi', () => ({
       priority: 999,
       ttlUntil: '2026-02-21T01:00:00.000Z',
     })),
-    createStrategyProposal: jest.fn(async () => ({
-      proposalId: 'proposal_ai_1',
-      status: 'PENDING',
-      title: 'AI策略提案：午市拉新',
+    createStrategyChatSession: jest.fn(async () => ({
+      merchantId: 'm_store_001',
+      sessionId: 'sc_1',
+      pendingReview: null,
+      messages: [],
+      activeCampaigns: [],
+      approvedStrategies: [],
+    })),
+    getStrategyChatSession: jest.fn(async () => ({
+      merchantId: 'm_store_001',
+      sessionId: 'sc_1',
+      pendingReview: null,
+      messages: [],
+      activeCampaigns: [],
+      approvedStrategies: [],
+    })),
+    sendStrategyChatMessage: jest.fn(async () => ({
+      merchantId: 'm_store_001',
+      sessionId: 'sc_1',
+      status: 'PENDING_REVIEW',
+      pendingReview: {
+        proposalId: 'proposal_ai_1',
+        status: 'PENDING',
+        title: 'AI Strategy Draft',
+        templateId: 'activation_contextual_drop',
+        branchId: 'COOLING',
+        campaignId: 'campaign_ai_1',
+        campaignName: 'AI Strategy Draft',
+        triggerEvent: 'APP_OPEN',
+        budget: {cap: 120, used: 0, costPerHit: 10},
+        createdAt: '2026-02-25T00:00:00.000Z',
+      },
+      messages: [
+        {
+          messageId: 'msg_1',
+          role: 'USER',
+          type: 'TEXT',
+          text: 'æ˜Žå¤©åˆå¸‚æ‹‰æ–°20æ¡Œï¼Œé¢„ç®—æŽ§åˆ¶åœ¨200å…ƒä»¥å†…',
+          proposalId: null,
+          metadata: null,
+          createdAt: '2026-02-25T00:00:00.000Z',
+        },
+      ],
+      activeCampaigns: [],
+      approvedStrategies: [],
+    })),
+    reviewStrategyChatProposal: jest.fn(async () => ({
+      merchantId: 'm_store_001',
+      sessionId: 'sc_1',
+      status: 'APPROVED',
       campaignId: 'campaign_ai_1',
+      pendingReview: null,
+      messages: [],
+      activeCampaigns: [],
+      approvedStrategies: [],
     })),
     approveProposal: jest.fn(),
     setKillSwitch: jest.fn(),
@@ -184,7 +234,7 @@ describe('merchant ui regression flow', () => {
     await ReactTestRenderer.act(async () => {
       tree!.root
         .findByProps({testID: 'ai-intent-input'})
-        .props.onChangeText('明天午市拉新20桌，预算控制在200元以内');
+        .props.onChangeText('æ˜Žå¤©åˆå¸‚æ‹‰æ–°20æ¡Œï¼Œé¢„ç®—æŽ§åˆ¶åœ¨200å…ƒä»¥å†…');
       await flush(2);
     });
 
@@ -193,11 +243,10 @@ describe('merchant ui regression flow', () => {
       await flush(6);
     });
 
-    expect(mockApi.createStrategyProposal).toHaveBeenCalledWith('token_demo', {
-      intent: '明天午市拉新20桌，预算控制在200元以内',
-    });
-
-    const actionText = tree!.root.findByProps({testID: 'last-action-text'});
-    expect(String(actionText.props.children)).toContain('AI已生成提案');
+    expect(mockApi.sendStrategyChatMessage).toHaveBeenCalled();
+    const [, payload] = mockApi.sendStrategyChatMessage.mock.calls[0];
+    expect(payload.sessionId).toBe('sc_1');
+    expect(typeof payload.content).toBe('string');
+    expect(payload.content.length).toBeGreaterThan(4);
   });
 });

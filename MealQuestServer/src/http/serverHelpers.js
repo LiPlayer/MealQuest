@@ -14,7 +14,7 @@ const TENANT_LIMIT_OPERATIONS = [
   "KILL_SWITCH_SET",
   "TCA_TRIGGER",
   "PRIVACY_CANCEL",
-  "STRATEGY_PROPOSAL_CREATE",
+  "STRATEGY_CHAT_WRITE",
   "CAMPAIGN_STATUS_SET",
   "FIRE_SALE_CREATE",
   "SUPPLIER_VERIFY",
@@ -110,9 +110,6 @@ function resolveAuditAction(method, pathname) {
   }
   if (method === "POST" && pathname === "/api/tca/trigger") {
     return "TCA_TRIGGER";
-  }
-  if (method === "POST" && pathname === "/api/merchant/strategy-proposals") {
-    return "STRATEGY_PROPOSAL_CREATE";
   }
   if (method === "POST" && pathname === "/api/merchant/strategy-chat/sessions") {
     return "STRATEGY_CHAT_SESSION_CREATE";

@@ -438,7 +438,7 @@ async function runSmoke(baseUrl, options = {}) {
   expectStatus(statusAfterRollback, 200, "migration status after rollback");
   assert.equal(statusAfterRollback.data.dedicatedDbAttached, false);
 
-  console.log("[smoke] scenario G: strategy library + proposal + status");
+  console.log("[smoke] scenario G: strategy library + chat proposal + review + status");
   const strategyLibrary = await getJson(
     baseUrl,
     "/api/merchant/strategy-library?merchantId=m_store_001",
@@ -451,34 +451,59 @@ async function runSmoke(baseUrl, options = {}) {
     "strategy templates should be available"
   );
 
-  const strategyProposal = await postJson(
+  const strategySession = await postJson(
     baseUrl,
-    "/api/merchant/strategy-proposals",
+    "/api/merchant/strategy-chat/sessions",
     {
-      merchantId: "m_store_001",
-      templateId: "activation_contextual_drop",
-      branchId: "COOLING",
-      intent: "smoke high temperature campaign"
+      merchantId: "m_store_001"
     },
     { Authorization: `Bearer ${ownerToken}` }
   );
-  expectStatus(strategyProposal, 200, "strategy proposal create");
-  if (strategyProposal.data.status === "AI_UNAVAILABLE") {
-    console.log("[smoke] scenario G fallback: AI_UNAVAILABLE, skipping proposal confirm/status checks.");
-  } else {
-    assert.equal(strategyProposal.data.status, "PENDING");
+  expectStatus(strategySession, 200, "strategy chat session create");
+  assert.ok(strategySession.data.sessionId, "strategy chat session id should exist");
 
-    const strategyConfirm = await postJson(
+  const strategyTurn = await postJson(
+    baseUrl,
+    "/api/merchant/strategy-chat/messages",
+    {
+      merchantId: "m_store_001",
+      sessionId: strategySession.data.sessionId,
+      content: "Please create a strategy proposal for high temperature campaign now."
+    },
+    { Authorization: `Bearer ${ownerToken}` }
+  );
+  expectStatus(strategyTurn, 200, "strategy chat message");
+  if (strategyTurn.data.status === "AI_UNAVAILABLE") {
+    console.log("[smoke] scenario G fallback: AI_UNAVAILABLE, skipping proposal review/status checks.");
+  } else if (strategyTurn.data.status === "CHAT_REPLY") {
+    console.log("[smoke] scenario G fallback: CHAT_REPLY only, skipping proposal review/status checks.");
+  } else if (strategyTurn.data.status === "BLOCKED") {
+    console.log("[smoke] scenario G fallback: BLOCKED by guardrail, skipping proposal review/status checks.");
+  } else if (strategyTurn.data.status === "REVIEW_REQUIRED") {
+    console.log("[smoke] scenario G fallback: REVIEW_REQUIRED without new draft, skipping proposal review/status checks.");
+  } else {
+    assert.equal(strategyTurn.data.status, "PENDING_REVIEW");
+    assert.ok(
+      strategyTurn.data.pendingReview && strategyTurn.data.pendingReview.proposalId,
+      "strategy chat pending proposal should exist"
+    );
+
+    const strategyReview = await postJson(
       baseUrl,
-      `/api/merchant/proposals/${encodeURIComponent(strategyProposal.data.proposalId)}/confirm`,
-      { merchantId: "m_store_001" },
+      `/api/merchant/strategy-chat/proposals/${encodeURIComponent(strategyTurn.data.pendingReview.proposalId)}/review`,
+      {
+        merchantId: "m_store_001",
+        sessionId: strategySession.data.sessionId,
+        decision: "APPROVE"
+      },
       { Authorization: `Bearer ${ownerToken}` }
     );
-    expectStatus(strategyConfirm, 200, "strategy proposal confirm");
+    expectStatus(strategyReview, 200, "strategy chat proposal review approve");
+    assert.equal(strategyReview.data.status, "APPROVED");
 
     const pauseCampaign = await postJson(
       baseUrl,
-      `/api/merchant/campaigns/${encodeURIComponent(strategyConfirm.data.campaignId)}/status`,
+      `/api/merchant/campaigns/${encodeURIComponent(strategyReview.data.campaignId)}/status`,
       { merchantId: "m_store_001", status: "PAUSED" },
       { Authorization: `Bearer ${ownerToken}` }
     );
@@ -487,7 +512,7 @@ async function runSmoke(baseUrl, options = {}) {
 
     const resumeCampaign = await postJson(
       baseUrl,
-      `/api/merchant/campaigns/${encodeURIComponent(strategyConfirm.data.campaignId)}/status`,
+      `/api/merchant/campaigns/${encodeURIComponent(strategyReview.data.campaignId)}/status`,
       { merchantId: "m_store_001", status: "ACTIVE" },
       { Authorization: `Bearer ${ownerToken}` }
     );

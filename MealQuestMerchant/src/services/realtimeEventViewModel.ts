@@ -41,11 +41,6 @@ const EVENT_META: Record<
     severity: 'info',
     isAnomaly: false,
   },
-  STRATEGY_PROPOSAL_CREATED: {
-    label: '提案生成',
-    severity: 'info',
-    isAnomaly: false,
-  },
   CAMPAIGN_STATUS_CHANGED: {
     label: '活动状态变更',
     severity: 'warn',

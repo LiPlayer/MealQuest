@@ -156,7 +156,6 @@ Strategy library and operations:
 ```text
 GET  /api/merchant/strategy-library?merchantId=<id>
 GET  /api/merchant/strategy-configs?merchantId=<id>
-POST /api/merchant/strategy-proposals
 GET  /api/merchant/strategy-chat/session?merchantId=<id>&sessionId=<optional>
 POST /api/merchant/strategy-chat/sessions
 POST /api/merchant/strategy-chat/messages

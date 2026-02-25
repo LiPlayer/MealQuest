@@ -104,7 +104,7 @@ function createMerchantRoutesHandler({
         !enforceTenantPolicyForHttp({
           tenantPolicyManager,
           merchantId,
-          operation: "STRATEGY_PROPOSAL_CREATE",
+          operation: "STRATEGY_CHAT_WRITE",
           res,
           auth,
           appendAuditLog,
@@ -147,7 +147,7 @@ function createMerchantRoutesHandler({
         !enforceTenantPolicyForHttp({
           tenantPolicyManager,
           merchantId,
-          operation: "STRATEGY_PROPOSAL_CREATE",
+          operation: "STRATEGY_CHAT_WRITE",
           res,
           auth,
           appendAuditLog,
@@ -235,68 +235,6 @@ function createMerchantRoutesHandler({
         },
       });
       wsHub.broadcast(merchantId, "STRATEGY_CHAT_REVIEWED", result);
-      sendJson(res, 200, result);
-      return true;
-    }
-
-    if (method === "POST" && url.pathname === "/api/merchant/strategy-proposals") {
-      ensureRole(auth, ["MANAGER", "OWNER"]);
-      const body = await readJsonBody(req);
-      const merchantId = auth.merchantId || body.merchantId;
-      if (!merchantId || (!body.templateId && !body.intent)) {
-        sendJson(res, 400, { error: "merchantId and (templateId or intent) are required" });
-        return true;
-      }
-      if (auth.merchantId && auth.merchantId !== merchantId) {
-        sendJson(res, 403, { error: "merchant scope denied" });
-        return true;
-      }
-      if (
-        !enforceTenantPolicyForHttp({
-          tenantPolicyManager,
-          merchantId,
-          operation: "STRATEGY_PROPOSAL_CREATE",
-          res,
-          auth,
-          appendAuditLog,
-        })
-      ) {
-        return true;
-      }
-      const { merchantService } = getServicesForMerchant(merchantId);
-      const result = await merchantService.createStrategyProposal({
-        merchantId,
-        templateId: body.templateId,
-        branchId: body.branchId,
-        operatorId: auth.operatorId,
-        intent: body.intent,
-        overrides: body.overrides,
-      });
-      const auditStatus =
-        result.status === "PENDING"
-          ? "SUCCESS"
-          : result.status === "BLOCKED"
-            ? "BLOCKED"
-            : "DENIED";
-      appendAuditLog({
-        merchantId,
-        action: "STRATEGY_PROPOSAL_CREATE",
-        status: auditStatus,
-        auth,
-        details: {
-          templateId: body.templateId,
-          branchId: body.branchId || null,
-          proposalId: result.proposalId || null,
-          decisionStatus: result.status || "UNKNOWN",
-          createdCount: Array.isArray(result.created) ? result.created.length : 0,
-          missingSlots: result.missingSlots || [],
-          reasons: result.reasons || [],
-          reason: result.reason || null,
-        },
-      });
-      if (Array.isArray(result.created) && result.created.length > 0) {
-        wsHub.broadcast(merchantId, "STRATEGY_PROPOSAL_CREATED", result);
-      }
       sendJson(res, 200, result);
       return true;
     }

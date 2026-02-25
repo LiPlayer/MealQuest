@@ -1,4 +1,4 @@
-const test = require("node:test");
+﻿const test = require("node:test");
 const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
 const http = require("node:http");
@@ -29,6 +29,72 @@ async function getJson(baseUrl, targetPath, headers = {}) {
   return {
     status: res.status,
     data: await res.json()
+  };
+}
+
+async function createStrategyProposalThroughChat(
+  baseUrl,
+  token,
+  {
+    merchantId = "m_store_001",
+    sessionId = "",
+    content = "Please create a strategy proposal now."
+  } = {}
+) {
+  let activeSessionId = String(sessionId || "").trim();
+  if (!activeSessionId) {
+    const session = await postJson(
+      baseUrl,
+      "/api/merchant/strategy-chat/sessions",
+      { merchantId },
+      { Authorization: `Bearer ${token}` }
+    );
+    if (session.status !== 200 || !session.data.sessionId) {
+      return {
+        status: session.status,
+        data: session.data
+      };
+    }
+    activeSessionId = session.data.sessionId;
+  }
+
+  const turn = await postJson(
+    baseUrl,
+    "/api/merchant/strategy-chat/messages",
+    {
+      merchantId,
+      sessionId: activeSessionId,
+      content
+    },
+    { Authorization: `Bearer ${token}` }
+  );
+
+  if (
+    turn.status === 200 &&
+    turn.data &&
+    turn.data.status === "PENDING_REVIEW" &&
+    turn.data.pendingReview
+  ) {
+    return {
+      status: 200,
+      data: {
+        status: "PENDING",
+        proposalId: turn.data.pendingReview.proposalId || null,
+        campaignId: turn.data.pendingReview.campaignId || null,
+        templateId: turn.data.pendingReview.templateId || null,
+        branchId: turn.data.pendingReview.branchId || null,
+        sessionId: activeSessionId,
+        _rawChatTurn: turn.data
+      }
+    };
+  }
+
+  return {
+    status: turn.status,
+    data: {
+      ...turn.data,
+      sessionId: activeSessionId
+    }
   };
 }
 
@@ -163,8 +229,8 @@ function pickAiDecision(payload) {
   const requestedTemplate = String(payload.templateId || "").trim();
   const requestedBranch = String(payload.branchId || "").trim();
   const isCoolingIntent =
-    intent.includes("高温") ||
-    intent.includes("清凉") ||
+    intent.includes("é«˜æ¸©") ||
+    intent.includes("æ¸…å‡‰") ||
     intent.includes("temperature") ||
     intent.includes("weather");
 
@@ -199,10 +265,14 @@ function pickAiChatDecision(payload) {
     : 0;
 
   const shouldDraft =
-    message.includes("生成") ||
-    message.includes("出一个") ||
+    message.includes("generate") ||
     message.includes("create") ||
-    message.includes("draft");
+    message.includes("draft") ||
+    message.includes("strategy");
+  const wantsExtreme =
+    message.includes("extreme") ||
+    message.includes("huge budget") ||
+    message.includes("aggressive");
 
   if (!shouldDraft) {
     return {
@@ -228,11 +298,11 @@ function pickAiChatDecision(payload) {
       confidence: 0.81,
       campaignPatch: {
         name: proposalTitle,
-        priority: approvedCount > 0 ? 84 : 82,
+        priority: wantsExtreme ? 999 : approvedCount > 0 ? 84 : 82,
         budget: {
-          cap: approvedCount > 0 ? 140 : 120,
+          cap: wantsExtreme ? 9999 : approvedCount > 0 ? 140 : 120,
           used: 0,
-          costPerHit: 10,
+          costPerHit: wantsExtreme ? 500 : 10,
         },
       },
     },
@@ -1928,27 +1998,23 @@ test("strategy library supports proposal generation, confirm and campaign status
       library.data.templates.some((item) => item.templateId === "activation_contextual_drop")
     );
 
-    const proposal = await postJson(
-      baseUrl,
-      "/api/merchant/strategy-proposals",
-      {
-        merchantId: "m_store_001",
-        templateId: "activation_contextual_drop",
-        branchId: "COOLING",
-        intent: "高温清凉"
-      },
-      { Authorization: `Bearer ${ownerToken}` }
-    );
+    const proposal = await createStrategyProposalThroughChat(baseUrl, ownerToken, {
+      merchantId: "m_store_001",
+      content: "Please create a cooling strategy proposal for high temperature campaign."
+    });
     assert.equal(proposal.status, 200);
     assert.equal(proposal.data.status, "PENDING");
     assert.ok(proposal.data.proposalId);
     assert.ok(proposal.data.campaignId);
+    assert.ok(proposal.data.sessionId);
 
     const confirm = await postJson(
       baseUrl,
-      `/api/merchant/proposals/${proposal.data.proposalId}/confirm`,
+      `/api/merchant/strategy-chat/proposals/${proposal.data.proposalId}/review`,
       {
-        merchantId: "m_store_001"
+        merchantId: "m_store_001",
+        sessionId: proposal.data.sessionId,
+        decision: "APPROVE"
       },
       { Authorization: `Bearer ${ownerToken}` }
     );
@@ -2038,15 +2104,10 @@ test("strategy proposal supports intent-only AI generation", async () => {
       merchantId: "m_store_001"
     });
 
-    const proposal = await postJson(
-      baseUrl,
-      "/api/merchant/strategy-proposals",
-      {
-        merchantId: "m_store_001",
-        intent: "天气高温，需要上清凉券"
-      },
-      { Authorization: `Bearer ${ownerToken}` }
-    );
+    const proposal = await createStrategyProposalThroughChat(baseUrl, ownerToken, {
+      merchantId: "m_store_001",
+      content: "Please create a cooling voucher strategy draft for hot weather tomorrow."
+    });
     assert.equal(proposal.status, 200);
     assert.equal(proposal.data.status, "PENDING");
     assert.ok(proposal.data.proposalId);
@@ -2099,15 +2160,10 @@ test("strategy proposal returns AI_UNAVAILABLE when remote ai is unavailable", a
       ? beforeState.data.proposals.length
       : 0;
 
-    const proposal = await postJson(
-      baseUrl,
-      "/api/merchant/strategy-proposals",
-      {
-        merchantId: "m_store_001",
-        intent: "明天午市拉新20桌，预算控制在200元以内",
-      },
-      { Authorization: `Bearer ${ownerToken}` },
-    );
+    const proposal = await createStrategyProposalThroughChat(baseUrl, ownerToken, {
+      merchantId: "m_store_001",
+      content: "请生成明天午市拉新策略，预算200内"
+    });
     assert.equal(proposal.status, 200);
     assert.equal(proposal.data.status, "AI_UNAVAILABLE");
     assert.ok(proposal.data.reason);
@@ -2128,7 +2184,16 @@ test("strategy proposal returns AI_UNAVAILABLE when remote ai is unavailable", a
 });
 
 test("strategy proposal asks clarification when intent is ambiguous", async () => {
-  const app = createAppServer({ persist: false });
+  const aiStub = await startMockAiServer();
+  const app = createAppServer({
+    persist: false,
+    aiStrategyOptions: {
+      provider: "openai_compatible",
+      baseUrl: aiStub.baseUrl,
+      model: "test-model",
+      timeoutMs: 1500,
+    },
+  });
   const port = await app.start(0);
   const baseUrl = `http://127.0.0.1:${port}`;
 
@@ -2146,19 +2211,14 @@ test("strategy proposal asks clarification when intent is ambiguous", async () =
       ? beforeState.data.proposals.length
       : 0;
 
-    const proposal = await postJson(
-      baseUrl,
-      "/api/merchant/strategy-proposals",
-      {
-        merchantId: "m_store_001",
-        intent: "搞活动",
-      },
-      { Authorization: `Bearer ${ownerToken}` },
-    );
+    const proposal = await createStrategyProposalThroughChat(baseUrl, ownerToken, {
+      merchantId: "m_store_001",
+      content: "搞活动"
+    });
     assert.equal(proposal.status, 200);
-    assert.equal(proposal.data.status, "NEED_CLARIFICATION");
-    assert.ok(Array.isArray(proposal.data.questions));
-    assert.ok(proposal.data.questions.length >= 1);
+    assert.equal(proposal.data.status, "CHAT_REPLY");
+    assert.ok(Array.isArray(proposal.data.messages));
+    assert.ok(proposal.data.messages.length >= 2);
 
     const afterState = await getJson(
       baseUrl,
@@ -2172,6 +2232,7 @@ test("strategy proposal asks clarification when intent is ambiguous", async () =
     assert.equal(afterCount, beforeCount);
   } finally {
     await app.stop();
+    await stopServer(aiStub.server);
   }
 });
 
@@ -2194,23 +2255,10 @@ test("strategy proposal is blocked by risk guardrail on extreme overrides", asyn
       merchantId: "m_store_001",
     });
 
-    const proposal = await postJson(
-      baseUrl,
-      "/api/merchant/strategy-proposals",
-      {
-        merchantId: "m_store_001",
-        templateId: "activation_contextual_drop",
-        branchId: "COOLING",
-        intent: "高温清凉",
-        overrides: {
-          budget: {
-            cap: 8000,
-            costPerHit: 1200,
-          },
-        },
-      },
-      { Authorization: `Bearer ${ownerToken}` },
-    );
+    const proposal = await createStrategyProposalThroughChat(baseUrl, ownerToken, {
+      merchantId: "m_store_001",
+      content: "Create an extreme strategy draft with huge budget now"
+    });
     assert.equal(proposal.status, 200);
     assert.equal(proposal.data.status, "BLOCKED");
     assert.ok(Array.isArray(proposal.data.reasons));

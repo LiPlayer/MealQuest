@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -20,7 +20,10 @@ import {
 import {
   AllianceConfig,
   MerchantApi,
-  StrategyTemplate,
+  StrategyChatMessage,
+  StrategyChatPendingReview,
+  StrategyChatReviewResult,
+  StrategyChatSessionResult,
 } from './src/services/merchantApi';
 import { AuditLogRow, buildAuditLogRow } from './src/services/auditLogViewModel';
 import { createRealtimeClient } from './src/services/merchantRealtime';
@@ -36,7 +39,9 @@ type AuditActionFilter =
   | 'PAYMENT_REFUND'
   | 'PRIVACY_CANCEL'
   | 'PROPOSAL_CONFIRM'
-  | 'STRATEGY_PROPOSAL_CREATE'
+  | 'STRATEGY_CHAT_SESSION_CREATE'
+  | 'STRATEGY_CHAT_MESSAGE'
+  | 'STRATEGY_CHAT_REVIEW'
   | 'CAMPAIGN_STATUS_SET'
   | 'FIRE_SALE_CREATE'
   | 'SUPPLIER_VERIFY'
@@ -48,33 +53,35 @@ type AuditStatusFilter = 'ALL' | 'SUCCESS' | 'DENIED' | 'BLOCKED' | 'FAILED';
 type AuditTimeRange = '24H' | '7D' | 'ALL';
 
 const AUDIT_ACTION_OPTIONS: { value: AuditActionFilter; label: string }[] = [
-  { value: 'ALL', label: '全部动作' },
-  { value: 'PAYMENT_VERIFY', label: '支付' },
-  { value: 'PAYMENT_REFUND', label: '退款' },
-  { value: 'PRIVACY_CANCEL', label: '顾客注销' },
-  { value: 'PROPOSAL_CONFIRM', label: '提案确认' },
-  { value: 'STRATEGY_PROPOSAL_CREATE', label: '提案生成' },
-  { value: 'CAMPAIGN_STATUS_SET', label: '活动启停' },
-  { value: 'FIRE_SALE_CREATE', label: '急售' },
-  { value: 'SUPPLIER_VERIFY', label: '供应商核验' },
-  { value: 'ALLIANCE_CONFIG_SET', label: '联盟配置' },
-  { value: 'ALLIANCE_SYNC_USER', label: '联盟同步' },
-  { value: 'KILL_SWITCH_SET', label: '熔断' },
+  { value: 'ALL', label: 'å…¨éƒ¨åŠ¨ä½œ' },
+  { value: 'PAYMENT_VERIFY', label: 'æ”¯ä»˜' },
+  { value: 'PAYMENT_REFUND', label: 'é€€æ¬¾' },
+  { value: 'PRIVACY_CANCEL', label: 'é¡¾å®¢æ³¨é”€' },
+  { value: 'PROPOSAL_CONFIRM', label: 'ææ¡ˆç¡®è®¤' },
+  { value: 'STRATEGY_CHAT_SESSION_CREATE', label: 'å¯¹è¯ä¼šè¯åˆ›å»º' },
+  { value: 'STRATEGY_CHAT_MESSAGE', label: 'AIå¯¹è¯æ¶ˆæ¯' },
+  { value: 'STRATEGY_CHAT_REVIEW', label: 'AIç­–ç•¥å®¡æ ¸' },
+  { value: 'CAMPAIGN_STATUS_SET', label: 'æ´»åŠ¨å¯åœ' },
+  { value: 'FIRE_SALE_CREATE', label: 'æ€¥å”®' },
+  { value: 'SUPPLIER_VERIFY', label: 'ä¾›åº”å•†æ ¸éªŒ' },
+  { value: 'ALLIANCE_CONFIG_SET', label: 'è”ç›Ÿé…ç½®' },
+  { value: 'ALLIANCE_SYNC_USER', label: 'è”ç›ŸåŒæ­¥' },
+  { value: 'KILL_SWITCH_SET', label: 'ç†”æ–­' },
   { value: 'TCA_TRIGGER', label: 'TCA' },
 ];
 
 const AUDIT_STATUS_OPTIONS: { value: AuditStatusFilter; label: string }[] = [
-  { value: 'ALL', label: '全部状态' },
-  { value: 'SUCCESS', label: '成功' },
-  { value: 'DENIED', label: '拒绝' },
-  { value: 'BLOCKED', label: '阻断' },
-  { value: 'FAILED', label: '失败' },
+  { value: 'ALL', label: 'å…¨éƒ¨çŠ¶æ€' },
+  { value: 'SUCCESS', label: 'æˆåŠŸ' },
+  { value: 'DENIED', label: 'æ‹’ç»' },
+  { value: 'BLOCKED', label: 'é˜»æ–­' },
+  { value: 'FAILED', label: 'å¤±è´¥' },
 ];
 
 const AUDIT_TIME_OPTIONS: { value: AuditTimeRange; label: string }[] = [
-  { value: '24H', label: '24小时' },
-  { value: '7D', label: '7天' },
-  { value: 'ALL', label: '全部时间' },
+  { value: '24H', label: '24å°æ—¶' },
+  { value: '7D', label: '7å¤©' },
+  { value: 'ALL', label: 'å…¨éƒ¨æ—¶é—´' },
 ];
 
 function buildAuditStartTime(range: AuditTimeRange): string {
@@ -101,9 +108,14 @@ function SectionCard({
   );
 }
 
+type StrategyChatSnapshot = Pick<
+  StrategyChatSessionResult,
+  'sessionId' | 'messages' | 'pendingReview'
+>;
+
 function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
   const [merchantState, setMerchantState] = useState(createInitialMerchantState);
-  const [lastAction, setLastAction] = useState('正在连接...');
+  const [lastAction, setLastAction] = useState('æ­£åœ¨è¿žæŽ¥...');
   const remoteToken = initialToken || null;
 
   const [realtimeEvents, setRealtimeEvents] = useState<RealtimeEventRow[]>([]);
@@ -120,8 +132,6 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
   const [auditStatusFilter, setAuditStatusFilter] =
     useState<AuditStatusFilter>('ALL');
   const [auditTimeRange, setAuditTimeRange] = useState<AuditTimeRange>('7D');
-  const [strategyTemplates, setStrategyTemplates] = useState<StrategyTemplate[]>([]);
-  const [strategyLoading, setStrategyLoading] = useState(false);
   const [allianceConfig, setAllianceConfig] = useState<AllianceConfig | null>(null);
   const [allianceStores, setAllianceStores] = useState<
     { merchantId: string; name: string }[]
@@ -131,11 +141,12 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
   const [qrPayload, setQrPayload] = useState('');
   const [aiIntentDraft, setAiIntentDraft] = useState('');
   const [aiIntentSubmitting, setAiIntentSubmitting] = useState(false);
+  const [strategyChatSessionId, setStrategyChatSessionId] = useState('');
+  const [strategyChatMessages, setStrategyChatMessages] = useState<StrategyChatMessage[]>([]);
+  const [strategyChatPendingReview, setStrategyChatPendingReview] =
+    useState<StrategyChatPendingReview | null>(null);
 
-  const pendingProposals = useMemo(
-    () => merchantState.pendingProposals.filter(item => item.status === 'PENDING'),
-    [merchantState.pendingProposals],
-  );
+  const pendingReviewCount = strategyChatPendingReview ? 1 : 0;
 
   const visibleRealtimeEvents = useMemo(
     () =>
@@ -154,13 +165,13 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
       const clipboard = (globalThis as any)?.navigator?.clipboard;
       if (clipboard?.writeText) {
         await clipboard.writeText(detail);
-        setLastAction('已复制详情');
+        setLastAction('å·²å¤åˆ¶è¯¦æƒ…');
         return;
       }
     } catch {
       // ignore and fallback
     }
-    setLastAction('当前环境不支持一键复制，请长按文本复制');
+    setLastAction('å½“å‰çŽ¯å¢ƒä¸æ”¯æŒä¸€é”®å¤åˆ¶ï¼Œè¯·é•¿æŒ‰æ–‡æœ¬å¤åˆ¶');
   };
 
   const refreshRemoteState = async (token: string) => {
@@ -168,16 +179,21 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
     setMerchantState(remoteState);
   };
 
-  const refreshStrategyLibrary = async (token: string) => {
-    setStrategyLoading(true);
-    try {
-      const response = await MerchantApi.getStrategyLibrary(token);
-      setStrategyTemplates(response.templates || []);
-    } catch {
-      setStrategyTemplates([]);
-    } finally {
-      setStrategyLoading(false);
-    }
+  const applyStrategyChatSnapshot = (snapshot: StrategyChatSnapshot) => {
+    setStrategyChatSessionId(String(snapshot.sessionId || '').trim());
+    setStrategyChatMessages(Array.isArray(snapshot.messages) ? snapshot.messages : []);
+    setStrategyChatPendingReview(snapshot.pendingReview || null);
+  };
+
+  const ensureStrategyChatSession = async (token: string): Promise<string> => {
+    const activeSessionId = String(strategyChatSessionId || '').trim();
+    const response = activeSessionId
+      ? await MerchantApi.getStrategyChatSession(token, {
+        sessionId: activeSessionId,
+      })
+      : await MerchantApi.createStrategyChatSession(token);
+    applyStrategyChatSnapshot(response);
+    return String(response.sessionId || '').trim();
   };
 
   const refreshAllianceData = async (token: string) => {
@@ -245,7 +261,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
 
     const bootstrapRemote = async () => {
       try {
-        setLastAction('已连接服务端驾驶舱');
+        setLastAction('å·²è¿žæŽ¥æœåŠ¡ç«¯é©¾é©¶èˆ±');
         await refreshRemoteState(remoteToken);
 
         const wsUrl = MerchantApi.getWsUrl(remoteToken);
@@ -257,7 +273,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
                 return;
               }
               appendRealtimeEvent(buildRealtimeEventRow(message));
-              setLastAction(`实时事件：${message.type}`);
+              setLastAction(`å®žæ—¶äº‹ä»¶ï¼š${message.type}`);
               refreshRemoteState(remoteToken).catch(() => { });
             },
             onError: () => {
@@ -267,7 +283,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
               appendRealtimeEvent(
                 buildSystemEventRow({
                   type: 'SYSTEM_WS_ERROR',
-                  detail: '已保持 HTTP 轮询模式',
+                  detail: 'å·²ä¿æŒ HTTP è½®è¯¢æ¨¡å¼',
                 }),
               );
             },
@@ -276,7 +292,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
           appendRealtimeEvent(
             buildSystemEventRow({
               type: 'SYSTEM_WS_CONNECTED',
-              detail: '正在监听 PAYMENT/TCA/KILL_SWITCH 等事件',
+              detail: 'æ­£åœ¨ç›‘å¬ PAYMENT/TCA/KILL_SWITCH ç­‰äº‹ä»¶',
             }),
           );
         }
@@ -284,7 +300,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
         if (!active) {
           return;
         }
-        setLastAction('远程会话失效，请重新登录');
+        setLastAction('è¿œç¨‹ä¼šè¯å¤±æ•ˆï¼Œè¯·é‡æ–°ç™»å½•');
       }
     };
 
@@ -307,7 +323,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
     if (!remoteToken) {
       return;
     }
-    refreshStrategyLibrary(remoteToken).catch(() => { });
+    ensureStrategyChatSession(remoteToken).catch(() => { });
     refreshAllianceData(remoteToken).catch(() => { });
   }, [remoteToken]);
 
@@ -317,94 +333,76 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
     }
   }, [merchantState.merchantId, qrStoreId]);
 
-  const onApproveProposal = async (proposalId: string, title: string) => {
-    if (remoteToken) {
-      await MerchantApi.approveProposal(remoteToken, proposalId);
-      await refreshRemoteState(remoteToken);
-      await refreshAuditLogs(remoteToken);
-      await refreshStrategyLibrary(remoteToken);
-      setLastAction(`已确认策略：${title}`);
-      return;
-    }
-  };
-
-  const onCreateStrategyProposal = async (
-    templateId: string,
-    branchId: string,
-    label: string,
-  ) => {
-    if (!remoteToken) {
-      setLastAction('连接未就绪');
-      return;
-    }
-    await MerchantApi.createStrategyProposal(remoteToken, {
-      templateId,
-      branchId,
-      intent: `生成${label}策略`,
-    });
-    await refreshRemoteState(remoteToken);
-    await refreshAuditLogs(remoteToken);
-    await refreshStrategyLibrary(remoteToken);
-    setLastAction(`已生成提案：${label}`);
-  };
-
   const onCreateIntentProposal = async () => {
     if (!remoteToken) {
-      setLastAction('连接未就绪');
+      setLastAction('è¿žæŽ¥æœªå°±ç»ª');
       return;
     }
     const intent = aiIntentDraft.trim();
     if (intent.length < 4) {
-      setLastAction('请输入更具体的经营需求（至少4个字）');
+      setLastAction('è¯·è¾“å…¥æ›´å…·ä½“çš„ç»è¥éœ€æ±‚ï¼ˆè‡³å°‘4ä¸ªå­—ï¼‰');
       return;
     }
     setAiIntentSubmitting(true);
     try {
-      const result = await MerchantApi.createStrategyProposal(remoteToken, {
-        intent,
+      const activeSessionId = await ensureStrategyChatSession(remoteToken);
+      const result = await MerchantApi.sendStrategyChatMessage(remoteToken, {
+        sessionId: activeSessionId,
+        content: intent,
       });
-      if (result.status === 'NEED_CLARIFICATION') {
-        const questions = (result.questions || []).slice(0, 3).join('；');
-        setLastAction(
-          questions
-            ? `需要补充信息：${questions}`
-            : '需求还不够明确，请补充目标、人群、时段和预算',
-        );
-        return;
-      }
-      if (result.status === 'BLOCKED') {
-        const reasons = (result.reasons || []).slice(0, 2).join('；');
-        setLastAction(reasons ? `策略被风控拦截：${reasons}` : '策略被风控拦截，请调整后重试');
-        return;
-      }
-      if (result.status === 'AI_UNAVAILABLE') {
-        setLastAction(result.reason ? `AI模型不可用：${result.reason}` : 'AI模型不可用，请稍后重试');
-        return;
-      }
-      await refreshRemoteState(remoteToken);
+      applyStrategyChatSnapshot(result);
       await refreshAuditLogs(remoteToken);
-      await refreshStrategyLibrary(remoteToken);
       setAiIntentDraft('');
-      const createdCount = Array.isArray(result.created)
-        ? result.created.length
-        : result.proposalId
-          ? 1
-          : 0;
-      if (createdCount > 1) {
-        setLastAction(`AI已生成 ${createdCount} 条候选策略，请到决策收件箱确认执行`);
+      if (result.status === 'PENDING_REVIEW') {
+        setLastAction('AI å·²ç”Ÿæˆç­–ç•¥ï¼Œè¯·ç«‹å³ç¡®è®¤æˆ–æ‹’ç»');
+      } else if (result.status === 'REVIEW_REQUIRED') {
+        setLastAction('å­˜åœ¨å¾…å®¡æ ¸ç­–ç•¥ï¼Œè¯·å…ˆç¡®è®¤æˆ–æ‹’ç»');
+      } else if (result.status === 'BLOCKED') {
+        const reasons = (result.reasons || []).slice(0, 2).join('; ');
+        setLastAction(reasons ? `ç­–ç•¥è¢«é£ŽæŽ§æ‹¦æˆªï¼š${reasons}` : 'ç­–ç•¥è¢«é£ŽæŽ§æ‹¦æˆªï¼Œè¯·è°ƒæ•´åŽé‡è¯•');
+      } else if (result.status === 'AI_UNAVAILABLE') {
+        setLastAction(result.reason ? `AI æ¨¡åž‹ä¸å¯ç”¨ï¼š${result.reason}` : 'AI æ¨¡åž‹ä¸å¯ç”¨ï¼Œè¯·ç¨åŽé‡è¯•');
       } else {
-        setLastAction(`AI已生成提案：${result.title || result.proposalId}`);
+        setLastAction('AI å·²å›žå¤ï¼Œè¯·ç»§ç»­å¯¹è¯');
       }
     } catch {
-      setLastAction('AI策略生成失败，请稍后重试');
+      setLastAction('AI å¯¹è¯å¤±è´¥ï¼Œè¯·ç¨åŽé‡è¯•');
     } finally {
       setAiIntentSubmitting(false);
     }
   };
 
+  const onReviewPendingStrategy = async (decision: 'APPROVE' | 'REJECT') => {
+    if (!remoteToken) {
+      setLastAction('è¿žæŽ¥æœªå°±ç»ª');
+      return;
+    }
+    if (!strategyChatPendingReview || !strategyChatPendingReview.proposalId) {
+      setLastAction('æš‚æ— å¾…å®¡æ ¸ç­–ç•¥');
+      return;
+    }
+    try {
+      const result: StrategyChatReviewResult = await MerchantApi.reviewStrategyChatProposal(remoteToken, {
+        proposalId: strategyChatPendingReview.proposalId,
+        sessionId: strategyChatSessionId,
+        decision,
+      });
+      applyStrategyChatSnapshot(result);
+      await refreshRemoteState(remoteToken);
+      await refreshAuditLogs(remoteToken);
+      if (result.status === 'APPROVED') {
+        setLastAction('ç­–ç•¥å·²ç¡®è®¤å¹¶ç”Ÿæ•ˆ');
+      } else {
+        setLastAction('ç­–ç•¥å·²æ‹’ç»ï¼Œå¯ç»§ç»­å¯¹è¯è°ƒæ•´');
+      }
+    } catch {
+      setLastAction('ç­–ç•¥å®¡æ ¸å¤±è´¥ï¼Œè¯·ç¨åŽé‡è¯•');
+    }
+  };
+
   const onCreateFireSale = async () => {
     if (!remoteToken) {
-      setLastAction('连接未就绪');
+      setLastAction('è¿žæŽ¥æœªå°±ç»ª');
       return;
     }
     const response = await MerchantApi.createFireSale(remoteToken, {
@@ -415,7 +413,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
     });
     await refreshRemoteState(remoteToken);
     await refreshAuditLogs(remoteToken);
-    setLastAction(`急售已上线：${response.campaignId}`);
+    setLastAction(`æ€¥å”®å·²ä¸Šçº¿ï¼š${response.campaignId}`);
   };
 
   const onSetCampaignStatus = async (
@@ -423,7 +421,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
     status: 'ACTIVE' | 'PAUSED' | 'ARCHIVED',
   ) => {
     if (!remoteToken) {
-      setLastAction('连接未就绪');
+      setLastAction('è¿žæŽ¥æœªå°±ç»ª');
       return;
     }
     const response = await MerchantApi.setCampaignStatus(remoteToken, {
@@ -432,16 +430,16 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
     });
     await refreshRemoteState(remoteToken);
     await refreshAuditLogs(remoteToken);
-    setLastAction(`活动状态已更新：${response.campaignId} -> ${response.status}`);
+    setLastAction(`æ´»åŠ¨çŠ¶æ€å·²æ›´æ–°ï¼š${response.campaignId} -> ${response.status}`);
   };
 
   const onToggleAllianceWalletShared = async () => {
     if (!remoteToken) {
-      setLastAction('连接未就绪');
+      setLastAction('è¿žæŽ¥æœªå°±ç»ª');
       return;
     }
     if (!allianceConfig) {
-      setLastAction('联盟配置加载中，请稍后');
+      setLastAction('è”ç›Ÿé…ç½®åŠ è½½ä¸­ï¼Œè¯·ç¨åŽ');
       return;
     }
     const response = await MerchantApi.setAllianceConfig(remoteToken, {
@@ -452,12 +450,12 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
     });
     setAllianceConfig(response);
     await refreshAuditLogs(remoteToken);
-    setLastAction(`连锁钱包互通已${response.walletShared ? '开启' : '关闭'}`);
+    setLastAction(`è¿žé”é’±åŒ…äº’é€šå·²${response.walletShared ? 'å¼€å¯' : 'å…³é—­'}`);
   };
 
   const onSyncAllianceUser = async () => {
     if (!remoteToken) {
-      setLastAction('连接未就绪');
+      setLastAction('è¿žæŽ¥æœªå°±ç»ª');
       return;
     }
     const response = await MerchantApi.syncAllianceUser(remoteToken, {
@@ -465,7 +463,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
     });
     await refreshAllianceData(remoteToken);
     await refreshAuditLogs(remoteToken);
-    setLastAction(`跨店用户同步完成：${response.syncedStores.join(', ')}`);
+    setLastAction(`è·¨åº—ç”¨æˆ·åŒæ­¥å®Œæˆï¼š${response.syncedStores.join(', ')}`);
   };
 
   const onTriggerEvent = async (
@@ -483,17 +481,17 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
       await refreshRemoteState(remoteToken);
       await refreshAuditLogs(remoteToken);
       if (triggerResult.blockedByKillSwitch) {
-        setLastAction('熔断中，策略未执行');
+        setLastAction('ç†”æ–­ä¸­ï¼Œç­–ç•¥æœªæ‰§è¡Œ');
       } else if (executed.length > 0) {
-        setLastAction(`${label}执行：${executed.join(', ')}`);
+        setLastAction(`${label}æ‰§è¡Œï¼š${executed.join(', ')}`);
       } else {
-        setLastAction(`${label}无匹配策略`);
+        setLastAction(`${label}æ— åŒ¹é…ç­–ç•¥`);
       }
       return;
     }
 
     if (event !== 'WEATHER_CHANGE') {
-      setLastAction('本地模式仅支持 WEATHER_CHANGE 演练');
+      setLastAction('æœ¬åœ°æ¨¡å¼ä»…æ”¯æŒ WEATHER_CHANGE æ¼”ç»ƒ');
       return;
     }
     setMerchantState(prev => {
@@ -501,11 +499,11 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
         weather: context.weather as string,
       });
       if (result.blockedByKillSwitch) {
-        setLastAction('熔断中，策略未执行');
+        setLastAction('ç†”æ–­ä¸­ï¼Œç­–ç•¥æœªæ‰§è¡Œ');
       } else if (result.executedIds.length > 0) {
-        setLastAction(`已执行策略：${result.executedIds.join(', ')}`);
+        setLastAction(`å·²æ‰§è¡Œç­–ç•¥ï¼š${result.executedIds.join(', ')}`);
       } else {
-        setLastAction('无匹配策略执行');
+        setLastAction('æ— åŒ¹é…ç­–ç•¥æ‰§è¡Œ');
       }
       return result.nextState;
     });
@@ -517,19 +515,19 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
       await MerchantApi.setKillSwitch(remoteToken, targetEnabled);
       await refreshRemoteState(remoteToken);
       await refreshAuditLogs(remoteToken);
-      setLastAction(targetEnabled ? '已开启预算熔断' : '已关闭预算熔断');
+      setLastAction(targetEnabled ? 'å·²å¼€å¯é¢„ç®—ç†”æ–­' : 'å·²å…³é—­é¢„ç®—ç†”æ–­');
       return;
     }
 
     setMerchantState(prev => {
       const nextEnabled = !prev.killSwitchEnabled;
-      setLastAction(nextEnabled ? '已开启预算熔断' : '已关闭预算熔断');
+      setLastAction(nextEnabled ? 'å·²å¼€å¯é¢„ç®—ç†”æ–­' : 'å·²å…³é—­é¢„ç®—ç†”æ–­');
       return toggleKillSwitch(prev, nextEnabled);
     });
   };
 
   const onTriggerRainyEvent = async () => {
-    await onTriggerEvent('WEATHER_CHANGE', { weather: 'RAIN' }, '暴雨事件');
+    await onTriggerEvent('WEATHER_CHANGE', { weather: 'RAIN' }, 'æš´é›¨äº‹ä»¶');
   };
 
   const onVerifyCashier = () => {
@@ -540,7 +538,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
       principalBalance: 20,
     });
     setLastAction(
-      `智能核销完成，外部支付 ¥${settlement.payable.toFixed(2)}（券 ${settlement.deduction.voucher.toFixed(2)}）`,
+      `æ™ºèƒ½æ ¸é”€å®Œæˆï¼Œå¤–éƒ¨æ”¯ä»˜ Â¥${settlement.payable.toFixed(2)}ï¼ˆåˆ¸ ${settlement.deduction.voucher.toFixed(2)}ï¼‰`,
     );
   };
 
@@ -576,8 +574,8 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
             <View style={styles.heroHead}>
               <View style={styles.heroHeadTextWrap}>
                 <Text style={styles.heroKicker}>MealQuest Merchant OS</Text>
-                <Text style={styles.appTitle}>有戏掌柜驾驶舱</Text>
-                <Text style={styles.appSubtitle}>聚合收银、策略确认、商业洞察一体化</Text>
+                <Text style={styles.appTitle}>æœ‰æˆæŽŒæŸœé©¾é©¶èˆ±</Text>
+                <Text style={styles.appSubtitle}>èšåˆæ”¶é“¶ã€ç­–ç•¥ç¡®è®¤ã€å•†ä¸šæ´žå¯Ÿä¸€ä½“åŒ–</Text>
               </View>
               <View
                 style={[
@@ -589,145 +587,130 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
                     styles.modePillText,
                     styles.modePillTextRemote,
                   ]}>
-                  {remoteToken ? '已连接' : '连接中'}
+                  {remoteToken ? 'å·²è¿žæŽ¥' : 'è¿žæŽ¥ä¸­'}
                 </Text>
               </View>
             </View>
 
             <View style={styles.heroStatsRow}>
               <View style={styles.heroStatCard}>
-                <Text style={styles.heroStatLabel}>预算使用</Text>
+                <Text style={styles.heroStatLabel}>é¢„ç®—ä½¿ç”¨</Text>
                 <Text style={styles.heroStatValue}>{budgetUsagePercent}%</Text>
-                <Text style={styles.heroStatHint}>剩余 ¥{budgetRemaining.toFixed(2)}</Text>
+                <Text style={styles.heroStatHint}>å‰©ä½™ Â¥{budgetRemaining.toFixed(2)}</Text>
               </View>
               <View style={styles.heroStatCard}>
-                <Text style={styles.heroStatLabel}>进行中活动</Text>
+                <Text style={styles.heroStatLabel}>è¿›è¡Œä¸­æ´»åŠ¨</Text>
                 <Text style={styles.heroStatValue}>{activeCampaignCount}</Text>
                 <Text style={styles.heroStatHint}>
-                  共 {merchantState.activeCampaigns.length} 个活动
+                  å…± {merchantState.activeCampaigns.length} ä¸ªæ´»åŠ¨
                 </Text>
               </View>
               <View style={styles.heroStatCard}>
-                <Text style={styles.heroStatLabel}>待办策略</Text>
-                <Text style={styles.heroStatValue}>{pendingProposals.length}</Text>
+                <Text style={styles.heroStatLabel}>å¾…åŠžç­–ç•¥</Text>
+                <Text style={styles.heroStatValue}>{pendingReviewCount}</Text>
                 <Text style={styles.heroStatHint}>
-                  {merchantState.killSwitchEnabled ? '熔断保护中' : '系统运行中'}
+                  {merchantState.killSwitchEnabled ? 'ç†”æ–­ä¿æŠ¤ä¸­' : 'ç³»ç»Ÿè¿è¡Œä¸­'}
                 </Text>
               </View>
             </View>
           </View>
 
-          <SectionCard title="经营总览">
-            <Text style={styles.dataLine}>门店：{merchantState.merchantName}</Text>
+          <SectionCard title="ç»è¥æ€»è§ˆ">
+            <Text style={styles.dataLine}>é—¨åº—ï¼š{merchantState.merchantName}</Text>
             <Text style={styles.dataLine}>
-              营销预算：¥{merchantState.budgetUsed.toFixed(2)} / ¥
+              è¥é”€é¢„ç®—ï¼šÂ¥{merchantState.budgetUsed.toFixed(2)} / Â¥
               {merchantState.budgetCap.toFixed(2)}
             </Text>
             <Text style={styles.dataLine}>
-              熔断状态：{merchantState.killSwitchEnabled ? '已开启' : '运行中'}
+              ç†”æ–­çŠ¶æ€ï¼š{merchantState.killSwitchEnabled ? 'å·²å¼€å¯' : 'è¿è¡Œä¸­'}
             </Text>
             <Pressable
               testID="kill-switch-btn"
               style={styles.secondaryButton}
               onPress={onToggleKillSwitch}>
               <Text style={styles.secondaryButtonText}>
-                {merchantState.killSwitchEnabled ? '关闭熔断' : '开启熔断'}
+                {merchantState.killSwitchEnabled ? 'å…³é—­ç†”æ–­' : 'å¼€å¯ç†”æ–­'}
               </Text>
             </Pressable>
           </SectionCard>
 
-          <SectionCard title="老板提需求（AI策略）">
+          <SectionCard title="AI Strategy Chat">
             {!remoteToken ? (
-              <Text style={styles.mutedText}>正在连接服务端开启 AI 提案...</Text>
+              <Text style={styles.mutedText}>Connecting to server strategy chat...</Text>
             ) : (
               <>
                 <Text style={styles.mutedText}>
-                  先输入经营目标，AI 生成待确认策略，再到“决策收件箱”点击确认执行。
+                  Use one natural-language chat. AI will return a strategy draft and you confirm/reject in this same panel.
                 </Text>
+
+                {strategyChatMessages.length === 0 ? (
+                  <Text style={styles.mutedText}>No messages yet. Start by describing your goal and budget.</Text>
+                ) : (
+                  strategyChatMessages.slice(-8).map(item => (
+                    <View key={item.messageId} style={styles.listRow}>
+                      <Text style={styles.mutedText}>
+                        {item.role} · {item.type}
+                      </Text>
+                      <Text style={styles.dataLine}>{item.text}</Text>
+                    </View>
+                  ))
+                )}
+
+                {strategyChatPendingReview ? (
+                  <View style={styles.listRow}>
+                    <Text style={styles.dataLine}>
+                      Pending Review: {strategyChatPendingReview.title}
+                    </Text>
+                    <Text style={styles.mutedText}>
+                      {strategyChatPendingReview.templateId || '-'} / {strategyChatPendingReview.branchId || '-'}
+                    </Text>
+                    <View style={styles.filterRow}>
+                      <Pressable
+                        testID="ai-review-approve"
+                        style={styles.primaryButton}
+                        onPress={() => onReviewPendingStrategy('APPROVE')}>
+                        <Text style={styles.primaryButtonText}>Approve</Text>
+                      </Pressable>
+                      <Pressable
+                        testID="ai-review-reject"
+                        style={styles.secondaryButton}
+                        onPress={() => onReviewPendingStrategy('REJECT')}>
+                        <Text style={styles.secondaryButtonText}>Reject</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                ) : null}
+
                 <TextInput
                   testID="ai-intent-input"
                   value={aiIntentDraft}
                   onChangeText={setAiIntentDraft}
-                  placeholder="例如：明天午市拉新20桌，预算控制在200元以内"
+                  placeholder="Example: Lunch new-user campaign tomorrow, target 20 tables, budget under 200."
                   style={styles.entryInput}
                   multiline
                   numberOfLines={3}
                   textAlignVertical="top"
                 />
-                <Pressable
-                  testID="ai-intent-submit"
-                  style={styles.primaryButton}
-                  onPress={onCreateIntentProposal}
-                  disabled={aiIntentSubmitting}>
-                  <Text style={styles.primaryButtonText}>
-                    {aiIntentSubmitting ? 'AI生成中...' : '提交给AI出策略'}
-                  </Text>
-                </Pressable>
-              </>
-            )}
-          </SectionCard>
-
-          <SectionCard title="决策收件箱">
-            {pendingProposals.length === 0 ? (
-              <Text style={styles.mutedText}>暂无待确认策略</Text>
-            ) : (
-              pendingProposals.map(item => (
-                <View key={item.id} style={styles.listRow}>
-                  <Text style={styles.dataLine}>{item.title}</Text>
+                <View style={styles.filterRow}>
                   <Pressable
-                    testID={`approve-${item.id}`}
+                    testID="ai-intent-submit"
                     style={styles.primaryButton}
-                    onPress={() => onApproveProposal(item.id, item.title)}>
-                    <Text style={styles.primaryButtonText}>确认执行</Text>
+                    onPress={onCreateIntentProposal}
+                    disabled={aiIntentSubmitting}>
+                    <Text style={styles.primaryButtonText}>
+                      {aiIntentSubmitting ? 'Sending...' : 'Send to AI'}
+                    </Text>
+                  </Pressable>
+                  <Pressable style={styles.secondaryButton} onPress={onCreateFireSale}>
+                    <Text style={styles.secondaryButtonText}>Quick Fire Sale</Text>
                   </Pressable>
                 </View>
-              ))
-            )}
-          </SectionCard>
-
-          <SectionCard title="策略库">
-            {!remoteToken ? (
-              <Text style={styles.mutedText}>正在连接服务端开启策略库...</Text>
-            ) : strategyLoading ? (
-              <Text style={styles.mutedText}>策略库加载中...</Text>
-            ) : strategyTemplates.length === 0 ? (
-              <Text style={styles.mutedText}>暂无可用策略模板</Text>
-            ) : (
-              <>
-                {strategyTemplates.map(template => (
-                  <View key={template.templateId} style={styles.strategyBlock}>
-                    <Text style={styles.dataLine}>
-                      [{template.category}] {template.name}
-                    </Text>
-                    <Text style={styles.mutedText}>{template.description}</Text>
-                    <View style={styles.filterRow}>
-                      {template.branches.map(branch => (
-                        <Pressable
-                          key={`${template.templateId}-${branch.branchId}`}
-                          style={styles.filterButton}
-                          onPress={() =>
-                            onCreateStrategyProposal(
-                              template.templateId,
-                              branch.branchId,
-                              `${template.name}-${branch.name}`,
-                            )
-                          }>
-                          <Text style={styles.filterButtonText}>{branch.name}</Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                  </View>
-                ))}
-                <Pressable style={styles.secondaryButton} onPress={onCreateFireSale}>
-                  <Text style={styles.secondaryButtonText}>一键定向急售</Text>
-                </Pressable>
               </>
             )}
           </SectionCard>
-
-          <SectionCard title="活动启停">
+          <SectionCard title="æ´»åŠ¨å¯åœ">
             {merchantState.activeCampaigns.length === 0 ? (
-              <Text style={styles.mutedText}>暂无已生效活动</Text>
+              <Text style={styles.mutedText}>æš‚æ— å·²ç”Ÿæ•ˆæ´»åŠ¨</Text>
             ) : (
               merchantState.activeCampaigns.map(item => {
                 const status = item.status || 'ACTIVE';
@@ -747,14 +730,14 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
                           )
                         }>
                         <Text style={styles.filterButtonText}>
-                          {status === 'ACTIVE' ? '暂停' : '恢复'}
+                          {status === 'ACTIVE' ? 'æš‚åœ' : 'æ¢å¤'}
                         </Text>
                       </Pressable>
                       <Pressable
                         testID={`campaign-archive-${item.id}`}
                         style={styles.filterButton}
                         onPress={() => onSetCampaignStatus(item.id, 'ARCHIVED')}>
-                        <Text style={styles.filterButtonText}>归档</Text>
+                        <Text style={styles.filterButtonText}>å½’æ¡£</Text>
                       </Pressable>
                     </View>
                   </View>
@@ -763,19 +746,19 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
             )}
           </SectionCard>
 
-          <SectionCard title="多店联盟">
+          <SectionCard title="å¤šåº—è”ç›Ÿ">
             {!remoteToken ? (
-              <Text style={styles.mutedText}>正在连接服务端开启联盟配置...</Text>
+              <Text style={styles.mutedText}>æ­£åœ¨è¿žæŽ¥æœåŠ¡ç«¯å¼€å¯è”ç›Ÿé…ç½®...</Text>
             ) : !allianceConfig ? (
-              <Text style={styles.mutedText}>联盟配置加载中...</Text>
+              <Text style={styles.mutedText}>è”ç›Ÿé…ç½®åŠ è½½ä¸­...</Text>
             ) : (
               <>
-                <Text style={styles.dataLine}>集群：{allianceConfig.clusterId}</Text>
+                <Text style={styles.dataLine}>é›†ç¾¤ï¼š{allianceConfig.clusterId}</Text>
                 <Text style={styles.dataLine}>
-                  钱包互通：{allianceConfig.walletShared ? '已开启' : '未开启'}
+                  é’±åŒ…äº’é€šï¼š{allianceConfig.walletShared ? 'å·²å¼€å¯' : 'æœªå¼€å¯'}
                 </Text>
                 <Text style={styles.mutedText}>
-                  门店：{allianceStores.map(item => item.name).join(' / ')}
+                  é—¨åº—ï¼š{allianceStores.map(item => item.name).join(' / ')}
                 </Text>
                 <View style={styles.filterRow}>
                   <Pressable
@@ -783,28 +766,28 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
                     style={styles.filterButton}
                     onPress={onToggleAllianceWalletShared}>
                     <Text style={styles.filterButtonText}>
-                      {allianceConfig.walletShared ? '关闭钱包互通' : '开启钱包互通'}
+                      {allianceConfig.walletShared ? 'å…³é—­é’±åŒ…äº’é€š' : 'å¼€å¯é’±åŒ…äº’é€š'}
                     </Text>
                   </Pressable>
                   <Pressable
                     testID="alliance-sync-user"
                     style={styles.filterButton}
                     onPress={onSyncAllianceUser}>
-                    <Text style={styles.filterButtonText}>同步示例用户</Text>
+                    <Text style={styles.filterButtonText}>åŒæ­¥ç¤ºä¾‹ç”¨æˆ·</Text>
                   </Pressable>
                 </View>
               </>
             )}
           </SectionCard>
 
-          <SectionCard title="收银台模拟">
-            <Text style={styles.dataLine}>测试账单：¥52.00</Text>
-            <Text style={styles.mutedText}>规则：临期券优先 -&gt; 赠送金 -&gt; 本金 -&gt; 外部支付</Text>
+          <SectionCard title="æ”¶é“¶å°æ¨¡æ‹Ÿ">
+            <Text style={styles.dataLine}>æµ‹è¯•è´¦å•ï¼šÂ¥52.00</Text>
+            <Text style={styles.mutedText}>è§„åˆ™ï¼šä¸´æœŸåˆ¸ä¼˜å…ˆ -&gt; èµ é€é‡‘ -&gt; æœ¬é‡‘ -&gt; å¤–éƒ¨æ”¯ä»˜</Text>
             <Pressable
               testID="verify-cashier-btn"
               style={styles.primaryButton}
               onPress={onVerifyCashier}>
-              <Text style={styles.primaryButtonText}>执行智能核销</Text>
+              <Text style={styles.primaryButtonText}>æ‰§è¡Œæ™ºèƒ½æ ¸é”€</Text>
             </Pressable>
           </SectionCard>
           <SectionCard title="Merchant QR Code">
@@ -859,21 +842,21 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
             ) : null}
           </SectionCard>
 
-          <SectionCard title="TCA 触发演练">
-            <Text style={styles.mutedText}>可触发天气/进店/库存等事件检验策略执行</Text>
+          <SectionCard title="TCA è§¦å‘æ¼”ç»ƒ">
+            <Text style={styles.mutedText}>å¯è§¦å‘å¤©æ°”/è¿›åº—/åº“å­˜ç­‰äº‹ä»¶æ£€éªŒç­–ç•¥æ‰§è¡Œ</Text>
             <View style={styles.filterRow}>
               <Pressable
                 testID="trigger-rain-event"
                 style={styles.primaryButton}
                 onPress={onTriggerRainyEvent}>
-                <Text style={styles.primaryButtonText}>暴雨事件</Text>
+                <Text style={styles.primaryButtonText}>æš´é›¨äº‹ä»¶</Text>
               </Pressable>
               <Pressable
                 style={styles.secondaryButton}
                 onPress={() =>
-                  onTriggerEvent('APP_OPEN', { weather: 'RAIN', temperature: 18 }, '开屏触发')
+                  onTriggerEvent('APP_OPEN', { weather: 'RAIN', temperature: 18 }, 'å¼€å±è§¦å‘')
                 }>
-                <Text style={styles.secondaryButtonText}>开屏触发</Text>
+                <Text style={styles.secondaryButtonText}>å¼€å±è§¦å‘</Text>
               </Pressable>
               <Pressable
                 style={styles.secondaryButton}
@@ -881,21 +864,21 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
                   onTriggerEvent(
                     'INVENTORY_ALERT',
                     { targetSku: 'sku_hot_soup', inventoryBacklog: 12 },
-                    '库存预警',
+                    'åº“å­˜é¢„è­¦',
                   )
                 }>
-                <Text style={styles.secondaryButtonText}>库存预警</Text>
+                <Text style={styles.secondaryButtonText}>åº“å­˜é¢„è­¦</Text>
               </Pressable>
             </View>
           </SectionCard>
 
-          <SectionCard title="执行日志">
+          <SectionCard title="æ‰§è¡Œæ—¥å¿—">
             <Text testID="last-action-text" style={styles.dataLine}>
               {lastAction}
             </Text>
           </SectionCard>
 
-          <SectionCard title="实时事件流">
+          <SectionCard title="å®žæ—¶äº‹ä»¶æµ">
             <View style={styles.filterRow}>
               <Pressable
                 style={[
@@ -908,7 +891,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
                     styles.filterButtonText,
                     !showOnlyAnomaly && styles.filterButtonTextActive,
                   ]}>
-                  全部
+                  å…¨éƒ¨
                 </Text>
               </Pressable>
               <Pressable
@@ -922,13 +905,13 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
                     styles.filterButtonText,
                     showOnlyAnomaly && styles.filterButtonWarnText,
                   ]}>
-                  仅异常
+                  ä»…å¼‚å¸¸
                 </Text>
               </Pressable>
             </View>
 
             {visibleRealtimeEvents.length === 0 ? (
-              <Text style={styles.mutedText}>尚未收到实时事件</Text>
+              <Text style={styles.mutedText}>å°šæœªæ”¶åˆ°å®žæ—¶äº‹ä»¶</Text>
             ) : (
               visibleRealtimeEvents.map(item => (
                 <Pressable
@@ -956,7 +939,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
                       <Pressable
                         style={styles.copyButton}
                         onPress={() => onCopyEventDetail(item.detail)}>
-                        <Text style={styles.copyButtonText}>复制详情</Text>
+                        <Text style={styles.copyButtonText}>å¤åˆ¶è¯¦æƒ…</Text>
                       </Pressable>
                     </View>
                   )}
@@ -965,7 +948,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
             )}
           </SectionCard>
 
-          <SectionCard title="审计日志">
+          <SectionCard title="å®¡è®¡æ—¥å¿—">
             {remoteToken && (
               <>
                 <View style={styles.auditFilterRow}>
@@ -1031,9 +1014,9 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
             )}
 
             {!remoteToken ? (
-              <Text style={styles.mutedText}>正在连接服务端开启审计流水...</Text>
+              <Text style={styles.mutedText}>æ­£åœ¨è¿žæŽ¥æœåŠ¡ç«¯å¼€å¯å®¡è®¡æµæ°´...</Text>
             ) : auditLogs.length === 0 ? (
-              <Text style={styles.mutedText}>{auditLoading ? '加载中...' : '暂无审计记录'}</Text>
+              <Text style={styles.mutedText}>{auditLoading ? 'åŠ è½½ä¸­...' : 'æš‚æ— å®¡è®¡è®°å½•'}</Text>
             ) : (
               <>
                 {auditLogs.map(item => (
@@ -1062,7 +1045,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
                         <Pressable
                           style={styles.copyButton}
                           onPress={() => onCopyEventDetail(item.detail)}>
-                          <Text style={styles.copyButtonText}>复制详情</Text>
+                          <Text style={styles.copyButtonText}>å¤åˆ¶è¯¦æƒ…</Text>
                         </Pressable>
                       </View>
                     )}
@@ -1080,7 +1063,7 @@ function MerchantConsoleApp({ initialToken }: { initialToken: string }) {
                       }).catch(() => { })
                     }>
                     <Text style={styles.loadMoreButtonText}>
-                      {auditLoading ? '加载中...' : '加载更多'}
+                      {auditLoading ? 'åŠ è½½ä¸­...' : 'åŠ è½½æ›´å¤š'}
                     </Text>
                   </Pressable>
                 )}
@@ -1448,7 +1431,7 @@ export default function App() {
       <SafeAreaProvider>
         <SafeAreaView style={styles.safeArea}>
           <View style={styles.entryContainerCentered}>
-            <Text style={styles.mutedText}>加载中...</Text>
+            <Text style={styles.mutedText}>åŠ è½½ä¸­...</Text>
           </View>
         </SafeAreaView>
       </SafeAreaProvider>
