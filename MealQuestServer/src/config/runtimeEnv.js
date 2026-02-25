@@ -99,7 +99,8 @@ function resolveServerRuntimeEnv(env = process.env) {
     asString(env.MQ_AI_MODEL) ||
     (aiProvider === "bigmodel" ? "glm-4.7-flash" : "qwen2.5:7b-instruct");
   const aiApiKey = asString(env.MQ_AI_API_KEY);
-  const aiTimeoutMs = parsePositiveInt(env.MQ_AI_TIMEOUT_MS, 15000);
+  const aiTimeoutDefault = aiProvider === "bigmodel" ? 45000 : 15000;
+  const aiTimeoutMs = parsePositiveInt(env.MQ_AI_TIMEOUT_MS, aiTimeoutDefault);
 
   const errors = [];
   if (isProduction && !jwtSecret) {

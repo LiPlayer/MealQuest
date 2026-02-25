@@ -7,6 +7,8 @@ const DEFAULT_REMOTE_PROVIDER = "openai_compatible";
 const REMOTE_PROVIDERS = new Set(["deepseek", "openai_compatible", "bigmodel"]);
 const BIGMODEL_BASE_URL = "https://open.bigmodel.cn/api/paas/v4";
 const BIGMODEL_DEFAULT_MODEL = "glm-4.7-flash";
+const BIGMODEL_DEFAULT_TIMEOUT_MS = 45000;
+const DEFAULT_TIMEOUT_MS = 15000;
 
 const SLOT_QUESTION_BANK = {
   goal: "你这次更想要哪个目标：拉新、召回、提客单还是去库存？",
@@ -338,7 +340,17 @@ function buildPromptPayload({
   overrides,
   templates,
 }) {
-  const compactTemplates = templates.map((item) => ({
+  const requestedTemplateId = asString(templateId);
+  const scopedTemplates =
+    requestedTemplateId && Array.isArray(templates)
+      ? templates.filter((item) => item && item.templateId === requestedTemplateId)
+      : templates;
+  const sourceTemplates =
+    Array.isArray(scopedTemplates) && scopedTemplates.length > 0
+      ? scopedTemplates
+      : templates;
+
+  const compactTemplates = sourceTemplates.map((item) => ({
     templateId: item.templateId,
     category: item.category,
     name: item.name,
@@ -556,14 +568,20 @@ function createAiStrategyService(options = {}) {
       (provider === "bigmodel" ? BIGMODEL_BASE_URL : "http://127.0.0.1:11434/v1"),
   );
   const apiKey = asString(options.apiKey || process.env.MQ_AI_API_KEY);
-  const timeoutMs = Number(options.timeoutMs || process.env.MQ_AI_TIMEOUT_MS || 15000);
+  const timeoutMs = Number(
+    options.timeoutMs ||
+      process.env.MQ_AI_TIMEOUT_MS ||
+      (provider === "bigmodel" ? BIGMODEL_DEFAULT_TIMEOUT_MS : DEFAULT_TIMEOUT_MS),
+  );
 
   async function resolveRemoteDecision(input, templates) {
     if (provider === "bigmodel" && !apiKey) {
       throw new Error("MQ_AI_API_KEY is required for provider=bigmodel");
     }
     const safeTimeoutMs =
-      Number.isFinite(timeoutMs) && timeoutMs > 0 ? Math.floor(timeoutMs) : 15000;
+      Number.isFinite(timeoutMs) && timeoutMs > 0
+        ? Math.floor(timeoutMs)
+        : (provider === "bigmodel" ? BIGMODEL_DEFAULT_TIMEOUT_MS : DEFAULT_TIMEOUT_MS);
     const prompt = buildPromptPayload({
       merchantId: input.merchantId,
       templateId: input.templateId,
@@ -581,6 +599,8 @@ function createAiStrategyService(options = {}) {
       payload: {
         model,
         temperature: 0.2,
+        max_tokens: 512,
+        ...(provider === "bigmodel" ? { thinking: { type: "disabled" } } : {}),
         messages: prompt.messages,
       },
     });
