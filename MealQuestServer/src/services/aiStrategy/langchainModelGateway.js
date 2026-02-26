@@ -56,7 +56,7 @@ function createLangChainModelGateway(options = {}) {
   const chatModel = new ChatOpenAI({
     ...sharedOptions,
     temperature: 0.2,
-    maxTokens: 768,
+    maxTokens: 2048,
   });
 
   async function invokeJson(messages, modelClient) {
@@ -70,8 +70,28 @@ function createLangChainModelGateway(options = {}) {
     return invokeJson(messages, chatModel);
   }
 
+  async function invokeChatRaw(messages) {
+    const response = await chatModel.invoke(messages);
+    const rawContent = response && response.content;
+    return normalizeMessageContent(rawContent);
+  }
+
+  async function* streamChat(messages) {
+    console.log(`[langchain-gateway] Starting stream for model=${model}`);
+    const stream = await chatModel.stream(messages);
+    for await (const chunk of stream) {
+      if (chunk.content) {
+        const content = normalizeMessageContent(chunk.content);
+        console.log(`[langchain-gateway] Chunk: "${content.replace(/\n/g, "\\n")}"`);
+        yield content;
+      }
+    }
+  }
+
   return {
     invokeChat,
+    invokeChatRaw,
+    streamChat,
     getRuntimeInfo() {
       return {
         retry: { maxRetries: resolvedMaxRetries },

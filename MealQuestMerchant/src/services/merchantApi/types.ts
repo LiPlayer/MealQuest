@@ -76,6 +76,8 @@ export interface StrategyChatMessage {
   text: string;
   proposalId: string | null;
   metadata: Record<string, unknown> | null;
+  isStreaming?: boolean;
+  streamFullText?: string;
   createdAt: string;
 }
 

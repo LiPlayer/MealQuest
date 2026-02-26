@@ -227,12 +227,12 @@ function estimateHistoryItemTokens(item) {
 function sanitizeHistoryForPrompt(history) {
   const normalized = Array.isArray(history)
     ? history.map((item) => ({
-        role: asString(item && item.role ? item.role : "ASSISTANT").toUpperCase(),
-        type: asString(item && item.type ? item.type : "TEXT").toUpperCase(),
-        text: truncateText(item && item.text ? item.text : "", MAX_HISTORY_TEXT_CHARS),
-        proposalId: asString(item && item.proposalId ? item.proposalId : ""),
-        createdAt: asString(item && item.createdAt ? item.createdAt : ""),
-      }))
+      role: asString(item && item.role ? item.role : "ASSISTANT").toUpperCase(),
+      type: asString(item && item.type ? item.type : "TEXT").toUpperCase(),
+      text: truncateText(item && item.text ? item.text : "", MAX_HISTORY_TEXT_CHARS),
+      proposalId: asString(item && item.proposalId ? item.proposalId : ""),
+      createdAt: asString(item && item.createdAt ? item.createdAt : ""),
+    }))
     : [];
   if (normalized.length === 0) {
     return [];
@@ -311,9 +311,9 @@ function sanitizeSalesSnapshot(input) {
 
   const windows = Array.isArray(input.windows)
     ? input.windows.slice(0, 3).map((item) => ({
-        days: Math.max(1, Math.floor(toFiniteNumber(item && item.days, 0))),
-        ...sanitizeSalesAggregate(item),
-      }))
+      days: Math.max(1, Math.floor(toFiniteNumber(item && item.days, 0))),
+      ...sanitizeSalesAggregate(item),
+    }))
     : [];
 
   return {
@@ -362,6 +362,9 @@ function sanitizeExecutionHistory(input) {
   });
 }
 
+const PROPOSAL_SENTINEL_START = "---PROPOSAL---";
+const PROPOSAL_SENTINEL_END = "---END---";
+
 function buildChatPromptPayload({
   merchantId,
   sessionId,
@@ -376,105 +379,83 @@ function buildChatPromptPayload({
 
   const safeActiveCampaigns = Array.isArray(activeCampaigns)
     ? activeCampaigns.slice(0, 12).map((item) => ({
-        id: asString(item.id),
-        name: truncateText(item.name || "", 120),
-        status: asString(item.status || "UNKNOWN").toUpperCase(),
-        triggerEvent: asString(item.trigger && item.trigger.event),
-        priority: Number(item.priority) || 0,
-      }))
+      id: asString(item.id),
+      name: truncateText(item.name || "", 120),
+      status: asString(item.status || "UNKNOWN").toUpperCase(),
+      triggerEvent: asString(item.trigger && item.trigger.event),
+      priority: Number(item.priority) || 0,
+    }))
     : [];
 
   const safeApprovedStrategies = Array.isArray(approvedStrategies)
     ? approvedStrategies.slice(0, 12).map((item) => ({
-        proposalId: asString(item.proposalId),
-        campaignId: asString(item.campaignId),
-        title: truncateText(item.title || "", 120),
-        templateId: asString(item.templateId),
-        branchId: asString(item.branchId),
-        approvedAt: asString(item.approvedAt || ""),
-      }))
+      proposalId: asString(item.proposalId),
+      campaignId: asString(item.campaignId),
+      title: truncateText(item.title || "", 120),
+      templateId: asString(item.templateId),
+      branchId: asString(item.branchId),
+      approvedAt: asString(item.approvedAt || ""),
+    }))
     : [];
   const safeExecutionHistory = sanitizeExecutionHistory(executionHistory);
   const safeSalesSnapshot = sanitizeSalesSnapshot(salesSnapshot);
 
-  const userPayload = {
-    task: "STRATEGY_CHAT",
+  const contextPayload = {
     merchantId,
     sessionId,
-    userMessage: asString(userMessage),
-    history: safeHistory,
     activeCampaigns: safeActiveCampaigns,
     approvedStrategies: safeApprovedStrategies,
     executionHistory: safeExecutionHistory,
     salesSnapshot: safeSalesSnapshot,
-    outputSchema: {
-      mode: "CHAT_REPLY|PROPOSAL",
-      assistantMessage: "string",
-      proposals: [
-        {
-          templateId: "string",
-          branchId: "string",
-          title: "string",
-          rationale: "string",
-          confidence: "number",
-          campaignPatch: {
-            name: "string",
-            priority: "number",
-            trigger: { event: "string" },
-            conditions: [
-              { field: "string", op: "eq|neq|gte|lte|includes", value: "any" },
-            ],
-            budget: { cap: "number", used: "number", costPerHit: "number" },
-            ttlHours: "number",
-            action: {
-              type: "GRANT_SILVER|GRANT_BONUS|GRANT_PRINCIPAL|GRANT_FRAGMENT|GRANT_VOUCHER|STORY_CARD|COMPOSITE",
-            },
-          },
-        },
-      ],
-      proposal: {
-        templateId: "string",
-        branchId: "string",
-        title: "string",
-        rationale: "string",
-        confidence: "number",
-        campaignPatch: {
-          name: "string",
-          priority: "number",
-          trigger: { event: "string" },
-          conditions: [
-            { field: "string", op: "eq|neq|gte|lte|includes", value: "any" },
-          ],
-          budget: { cap: "number", used: "number", costPerHit: "number" },
-          ttlHours: "number",
-          action: {
-            type: "GRANT_SILVER|GRANT_BONUS|GRANT_PRINCIPAL|GRANT_FRAGMENT|GRANT_VOUCHER|STORY_CARD|COMPOSITE",
-          },
-        },
-      },
-    },
-    rules: [
-      "Keep assistantMessage concise and practical.",
-      "Output strict JSON only.",
-      "Use mode=PROPOSAL only when user clearly requests to create/finalize a strategy.",
-      "When mode=PROPOSAL, return non-empty proposals[] (max 12) or proposal object.",
-      "Avoid repeating already approved strategies with the same templateId+branchId unless user asks.",
-      "Use executionHistory to avoid repeating already executed marketing operations unless user asks.",
-      "Reference salesSnapshot when recommending optimization direction.",
-    ],
   };
+
+  const proposalSchema = {
+    templateId: "string",
+    branchId: "string",
+    title: "string",
+    rationale: "string",
+    confidence: "number 0-1",
+    campaignPatch: {
+      name: "string",
+      priority: "number",
+      trigger: { event: "string" },
+      conditions: [{ field: "string", op: "eq|neq|gte|lte|includes", value: "any" }],
+      budget: { cap: "number", used: "number", costPerHit: "number" },
+      ttlHours: "number",
+      action: { type: "GRANT_SILVER|GRANT_BONUS|GRANT_PRINCIPAL|GRANT_FRAGMENT|GRANT_VOUCHER|STORY_CARD|COMPOSITE" },
+    },
+  };
+
+  const systemContent = [
+    "You are MealQuest merchant strategy copilot. Reply in the same language as the user.",
+    "",
+    "OUTPUT FORMAT:",
+    "1. Write your conversational reply as plain text directly (no prefix, no JSON wrapper).",
+    "   - Use **bold** for key terms.",
+    "   - Be concise and practical.",
+    "2. ONLY if the user clearly asks to create/finalize a strategy, append AFTER your text:",
+    `   ${PROPOSAL_SENTINEL_START}`,
+    `   {"proposals":[${JSON.stringify(proposalSchema)}]}`,
+    `   ${PROPOSAL_SENTINEL_END}`,
+    "",
+    "RULES:",
+    "- Never output JSON outside the sentinel block.",
+    "- Only use the sentinel block when user explicitly requests a strategy proposal.",
+    "- Avoid repeating approved strategies with the same templateId+branchId.",
+    "- Reference salesSnapshot for optimization direction.",
+    "- Reference executionHistory to avoid repeated operations.",
+  ].join("\n");
+
+  const userContent = [
+    `Context: ${JSON.stringify(contextPayload)}`,
+    `History: ${JSON.stringify(safeHistory)}`,
+    `User: ${asString(userMessage)}`,
+  ].join("\n\n");
 
   return {
     messages: [
-      {
-        role: "system",
-        content:
-          "You are MealQuest merchant strategy copilot. Continue multi-turn conversation and return strict JSON.",
-      },
-      {
-        role: "user",
-        content: JSON.stringify(userPayload),
-      },
+      { role: "system", content: systemContent },
+      { role: "user", content: userContent },
     ],
   };
 }
@@ -590,19 +571,19 @@ function createAiStrategyService(options = {}) {
   );
   const model = asString(
     options.model ||
-      process.env.MQ_AI_MODEL ||
-      (provider === "bigmodel" ? BIGMODEL_DEFAULT_MODEL : "qwen2.5:7b-instruct"),
+    process.env.MQ_AI_MODEL ||
+    (provider === "bigmodel" ? BIGMODEL_DEFAULT_MODEL : "qwen2.5:7b-instruct"),
   );
   const baseUrl = asString(
     options.baseUrl ||
-      process.env.MQ_AI_BASE_URL ||
-      (provider === "bigmodel" ? BIGMODEL_BASE_URL : "http://127.0.0.1:11434/v1"),
+    process.env.MQ_AI_BASE_URL ||
+    (provider === "bigmodel" ? BIGMODEL_BASE_URL : "http://127.0.0.1:11434/v1"),
   );
   const apiKey = asString(options.apiKey || process.env.MQ_AI_API_KEY);
   const timeoutMs = Number(
     options.timeoutMs ||
-      process.env.MQ_AI_TIMEOUT_MS ||
-      (provider === "bigmodel" ? BIGMODEL_DEFAULT_TIMEOUT_MS : DEFAULT_TIMEOUT_MS),
+    process.env.MQ_AI_TIMEOUT_MS ||
+    (provider === "bigmodel" ? BIGMODEL_DEFAULT_TIMEOUT_MS : DEFAULT_TIMEOUT_MS),
   );
   const maxRetries = toPositiveInt(
     options.maxRetries || process.env.MQ_AI_MAX_RETRIES,
@@ -617,14 +598,97 @@ function createAiStrategyService(options = {}) {
     maxRetries,
     parseJsonLoose,
   });
-  const strategyChatGraph = createStrategyChatGraph({
-    resolveRemoteChatDecision,
-    normalizeAiDecision,
-    provider,
-    model,
-  });
 
-  async function resolveRemoteChatDecision(input) {
+  // Parses the new two-part format: plain text + optional ---PROPOSAL--- JSON block
+  function parseTwoPartResponse(rawText, input) {
+    const sentinelIdx = rawText.indexOf(PROPOSAL_SENTINEL_START);
+    const assistantMessage = sentinelIdx >= 0
+      ? rawText.slice(0, sentinelIdx).trim()
+      : rawText.trim();
+
+    if (sentinelIdx < 0) {
+      return { status: "CHAT_REPLY", assistantMessage };
+    }
+
+    // Extract JSON between sentinel markers
+    const afterStart = rawText.slice(sentinelIdx + PROPOSAL_SENTINEL_START.length);
+    const endIdx = afterStart.indexOf(PROPOSAL_SENTINEL_END);
+    const jsonText = endIdx >= 0 ? afterStart.slice(0, endIdx).trim() : afterStart.trim();
+
+    let rawDecision;
+    try {
+      rawDecision = parseJsonLoose(jsonText);
+    } catch {
+      return { status: "CHAT_REPLY", assistantMessage };
+    }
+
+    const decision = isObjectLike(rawDecision) ? rawDecision : {};
+    const rawCandidates = [];
+    if (Array.isArray(decision.proposals)) {
+      rawCandidates.push(...decision.proposals.filter(isObjectLike));
+    }
+    if (isObjectLike(decision.proposal)) {
+      rawCandidates.push(decision.proposal);
+    }
+
+    const normalizedCandidates = [];
+    for (const candidate of rawCandidates.slice(0, MAX_PROPOSAL_CANDIDATES)) {
+      try {
+        const normalized = normalizeAiDecision({
+          input: {
+            merchantId: input.merchantId,
+            templateId: asString(candidate.templateId) || input.templateId,
+            branchId: asString(candidate.branchId) || input.branchId,
+            overrides: {},
+          },
+          rawDecision: candidate,
+          provider,
+          model,
+          templates: listStrategyTemplates(),
+        });
+        normalizedCandidates.push(normalized);
+      } catch {
+        // skip invalid candidate
+      }
+    }
+
+    if (normalizedCandidates.length === 0) {
+      return { status: "CHAT_REPLY", assistantMessage };
+    }
+    return {
+      status: "PROPOSAL_READY",
+      assistantMessage: assistantMessage || "Strategy proposal drafted. Please review immediately.",
+      proposals: normalizedCandidates,
+      proposal: normalizedCandidates[0],
+    };
+  }
+
+  async function generateStrategyChatTurn(input) {
+    if (provider === "bigmodel" && !apiKey) {
+      throw new Error("MQ_AI_API_KEY is required for provider=bigmodel");
+    }
+    try {
+      const prompt = buildChatPromptPayload({
+        merchantId: input.merchantId,
+        sessionId: input.sessionId,
+        userMessage: input.userMessage,
+        history: input.history,
+        activeCampaigns: input.activeCampaigns,
+        approvedStrategies: input.approvedStrategies,
+        executionHistory: input.executionHistory,
+        salesSnapshot: input.salesSnapshot,
+      });
+      // invokeChat returns the raw content string; for new prompt it IS the two-part text
+      const rawContent = await modelGateway.invokeChatRaw(prompt.messages);
+      return parseTwoPartResponse(rawContent, input);
+    } catch (error) {
+      return createAiUnavailableResult(`strategy chat failed: ${summarizeError(error)}`);
+    }
+  }
+
+  // True streaming: yields plain text tokens from the first chunk,
+  // then returns the parsed turn decision at the end (no second LLM call).
+  async function* streamStrategyChatTurn(input) {
     if (provider === "bigmodel" && !apiKey) {
       throw new Error("MQ_AI_API_KEY is required for provider=bigmodel");
     }
@@ -638,21 +702,51 @@ function createAiStrategyService(options = {}) {
       executionHistory: input.executionHistory,
       salesSnapshot: input.salesSnapshot,
     });
-    return modelGateway.invokeChat(prompt.messages);
-  }
 
-  async function generateStrategyChatTurn(input) {
-    try {
-      const result = await strategyChatGraph.invoke({
-        input: isObjectLike(input) ? input : {},
-      });
-      if (result && isObjectLike(result.turn)) {
-        return result.turn;
+    let rawBuffer = "";
+    let yieldedLen = 0;
+    let sentinelDetected = false;
+    const SENTINEL = PROPOSAL_SENTINEL_START;
+
+    for await (const chunk of modelGateway.streamChat(prompt.messages)) {
+      rawBuffer += chunk;
+      if (sentinelDetected) continue;
+
+      const sentinelIdx = rawBuffer.indexOf(SENTINEL);
+      if (sentinelIdx >= 0) {
+        console.log(`[ai-strategy] Sentinel detected at index ${sentinelIdx}`);
+        const textToYield = rawBuffer.slice(yieldedLen, sentinelIdx);
+        if (textToYield) {
+          console.log(`[ai-strategy] Yielding final token before sentinel: "${textToYield.replace(/\n/g, "\\n")}"`);
+          yield textToYield;
+        }
+        yieldedLen = sentinelIdx;
+        sentinelDetected = true;
+      } else {
+        // Only hold back the tail that *could* be the start of the sentinel
+        let safeLen = rawBuffer.length;
+        for (let i = Math.min(SENTINEL.length - 1, rawBuffer.length); i > 0; i--) {
+          if (rawBuffer.endsWith(SENTINEL.slice(0, i))) {
+            safeLen = rawBuffer.length - i;
+            break;
+          }
+        }
+        if (safeLen > yieldedLen) {
+          const toYield = rawBuffer.slice(yieldedLen, safeLen);
+          console.log(`[ai-strategy] Yielding token: "${toYield.replace(/\n/g, "\\n")}"`);
+          yield toYield;
+          yieldedLen = safeLen;
+        }
       }
-      return createAiUnavailableResult("strategy chat returned empty result");
-    } catch (error) {
-      return createAiUnavailableResult(`langgraph strategy chat failed: ${summarizeError(error)}`);
     }
+
+    if (!sentinelDetected && rawBuffer.length > yieldedLen) {
+      const remaining = rawBuffer.slice(yieldedLen);
+      console.log(`[ai-strategy] Yielding remaining tail: "${remaining.replace(/\n/g, "\\n")}"`);
+      yield remaining;
+    }
+
+    return parseTwoPartResponse(rawBuffer, input);
   }
 
   function getRuntimeInfo() {
@@ -665,7 +759,7 @@ function createAiStrategyService(options = {}) {
       configured: true,
       remoteEnabled,
       remoteConfigured: remoteEnabled ? Boolean(apiKey) : false,
-      plannerEngine: "langgraph",
+      plannerEngine: "streaming_sentinel",
       retryPolicy: gatewayInfo.retry,
       modelClient: gatewayInfo.modelClient,
     };
@@ -673,6 +767,7 @@ function createAiStrategyService(options = {}) {
 
   return {
     generateStrategyChatTurn,
+    streamStrategyChatTurn,
     getRuntimeInfo,
   };
 }

@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import {
     KeyboardAvoidingView,
     Platform,
@@ -13,29 +13,128 @@ import { useMerchant } from '../context/MerchantContext';
 import { SectionCard } from '../components/SectionCard';
 import { MessageSquare, Send, Check, X, Info } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StrategyChatMessage } from '../services/merchantApi/types';
+
+const TYPEWRITER_CHAR_MS = 12; // ms per character
+
+const RichText = ({ text, style, isStreaming }: { text: string; style?: object; isStreaming?: boolean }) => {
+    const [cursorVisible, setCursorVisible] = useState(true);
+
+    useEffect(() => {
+        if (!isStreaming) return;
+        const interval = setInterval(() => {
+            setCursorVisible(v => !v);
+        }, 530);
+        return () => clearInterval(interval);
+    }, [isStreaming]);
+
+    if (!text && !isStreaming) return null;
+    if (!text && isStreaming) {
+        return (
+            <Text style={[style, { color: '#94a3b8' }]}>
+                思考中...
+                <Text style={{ opacity: cursorVisible ? 1 : 0, fontWeight: '800', color: '#0f766e' }}>
+                    ┃
+                </Text>
+            </Text>
+        );
+    }
+    const parts = (text || '').split(/(\*\*.*?\*\*)/g);
+    return (
+        <Text style={style}>
+            {parts.map((part, i) => {
+                if (part.startsWith('**') && part.endsWith('**')) {
+                    return (
+                        <Text key={i} style={{ fontWeight: '800' }}>
+                            {part.slice(2, -2)}
+                        </Text>
+                    );
+                }
+                return part;
+            })}
+            {isStreaming && (
+                <Text style={{ opacity: cursorVisible ? 1 : 0, fontWeight: '800', color: '#0f766e' }}>
+                    ┃
+                </Text>
+            )}
+        </Text>
+    );
+};
+
+// Typewriter component: progressively reveals streamFullText, then stays static
+const TypewriterMessage = ({
+    message,
+    style,
+}: {
+    message: StrategyChatMessage;
+    style?: object;
+}) => {
+    const fullText: string = (message as any).streamFullText || message.text || '';
+    const shouldAnimate = message.isStreaming && (message as any).streamFullText;
+
+    const [displayedText, setDisplayedText] = useState(shouldAnimate ? '' : fullText);
+    const [animating, setAnimating] = useState(shouldAnimate);
+    const indexRef = useRef(shouldAnimate ? 0 : fullText.length);
+    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => {
+        if (!shouldAnimate) {
+            setDisplayedText(fullText);
+            setAnimating(false);
+            return;
+        }
+        // Reset and start animation
+        setDisplayedText('');
+        setAnimating(true);
+        indexRef.current = 0;
+
+        const tick = () => {
+            indexRef.current += 1;
+            const slice = fullText.slice(0, indexRef.current);
+            setDisplayedText(slice);
+            if (indexRef.current < fullText.length) {
+                timerRef.current = setTimeout(tick, TYPEWRITER_CHAR_MS);
+            } else {
+                setAnimating(false);
+            }
+        };
+        timerRef.current = setTimeout(tick, TYPEWRITER_CHAR_MS);
+        return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+    }, [message.messageId, fullText]);
+
+    return <RichText text={displayedText} style={style} isStreaming={animating} />;
+};
 
 export default function StrategyScreen() {
     const {
-        strategyChatMessages,
-        strategyChatPendingReview,
         aiIntentDraft,
         setAiIntentDraft,
         aiIntentSubmitting,
         onCreateIntentProposal,
+        strategyChatMessages,
+        strategyChatPendingReview,
         onReviewPendingStrategy,
         pendingReviewCount,
-        currentReviewIndex,
         totalReviewCount,
+        currentReviewIndex,
     } = useMerchant();
 
     const scrollViewRef = useRef<ScrollView>(null);
 
-    // Auto-scroll to bottom of chat
+    // Auto-scroll when new messages arrive
     useEffect(() => {
-        if (scrollViewRef.current) {
-            scrollViewRef.current.scrollToEnd({ animated: true });
+        setTimeout(() => {
+            scrollViewRef.current?.scrollToEnd({ animated: true });
+        }, 100);
+    }, [strategyChatMessages]);
+
+    // Live scroll during typewriter animation
+    const lastMessageText = strategyChatMessages[strategyChatMessages.length - 1]?.text;
+    useEffect(() => {
+        if (strategyChatMessages[strategyChatMessages.length - 1]?.role === 'ASSISTANT') {
+            scrollViewRef.current?.scrollToEnd({ animated: false });
         }
-    }, [strategyChatMessages, strategyChatPendingReview]);
+    }, [lastMessageText]);
 
     return (
         <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -80,14 +179,14 @@ export default function StrategyScreen() {
                                 ]}
                             >
                                 <Text style={styles.roleLabel}>{item.role === 'USER' ? '您' : 'AI 助手'}</Text>
-                                <Text
+                                <RichText
+                                    text={item.text}
+                                    isStreaming={item.isStreaming}
                                     style={[
                                         styles.messageText,
                                         item.role === 'USER' ? styles.userText : styles.botText
                                     ]}
-                                >
-                                    {item.text}
-                                </Text>
+                                />
                             </View>
                         ))
                     )}

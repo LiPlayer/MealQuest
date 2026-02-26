@@ -40,7 +40,7 @@ function createAppServer({
   defaultTenantPolicy = {},
   jwtSecret = process.env.MQ_JWT_SECRET || "mealquest-dev-secret",
   paymentCallbackSecret =
-    process.env.MQ_PAYMENT_CALLBACK_SECRET || "mealquest-payment-callback-secret",
+  process.env.MQ_PAYMENT_CALLBACK_SECRET || "mealquest-payment-callback-secret",
   onboardSecret = process.env.MQ_ONBOARD_SECRET || "",
   paymentProvider = null,
   socialAuthService = null,
@@ -105,13 +105,14 @@ function createAppServer({
       providers: socialAuthOptions.providers
     });
   const aiStrategyService = createAiStrategyService(aiStrategyOptions);
+  const wsHub = createWebSocketHub(); // wsHub needs to be defined before getServicesForDb
   const getServicesForDb = (scopedDb) => {
     let services = serviceCache.get(scopedDb);
     if (!services) {
       services = {
         paymentService: createPaymentService(scopedDb, { paymentProvider }),
         campaignService: createCampaignService(scopedDb),
-        merchantService: createMerchantService(scopedDb, { aiStrategyService }),
+        merchantService: createMerchantService(scopedDb, { aiStrategyService, wsHub }),
         allianceService: createAllianceService(scopedDb),
         invoiceService: createInvoiceService(scopedDb),
         privacyService: createPrivacyService(scopedDb),
@@ -126,7 +127,6 @@ function createAppServer({
     return getServicesForDb(scopedDb);
   };
   const services = getServicesForDb(actualDb);
-  const wsHub = createWebSocketHub();
   const allSockets = new Set();
   const metrics = {
     startedAt: new Date().toISOString(),
@@ -171,6 +171,7 @@ function createAppServer({
     try {
       const parsedUrl = new URL(req.url || "/", "http://localhost");
       if (parsedUrl.pathname !== "/ws") {
+        console.error(`[ws-upgrade] Rejected: invalid path ${parsedUrl.pathname}`);
         socket.write("HTTP/1.1 404 Not Found\r\n\r\n");
         socket.destroy();
         return;
@@ -179,6 +180,7 @@ function createAppServer({
       const auth = getUpgradeAuthContext(req, jwtSecret, parsedUrl);
       const merchantId = parsedUrl.searchParams.get("merchantId");
       if (merchantId && auth.merchantId && merchantId !== auth.merchantId) {
+        console.error(`[ws-upgrade] Rejected: merchant mismatch (req=${merchantId}, auth=${auth.merchantId})`);
         socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
         socket.destroy();
         return;
@@ -189,6 +191,7 @@ function createAppServer({
         operation: "WS_CONNECT"
       });
       if (!wsPolicy.allowed) {
+        console.error(`[ws-upgrade] Rejected: policy denied for merchant ${scopedMerchantId}`);
         const statusLine =
           wsPolicy.statusCode === 429
             ? "HTTP/1.1 429 Too Many Requests\r\n\r\n"
@@ -197,11 +200,14 @@ function createAppServer({
         socket.destroy();
         return;
       }
+
+      console.log(`[ws-upgrade] Accepted: merchant=${scopedMerchantId}`);
       wsHub.handleUpgrade(req, socket, {
         ...auth,
         merchantId: scopedMerchantId
       });
-    } catch {
+    } catch (err) {
+      console.error(`[ws-upgrade] Rejected: Auth or internal error:`, err.message);
       socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
       socket.destroy();
     }

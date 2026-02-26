@@ -4,6 +4,8 @@ const {
 
 function createMerchantService(db, options = {}) {
   const aiStrategyService = options.aiStrategyService;
+  const wsHub = options.wsHub;
+  console.log(`[merchant-service] Initializing: wsHub=${Boolean(wsHub)}`);
   const fromFreshState = Boolean(options.__fromFreshState);
   const FRESH_NOT_USED = Symbol("FRESH_NOT_USED");
   const MAX_CHAT_MESSAGES = 180;
@@ -40,6 +42,7 @@ function createMerchantService(db, options = {}) {
     return db.runWithFreshState(async (workingDb) => {
       const scopedService = createMerchantService(workingDb, {
         aiStrategyService,
+        wsHub,
         __fromFreshState: true
       });
       return scopedService[methodName](payload);
@@ -53,6 +56,7 @@ function createMerchantService(db, options = {}) {
     return db.runWithFreshRead(async (workingDb) => {
       const scopedService = createMerchantService(workingDb, {
         aiStrategyService,
+        wsHub,
         __fromFreshState: true
       });
       return scopedService[methodName](payload);
@@ -1225,7 +1229,7 @@ function createMerchantService(db, options = {}) {
         deltaFrom: baselineMessageCount
       });
 
-    appendChatMessage(session, {
+    const userMessageWrapper = appendChatMessage(session, {
       role: "USER",
       type: "TEXT",
       text
@@ -1237,16 +1241,78 @@ function createMerchantService(db, options = {}) {
 
     const historyForModel = buildHistoryForModel(session);
 
-    const aiTurn = await aiStrategyService.generateStrategyChatTurn({
-      merchantId,
-      sessionId: session.sessionId,
-      userMessage: text,
-      history: historyForModel,
-      activeCampaigns: getActiveCampaignContext(merchantId),
-      approvedStrategies: getApprovedStrategyContext(merchantId),
-      executionHistory: getMarketingExecutionContext(merchantId),
-      salesSnapshot: getSalesSnapshotContext(merchantId)
-    });
+    // True streaming: text tokens arrive from the first LLM token and are broadcast via WS
+    let aiTurn;
+    const assistantMessageId = `msg_${Date.now()}_ai`;
+    console.log(`[merchant-service] sendStrategyChatMessage: merchant=${merchantId}, wsHub=${Boolean(wsHub)}`);
+
+    if (typeof aiStrategyService.streamStrategyChatTurn === "function") {
+      console.log(`[merchant-service] Starting streaming for merchant=${merchantId}`);
+      try {
+        let fullText = "";
+        const gen = aiStrategyService.streamStrategyChatTurn({
+          merchantId,
+          sessionId: session.sessionId,
+          userMessage: text,
+          history: historyForModel,
+          activeCampaigns: getActiveCampaignContext(merchantId),
+          approvedStrategies: getApprovedStrategyContext(merchantId),
+          executionHistory: getMarketingExecutionContext(merchantId),
+          salesSnapshot: getSalesSnapshotContext(merchantId)
+        });
+
+        let isFirstToken = true;
+        // Drain generator: yield = text token, done.value = parsed aiTurn
+        let next = await gen.next();
+        while (!next.done) {
+          const token = String(next.value || "");
+          if (token.length > 0) {
+            fullText += token;
+            if (wsHub) {
+              const deltaMsgs = [];
+              if (isFirstToken) {
+                deltaMsgs.push(userMessageWrapper);
+                isFirstToken = false;
+              }
+              deltaMsgs.push({
+                messageId: assistantMessageId,
+                role: "ASSISTANT",
+                type: "TEXT",
+                text: fullText,
+                isStreaming: true
+              });
+
+              console.log(`[merchant-service] Broadcasting delta: merchant=${merchantId}, len=${fullText.length}, isStreaming=true`);
+              wsHub.broadcast(merchantId, "STRATEGY_CHAT_DELTA", {
+                sessionId: session.sessionId,
+                deltaMessages: deltaMsgs
+              });
+            }
+          }
+          next = await gen.next();
+        }
+        aiTurn = next.value;
+        console.log(`[merchant-service] Streaming done: status=${aiTurn && aiTurn.status}, chars=${fullText.length}`);
+      } catch (err) {
+        console.error("[merchant-service] Streaming failed, falling back:", err.message);
+        aiTurn = null;
+      }
+    }
+
+    // Fallback: non-streaming if streaming not available or failed
+    if (!aiTurn) {
+      console.log(`[merchant-service] Using non-streaming AI call`);
+      aiTurn = await aiStrategyService.generateStrategyChatTurn({
+        merchantId,
+        sessionId: session.sessionId,
+        userMessage: text,
+        history: historyForModel,
+        activeCampaigns: getActiveCampaignContext(merchantId),
+        approvedStrategies: getApprovedStrategyContext(merchantId),
+        executionHistory: getMarketingExecutionContext(merchantId),
+        salesSnapshot: getSalesSnapshotContext(merchantId)
+      });
+    }
 
     if (!aiTurn || aiTurn.status === "AI_UNAVAILABLE") {
       appendChatMessage(session, {

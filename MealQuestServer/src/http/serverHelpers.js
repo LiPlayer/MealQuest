@@ -71,6 +71,7 @@ function getUpgradeAuthContext(req, secret, parsedUrl) {
   const queryToken = parsedUrl.searchParams.get("token");
   const bearerToken = parseBearerToken(req.headers.authorization);
   const token = queryToken || bearerToken;
+  console.log(`[ws-upgrade] extracted token: queryToken=${Boolean(queryToken)}, bearerToken=${Boolean(bearerToken)}, tokenLen=${token ? token.length : 0}`);
   if (!token) {
     throw new Error("Authorization Bearer token is required");
   }
