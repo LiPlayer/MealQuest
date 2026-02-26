@@ -21,6 +21,7 @@ function createDefaultState() {
     tenantPolicies: {},
     tenantMigrations: {},
     tenantRouteFiles: {},
+    idempotencyRecords: {},
     ledger: [],
     auditLogs: [],
     campaigns: [],
@@ -108,6 +109,9 @@ function migrateLegacyShape(state) {
   }
   if (!next.tenantRouteFiles || typeof next.tenantRouteFiles !== "object") {
     next.tenantRouteFiles = {};
+  }
+  if (!next.idempotencyRecords || typeof next.idempotencyRecords !== "object") {
+    next.idempotencyRecords = {};
   }
 
   return next;
@@ -212,6 +216,10 @@ function normalizeState(initialState = null) {
       ...defaults.tenantRouteFiles,
       ...(migrated.tenantRouteFiles || {})
     },
+    idempotencyRecords: {
+      ...defaults.idempotencyRecords,
+      ...(migrated.idempotencyRecords || {})
+    },
     ledger: Array.isArray(migrated.ledger) ? migrated.ledger : defaults.ledger,
     auditLogs: Array.isArray(migrated.auditLogs)
       ? migrated.auditLogs
@@ -229,9 +237,10 @@ function normalizeState(initialState = null) {
 
 function createInMemoryDb(initialState = null) {
   const state = normalizeState(initialState);
+  const idempotencyEntries = Object.entries(state.idempotencyRecords || {});
   const db = {
     ...state,
-    idempotencyMap: new Map(),
+    idempotencyMap: new Map(idempotencyEntries),
     save: () => {},
     serialize: () => ({
       idCounters: { ...db.idCounters },
@@ -249,6 +258,7 @@ function createInMemoryDb(initialState = null) {
       tenantPolicies: db.tenantPolicies,
       tenantMigrations: db.tenantMigrations,
       tenantRouteFiles: db.tenantRouteFiles,
+      idempotencyRecords: db.idempotencyRecords,
       ledger: db.ledger,
       auditLogs: db.auditLogs,
       campaigns: db.campaigns,
@@ -273,6 +283,15 @@ function createInMemoryDb(initialState = null) {
         db.paymentsByMerchant[merchantId] = {};
       }
       db.paymentsByMerchant[merchantId][paymentTxnId] = payment;
+    },
+    getIdempotencyEntry: (key) => db.idempotencyMap.get(String(key || "")),
+    setIdempotencyEntry: (key, value) => {
+      const normalizedKey = String(key || "");
+      if (!normalizedKey) {
+        return;
+      }
+      db.idempotencyMap.set(normalizedKey, value);
+      db.idempotencyRecords[normalizedKey] = value;
     },
     getInvoice: (merchantId, invoiceNo) => {
       const invoices = db.invoicesByMerchant[merchantId];

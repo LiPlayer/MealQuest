@@ -79,6 +79,7 @@ function resolveServerRuntimeEnv(env = process.env) {
   const dbSnapshotKey = asString(env.MQ_DB_SNAPSHOT_KEY) || "main";
   const dbPoolMax = parsePositiveInt(env.MQ_DB_POOL_MAX, 5);
   const dbAutoCreate = parseBoolean(env.MQ_DB_AUTO_CREATE, true);
+  const dbEnforceRls = parseBoolean(env.MQ_DB_ENFORCE_RLS, true);
   const dbAdminUrl = asString(env.MQ_DB_ADMIN_URL);
   const authHttpTimeoutMs = parsePositiveInt(env.MQ_AUTH_HTTP_TIMEOUT_MS, 10000);
   const authWeChatMiniAppId = asString(env.MQ_AUTH_WECHAT_MINI_APP_ID);
@@ -140,6 +141,7 @@ function resolveServerRuntimeEnv(env = process.env) {
     dbSnapshotKey,
     dbPoolMax,
     dbAutoCreate,
+    dbEnforceRls,
     dbAdminUrl,
     authHttpTimeoutMs,
     authProviders: {

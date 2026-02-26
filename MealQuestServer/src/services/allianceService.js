@@ -22,7 +22,9 @@ function cloneUserShape(user) {
   };
 }
 
-function createAllianceService(db) {
+function createAllianceService(db, options = {}) {
+  const fromFreshState = Boolean(options.__fromFreshState);
+
   function ensureAllianceBucket() {
     if (!db.allianceConfigs || typeof db.allianceConfigs !== "object") {
       db.allianceConfigs = {};
@@ -41,7 +43,14 @@ function createAllianceService(db) {
     };
   }
 
-  function getAllianceConfig({ merchantId }) {
+  async function getAllianceConfig({ merchantId }) {
+    if (!fromFreshState && typeof db.runWithFreshRead === "function") {
+      return db.runWithFreshRead(async (workingDb) => {
+        const scopedService = createAllianceService(workingDb, { __fromFreshState: true });
+        return scopedService.getAllianceConfig({ merchantId });
+      });
+    }
+
     const merchant = db.merchants[merchantId];
     assertEntity(merchant, "merchant");
     const bucket = ensureAllianceBucket();
@@ -50,17 +59,30 @@ function createAllianceService(db) {
     };
   }
 
-  function setAllianceConfig({
+  async function setAllianceConfig({
     merchantId,
     clusterId = "",
     stores = [],
     walletShared,
     tierShared
   }) {
+    if (!fromFreshState && typeof db.runWithFreshState === "function") {
+      return db.runWithFreshState(async (workingDb) => {
+        const scopedService = createAllianceService(workingDb, { __fromFreshState: true });
+        return scopedService.setAllianceConfig({
+          merchantId,
+          clusterId,
+          stores,
+          walletShared,
+          tierShared,
+        });
+      });
+    }
+
     const merchant = db.merchants[merchantId];
     assertEntity(merchant, "merchant");
     const bucket = ensureAllianceBucket();
-    const previous = getAllianceConfig({ merchantId });
+    const previous = await getAllianceConfig({ merchantId });
     const normalizedStores = normalizeStoreList(stores);
     for (const storeId of normalizedStores) {
       if (!db.merchants[storeId]) {
@@ -83,8 +105,15 @@ function createAllianceService(db) {
     };
   }
 
-  function listStores({ merchantId }) {
-    const config = getAllianceConfig({ merchantId });
+  async function listStores({ merchantId }) {
+    if (!fromFreshState && typeof db.runWithFreshRead === "function") {
+      return db.runWithFreshRead(async (workingDb) => {
+        const scopedService = createAllianceService(workingDb, { __fromFreshState: true });
+        return scopedService.listStores({ merchantId });
+      });
+    }
+
+    const config = await getAllianceConfig({ merchantId });
     return {
       merchantId,
       clusterId: config.clusterId,
@@ -97,8 +126,15 @@ function createAllianceService(db) {
     };
   }
 
-  function syncUserAcrossStores({ merchantId, userId }) {
-    const config = getAllianceConfig({ merchantId });
+  async function syncUserAcrossStores({ merchantId, userId }) {
+    if (!fromFreshState && typeof db.runWithFreshState === "function") {
+      return db.runWithFreshState(async (workingDb) => {
+        const scopedService = createAllianceService(workingDb, { __fromFreshState: true });
+        return scopedService.syncUserAcrossStores({ merchantId, userId });
+      });
+    }
+
+    const config = await getAllianceConfig({ merchantId });
     const sourceUsers = db.merchantUsers[merchantId] || {};
     const sourceUser = sourceUsers[userId];
     assertEntity(sourceUser, "user");

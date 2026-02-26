@@ -6,7 +6,9 @@ function toMoney(value) {
   return Math.round(parsed * 100) / 100;
 }
 
-function createSupplierService(db) {
+function createSupplierService(db, options = {}) {
+  const fromFreshState = Boolean(options.__fromFreshState);
+
   function ensurePartnerBucket(partnerId) {
     if (!db.partnerOrders || typeof db.partnerOrders !== "object") {
       db.partnerOrders = {};
@@ -17,12 +19,24 @@ function createSupplierService(db) {
     return db.partnerOrders[partnerId];
   }
 
-  function registerPartnerOrder({
+  async function registerPartnerOrder({
     partnerId,
     orderId,
     amount,
     status = "PAID"
   }) {
+    if (!fromFreshState && typeof db.runWithFreshState === "function") {
+      return db.runWithFreshState(async (workingDb) => {
+        const scopedService = createSupplierService(workingDb, { __fromFreshState: true });
+        return scopedService.registerPartnerOrder({
+          partnerId,
+          orderId,
+          amount,
+          status,
+        });
+      });
+    }
+
     if (!partnerId || !orderId) {
       throw new Error("partnerId and orderId are required");
     }
@@ -39,11 +53,22 @@ function createSupplierService(db) {
     return record;
   }
 
-  function verifyPartnerOrder({
+  async function verifyPartnerOrder({
     partnerId,
     orderId,
     minSpend = 0
   }) {
+    if (!fromFreshState && typeof db.runWithFreshRead === "function") {
+      return db.runWithFreshRead(async (workingDb) => {
+        const scopedService = createSupplierService(workingDb, { __fromFreshState: true });
+        return scopedService.verifyPartnerOrder({
+          partnerId,
+          orderId,
+          minSpend,
+        });
+      });
+    }
+
     if (!partnerId || !orderId) {
       throw new Error("partnerId and orderId are required");
     }

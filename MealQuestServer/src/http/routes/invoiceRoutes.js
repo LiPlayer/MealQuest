@@ -33,7 +33,7 @@ function createInvoiceRoutesHandler({
         return true;
       }
       const { invoiceService } = getServicesForMerchant(merchantId);
-      const result = invoiceService.issueInvoice({
+      const result = await invoiceService.issueInvoice({
         merchantId,
         paymentTxnId: body.paymentTxnId,
         title: body.title,
@@ -72,7 +72,7 @@ function createInvoiceRoutesHandler({
         return true;
       }
       const { invoiceService } = getServicesForMerchant(merchantId);
-      const result = invoiceService.listInvoices({
+      const result = await invoiceService.listInvoices({
         merchantId,
         userId,
         limit: url.searchParams.get("limit"),

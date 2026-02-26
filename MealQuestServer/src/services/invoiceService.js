@@ -12,14 +12,29 @@ function buildInvoiceNo() {
   return `INV${Date.now()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 }
 
-function createInvoiceService(db) {
-  function issueInvoice({
+function createInvoiceService(db, options = {}) {
+  const fromFreshState = Boolean(options.__fromFreshState);
+
+  async function issueInvoice({
     merchantId,
     paymentTxnId,
     title = "MealQuest Order",
     taxNo = "",
     email = ""
   }) {
+    if (!fromFreshState && typeof db.runWithFreshState === "function") {
+      return db.runWithFreshState(async (workingDb) => {
+        const scopedService = createInvoiceService(workingDb, { __fromFreshState: true });
+        return scopedService.issueInvoice({
+          merchantId,
+          paymentTxnId,
+          title,
+          taxNo,
+          email,
+        });
+      });
+    }
+
     const merchant = db.merchants[merchantId];
     assertEntity(merchant, "merchant");
     const payment = db.getPayment(merchantId, paymentTxnId);
@@ -53,7 +68,14 @@ function createInvoiceService(db) {
     return invoice;
   }
 
-  function listInvoices({ merchantId, userId = "", limit = 20 }) {
+  async function listInvoices({ merchantId, userId = "", limit = 20 }) {
+    if (!fromFreshState && typeof db.runWithFreshRead === "function") {
+      return db.runWithFreshRead(async (workingDb) => {
+        const scopedService = createInvoiceService(workingDb, { __fromFreshState: true });
+        return scopedService.listInvoices({ merchantId, userId, limit });
+      });
+    }
+
     const merchant = db.merchants[merchantId];
     assertEntity(merchant, "merchant");
 

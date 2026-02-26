@@ -30,6 +30,20 @@ function createPreAuthRoutesHandler({
   appendAuditLog,
   wsHub,
 }) {
+  async function runWithRootFreshState(runner) {
+    if (typeof actualDb.runWithFreshState === "function") {
+      return actualDb.runWithFreshState(async (workingDb) => runner(workingDb));
+    }
+    return runner(actualDb);
+  }
+
+  async function runWithRootFreshRead(runner) {
+    if (typeof actualDb.runWithFreshRead === "function") {
+      return actualDb.runWithFreshRead(async (workingDb) => runner(workingDb));
+    }
+    return runner(actualDb);
+  }
+
   return async function handlePreAuthRoutes({ method, url, req, res }) {
     if (method === "GET" && url.pathname === "/health") {
       sendJson(res, 200, { ok: true, now: new Date().toISOString() });
@@ -58,18 +72,23 @@ function createPreAuthRoutesHandler({
     if (method === "POST" && url.pathname === "/api/auth/merchant/request-code") {
       const body = await readJsonBody(req);
       const phone = sanitizePhone(body.phone);
-      const result = issuePhoneCode(actualDb, phone);
+      const result = await runWithRootFreshState(async (rootDb) => issuePhoneCode(rootDb, phone));
       sendJson(res, 200, result);
       return true;
     }
 
     if (method === "POST" && url.pathname === "/api/auth/merchant/phone-login") {
       const body = await readJsonBody(req);
-      const { phone } = verifyPhoneCode(actualDb, {
-        phone: body.phone,
-        code: body.code,
+      const { phone, resolvedMerchants } = await runWithRootFreshState(async (rootDb) => {
+        const verified = verifyPhoneCode(rootDb, {
+          phone: body.phone,
+          code: body.code,
+        });
+        return {
+          phone: verified.phone,
+          resolvedMerchants: listMerchantIdsByOwnerPhone(rootDb, verified.phone),
+        };
       });
-      const resolvedMerchants = listMerchantIdsByOwnerPhone(actualDb, phone);
       const merchantIdRaw = body.merchantId;
       let merchantId =
         merchantIdRaw === undefined || merchantIdRaw === null || merchantIdRaw === ""
@@ -89,7 +108,7 @@ function createPreAuthRoutesHandler({
         sendJson(res, 403, { error: "phone not bound to the target merchant" });
         return true;
       }
-      if (merchantId && !tenantRepository.getMerchant(merchantId)) {
+      if (merchantId && !(await tenantRepository.getMerchant(merchantId))) {
         sendJson(res, 404, { error: "merchant not found" });
         return true;
       }
@@ -122,7 +141,7 @@ function createPreAuthRoutesHandler({
         return true;
       }
       const merchantId = sanitizeMerchantId(merchantIdInput);
-      if (!tenantRepository.getMerchant(merchantId)) {
+      if (!(await tenantRepository.getMerchant(merchantId))) {
         sendJson(res, 404, { error: "merchant not found" });
         return true;
       }
@@ -177,7 +196,7 @@ function createPreAuthRoutesHandler({
         return true;
       }
       const merchantId = sanitizeMerchantId(merchantIdInput);
-      if (!tenantRepository.getMerchant(merchantId)) {
+      if (!(await tenantRepository.getMerchant(merchantId))) {
         sendJson(res, 404, { error: "merchant not found" });
         return true;
       }
@@ -225,16 +244,18 @@ function createPreAuthRoutesHandler({
     }
 
     if (method === "GET" && url.pathname === "/api/merchant/catalog") {
-      const merchants = Object.values(actualDb.merchants || {})
-        .map((merchant) => ({
-          merchantId: merchant.merchantId,
-          name: merchant.name,
-          budgetCap: merchant.budgetCap,
-          budgetUsed: merchant.budgetUsed,
-          killSwitchEnabled: Boolean(merchant.killSwitchEnabled),
-          onboardedAt: merchant.onboardedAt || null,
-        }))
-        .sort((a, b) => String(a.merchantId).localeCompare(String(b.merchantId)));
+      const merchants = await runWithRootFreshRead(async (rootDb) =>
+        Object.values(rootDb.merchants || {})
+          .map((merchant) => ({
+            merchantId: merchant.merchantId,
+            name: merchant.name,
+            budgetCap: merchant.budgetCap,
+            budgetUsed: merchant.budgetUsed,
+            killSwitchEnabled: Boolean(merchant.killSwitchEnabled),
+            onboardedAt: merchant.onboardedAt || null,
+          }))
+          .sort((a, b) => String(a.merchantId).localeCompare(String(b.merchantId)))
+      );
       sendJson(res, 200, {
         items: merchants,
         total: merchants.length,
@@ -249,7 +270,9 @@ function createPreAuthRoutesHandler({
       }
       const body = await readJsonBody(req);
       try {
-        const result = onboardMerchant(actualDb, body);
+        const result = await runWithRootFreshState(async (rootDb) =>
+          onboardMerchant(rootDb, body)
+        );
         tenantRepository.appendAuditLog({
           merchantId: result.merchant.merchantId,
           action: "MERCHANT_ONBOARD",
@@ -283,7 +306,7 @@ function createPreAuthRoutesHandler({
       }
 
       const { paymentService } = getServicesForMerchant(merchantId);
-      const result = paymentService.confirmExternalPayment({
+      const result = await paymentService.confirmExternalPayment({
         merchantId,
         paymentTxnId: body.paymentTxnId,
         externalTxnId: body.externalTxnId,

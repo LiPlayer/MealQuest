@@ -1,6 +1,8 @@
 const { runTcaEngine } = require("../core/tcaEngine");
 
-function createCampaignService(db) {
+function createCampaignService(db, options = {}) {
+  const fromFreshState = Boolean(options.__fromFreshState);
+
   function applyAction(user, campaignId, action) {
     if (!action || !action.type) {
       return null;
@@ -62,7 +64,14 @@ function createCampaignService(db) {
     return null;
   }
 
-  function triggerEvent({ merchantId, userId, event, context }) {
+  async function triggerEvent({ merchantId, userId, event, context }) {
+    if (!fromFreshState && typeof db.runWithFreshState === "function") {
+      return db.runWithFreshState(async (workingDb) => {
+        const scopedService = createCampaignService(workingDb, { __fromFreshState: true });
+        return scopedService.triggerEvent({ merchantId, userId, event, context });
+      });
+    }
+
     if (!String(userId || "").trim()) {
       throw new Error("userId is required");
     }

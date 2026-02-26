@@ -37,8 +37,8 @@ function createSystemRoutesHandler({
 
       const scopedDb = tenantRouter.getDbForMerchant(merchantId);
       const { merchantService, allianceService } = getServicesForDb(scopedDb);
-      const merchant = tenantRepository.getMerchant(merchantId);
-      const user = userId ? tenantRepository.getMerchantUser(merchantId, userId) : null;
+      const merchant = await tenantRepository.getMerchant(merchantId);
+      const user = userId ? await tenantRepository.getMerchantUser(merchantId, userId) : null;
       if (!merchant) {
         sendJson(res, 404, { error: "merchant not found" });
         return true;
@@ -48,16 +48,18 @@ function createSystemRoutesHandler({
         return true;
       }
 
-      const campaigns = tenantRepository.listCampaigns(merchantId);
+      const campaigns = await tenantRepository.listCampaigns(merchantId);
+      const allianceConfig = await allianceService.getAllianceConfig({ merchantId });
+      const dashboard = await merchantService.getDashboard({ merchantId });
       sendJson(res, 200, {
         merchant,
         user,
-        dashboard: merchantService.getDashboard({ merchantId }),
+        dashboard,
         campaigns,
-        proposals: tenantRepository.listProposals(merchantId),
-        strategyConfigs: tenantRepository.listStrategyConfigs(merchantId),
+        proposals: await tenantRepository.listProposals(merchantId),
+        strategyConfigs: await tenantRepository.listStrategyConfigs(merchantId),
         activities: buildCustomerActivities(campaigns),
-        allianceConfig: allianceService.getAllianceConfig({ merchantId }),
+        allianceConfig,
       });
       return true;
     }
@@ -110,7 +112,7 @@ function createSystemRoutesHandler({
         return true;
       }
 
-      const result = tenantRepository.listAuditLogs({
+      const result = await tenantRepository.listAuditLogs({
         merchantId,
         limit: url.searchParams.get("limit"),
         cursor: url.searchParams.get("cursor") || "",

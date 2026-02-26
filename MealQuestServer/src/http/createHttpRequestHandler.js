@@ -1,4 +1,9 @@
-const { sendJson, resolveAuditAction, getAuthContext } = require("./serverHelpers");
+const {
+  sendJson,
+  resolveAuditAction,
+  getAuthContext,
+  uniqueDbs,
+} = require("./serverHelpers");
 const { createPreAuthRoutesHandler } = require("./routes/preAuthRoutes");
 const { createSystemRoutesHandler } = require("./routes/systemRoutes");
 const { createPaymentRoutesHandler } = require("./routes/paymentRoutes");
@@ -97,6 +102,54 @@ function createHttpRequestHandler(deps) {
   ];
 
   const httpLogEnabled = String(process.env.MQ_HTTP_LOG || "true").toLowerCase() !== "false";
+  const tenantLocks = new Map();
+
+  async function withTenantLock(key, runner) {
+    const lockKey = String(key || "__global__");
+    const previous = tenantLocks.get(lockKey) || Promise.resolve();
+    let releaseCurrent;
+    const current = new Promise((resolve) => {
+      releaseCurrent = resolve;
+    });
+    const tail = previous.then(() => current);
+    tenantLocks.set(lockKey, tail);
+
+    await previous;
+    try {
+      return await runner();
+    } finally {
+      releaseCurrent();
+      if (tenantLocks.get(lockKey) === tail) {
+        tenantLocks.delete(lockKey);
+      }
+    }
+  }
+
+  function resolveTenantLockKey({ auth, url }) {
+    const scopedMerchantId =
+      (auth && auth.merchantId) ||
+      (url && url.searchParams ? url.searchParams.get("merchantId") : "") ||
+      "";
+    if (scopedMerchantId) {
+      return `merchant:${scopedMerchantId}`;
+    }
+    if (auth && (auth.operatorId || auth.userId)) {
+      return `actor:${auth.role || "UNKNOWN"}:${auth.operatorId || auth.userId}`;
+    }
+    return `path:${url && url.pathname ? url.pathname : "/"}`;
+  }
+
+  async function flushManagedDbs() {
+    const managed = uniqueDbs([
+      actualDb,
+      ...(tenantRouter.listOverrideDbs ? tenantRouter.listOverrideDbs() : []),
+    ]);
+    for (const dbItem of managed) {
+      if (dbItem && typeof dbItem.flush === "function") {
+        await dbItem.flush();
+      }
+    }
+  }
 
   return async function requestHandler(req, res) {
     const method = req.method || "GET";
@@ -133,6 +186,7 @@ function createHttpRequestHandler(deps) {
       };
 
       if (await handlePreAuthRoutes(baseContext)) {
+        await flushManagedDbs();
         return;
       }
 
@@ -142,10 +196,18 @@ function createHttpRequestHandler(deps) {
         auth,
       };
 
-      for (const handleRoute of authenticatedRouteHandlers) {
-        if (await handleRoute(authContext)) {
-          return;
+      const lockKey = resolveTenantLockKey({ auth, url });
+      const handled = await withTenantLock(lockKey, async () => {
+        for (const handleRoute of authenticatedRouteHandlers) {
+          if (await handleRoute(authContext)) {
+            return true;
+          }
         }
+        return false;
+      });
+      if (handled) {
+        await flushManagedDbs();
+        return;
       }
 
       sendJson(res, 404, { error: "Not Found" });

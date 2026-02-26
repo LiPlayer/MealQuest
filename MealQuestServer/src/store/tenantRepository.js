@@ -7,6 +7,17 @@ function createTenantRepository({ tenantRouter }) {
     return tenantRouter.getDbForMerchant(merchantId);
   }
 
+  async function withFreshRead(merchantId, runner) {
+    const db = getDb(merchantId);
+    if (!db) {
+      return runner(null);
+    }
+    if (typeof db.runWithFreshRead === "function") {
+      return db.runWithFreshRead(async (workingDb) => runner(workingDb));
+    }
+    return runner(db);
+  }
+
   function appendAuditLog({
     merchantId,
     action,
@@ -76,7 +87,7 @@ function createTenantRepository({ tenantRouter }) {
     return 0;
   }
 
-  function listAuditLogs({
+  async function listAuditLogs({
     merchantId,
     limit = 20,
     cursor = "",
@@ -85,7 +96,6 @@ function createTenantRepository({ tenantRouter }) {
     action = "",
     status = ""
   }) {
-    const db = getDb(merchantId);
     const maxItems = toPositiveInt(limit, 20, 100);
     const cursorInfo = parseCursor(cursor);
     const start = startTime ? new Date(startTime) : null;
@@ -96,13 +106,15 @@ function createTenantRepository({ tenantRouter }) {
     const actionFilter = typeof action === "string" ? action.trim().toUpperCase() : "";
     const statusFilter = typeof status === "string" ? status.trim().toUpperCase() : "";
 
-    const base = (db.auditLogs || [])
+    const base = await withFreshRead(merchantId, async (db) =>
+      ((db && db.auditLogs) || [])
       .filter((item) => item.merchantId === merchantId)
       .filter((item) => (!startIso ? true : item.timestamp >= startIso))
       .filter((item) => (!endIso ? true : item.timestamp <= endIso))
       .filter((item) => (!actionFilter ? true : String(item.action || "").toUpperCase() === actionFilter))
       .filter((item) => (!statusFilter ? true : String(item.status || "").toUpperCase() === statusFilter))
-      .sort(compareLogDesc);
+      .sort(compareLogDesc)
+    );
 
     const filtered = cursorInfo
       ? base.filter((item) => {
@@ -138,20 +150,39 @@ function createTenantRepository({ tenantRouter }) {
 
   return {
     getDb,
-    getMerchant: (merchantId) => tenantRouter.getMerchant(merchantId),
-    getMerchantUser: (merchantId, userId) =>
-      tenantRouter.getMerchantUser(merchantId, userId),
-    listCampaigns: (merchantId) =>
-      getDb(merchantId).campaigns.filter((item) => item.merchantId === merchantId),
-    listProposals: (merchantId) =>
-      getDb(merchantId).proposals.filter((item) => item.merchantId === merchantId),
-    listStrategyConfigs: (merchantId) => {
-      const db = getDb(merchantId);
-      if (!db.strategyConfigs || !db.strategyConfigs[merchantId]) {
-        return [];
-      }
-      return Object.values(db.strategyConfigs[merchantId]);
-    },
+    getMerchant: async (merchantId) =>
+      withFreshRead(merchantId, async (db) => {
+        if (!merchantId || !db) {
+          return null;
+        }
+        return (db.merchants && db.merchants[merchantId]) || null;
+      }),
+    getMerchantUser: async (merchantId, userId) =>
+      withFreshRead(merchantId, async (db) => {
+        if (!merchantId || !userId || !db) {
+          return null;
+        }
+        if (typeof db.getMerchantUser === "function") {
+          return db.getMerchantUser(merchantId, userId);
+        }
+        const bucket = db.merchantUsers && db.merchantUsers[merchantId];
+        return bucket ? bucket[userId] || null : null;
+      }),
+    listCampaigns: async (merchantId) =>
+      withFreshRead(merchantId, async (db) =>
+        ((db && db.campaigns) || []).filter((item) => item.merchantId === merchantId)
+      ),
+    listProposals: async (merchantId) =>
+      withFreshRead(merchantId, async (db) =>
+        ((db && db.proposals) || []).filter((item) => item.merchantId === merchantId)
+      ),
+    listStrategyConfigs: async (merchantId) =>
+      withFreshRead(merchantId, async (db) => {
+        if (!db || !db.strategyConfigs || !db.strategyConfigs[merchantId]) {
+          return [];
+        }
+        return Object.values(db.strategyConfigs[merchantId]);
+      }),
     appendAuditLog,
     listAuditLogs
   };

@@ -24,7 +24,7 @@ function createAllianceRoutesHandler({
         return true;
       }
       const { allianceService } = getServicesForMerchant(merchantId);
-      sendJson(res, 200, allianceService.getAllianceConfig({ merchantId }));
+      sendJson(res, 200, await allianceService.getAllianceConfig({ merchantId }));
       return true;
     }
 
@@ -53,7 +53,7 @@ function createAllianceRoutesHandler({
         return true;
       }
       const { allianceService } = getServicesForMerchant(merchantId);
-      const result = allianceService.setAllianceConfig({
+      const result = await allianceService.setAllianceConfig({
         merchantId,
         clusterId: body.clusterId,
         stores: body.stores,
@@ -88,7 +88,7 @@ function createAllianceRoutesHandler({
         return true;
       }
       const { allianceService } = getServicesForMerchant(merchantId);
-      sendJson(res, 200, allianceService.listStores({ merchantId }));
+      sendJson(res, 200, await allianceService.listStores({ merchantId }));
       return true;
     }
 
@@ -117,7 +117,7 @@ function createAllianceRoutesHandler({
         return true;
       }
       const { allianceService } = getServicesForMerchant(merchantId);
-      const result = allianceService.syncUserAcrossStores({
+      const result = await allianceService.syncUserAcrossStores({
         merchantId,
         userId: body.userId,
       });

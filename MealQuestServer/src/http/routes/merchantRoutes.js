@@ -16,6 +16,20 @@ function createMerchantRoutesHandler({
   appendAuditLog,
   wsHub,
 }) {
+  async function runWithRootFreshState(runner) {
+    if (typeof actualDb.runWithFreshState === "function") {
+      return actualDb.runWithFreshState(async (workingDb) => runner(workingDb));
+    }
+    return runner(actualDb);
+  }
+
+  async function runWithRootFreshRead(runner) {
+    if (typeof actualDb.runWithFreshRead === "function") {
+      return actualDb.runWithFreshRead(async (workingDb) => runner(workingDb));
+    }
+    return runner(actualDb);
+  }
+
   return async function handleMerchantRoutes({ method, url, req, auth, res }) {
     if (method === "GET" && url.pathname === "/api/merchant/dashboard") {
       ensureRole(auth, MERCHANT_ROLES);
@@ -29,7 +43,7 @@ function createMerchantRoutesHandler({
         return true;
       }
       const { merchantService } = getServicesForMerchant(merchantId);
-      sendJson(res, 200, merchantService.getDashboard({ merchantId }));
+      sendJson(res, 200, await merchantService.getDashboard({ merchantId }));
       return true;
     }
 
@@ -48,7 +62,7 @@ function createMerchantRoutesHandler({
       sendJson(
         res,
         200,
-        merchantService.getStrategyChatSession({
+        await merchantService.getStrategyChatSession({
           merchantId
         })
       );
@@ -72,7 +86,7 @@ function createMerchantRoutesHandler({
       sendJson(
         res,
         200,
-        merchantService.listStrategyChatMessages({
+        await merchantService.listStrategyChatMessages({
           merchantId,
           cursor,
           limit
@@ -106,7 +120,7 @@ function createMerchantRoutesHandler({
         return true;
       }
       const { merchantService } = getServicesForMerchant(merchantId);
-      const result = merchantService.createStrategyChatSession({
+      const result = await merchantService.createStrategyChatSession({
         merchantId,
         operatorId: auth.operatorId || "system",
       });
@@ -207,7 +221,7 @@ function createMerchantRoutesHandler({
         return true;
       }
       const { merchantService } = getServicesForMerchant(merchantId);
-      const result = merchantService.reviewStrategyChatProposal({
+      const result = await merchantService.reviewStrategyChatProposal({
         merchantId,
         proposalId,
         decision: body.decision,
@@ -257,7 +271,7 @@ function createMerchantRoutesHandler({
         return true;
       }
       const { merchantService } = getServicesForMerchant(merchantId);
-      const result = merchantService.setCampaignStatus({
+      const result = await merchantService.setCampaignStatus({
         merchantId,
         campaignId,
         status: body.status,
@@ -302,7 +316,7 @@ function createMerchantRoutesHandler({
         return true;
       }
       const { merchantService } = getServicesForMerchant(merchantId);
-      const result = merchantService.createFireSaleCampaign({
+      const result = await merchantService.createFireSaleCampaign({
         merchantId,
         targetSku: body.targetSku,
         ttlMinutes: body.ttlMinutes,
@@ -335,12 +349,13 @@ function createMerchantRoutesHandler({
         sendJson(res, 403, { error: "merchant scope denied" });
         return true;
       }
-      if (!tenantRepository.getMerchant(merchantId)) {
+      if (!(await tenantRepository.getMerchant(merchantId))) {
         sendJson(res, 404, { error: "merchant not found" });
         return true;
       }
-      const item =
-        (actualDb.contractApplications && actualDb.contractApplications[merchantId]) || null;
+      const item = await runWithRootFreshRead(async (rootDb) =>
+        (rootDb.contractApplications && rootDb.contractApplications[merchantId]) || null
+      );
       sendJson(res, 200, {
         merchantId,
         status: item ? item.status : "NOT_SUBMITTED",
@@ -361,7 +376,7 @@ function createMerchantRoutesHandler({
         sendJson(res, 403, { error: "merchant scope denied" });
         return true;
       }
-      if (!tenantRepository.getMerchant(merchantId)) {
+      if (!(await tenantRepository.getMerchant(merchantId))) {
         sendJson(res, 404, { error: "merchant not found" });
         return true;
       }
@@ -379,22 +394,26 @@ function createMerchantRoutesHandler({
       }
 
       const application = buildContractApplication(body);
-      const phoneBoundMerchants = listMerchantIdsByOwnerPhone(
-        actualDb,
-        application.contactPhone,
-      ).filter((id) => id !== merchantId);
+      const phoneBoundMerchants = await runWithRootFreshRead(async (rootDb) =>
+        listMerchantIdsByOwnerPhone(rootDb, application.contactPhone).filter(
+          (id) => id !== merchantId
+        )
+      );
       if (phoneBoundMerchants.length > 0) {
         sendJson(res, 409, { error: "contactPhone already bound to another merchant" });
         return true;
       }
-      if (!actualDb.contractApplications || typeof actualDb.contractApplications !== "object") {
-        actualDb.contractApplications = {};
-      }
-      actualDb.contractApplications[merchantId] = {
-        merchantId,
-        ...application,
-      };
-      actualDb.save();
+      const persistedApplication = await runWithRootFreshState(async (rootDb) => {
+        if (!rootDb.contractApplications || typeof rootDb.contractApplications !== "object") {
+          rootDb.contractApplications = {};
+        }
+        rootDb.contractApplications[merchantId] = {
+          merchantId,
+          ...application,
+        };
+        rootDb.save();
+        return rootDb.contractApplications[merchantId];
+      });
 
       appendAuditLog({
         merchantId,
@@ -411,7 +430,7 @@ function createMerchantRoutesHandler({
       sendJson(res, 200, {
         merchantId,
         status: application.status,
-        application: actualDb.contractApplications[merchantId],
+        application: persistedApplication,
       });
       return true;
     }
@@ -441,7 +460,7 @@ function createMerchantRoutesHandler({
         return true;
       }
       const { supplierService } = getServicesForMerchant(merchantId);
-      const result = supplierService.verifyPartnerOrder({
+      const result = await supplierService.verifyPartnerOrder({
         partnerId: body.partnerId,
         orderId: body.orderId,
         minSpend: body.minSpend,
@@ -481,7 +500,7 @@ function createMerchantRoutesHandler({
         return true;
       }
       const { merchantService } = getServicesForMerchant(merchantId);
-      const result = merchantService.confirmProposal({
+      const result = await merchantService.confirmProposal({
         merchantId,
         proposalId,
         operatorId: auth.operatorId || body.operatorId || "system",
@@ -518,7 +537,7 @@ function createMerchantRoutesHandler({
         return true;
       }
       const { merchantService } = getServicesForMerchant(merchantId);
-      const result = merchantService.setKillSwitch({
+      const result = await merchantService.setKillSwitch({
         merchantId,
         enabled: body.enabled,
       });
@@ -553,7 +572,7 @@ function createMerchantRoutesHandler({
         return true;
       }
       const { campaignService } = getServicesForMerchant(body.merchantId);
-      const result = campaignService.triggerEvent(body);
+      const result = await campaignService.triggerEvent(body);
       appendAuditLog({
         merchantId: body.merchantId,
         action: "TCA_TRIGGER",

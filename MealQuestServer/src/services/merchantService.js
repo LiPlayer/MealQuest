@@ -4,6 +4,8 @@ const {
 
 function createMerchantService(db, options = {}) {
   const aiStrategyService = options.aiStrategyService;
+  const fromFreshState = Boolean(options.__fromFreshState);
+  const FRESH_NOT_USED = Symbol("FRESH_NOT_USED");
   const MAX_CHAT_MESSAGES = 180;
   const DEFAULT_CHAT_PAGE_LIMIT = 20;
   const MAX_CHAT_PAGE_LIMIT = 60;
@@ -30,6 +32,32 @@ function createMerchantService(db, options = {}) {
     timing: "Timing",
     decisions: "Decisions"
   };
+
+  async function runWithFreshState(methodName, payload) {
+    if (fromFreshState || typeof db.runWithFreshState !== "function") {
+      return FRESH_NOT_USED;
+    }
+    return db.runWithFreshState(async (workingDb) => {
+      const scopedService = createMerchantService(workingDb, {
+        aiStrategyService,
+        __fromFreshState: true
+      });
+      return scopedService[methodName](payload);
+    });
+  }
+
+  async function runWithFreshRead(methodName, payload) {
+    if (fromFreshState || typeof db.runWithFreshRead !== "function") {
+      return FRESH_NOT_USED;
+    }
+    return db.runWithFreshRead(async (workingDb) => {
+      const scopedService = createMerchantService(workingDb, {
+        aiStrategyService,
+        __fromFreshState: true
+      });
+      return scopedService[methodName](payload);
+    });
+  }
 
   function toFiniteNumber(value) {
     const num = Number(value);
@@ -874,7 +902,12 @@ function createMerchantService(db, options = {}) {
     };
   }
 
-  function getDashboard({ merchantId }) {
+  async function getDashboard({ merchantId }) {
+    const freshResult = await runWithFreshRead("getDashboard", { merchantId });
+    if (freshResult !== FRESH_NOT_USED) {
+      return freshResult;
+    }
+
     const merchant = db.merchants[merchantId];
     if (!merchant) {
       throw new Error("merchant not found");
@@ -901,7 +934,16 @@ function createMerchantService(db, options = {}) {
     };
   }
 
-  function confirmProposal({ merchantId, proposalId, operatorId }) {
+  async function confirmProposal({ merchantId, proposalId, operatorId }) {
+    const freshResult = await runWithFreshState("confirmProposal", {
+      merchantId,
+      proposalId,
+      operatorId
+    });
+    if (freshResult !== FRESH_NOT_USED) {
+      return freshResult;
+    }
+
     const proposal = db.proposals.find(
       (item) => item.id === proposalId && item.merchantId === merchantId
     );
@@ -938,7 +980,12 @@ function createMerchantService(db, options = {}) {
     };
   }
 
-  function setKillSwitch({ merchantId, enabled }) {
+  async function setKillSwitch({ merchantId, enabled }) {
+    const freshResult = await runWithFreshState("setKillSwitch", { merchantId, enabled });
+    if (freshResult !== FRESH_NOT_USED) {
+      return freshResult;
+    }
+
     const merchant = db.merchants[merchantId];
     if (!merchant) {
       throw new Error("merchant not found");
@@ -1003,7 +1050,15 @@ function createMerchantService(db, options = {}) {
     };
   }
 
-  function createStrategyChatSession({ merchantId, operatorId = "system" }) {
+  async function createStrategyChatSession({ merchantId, operatorId = "system" }) {
+    const freshResult = await runWithFreshState("createStrategyChatSession", {
+      merchantId,
+      operatorId
+    });
+    if (freshResult !== FRESH_NOT_USED) {
+      return freshResult;
+    }
+
     const merchant = db.merchants[merchantId];
     if (!merchant) {
       throw new Error("merchant not found");
@@ -1039,7 +1094,12 @@ function createMerchantService(db, options = {}) {
     return buildStrategyChatSessionResponse({ merchantId, session });
   }
 
-  function getStrategyChatSession({ merchantId }) {
+  async function getStrategyChatSession({ merchantId }) {
+    const freshResult = await runWithFreshState("getStrategyChatSession", { merchantId });
+    if (freshResult !== FRESH_NOT_USED) {
+      return freshResult;
+    }
+
     const merchant = db.merchants[merchantId];
     if (!merchant) {
       throw new Error("merchant not found");
@@ -1055,7 +1115,20 @@ function createMerchantService(db, options = {}) {
     return buildStrategyChatSessionResponse({ merchantId, session });
   }
 
-  function listStrategyChatMessages({ merchantId, cursor = "", limit = DEFAULT_CHAT_PAGE_LIMIT }) {
+  async function listStrategyChatMessages({
+    merchantId,
+    cursor = "",
+    limit = DEFAULT_CHAT_PAGE_LIMIT
+  }) {
+    const freshResult = await runWithFreshState("listStrategyChatMessages", {
+      merchantId,
+      cursor,
+      limit
+    });
+    if (freshResult !== FRESH_NOT_USED) {
+      return freshResult;
+    }
+
     const merchant = db.merchants[merchantId];
     if (!merchant) {
       throw new Error("merchant not found");
@@ -1108,6 +1181,15 @@ function createMerchantService(db, options = {}) {
     operatorId = "system",
     content = ""
   }) {
+    const freshResult = await runWithFreshState("sendStrategyChatMessage", {
+      merchantId,
+      operatorId,
+      content
+    });
+    if (freshResult !== FRESH_NOT_USED) {
+      return freshResult;
+    }
+
     const merchant = db.merchants[merchantId];
     if (!merchant) {
       throw new Error("merchant not found");
@@ -1276,12 +1358,22 @@ function createMerchantService(db, options = {}) {
     };
   }
 
-  function reviewStrategyChatProposal({
+  async function reviewStrategyChatProposal({
     merchantId,
     proposalId,
     decision,
     operatorId = "system"
   }) {
+    const freshResult = await runWithFreshState("reviewStrategyChatProposal", {
+      merchantId,
+      proposalId,
+      decision,
+      operatorId
+    });
+    if (freshResult !== FRESH_NOT_USED) {
+      return freshResult;
+    }
+
     const merchant = db.merchants[merchantId];
     if (!merchant) {
       throw new Error("merchant not found");
@@ -1328,7 +1420,7 @@ function createMerchantService(db, options = {}) {
       });
 
     if (normalizedDecision === "APPROVE") {
-      const confirm = confirmProposal({
+      const confirm = await confirmProposal({
         merchantId,
         proposalId: targetProposalId,
         operatorId
@@ -1382,7 +1474,16 @@ function createMerchantService(db, options = {}) {
     };
   }
 
-  function setCampaignStatus({ merchantId, campaignId, status }) {
+  async function setCampaignStatus({ merchantId, campaignId, status }) {
+    const freshResult = await runWithFreshState("setCampaignStatus", {
+      merchantId,
+      campaignId,
+      status
+    });
+    if (freshResult !== FRESH_NOT_USED) {
+      return freshResult;
+    }
+
     const merchant = db.merchants[merchantId];
     if (!merchant) {
       throw new Error("merchant not found");
@@ -1408,13 +1509,24 @@ function createMerchantService(db, options = {}) {
     };
   }
 
-  function createFireSaleCampaign({
+  async function createFireSaleCampaign({
     merchantId,
     targetSku = "sku_hot_soup",
     ttlMinutes = 30,
     voucherValue = 15,
     maxQty = 30
   }) {
+    const freshResult = await runWithFreshState("createFireSaleCampaign", {
+      merchantId,
+      targetSku,
+      ttlMinutes,
+      voucherValue,
+      maxQty
+    });
+    if (freshResult !== FRESH_NOT_USED) {
+      return freshResult;
+    }
+
     const merchant = db.merchants[merchantId];
     if (!merchant) {
       throw new Error("merchant not found");

@@ -46,3 +46,22 @@ test("runtime env: production bigmodel requires api key", () => {
     /MQ_AI_API_KEY is required/,
   );
 });
+
+test("runtime env: db rls enforcement defaults on and can be disabled", () => {
+  const defaults = resolveServerRuntimeEnv({
+    NODE_ENV: "development",
+    MQ_DB_URL: "postgres://postgres:postgres@127.0.0.1:5432/mealquest",
+    MQ_AUTH_WECHAT_MINI_APP_ID: "wx_fixture",
+    MQ_AUTH_WECHAT_MINI_APP_SECRET: "wx_secret",
+  });
+  assert.equal(defaults.dbEnforceRls, true);
+
+  const disabled = resolveServerRuntimeEnv({
+    NODE_ENV: "development",
+    MQ_DB_URL: "postgres://postgres:postgres@127.0.0.1:5432/mealquest",
+    MQ_AUTH_WECHAT_MINI_APP_ID: "wx_fixture",
+    MQ_AUTH_WECHAT_MINI_APP_SECRET: "wx_secret",
+    MQ_DB_ENFORCE_RLS: "false",
+  });
+  assert.equal(disabled.dbEnforceRls, false);
+});

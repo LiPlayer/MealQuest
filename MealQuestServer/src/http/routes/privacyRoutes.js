@@ -19,7 +19,7 @@ function createPrivacyRoutesHandler({ getServicesForMerchant, appendAuditLog }) 
         return true;
       }
       const { privacyService } = getServicesForMerchant(merchantId);
-      const result = privacyService.exportUserData({
+      const result = await privacyService.exportUserData({
         merchantId,
         userId: body.userId,
       });
@@ -49,7 +49,7 @@ function createPrivacyRoutesHandler({ getServicesForMerchant, appendAuditLog }) 
         return true;
       }
       const { privacyService } = getServicesForMerchant(merchantId);
-      const result = privacyService.deleteUserData({
+      const result = await privacyService.deleteUserData({
         merchantId,
         userId: body.userId,
       });
@@ -80,7 +80,7 @@ function createPrivacyRoutesHandler({ getServicesForMerchant, appendAuditLog }) 
         return true;
       }
       const { privacyService } = getServicesForMerchant(merchantId);
-      const result = privacyService.cancelUserAccount({
+      const result = await privacyService.cancelUserAccount({
         merchantId,
         userId,
       });

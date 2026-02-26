@@ -12,8 +12,17 @@ function replaceUserRef(value, userId, alias) {
   return value === userId ? alias : value;
 }
 
-function createPrivacyService(db) {
-  function exportUserData({ merchantId, userId }) {
+function createPrivacyService(db, options = {}) {
+  const fromFreshState = Boolean(options.__fromFreshState);
+
+  async function exportUserData({ merchantId, userId }) {
+    if (!fromFreshState && typeof db.runWithFreshRead === "function") {
+      return db.runWithFreshRead(async (workingDb) => {
+        const scopedService = createPrivacyService(workingDb, { __fromFreshState: true });
+        return scopedService.exportUserData({ merchantId, userId });
+      });
+    }
+
     const merchant = db.merchants[merchantId];
     assertEntity(merchant, "merchant");
     const user = db.getMerchantUser(merchantId, userId);
@@ -40,7 +49,14 @@ function createPrivacyService(db) {
     };
   }
 
-  function deleteUserData({ merchantId, userId }) {
+  async function deleteUserData({ merchantId, userId }) {
+    if (!fromFreshState && typeof db.runWithFreshState === "function") {
+      return db.runWithFreshState(async (workingDb) => {
+        const scopedService = createPrivacyService(workingDb, { __fromFreshState: true });
+        return scopedService.deleteUserData({ merchantId, userId });
+      });
+    }
+
     const merchant = db.merchants[merchantId];
     assertEntity(merchant, "merchant");
     const user = db.getMerchantUser(merchantId, userId);
@@ -71,7 +87,14 @@ function createPrivacyService(db) {
     };
   }
 
-  function cancelUserAccount({ merchantId, userId }) {
+  async function cancelUserAccount({ merchantId, userId }) {
+    if (!fromFreshState && typeof db.runWithFreshState === "function") {
+      return db.runWithFreshState(async (workingDb) => {
+        const scopedService = createPrivacyService(workingDb, { __fromFreshState: true });
+        return scopedService.cancelUserAccount({ merchantId, userId });
+      });
+    }
+
     const merchant = db.merchants[merchantId];
     assertEntity(merchant, "merchant");
     const users = db.merchantUsers[merchantId] || {};

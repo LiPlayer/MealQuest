@@ -50,7 +50,7 @@ function createPaymentRoutesHandler({
       }
 
       const { paymentService } = getServicesForMerchant(body.merchantId);
-      const result = paymentService.verifyPayment({
+      const result = await paymentService.verifyPayment({
         ...body,
         idempotencyKey: req.headers["idempotency-key"] || body.idempotencyKey,
       });
@@ -87,7 +87,7 @@ function createPaymentRoutesHandler({
         return true;
       }
       const { paymentService } = getServicesForMerchant(body.merchantId);
-      const result = paymentService.refundPayment({
+      const result = await paymentService.refundPayment({
         ...body,
         idempotencyKey: req.headers["idempotency-key"] || body.idempotencyKey,
       });

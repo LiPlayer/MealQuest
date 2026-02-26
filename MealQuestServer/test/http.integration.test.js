@@ -1176,6 +1176,57 @@ test("persistent mode keeps state across restarts", async () => {
   }
 });
 
+test("persistent mode keeps payment idempotency keys across restarts", async () => {
+  const dbFactory = createSnapshotBackedDbFactory();
+
+  const app1 = createAppServer({ db: dbFactory.createDb() });
+  const port1 = await app1.start(0);
+  const base1 = `http://127.0.0.1:${port1}`;
+
+  const customerToken1 = await mockLogin(base1, "CUSTOMER");
+  const firstVerify = await postJson(
+    base1,
+    "/api/payment/verify",
+    {
+      merchantId: "m_store_001",
+      userId: "u_fixture_001",
+      orderAmount: 41
+    },
+    {
+      Authorization: `Bearer ${customerToken1}`,
+      "Idempotency-Key": "persist_idem_verify_1"
+    }
+  );
+  assert.equal(firstVerify.status, 200);
+  assert.ok(firstVerify.data.paymentTxnId);
+  await app1.stop();
+
+  const app2 = createAppServer({ db: dbFactory.createDb() });
+  const port2 = await app2.start(0);
+  const base2 = `http://127.0.0.1:${port2}`;
+
+  try {
+    const customerToken2 = await mockLogin(base2, "CUSTOMER");
+    const replayVerify = await postJson(
+      base2,
+      "/api/payment/verify",
+      {
+        merchantId: "m_store_001",
+        userId: "u_fixture_001",
+        orderAmount: 999
+      },
+      {
+        Authorization: `Bearer ${customerToken2}`,
+        "Idempotency-Key": "persist_idem_verify_1"
+      }
+    );
+    assert.equal(replayVerify.status, 200);
+    assert.equal(replayVerify.data.paymentTxnId, firstVerify.data.paymentTxnId);
+  } finally {
+    await app2.stop();
+  }
+});
+
 test("persistent mode keeps tenant policy across restarts", async () => {
   const dbFactory = createSnapshotBackedDbFactory();
 

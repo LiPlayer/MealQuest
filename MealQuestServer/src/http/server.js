@@ -313,6 +313,10 @@ async function createAppServerAsync(options = {}) {
       inputPostgresOptions.maxPoolSize ||
       runtimeEnv.dbPoolMax ||
       5,
+    enforceRls:
+      inputPostgresOptions.enforceRls === undefined
+        ? runtimeEnv.dbEnforceRls
+        : Boolean(inputPostgresOptions.enforceRls),
     autoCreateDatabase:
       inputPostgresOptions.autoCreateDatabase === undefined
         ? runtimeEnv.dbAutoCreate
@@ -417,6 +421,7 @@ if (require.main === module) {
       table: runtimeEnv.dbStateTable,
       snapshotKey: runtimeEnv.dbSnapshotKey,
       maxPoolSize: runtimeEnv.dbPoolMax,
+      enforceRls: runtimeEnv.dbEnforceRls,
       autoCreateDatabase: runtimeEnv.dbAutoCreate,
       adminConnectionString: runtimeEnv.dbAdminUrl || null,
     },

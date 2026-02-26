@@ -16,6 +16,20 @@ function createTenantRoutesHandler({
   postgresOptions,
   appendAuditLog,
 }) {
+  async function runWithRootFreshState(runner) {
+    if (typeof actualDb.runWithFreshState === "function") {
+      return actualDb.runWithFreshState(async (workingDb) => runner(workingDb));
+    }
+    return runner(actualDb);
+  }
+
+  async function runWithRootFreshRead(runner) {
+    if (typeof actualDb.runWithFreshRead === "function") {
+      return actualDb.runWithFreshRead(async (workingDb) => runner(workingDb));
+    }
+    return runner(actualDb);
+  }
+
   return async function handleTenantRoutes({ method, url, req, auth, res }) {
     if (method === "GET" && url.pathname === "/api/merchant/tenant-policy") {
       ensureRole(auth, ["OWNER"]);
@@ -50,11 +64,17 @@ function createTenantRoutesHandler({
       }
 
       const patch = buildTenantPolicyPatch(body);
-      const policy = tenantPolicyManager.setMerchantPolicy(merchantId, patch);
-      actualDb.tenantPolicies[merchantId] = {
-        ...policy,
-      };
-      actualDb.save();
+      const policy = await runWithRootFreshState(async (rootDb) => {
+        const appliedPolicy = tenantPolicyManager.setMerchantPolicy(merchantId, patch);
+        if (!rootDb.tenantPolicies || typeof rootDb.tenantPolicies !== "object") {
+          rootDb.tenantPolicies = {};
+        }
+        rootDb.tenantPolicies[merchantId] = {
+          ...appliedPolicy,
+        };
+        rootDb.save();
+        return appliedPolicy;
+      });
       appendAuditLog({
         merchantId,
         action: "TENANT_POLICY_SET",
@@ -83,23 +103,26 @@ function createTenantRoutesHandler({
         sendJson(res, 403, { error: "merchant scope denied" });
         return true;
       }
-      if (!tenantRepository.getMerchant(merchantId)) {
+      if (!(await tenantRepository.getMerchant(merchantId))) {
         sendJson(res, 404, { error: "merchant not found" });
         return true;
       }
 
-      const migration = actualDb.tenantMigrations[merchantId] || {
-        phase: "IDLE",
-        step: "INIT",
-        note: "",
-        updatedAt: null,
-      };
+      const snapshot = await runWithRootFreshRead(async (rootDb) => ({
+        migration: rootDb.tenantMigrations[merchantId] || {
+          phase: "IDLE",
+          step: "INIT",
+          note: "",
+          updatedAt: null,
+        },
+        dedicatedDbFilePath:
+          (rootDb.tenantRouteFiles && rootDb.tenantRouteFiles[merchantId]) || null,
+      }));
       sendJson(res, 200, {
         merchantId,
         dedicatedDbAttached: tenantRouter.hasDbOverride(merchantId),
-        dedicatedDbFilePath:
-          (actualDb.tenantRouteFiles && actualDb.tenantRouteFiles[merchantId]) || null,
-        migration,
+        dedicatedDbFilePath: snapshot.dedicatedDbFilePath,
+        migration: snapshot.migration,
         policy: tenantPolicyManager.getPolicy(merchantId),
       });
       return true;
@@ -117,18 +140,20 @@ function createTenantRoutesHandler({
         sendJson(res, 403, { error: "merchant scope denied" });
         return true;
       }
-      if (!tenantRepository.getMerchant(merchantId)) {
+      if (!(await tenantRepository.getMerchant(merchantId))) {
         sendJson(res, 404, { error: "merchant not found" });
         return true;
       }
 
-      const result = applyMigrationStep({
-        actualDb,
-        tenantPolicyManager,
-        merchantId,
-        step: body.step,
-        note: body.note,
-      });
+      const result = await runWithRootFreshState(async (rootDb) =>
+        applyMigrationStep({
+          actualDb: rootDb,
+          tenantPolicyManager,
+          merchantId,
+          step: body.step,
+          note: body.note,
+        })
+      );
       appendAuditLog({
         merchantId,
         action: "MIGRATION_STEP",
@@ -161,65 +186,71 @@ function createTenantRoutesHandler({
         sendJson(res, 403, { error: "merchant scope denied" });
         return true;
       }
-      if (!tenantRepository.getMerchant(merchantId)) {
+      if (!(await tenantRepository.getMerchant(merchantId))) {
         sendJson(res, 404, { error: "merchant not found" });
         return true;
       }
 
-      let cutoverResult = null;
-      let finalState = null;
-      try {
-        applyMigrationStep({
-          actualDb,
-          tenantPolicyManager,
-          merchantId,
-          step: "FREEZE_WRITE",
-          note: body.note || "auto freeze for cutover",
-        });
-        cutoverResult = await cutoverMerchantToDedicatedDb({
-          actualDb,
-          tenantRouter,
-          merchantId,
-          postgresOptions,
-        });
-        applyMigrationStep({
-          actualDb,
-          tenantPolicyManager,
-          merchantId,
-          step: "MARK_VERIFYING",
-          note: "cutover verification",
-        });
-        applyMigrationStep({
-          actualDb,
-          tenantPolicyManager,
-          merchantId,
-          step: "MARK_CUTOVER",
-          note: "cutover completed",
-        });
-        finalState = applyMigrationStep({
-          actualDb,
-          tenantPolicyManager,
-          merchantId,
-          step: "UNFREEZE_WRITE",
-          note: "restore write traffic after cutover",
-        });
-      } catch (error) {
-        applyMigrationStep({
-          actualDb,
-          tenantPolicyManager,
-          merchantId,
-          step: "MARK_ROLLBACK",
-          note: `cutover failed: ${error.message}`,
-        });
-        applyMigrationStep({
-          actualDb,
-          tenantPolicyManager,
-          merchantId,
-          step: "UNFREEZE_WRITE",
-          note: "restore write traffic after cutover failure",
-        });
-        throw error;
-      }
+      const { cutoverResult, finalState } = await runWithRootFreshState(async (rootDb) => {
+        let cutoverOutput = null;
+        let finalOutput = null;
+        try {
+          applyMigrationStep({
+            actualDb: rootDb,
+            tenantPolicyManager,
+            merchantId,
+            step: "FREEZE_WRITE",
+            note: body.note || "auto freeze for cutover",
+          });
+          cutoverOutput = await cutoverMerchantToDedicatedDb({
+            actualDb: rootDb,
+            tenantRouter,
+            merchantId,
+            postgresOptions,
+          });
+          applyMigrationStep({
+            actualDb: rootDb,
+            tenantPolicyManager,
+            merchantId,
+            step: "MARK_VERIFYING",
+            note: "cutover verification",
+          });
+          applyMigrationStep({
+            actualDb: rootDb,
+            tenantPolicyManager,
+            merchantId,
+            step: "MARK_CUTOVER",
+            note: "cutover completed",
+          });
+          finalOutput = applyMigrationStep({
+            actualDb: rootDb,
+            tenantPolicyManager,
+            merchantId,
+            step: "UNFREEZE_WRITE",
+            note: "restore write traffic after cutover",
+          });
+        } catch (error) {
+          applyMigrationStep({
+            actualDb: rootDb,
+            tenantPolicyManager,
+            merchantId,
+            step: "MARK_ROLLBACK",
+            note: `cutover failed: ${error.message}`,
+          });
+          applyMigrationStep({
+            actualDb: rootDb,
+            tenantPolicyManager,
+            merchantId,
+            step: "UNFREEZE_WRITE",
+            note: "restore write traffic after cutover failure",
+          });
+          throw error;
+        }
+        return {
+          cutoverResult: cutoverOutput,
+          finalState: finalOutput,
+        };
+      });
 
       appendAuditLog({
         merchantId,
@@ -252,50 +283,56 @@ function createTenantRoutesHandler({
         sendJson(res, 403, { error: "merchant scope denied" });
         return true;
       }
-      if (!tenantRepository.getMerchant(merchantId)) {
+      if (!(await tenantRepository.getMerchant(merchantId))) {
         sendJson(res, 404, { error: "merchant not found" });
         return true;
       }
 
-      let rollbackResult = null;
-      let finalState = null;
-      try {
-        applyMigrationStep({
-          actualDb,
-          tenantPolicyManager,
-          merchantId,
-          step: "FREEZE_WRITE",
-          note: body.note || "freeze before rollback",
-        });
-        rollbackResult = await rollbackMerchantToSharedDb({
-          actualDb,
-          tenantRouter,
-          merchantId,
-        });
-        applyMigrationStep({
-          actualDb,
-          tenantPolicyManager,
-          merchantId,
-          step: "MARK_ROLLBACK",
-          note: "rollback completed",
-        });
-        finalState = applyMigrationStep({
-          actualDb,
-          tenantPolicyManager,
-          merchantId,
-          step: "UNFREEZE_WRITE",
-          note: "restore write traffic after rollback",
-        });
-      } catch (error) {
-        applyMigrationStep({
-          actualDb,
-          tenantPolicyManager,
-          merchantId,
-          step: "UNFREEZE_WRITE",
-          note: "restore write traffic after rollback failure",
-        });
-        throw error;
-      }
+      const { rollbackResult, finalState } = await runWithRootFreshState(async (rootDb) => {
+        let rollbackOutput = null;
+        let finalOutput = null;
+        try {
+          applyMigrationStep({
+            actualDb: rootDb,
+            tenantPolicyManager,
+            merchantId,
+            step: "FREEZE_WRITE",
+            note: body.note || "freeze before rollback",
+          });
+          rollbackOutput = await rollbackMerchantToSharedDb({
+            actualDb: rootDb,
+            tenantRouter,
+            merchantId,
+          });
+          applyMigrationStep({
+            actualDb: rootDb,
+            tenantPolicyManager,
+            merchantId,
+            step: "MARK_ROLLBACK",
+            note: "rollback completed",
+          });
+          finalOutput = applyMigrationStep({
+            actualDb: rootDb,
+            tenantPolicyManager,
+            merchantId,
+            step: "UNFREEZE_WRITE",
+            note: "restore write traffic after rollback",
+          });
+        } catch (error) {
+          applyMigrationStep({
+            actualDb: rootDb,
+            tenantPolicyManager,
+            merchantId,
+            step: "UNFREEZE_WRITE",
+            note: "restore write traffic after rollback failure",
+          });
+          throw error;
+        }
+        return {
+          rollbackResult: rollbackOutput,
+          finalState: finalOutput,
+        };
+      });
 
       appendAuditLog({
         merchantId,

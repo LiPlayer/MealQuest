@@ -16,7 +16,7 @@ Minimal runnable backend implementation for MealQuest.
 - JWT auth with role scope (`CUSTOMER`, `CLERK`, `MANAGER`, `OWNER`)
 - WebSocket realtime events (payment, refund, strategy, fuse, TCA)
 - PostgreSQL relational persistence (multi-table)
-- Strong shared-db isolation by merchant scope
+- Strong shared-db isolation with PostgreSQL RLS (`tenant_id`)
 - High-risk audit logs
 
 ## Quick Start
@@ -48,6 +48,7 @@ MQ_DB_LEGACY_SNAPSHOT_TABLE=mealquest_state_snapshots
 MQ_DB_STATE_TABLE=mealquest_state_snapshots
 MQ_DB_SNAPSHOT_KEY=main
 MQ_DB_AUTO_CREATE=true
+MQ_DB_ENFORCE_RLS=true
 MQ_DB_ADMIN_URL=
 MQ_AUTH_WECHAT_MINI_APP_ID=
 MQ_AUTH_WECHAT_MINI_APP_SECRET=
@@ -69,13 +70,18 @@ Notes:
 2. `save()` persists runtime state into relational tables under `MQ_DB_SCHEMA`.
 3. On first run, if relational rows do not exist for `MQ_DB_SNAPSHOT_KEY`, server tries one-time import from the legacy snapshot table.
 4. Migration cutover and rollback keep working with tenant snapshot keys.
-5. When `MQ_DB_AUTO_CREATE=true`, server auto-creates the target database if it is missing.
-6. If the app user has no `CREATEDB` privilege, set `MQ_DB_ADMIN_URL` with an admin connection.
-7. `MQ_AI_PROVIDER=bigmodel` is supported with BigModel chat completions endpoint.
-8. `MQ_AI_API_KEY` is required for BigModel (`provider=bigmodel`), optional for local openai-compatible servers.
-9. If model inference is unavailable, strategy proposal API returns `AI_UNAVAILABLE` (no local fallback strategy is generated).
-10. `MQ_AI_MAX_RETRIES` controls LangChain model retry attempts (`@langchain/openai`).
-11. Strategy planning is orchestrated by LangGraph (`prepare_input -> remote_decide -> assemble_plan`).
+5. Shared-db tables are persisted by `tenant_id`, with transaction-scoped `app.tenant_id` context.
+6. PostgreSQL RLS is enabled by default (`MQ_DB_ENFORCE_RLS=true`) and can be disabled only for troubleshooting.
+7. Idempotency records are persisted in PostgreSQL (`mq_idempotency_records`) and scoped by `tenant_id`.
+8. Request pipeline enforces tenant-scoped serialization and flushes pending persistence before response.
+9. When `MQ_DB_AUTO_CREATE=true`, server auto-creates the target database if it is missing.
+10. If the app user has no `CREATEDB` privilege, set `MQ_DB_ADMIN_URL` with an admin connection.
+11. `MQ_AI_PROVIDER=bigmodel` is supported with BigModel chat completions endpoint.
+12. `MQ_AI_API_KEY` is required for BigModel (`provider=bigmodel`), optional for local openai-compatible servers.
+13. If model inference is unavailable, strategy proposal API returns `AI_UNAVAILABLE` (no local fallback strategy is generated).
+14. `MQ_AI_MAX_RETRIES` controls LangChain model retry attempts (`@langchain/openai`).
+15. Strategy planning is orchestrated by LangGraph (`prepare_input -> remote_decide -> assemble_plan`).
+16. Payment write operations execute on fresh tenant state within one PostgreSQL transaction (`runWithFreshState`).
 
 ## Merchant Onboarding
 
