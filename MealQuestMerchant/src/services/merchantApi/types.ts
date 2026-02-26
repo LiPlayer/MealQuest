@@ -72,18 +72,29 @@ export interface StrategyChatPendingReview {
 export interface StrategyChatMessage {
   messageId: string;
   role: 'SYSTEM' | 'USER' | 'ASSISTANT';
-  type: 'TEXT' | 'PROPOSAL_CARD' | 'PROPOSAL_REVIEW';
+  type: 'TEXT' | 'PROPOSAL_CARD' | 'PROPOSAL_REVIEW' | 'MEMORY_SUMMARY' | 'MEMORY_FACTS';
   text: string;
   proposalId: string | null;
   metadata: Record<string, unknown> | null;
   createdAt: string;
 }
 
-export interface StrategyChatSessionResult {
+export interface StrategyChatReviewProgress {
+  totalCandidates: number;
+  reviewedCandidates: number;
+  pendingCandidates: number;
+}
+
+export interface StrategyChatStatePayload {
   merchantId: string;
   sessionId: string | null;
   pendingReview: StrategyChatPendingReview | null;
-  messages: StrategyChatMessage[];
+  pendingReviews?: StrategyChatPendingReview[];
+  reviewProgress?: StrategyChatReviewProgress | null;
+  messages?: StrategyChatMessage[];
+  deltaMessages?: StrategyChatMessage[];
+  latestMessageId?: string | null;
+  messageCount?: number;
   activeCampaigns: Array<{
     id: string;
     name: string;
@@ -101,16 +112,30 @@ export interface StrategyChatSessionResult {
   }>;
 }
 
-export interface StrategyChatTurnResult extends StrategyChatSessionResult {
+export interface StrategyChatSessionResult extends StrategyChatStatePayload {}
+
+export interface StrategyChatTurnResult extends StrategyChatStatePayload {
   status: 'CHAT_REPLY' | 'PENDING_REVIEW' | 'REVIEW_REQUIRED' | 'BLOCKED' | 'AI_UNAVAILABLE';
   reason?: string;
   reasons?: string[];
   message?: string;
 }
 
-export interface StrategyChatReviewResult extends StrategyChatSessionResult {
+export interface StrategyChatReviewResult extends StrategyChatStatePayload {
   status: 'APPROVED' | 'REJECTED';
   campaignId?: string;
+}
+
+export interface StrategyChatMessagePage {
+  merchantId: string;
+  sessionId: string | null;
+  items: StrategyChatMessage[];
+  pageInfo: {
+    limit: number;
+    hasMore: boolean;
+    nextCursor: string | null;
+  };
+  latestMessageId: string | null;
 }
 
 export interface CampaignStatusResult {

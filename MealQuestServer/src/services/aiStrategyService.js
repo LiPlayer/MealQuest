@@ -12,6 +12,11 @@ const BIGMODEL_DEFAULT_MODEL = "glm-4.7-flash";
 const BIGMODEL_DEFAULT_TIMEOUT_MS = 45000;
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_MAX_RETRIES = 2;
+const MAX_PROPOSAL_CANDIDATES = 12;
+const MAX_HISTORY_ITEMS_FOR_PROMPT = 48;
+const MAX_HISTORY_TOKENS_FOR_PROMPT = 2600;
+const MAX_HISTORY_TEXT_CHARS = 640;
+const MAX_MEMORY_PREFIX_HISTORY_ITEMS = 2;
 
 function asString(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -166,7 +171,7 @@ function normalizeAiDecision({
   campaign.strategyMeta = strategyMeta;
 
   return {
-    title: asString(decision.title) || `${template.name} · ${branch.name} · AI`,
+    title: asString(decision.title) || `${template.name} - ${branch.name} - AI`,
     campaign,
     template,
     branch,
@@ -197,6 +202,74 @@ function truncateText(value, maxLen = 240) {
     return text;
   }
   return `${text.slice(0, maxLen)}...`;
+}
+
+function estimateTokenCount(value) {
+  const text = asString(value);
+  if (!text) {
+    return 0;
+  }
+  return Math.ceil(text.length / 4) + 4;
+}
+
+function estimateHistoryItemTokens(item) {
+  if (!isObjectLike(item)) {
+    return 0;
+  }
+  return (
+    estimateTokenCount(item.role) +
+    estimateTokenCount(item.type) +
+    estimateTokenCount(item.text) +
+    8
+  );
+}
+
+function sanitizeHistoryForPrompt(history) {
+  const normalized = Array.isArray(history)
+    ? history.map((item) => ({
+        role: asString(item && item.role ? item.role : "ASSISTANT").toUpperCase(),
+        type: asString(item && item.type ? item.type : "TEXT").toUpperCase(),
+        text: truncateText(item && item.text ? item.text : "", MAX_HISTORY_TEXT_CHARS),
+        proposalId: asString(item && item.proposalId ? item.proposalId : ""),
+        createdAt: asString(item && item.createdAt ? item.createdAt : ""),
+      }))
+    : [];
+  if (normalized.length === 0) {
+    return [];
+  }
+
+  const memoryPrefix = [];
+  const stream = [];
+  for (const item of normalized) {
+    const isMemoryPrefix =
+      item.role === "SYSTEM" && (item.type === "MEMORY_SUMMARY" || item.type === "MEMORY_FACTS");
+    if (isMemoryPrefix) {
+      memoryPrefix.push(item);
+      continue;
+    }
+    stream.push(item);
+  }
+
+  const pinnedMemory = memoryPrefix.slice(-MAX_MEMORY_PREFIX_HISTORY_ITEMS);
+  const pinnedTokens = pinnedMemory.reduce((sum, item) => sum + estimateHistoryItemTokens(item), 0);
+  const tokenBudget = Math.max(600, MAX_HISTORY_TOKENS_FOR_PROMPT - pinnedTokens);
+  const selected = [];
+  let usedTokens = 0;
+  for (let idx = stream.length - 1; idx >= 0; idx -= 1) {
+    const item = stream[idx];
+    const tokenCost = Math.max(1, estimateHistoryItemTokens(item));
+    if (
+      selected.length > 0 &&
+      (usedTokens + tokenCost > tokenBudget ||
+        selected.length + pinnedMemory.length >= MAX_HISTORY_ITEMS_FOR_PROMPT)
+    ) {
+      break;
+    }
+    selected.push(item);
+    usedTokens += tokenCost;
+  }
+  selected.reverse();
+  return [...pinnedMemory, ...selected].slice(-MAX_HISTORY_ITEMS_FOR_PROMPT);
 }
 
 function toFiniteNumber(value, fallback = 0) {
@@ -263,6 +336,32 @@ function sanitizeSalesSnapshot(input) {
   };
 }
 
+function sanitizeExecutionHistory(input) {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+  return input.slice(-20).map((item) => {
+    const details = isObjectLike(item && item.details) ? item.details : {};
+    const compactDetails = {};
+    for (const [key, value] of Object.entries(details)) {
+      if (value === undefined || value === null) {
+        continue;
+      }
+      if (typeof value === "number" || typeof value === "boolean") {
+        compactDetails[key] = value;
+        continue;
+      }
+      compactDetails[key] = truncateText(value, 120);
+    }
+    return {
+      timestamp: asString(item && item.timestamp),
+      action: asString(item && item.action).toUpperCase(),
+      status: asString(item && item.status).toUpperCase(),
+      details: compactDetails,
+    };
+  });
+}
+
 function buildChatPromptPayload({
   merchantId,
   sessionId,
@@ -270,19 +369,10 @@ function buildChatPromptPayload({
   history = [],
   activeCampaigns = [],
   approvedStrategies = [],
+  executionHistory = [],
   salesSnapshot = null,
 }) {
-  const safeHistory = Array.isArray(history)
-    ? history
-        .slice(-24)
-        .map((item) => ({
-          role: asString(item.role || "ASSISTANT").toUpperCase(),
-          type: asString(item.type || "TEXT").toUpperCase(),
-          text: truncateText(item.text || "", 320),
-          proposalId: asString(item.proposalId || ""),
-          createdAt: asString(item.createdAt || ""),
-        }))
-    : [];
+  const safeHistory = sanitizeHistoryForPrompt(history);
 
   const safeActiveCampaigns = Array.isArray(activeCampaigns)
     ? activeCampaigns.slice(0, 12).map((item) => ({
@@ -304,6 +394,7 @@ function buildChatPromptPayload({
         approvedAt: asString(item.approvedAt || ""),
       }))
     : [];
+  const safeExecutionHistory = sanitizeExecutionHistory(executionHistory);
   const safeSalesSnapshot = sanitizeSalesSnapshot(salesSnapshot);
 
   const userPayload = {
@@ -314,10 +405,33 @@ function buildChatPromptPayload({
     history: safeHistory,
     activeCampaigns: safeActiveCampaigns,
     approvedStrategies: safeApprovedStrategies,
+    executionHistory: safeExecutionHistory,
     salesSnapshot: safeSalesSnapshot,
     outputSchema: {
       mode: "CHAT_REPLY|PROPOSAL",
       assistantMessage: "string",
+      proposals: [
+        {
+          templateId: "string",
+          branchId: "string",
+          title: "string",
+          rationale: "string",
+          confidence: "number",
+          campaignPatch: {
+            name: "string",
+            priority: "number",
+            trigger: { event: "string" },
+            conditions: [
+              { field: "string", op: "eq|neq|gte|lte|includes", value: "any" },
+            ],
+            budget: { cap: "number", used: "number", costPerHit: "number" },
+            ttlHours: "number",
+            action: {
+              type: "GRANT_SILVER|GRANT_BONUS|GRANT_PRINCIPAL|GRANT_FRAGMENT|GRANT_VOUCHER|STORY_CARD|COMPOSITE",
+            },
+          },
+        },
+      ],
       proposal: {
         templateId: "string",
         branchId: "string",
@@ -343,8 +457,9 @@ function buildChatPromptPayload({
       "Keep assistantMessage concise and practical.",
       "Output strict JSON only.",
       "Use mode=PROPOSAL only when user clearly requests to create/finalize a strategy.",
-      "When mode=PROPOSAL, proposal fields are required.",
+      "When mode=PROPOSAL, return non-empty proposals[] (max 12) or proposal object.",
       "Avoid repeating already approved strategies with the same templateId+branchId unless user asks.",
+      "Use executionHistory to avoid repeating already executed marketing operations unless user asks.",
       "Reference salesSnapshot when recommending optimization direction.",
     ],
   };
@@ -402,25 +517,50 @@ function createStrategyChatGraph({
     const mode = asString(decision.mode || "").toUpperCase();
     const assistantMessage = asString(decision.assistantMessage);
 
-    if (mode === "PROPOSAL" && isObjectLike(decision.proposal)) {
+    if (mode === "PROPOSAL") {
       const input = isObjectLike(state.input) ? state.input : {};
-      const normalized = normalizeAiDecision({
-        input: {
-          merchantId: input.merchantId,
-          templateId: asString(decision.proposal.templateId) || input.templateId,
-          branchId: asString(decision.proposal.branchId) || input.branchId,
-          overrides: {},
-        },
-        rawDecision: decision.proposal,
-        provider,
-        model,
-        templates: listStrategyTemplates(),
-      });
+      const rawCandidates = [];
+      if (Array.isArray(decision.proposals)) {
+        rawCandidates.push(...decision.proposals.filter((item) => isObjectLike(item)));
+      }
+      if (isObjectLike(decision.proposal)) {
+        rawCandidates.push(decision.proposal);
+      }
+      const normalizedCandidates = [];
+      for (const candidate of rawCandidates.slice(0, MAX_PROPOSAL_CANDIDATES)) {
+        try {
+          const normalized = normalizeAiDecision({
+            input: {
+              merchantId: input.merchantId,
+              templateId: asString(candidate.templateId) || input.templateId,
+              branchId: asString(candidate.branchId) || input.branchId,
+              overrides: {},
+            },
+            rawDecision: candidate,
+            provider,
+            model,
+            templates: listStrategyTemplates(),
+          });
+          normalizedCandidates.push(normalized);
+        } catch {
+          // skip invalid candidate and continue
+        }
+      }
+      if (normalizedCandidates.length === 0) {
+        return {
+          turn: {
+            status: "CHAT_REPLY",
+            assistantMessage:
+              assistantMessage || "Please tell me your goal, budget, and expected time window.",
+          },
+        };
+      }
       return {
         turn: {
           status: "PROPOSAL_READY",
           assistantMessage: assistantMessage || "Strategy proposal drafted. Please review immediately.",
-          proposal: normalized,
+          proposals: normalizedCandidates,
+          proposal: normalizedCandidates[0],
         },
       };
     }
@@ -495,6 +635,7 @@ function createAiStrategyService(options = {}) {
       history: input.history,
       activeCampaigns: input.activeCampaigns,
       approvedStrategies: input.approvedStrategies,
+      executionHistory: input.executionHistory,
       salesSnapshot: input.salesSnapshot,
     });
     return modelGateway.invokeChat(prompt.messages);

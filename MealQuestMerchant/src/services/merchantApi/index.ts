@@ -11,6 +11,7 @@ import {
   MerchantOnboardResult,
   MerchantPhoneCodeResult,
   MerchantPhoneLoginResult,
+  StrategyChatMessagePage,
   StrategyChatReviewResult,
   StrategyChatSessionResult,
   StrategyChatTurnResult,
@@ -95,18 +96,38 @@ export const MerchantApi = {
     token: string,
     options: {
       merchantId?: string;
-      sessionId?: string;
     } = {},
   ) => {
     const merchantId = options.merchantId || getMerchantId();
     const query = new URLSearchParams();
     query.set('merchantId', merchantId);
-    if (options.sessionId) {
-      query.set('sessionId', options.sessionId);
-    }
     return requestJson<StrategyChatSessionResult>(
       'GET',
       `/api/merchant/strategy-chat/session?${query.toString()}`,
+      token,
+    );
+  },
+
+  getStrategyChatMessages: async (
+    token: string,
+    options: {
+      merchantId?: string;
+      cursor?: string;
+      limit?: number;
+    } = {},
+  ) => {
+    const merchantId = options.merchantId || getMerchantId();
+    const query = new URLSearchParams();
+    query.set('merchantId', merchantId);
+    if (options.cursor) {
+      query.set('cursor', options.cursor);
+    }
+    if (Number.isFinite(Number(options.limit)) && Number(options.limit) > 0) {
+      query.set('limit', String(Math.floor(Number(options.limit))));
+    }
+    return requestJson<StrategyChatMessagePage>(
+      'GET',
+      `/api/merchant/strategy-chat/messages?${query.toString()}`,
       token,
     );
   },
@@ -126,13 +147,11 @@ export const MerchantApi = {
     token: string,
     payload: {
       merchantId?: string;
-      sessionId?: string;
       content: string;
     },
   ) => {
     return requestJson<StrategyChatTurnResult>('POST', '/api/merchant/strategy-chat/messages', token, {
       merchantId: payload.merchantId || getMerchantId(),
-      sessionId: payload.sessionId,
       content: payload.content,
     });
   },
@@ -143,7 +162,6 @@ export const MerchantApi = {
       proposalId: string;
       decision: 'APPROVE' | 'REJECT';
       merchantId?: string;
-      sessionId?: string;
     },
   ) => {
     return requestJson<StrategyChatReviewResult>(
@@ -152,7 +170,6 @@ export const MerchantApi = {
       token,
       {
         merchantId: payload.merchantId || getMerchantId(),
-        sessionId: payload.sessionId,
         decision: payload.decision,
       },
     );

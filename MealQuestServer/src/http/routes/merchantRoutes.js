@@ -36,7 +36,6 @@ function createMerchantRoutesHandler({
     if (method === "GET" && url.pathname === "/api/merchant/strategy-chat/session") {
       ensureRole(auth, ["MANAGER", "OWNER"]);
       const merchantId = url.searchParams.get("merchantId") || auth.merchantId;
-      const sessionId = url.searchParams.get("sessionId") || "";
       if (!merchantId) {
         sendJson(res, 400, { error: "merchantId is required" });
         return true;
@@ -50,8 +49,33 @@ function createMerchantRoutesHandler({
         res,
         200,
         merchantService.getStrategyChatSession({
+          merchantId
+        })
+      );
+      return true;
+    }
+
+    if (method === "GET" && url.pathname === "/api/merchant/strategy-chat/messages") {
+      ensureRole(auth, ["MANAGER", "OWNER"]);
+      const merchantId = url.searchParams.get("merchantId") || auth.merchantId;
+      const cursor = url.searchParams.get("cursor") || "";
+      const limit = url.searchParams.get("limit") || "";
+      if (!merchantId) {
+        sendJson(res, 400, { error: "merchantId is required" });
+        return true;
+      }
+      if (auth.merchantId && auth.merchantId !== merchantId) {
+        sendJson(res, 403, { error: "merchant scope denied" });
+        return true;
+      }
+      const { merchantService } = getServicesForMerchant(merchantId);
+      sendJson(
+        res,
+        200,
+        merchantService.listStrategyChatMessages({
           merchantId,
-          sessionId
+          cursor,
+          limit
         })
       );
       return true;
@@ -127,7 +151,6 @@ function createMerchantRoutesHandler({
       const { merchantService } = getServicesForMerchant(merchantId);
       const result = await merchantService.sendStrategyChatMessage({
         merchantId,
-        sessionId: body.sessionId,
         operatorId: auth.operatorId || "system",
         content: body.content,
       });
@@ -142,7 +165,7 @@ function createMerchantRoutesHandler({
               : "SUCCESS",
         auth,
         details: {
-          sessionId: result.sessionId || body.sessionId || null,
+          sessionId: result.sessionId || null,
           turnStatus: result.status || "UNKNOWN",
           pendingProposalId:
             result.pendingReview && result.pendingReview.proposalId
@@ -186,7 +209,6 @@ function createMerchantRoutesHandler({
       const { merchantService } = getServicesForMerchant(merchantId);
       const result = merchantService.reviewStrategyChatProposal({
         merchantId,
-        sessionId: body.sessionId,
         proposalId,
         decision: body.decision,
         operatorId: auth.operatorId || "system",
@@ -197,7 +219,7 @@ function createMerchantRoutesHandler({
         status: "SUCCESS",
         auth,
         details: {
-          sessionId: result.sessionId || body.sessionId || null,
+          sessionId: result.sessionId || null,
           proposalId,
           reviewStatus: result.status || null,
           campaignId: result.campaignId || null,

@@ -293,25 +293,20 @@ async function createStrategyProposalThroughChat(
   token,
   {
     merchantId = "m_store_001",
-    sessionId = "",
     content = "Please create a strategy proposal now."
   } = {}
 ) {
-  let activeSessionId = String(sessionId || "").trim();
-  if (!activeSessionId) {
-    const session = await postJson(
-      baseUrl,
-      "/api/merchant/strategy-chat/sessions",
-      { merchantId },
-      { Authorization: `Bearer ${token}` }
-    );
-    if (session.status !== 200 || !session.data.sessionId) {
-      return {
-        status: session.status,
-        data: session.data
-      };
-    }
-    activeSessionId = session.data.sessionId;
+  const session = await postJson(
+    baseUrl,
+    "/api/merchant/strategy-chat/sessions",
+    { merchantId },
+    { Authorization: `Bearer ${token}` }
+  );
+  if (session.status !== 200 || !session.data.sessionId) {
+    return {
+      status: session.status,
+      data: session.data
+    };
   }
 
   const turn = await postJson(
@@ -319,7 +314,6 @@ async function createStrategyProposalThroughChat(
     "/api/merchant/strategy-chat/messages",
     {
       merchantId,
-      sessionId: activeSessionId,
       content
     },
     { Authorization: `Bearer ${token}` }
@@ -339,7 +333,7 @@ async function createStrategyProposalThroughChat(
         campaignId: turn.data.pendingReview.campaignId || null,
         templateId: turn.data.pendingReview.templateId || null,
         branchId: turn.data.pendingReview.branchId || null,
-        sessionId: activeSessionId,
+        sessionId: session.data.sessionId,
         _rawChatTurn: turn.data
       }
     };
@@ -349,7 +343,7 @@ async function createStrategyProposalThroughChat(
     status: turn.status,
     data: {
       ...turn.data,
-      sessionId: activeSessionId
+      sessionId: session.data.sessionId
     }
   };
 }
@@ -485,8 +479,8 @@ function pickAiDecision(payload) {
   const requestedTemplate = String(payload.templateId || "").trim();
   const requestedBranch = String(payload.branchId || "").trim();
   const isCoolingIntent =
-    intent.includes("é«˜æ¸©") ||
-    intent.includes("æ¸…å‡‰") ||
+    intent.includes("\u9ad8\u6e29") ||
+    intent.includes("\u6e05\u51c9") ||
     intent.includes("temperature") ||
     intent.includes("weather");
 
@@ -2358,7 +2352,6 @@ test("strategy chat supports proposal generation, confirm and campaign status co
       `/api/merchant/strategy-chat/proposals/${proposal.data.proposalId}/review`,
       {
         merchantId: "m_store_001",
-        sessionId: proposal.data.sessionId,
         decision: "APPROVE"
       },
       { Authorization: `Bearer ${ownerToken}` }
@@ -2562,8 +2555,8 @@ test("strategy proposal asks clarification when intent is ambiguous", async () =
     });
     assert.equal(proposal.status, 200);
     assert.equal(proposal.data.status, "CHAT_REPLY");
-    assert.ok(Array.isArray(proposal.data.messages));
-    assert.ok(proposal.data.messages.length >= 2);
+    assert.ok(Array.isArray(proposal.data.deltaMessages));
+    assert.ok(proposal.data.deltaMessages.length >= 2);
 
     const afterState = await getJson(
       baseUrl,
@@ -2644,16 +2637,25 @@ test("strategy chat supports multi-turn proposal drafting, immediate review, and
     assert.equal(createSession.status, 200);
     assert.ok(createSession.data.sessionId);
     assert.equal(createSession.data.pendingReview, null);
-    assert.ok(Array.isArray(createSession.data.messages));
-    assert.ok(createSession.data.messages.length >= 1);
+    assert.ok(Array.isArray(createSession.data.pendingReviews));
+    assert.equal(createSession.data.pendingReviews.length, 0);
+    assert.ok(Number(createSession.data.messageCount) >= 1);
     const sessionId = createSession.data.sessionId;
+
+    const firstPage = await getJson(
+      baseUrl,
+      "/api/merchant/strategy-chat/messages?merchantId=m_store_001&limit=5",
+      { Authorization: `Bearer ${ownerToken}` },
+    );
+    assert.equal(firstPage.status, 200);
+    assert.ok(Array.isArray(firstPage.data.items));
+    assert.ok(firstPage.data.items.length >= 1);
 
     const turn1 = await postJson(
       baseUrl,
       "/api/merchant/strategy-chat/messages",
       {
         merchantId: "m_store_001",
-        sessionId,
         content: "We need to improve afternoon traffic.",
       },
       { Authorization: `Bearer ${ownerToken}` },
@@ -2667,7 +2669,6 @@ test("strategy chat supports multi-turn proposal drafting, immediate review, and
       "/api/merchant/strategy-chat/messages",
       {
         merchantId: "m_store_001",
-        sessionId,
         content: "Please create a strategy proposal now.",
       },
       { Authorization: `Bearer ${ownerToken}` },
@@ -2683,7 +2684,6 @@ test("strategy chat supports multi-turn proposal drafting, immediate review, and
       "/api/merchant/strategy-chat/messages",
       {
         merchantId: "m_store_001",
-        sessionId,
         content: "Create one more before review.",
       },
       { Authorization: `Bearer ${ownerToken}` },
@@ -2697,7 +2697,6 @@ test("strategy chat supports multi-turn proposal drafting, immediate review, and
       `/api/merchant/strategy-chat/proposals/${encodeURIComponent(firstProposalId)}/review`,
       {
         merchantId: "m_store_001",
-        sessionId,
         decision: "REJECT",
       },
       { Authorization: `Bearer ${ownerToken}` },
@@ -2711,7 +2710,6 @@ test("strategy chat supports multi-turn proposal drafting, immediate review, and
       "/api/merchant/strategy-chat/messages",
       {
         merchantId: "m_store_001",
-        sessionId,
         content: "Create another strategy draft.",
       },
       { Authorization: `Bearer ${ownerToken}` },
@@ -2726,7 +2724,6 @@ test("strategy chat supports multi-turn proposal drafting, immediate review, and
       `/api/merchant/strategy-chat/proposals/${encodeURIComponent(secondProposalId)}/review`,
       {
         merchantId: "m_store_001",
-        sessionId,
         decision: "APPROVE",
       },
       { Authorization: `Bearer ${ownerToken}` },
@@ -2740,7 +2737,6 @@ test("strategy chat supports multi-turn proposal drafting, immediate review, and
       "/api/merchant/strategy-chat/messages",
       {
         merchantId: "m_store_001",
-        sessionId,
         content: "Create another strategy draft.",
       },
       { Authorization: `Bearer ${ownerToken}` },
@@ -2761,8 +2757,9 @@ test("strategy chat supports multi-turn proposal drafting, immediate review, and
     assert.equal(newSession.status, 200);
     assert.notEqual(newSession.data.sessionId, sessionId);
     assert.equal(newSession.data.pendingReview, null);
-    assert.ok(Array.isArray(newSession.data.messages));
-    assert.equal(newSession.data.messages.length, 1);
+    assert.ok(Array.isArray(newSession.data.pendingReviews));
+    assert.equal(newSession.data.pendingReviews.length, 0);
+    assert.equal(newSession.data.messageCount, 1);
   } finally {
     await app.stop();
     await stopServer(aiStub.server);

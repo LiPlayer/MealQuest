@@ -19,6 +19,7 @@ import {
   MerchantApi,
   StrategyChatMessage,
   StrategyChatPendingReview,
+  StrategyChatReviewProgress,
   StrategyChatReviewResult,
   StrategyChatSessionResult,
 } from './src/services/merchantApi';
@@ -107,8 +108,16 @@ function SectionCard({
 
 type StrategyChatSnapshot = Pick<
   StrategyChatSessionResult,
-  'sessionId' | 'messages' | 'pendingReview'
+  'sessionId' | 'messages' | 'pendingReview' | 'pendingReviews' | 'reviewProgress'
 >;
+type StrategyChatDelta = {
+  sessionId: string | null;
+  pendingReview: StrategyChatPendingReview | null;
+  pendingReviews?: StrategyChatPendingReview[];
+  reviewProgress?: StrategyChatReviewProgress | null;
+  messages?: StrategyChatMessage[];
+  deltaMessages?: StrategyChatMessage[];
+};
 
 function isTokenExpiredError(err: unknown) {
   const message =
@@ -161,8 +170,22 @@ function MerchantConsoleApp({
   const [strategyChatMessages, setStrategyChatMessages] = useState<StrategyChatMessage[]>([]);
   const [strategyChatPendingReview, setStrategyChatPendingReview] =
     useState<StrategyChatPendingReview | null>(null);
+  const [strategyChatPendingReviews, setStrategyChatPendingReviews] =
+    useState<StrategyChatPendingReview[]>([]);
+  const [strategyChatReviewProgress, setStrategyChatReviewProgress] =
+    useState<StrategyChatReviewProgress | null>(null);
 
-  const pendingReviewCount = strategyChatPendingReview ? 1 : 0;
+  const pendingReviewCount = strategyChatPendingReviews.length;
+  const totalReviewCount = Math.max(
+    pendingReviewCount,
+    Number(strategyChatReviewProgress?.totalCandidates || 0),
+  );
+  const reviewedReviewCount = Math.max(
+    0,
+    Number(strategyChatReviewProgress?.reviewedCandidates || 0),
+  );
+  const currentReviewIndex =
+    pendingReviewCount > 0 ? Math.min(totalReviewCount, reviewedReviewCount + 1) : 0;
 
   const visibleRealtimeEvents = useMemo(
     () =>
@@ -196,12 +219,53 @@ function MerchantConsoleApp({
   };
 
   const applyStrategyChatSnapshot = (snapshot: StrategyChatSnapshot) => {
+    const pendingReviews = Array.isArray(snapshot.pendingReviews)
+      ? snapshot.pendingReviews
+      : snapshot.pendingReview
+        ? [snapshot.pendingReview]
+        : [];
     setStrategyChatSessionId(String(snapshot.sessionId || '').trim());
     setStrategyChatMessages(Array.isArray(snapshot.messages) ? snapshot.messages : []);
-    setStrategyChatPendingReview(snapshot.pendingReview || null);
+    setStrategyChatPendingReviews(pendingReviews);
+    setStrategyChatPendingReview(snapshot.pendingReview || pendingReviews[0] || null);
+    setStrategyChatReviewProgress(snapshot.reviewProgress || null);
   };
 
-  const ensureStrategyChatSession = async (token: string): Promise<string> => {
+  const applyStrategyChatDelta = (delta: StrategyChatDelta) => {
+    const pendingReviews = Array.isArray(delta.pendingReviews)
+      ? delta.pendingReviews
+      : delta.pendingReview
+        ? [delta.pendingReview]
+        : [];
+    setStrategyChatSessionId(String(delta.sessionId || '').trim());
+    setStrategyChatPendingReviews(pendingReviews);
+    setStrategyChatPendingReview(delta.pendingReview || pendingReviews[0] || null);
+    setStrategyChatReviewProgress(delta.reviewProgress || null);
+    if (Array.isArray(delta.messages)) {
+      setStrategyChatMessages(delta.messages);
+      return;
+    }
+    const incoming = Array.isArray(delta.deltaMessages) ? delta.deltaMessages : [];
+    if (incoming.length === 0) {
+      return;
+    }
+    setStrategyChatMessages(prev => {
+      const merged = prev.slice();
+      const indexById = new Map(merged.map((item, index) => [item.messageId, index]));
+      for (const item of incoming) {
+        const existing = indexById.get(item.messageId);
+        if (existing === undefined) {
+          indexById.set(item.messageId, merged.length);
+          merged.push(item);
+        } else {
+          merged[existing] = item;
+        }
+      }
+      return merged;
+    });
+  };
+
+  const bootstrapStrategyChatSession = async (token: string): Promise<string> => {
     const merchantId = String(
       (typeof MerchantApi.getMerchantId === 'function'
         ? MerchantApi.getMerchantId()
@@ -210,15 +274,25 @@ function MerchantConsoleApp({
     if (!merchantId) {
       throw new Error('merchantId missing. Please complete onboarding/login first.');
     }
+    const response = await MerchantApi.createStrategyChatSession(token, { merchantId });
+    const resolvedSessionId = String(response.sessionId || '').trim();
+    const page = await MerchantApi.getStrategyChatMessages(token, {
+      merchantId,
+      limit: 40,
+    });
+    applyStrategyChatSnapshot({
+      ...response,
+      messages: Array.isArray(page.items) ? page.items : [],
+    });
+    return resolvedSessionId;
+  };
+
+  const ensureStrategyChatSession = async (token: string): Promise<string> => {
     const activeSessionId = String(strategyChatSessionId || '').trim();
-    const response = activeSessionId
-      ? await MerchantApi.getStrategyChatSession(token, {
-        merchantId,
-        sessionId: activeSessionId,
-      })
-      : await MerchantApi.createStrategyChatSession(token, { merchantId });
-    applyStrategyChatSnapshot(response);
-    return String(response.sessionId || '').trim();
+    if (activeSessionId) {
+      return activeSessionId;
+    }
+    return bootstrapStrategyChatSession(token);
   };
 
   const refreshAllianceData = async (token: string) => {
@@ -352,7 +426,12 @@ function MerchantConsoleApp({
     if (!remoteToken) {
       return;
     }
-    ensureStrategyChatSession(remoteToken).catch((err: any) => {
+    setStrategyChatSessionId('');
+    setStrategyChatMessages([]);
+    setStrategyChatPendingReview(null);
+    setStrategyChatPendingReviews([]);
+    setStrategyChatReviewProgress(null);
+    bootstrapStrategyChatSession(remoteToken).catch((err: any) => {
       if (isTokenExpiredError(err)) {
         onAuthExpired();
         return;
@@ -379,18 +458,32 @@ function MerchantConsoleApp({
       setLastAction('请输入更具体的经营需求（至少4个字）');
       return;
     }
+    if (strategyChatPendingReviews.length > 0) {
+      setLastAction('存在待审核策略，请先确认或拒绝');
+      return;
+    }
     setAiIntentSubmitting(true);
     try {
-      const activeSessionId = await ensureStrategyChatSession(remoteToken);
+      await ensureStrategyChatSession(remoteToken);
       const result = await MerchantApi.sendStrategyChatMessage(remoteToken, {
-        sessionId: activeSessionId,
         content: intent,
       });
-      applyStrategyChatSnapshot(result);
+      applyStrategyChatDelta(result);
       await refreshAuditLogs(remoteToken);
       setAiIntentDraft('');
       if (result.status === 'PENDING_REVIEW') {
-        setLastAction('AI 已生成策略，请立即确认或拒绝');
+        const total =
+          Number(result.reviewProgress?.totalCandidates || 0) ||
+          (Array.isArray(result.pendingReviews)
+            ? result.pendingReviews.length
+            : result.pendingReview
+              ? 1
+              : 0);
+        setLastAction(
+          total > 1
+            ? `AI 已生成 ${total} 条策略，请依次确认或拒绝`
+            : 'AI 已生成策略，请立即确认或拒绝',
+        );
       } else if (result.status === 'REVIEW_REQUIRED') {
         setLastAction('存在待审核策略，请先确认或拒绝');
       } else if (result.status === 'BLOCKED') {
@@ -425,16 +518,21 @@ function MerchantConsoleApp({
     try {
       const result: StrategyChatReviewResult = await MerchantApi.reviewStrategyChatProposal(remoteToken, {
         proposalId: strategyChatPendingReview.proposalId,
-        sessionId: strategyChatSessionId,
         decision,
       });
-      applyStrategyChatSnapshot(result);
+      applyStrategyChatDelta(result);
       await refreshRemoteState(remoteToken);
       await refreshAuditLogs(remoteToken);
       if (result.status === 'APPROVED') {
-        setLastAction('策略已确认并生效');
+        const remaining = Array.isArray(result.pendingReviews) ? result.pendingReviews.length : 0;
+        setLastAction(
+          remaining > 0 ? `策略已确认，还需处理 ${remaining} 条待审核策略` : '策略已确认并生效',
+        );
       } else {
-        setLastAction('策略已拒绝，可继续对话调整');
+        const remaining = Array.isArray(result.pendingReviews) ? result.pendingReviews.length : 0;
+        setLastAction(
+          remaining > 0 ? `策略已拒绝，还需处理 ${remaining} 条待审核策略` : '策略已拒绝，可继续对话调整',
+        );
       }
     } catch {
       setLastAction('策略审核失败，请稍后重试');
@@ -644,6 +742,12 @@ function MerchantConsoleApp({
                       Pending Review: {strategyChatPendingReview.title}
                     </Text>
                     <Text style={styles.mutedText}>
+                      Queue: {pendingReviewCount > 0 ? `${currentReviewIndex} / ${totalReviewCount}` : '0 / 0'}
+                    </Text>
+                    <Text style={styles.mutedText}>
+                      Remaining: {pendingReviewCount} / {totalReviewCount}
+                    </Text>
+                    <Text style={styles.mutedText}>
                       {strategyChatPendingReview.templateId || '-'} / {strategyChatPendingReview.branchId || '-'}
                     </Text>
                     <View style={styles.filterRow}>
@@ -678,9 +782,13 @@ function MerchantConsoleApp({
                     testID="ai-intent-submit"
                     style={styles.primaryButton}
                     onPress={onCreateIntentProposal}
-                    disabled={aiIntentSubmitting}>
+                    disabled={aiIntentSubmitting || pendingReviewCount > 0}>
                     <Text style={styles.primaryButtonText}>
-                      {aiIntentSubmitting ? 'Sending...' : 'Send to AI'}
+                      {aiIntentSubmitting
+                        ? 'Sending...'
+                        : pendingReviewCount > 0
+                          ? 'Review Required'
+                          : 'Send to AI'}
                     </Text>
                   </Pressable>
                   <Pressable style={styles.secondaryButton} onPress={onCreateFireSale}>

@@ -99,7 +99,7 @@ jest.mock('../src/services/merchantApi', () => ({
       merchantId: 'm_store_001',
       sessionId: 'sc_1',
       pendingReview: null,
-      messages: [],
+      pendingReviews: [],
       activeCampaigns: [],
       approvedStrategies: [],
     })),
@@ -107,9 +107,20 @@ jest.mock('../src/services/merchantApi', () => ({
       merchantId: 'm_store_001',
       sessionId: 'sc_1',
       pendingReview: null,
-      messages: [],
+      pendingReviews: [],
       activeCampaigns: [],
       approvedStrategies: [],
+    })),
+    getStrategyChatMessages: jest.fn(async () => ({
+      merchantId: 'm_store_001',
+      sessionId: 'sc_1',
+      items: [],
+      pageInfo: {
+        limit: 40,
+        hasMore: false,
+        nextCursor: null,
+      },
+      latestMessageId: null,
     })),
     sendStrategyChatMessage: jest.fn(async () => ({
       merchantId: 'm_store_001',
@@ -127,7 +138,21 @@ jest.mock('../src/services/merchantApi', () => ({
         budget: {cap: 120, used: 0, costPerHit: 10},
         createdAt: '2026-02-25T00:00:00.000Z',
       },
-      messages: [
+      pendingReviews: [
+        {
+          proposalId: 'proposal_ai_1',
+          status: 'PENDING',
+          title: 'AI Strategy Draft',
+          templateId: 'activation_contextual_drop',
+          branchId: 'COOLING',
+          campaignId: 'campaign_ai_1',
+          campaignName: 'AI Strategy Draft',
+          triggerEvent: 'APP_OPEN',
+          budget: {cap: 120, used: 0, costPerHit: 10},
+          createdAt: '2026-02-25T00:00:00.000Z',
+        },
+      ],
+      deltaMessages: [
         {
           messageId: 'msg_1',
           role: 'USER',
@@ -137,7 +162,17 @@ jest.mock('../src/services/merchantApi', () => ({
           metadata: null,
           createdAt: '2026-02-25T00:00:00.000Z',
         },
+        {
+          messageId: 'msg_2',
+          role: 'ASSISTANT',
+          type: 'PROPOSAL_CARD',
+          text: 'AI strategy draft ready.',
+          proposalId: 'proposal_ai_1',
+          metadata: null,
+          createdAt: '2026-02-25T00:00:01.000Z',
+        },
       ],
+      latestMessageId: 'msg_2',
       activeCampaigns: [],
       approvedStrategies: [],
     })),
@@ -147,7 +182,19 @@ jest.mock('../src/services/merchantApi', () => ({
       status: 'APPROVED',
       campaignId: 'campaign_ai_1',
       pendingReview: null,
-      messages: [],
+      pendingReviews: [],
+      deltaMessages: [
+        {
+          messageId: 'msg_3',
+          role: 'SYSTEM',
+          type: 'PROPOSAL_REVIEW',
+          text: 'Proposal approved.',
+          proposalId: 'proposal_ai_1',
+          metadata: null,
+          createdAt: '2026-02-25T00:00:02.000Z',
+        },
+      ],
+      latestMessageId: 'msg_3',
       activeCampaigns: [],
       approvedStrategies: [],
     })),
@@ -250,7 +297,7 @@ describe('merchant ui regression flow', () => {
 
     expect(mockApi.sendStrategyChatMessage).toHaveBeenCalled();
     const [, payload] = mockApi.sendStrategyChatMessage.mock.calls[0];
-    expect(payload.sessionId).toBe('sc_1');
+    expect(payload.sessionId).toBeUndefined();
     expect(typeof payload.content).toBe('string');
     expect(payload.content.length).toBeGreaterThan(4);
   });

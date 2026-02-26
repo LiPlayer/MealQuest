@@ -159,7 +159,7 @@ POST /api/merchant/migration/rollback
 Strategy chat and operations:
 
 ```text
-GET  /api/merchant/strategy-chat/session?merchantId=<id>&sessionId=<optional>
+GET  /api/merchant/strategy-chat/session?merchantId=<id>
 POST /api/merchant/strategy-chat/sessions
 POST /api/merchant/strategy-chat/messages
 POST /api/merchant/strategy-chat/proposals/:id/review
@@ -172,7 +172,8 @@ Strategy chat behavior:
 1. Strategy chat is continuous within the active session (`strategy-chat/session`).
 2. When AI drafts a proposal card, session enters `PENDING_REVIEW`.
 3. Merchant must immediately `APPROVE` or `REJECT` via `strategy-chat/proposals/:id/review` before sending next message.
-4. Creating a new session resets chat context (history sessions are not exposed by API).
+4. Client does not pass `sessionId` when sending messages/reviews; server always routes to active session.
+5. Creating a new session resets chat context (history sessions are not exposed by API).
 
 Supplier verification:
 

@@ -1,14 +1,35 @@
-﻿const {
+const {
   findTemplate
 } = require("./strategyLibrary");
 
 function createMerchantService(db, options = {}) {
   const aiStrategyService = options.aiStrategyService;
-  const MAX_CHAT_MESSAGES = 120;
-  const MAX_CHAT_HISTORY_FOR_MODEL = 24;
+  const MAX_CHAT_MESSAGES = 180;
+  const DEFAULT_CHAT_PAGE_LIMIT = 20;
+  const MAX_CHAT_PAGE_LIMIT = 60;
+  const MODEL_HISTORY_TOKEN_BUDGET = 2600;
+  const MODEL_HISTORY_MAX_MESSAGES = 40;
+  const CHAT_COMPACTION_TRIGGER_TOKENS = 3200;
+  const CHAT_COMPACTION_KEEP_RECENT_TOKENS = 1400;
+  const CHAT_COMPACTION_MIN_RECENT_MESSAGES = 10;
+  const MAX_MEMORY_SUMMARY_CHARS = 4000;
+  const MAX_MEMORY_PREFIX_CHARS = 1600;
+  const MAX_MEMORY_FACTS_PER_CATEGORY = 8;
+  const MAX_MEMORY_FACT_CHARS = 160;
   const MAX_APPROVED_STRATEGY_CONTEXT = 12;
   const MAX_ACTIVE_CAMPAIGN_CONTEXT = 12;
+  const MAX_EXECUTION_HISTORY_CONTEXT = 20;
+  const MAX_EXECUTION_DETAIL_VALUE_LEN = 80;
+  const MAX_TOTAL_PROPOSAL_CANDIDATES = 12;
   const SALES_WINDOWS_DAYS = [7, 30];
+  const MEMORY_FACT_KEYS = ["goals", "constraints", "audience", "timing", "decisions"];
+  const MEMORY_FACT_LABELS = {
+    goals: "Goals",
+    constraints: "Constraints",
+    audience: "Audience",
+    timing: "Timing",
+    decisions: "Decisions"
+  };
 
   function toFiniteNumber(value) {
     const num = Number(value);
@@ -209,6 +230,324 @@ function createMerchantService(db, options = {}) {
     return item;
   }
 
+  function truncateText(value, maxLen = 160) {
+    const text = String(value || "").trim();
+    if (!text) {
+      return "";
+    }
+    if (text.length <= maxLen) {
+      return text;
+    }
+    return `${text.slice(0, maxLen)}...`;
+  }
+
+  function estimateTokenCount(value) {
+    const text = String(value || "").trim();
+    if (!text) {
+      return 0;
+    }
+    return Math.ceil(text.length / 4) + 4;
+  }
+
+  function estimateMessageTokens(message) {
+    if (!message || typeof message !== "object") {
+      return 0;
+    }
+    return (
+      estimateTokenCount(message.role) +
+      estimateTokenCount(message.type) +
+      estimateTokenCount(message.text) +
+      8
+    );
+  }
+
+  function estimateMessagesTokens(messages) {
+    const items = Array.isArray(messages) ? messages : [];
+    return items.reduce((sum, item) => sum + estimateMessageTokens(item), 0);
+  }
+
+  function createEmptyMemoryFacts() {
+    return {
+      goals: [],
+      constraints: [],
+      audience: [],
+      timing: [],
+      decisions: []
+    };
+  }
+
+  function normalizeMemoryFacts(input) {
+    const normalized = createEmptyMemoryFacts();
+    if (!input || typeof input !== "object") {
+      return normalized;
+    }
+    for (const key of MEMORY_FACT_KEYS) {
+      const bucket = Array.isArray(input[key]) ? input[key] : [];
+      const unique = new Set();
+      for (const item of bucket) {
+        const text = truncateText(String(item || "").replace(/\s+/g, " "), MAX_MEMORY_FACT_CHARS);
+        const fingerprint = text.toLowerCase();
+        if (!text || unique.has(fingerprint)) {
+          continue;
+        }
+        unique.add(fingerprint);
+        normalized[key].push(text);
+        if (normalized[key].length >= MAX_MEMORY_FACTS_PER_CATEGORY) {
+          break;
+        }
+      }
+    }
+    return normalized;
+  }
+
+  function ensureSessionMemoryState(session) {
+    if (!session || typeof session !== "object") {
+      return;
+    }
+    session.memorySummary = String(session.memorySummary || "").trim();
+    session.memoryFacts = normalizeMemoryFacts(session.memoryFacts);
+  }
+
+  function appendMemoryFact(memoryFacts, key, rawText) {
+    if (!memoryFacts || !MEMORY_FACT_KEYS.includes(key)) {
+      return;
+    }
+    const normalized = truncateText(String(rawText || "").replace(/\s+/g, " "), MAX_MEMORY_FACT_CHARS);
+    if (!normalized) {
+      return;
+    }
+    const bucket = Array.isArray(memoryFacts[key]) ? memoryFacts[key] : [];
+    const fingerprint = normalized.toLowerCase();
+    if (bucket.some((item) => String(item).toLowerCase() === fingerprint)) {
+      return;
+    }
+    bucket.push(normalized);
+    memoryFacts[key] = bucket.slice(-MAX_MEMORY_FACTS_PER_CATEGORY);
+  }
+
+  function splitTextToFacts(text) {
+    return String(text || "")
+      .replace(/\s+/g, " ")
+      .split(/[\n。！？!?；;]+/g)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  function extractMemoryFactsFromMessages(messages) {
+    const facts = createEmptyMemoryFacts();
+    const items = Array.isArray(messages) ? messages : [];
+    for (const item of items) {
+      if (!item || typeof item !== "object") {
+        continue;
+      }
+      const role = String(item.role || "").toUpperCase();
+      const type = String(item.type || "").toUpperCase();
+      const text = String(item.text || "").trim();
+      if (!text) {
+        continue;
+      }
+      if (type === "PROPOSAL_REVIEW") {
+        appendMemoryFact(facts, "decisions", text);
+        continue;
+      }
+      if (!(role === "USER" && type === "TEXT")) {
+        continue;
+      }
+      const fragments = splitTextToFacts(text);
+      for (const fragment of fragments) {
+        const lower = fragment.toLowerCase();
+        if (
+          /(目标|希望|想要|提升|增长|拉新|复购|gmv|转化|roi|goal|grow|increase|improve|boost)/i.test(
+            fragment
+          )
+        ) {
+          appendMemoryFact(facts, "goals", fragment);
+        }
+        if (
+          /(预算|上限|不能|不要|避免|限制|成本|毛利|折扣|风险|budget|cap|limit|avoid|must not|constraint)/i.test(
+            fragment
+          )
+        ) {
+          appendMemoryFact(facts, "constraints", fragment);
+        }
+        if (/(新客|老客|会员|客群|学生|白领|用户|用户群|audience|segment|user)/i.test(fragment)) {
+          appendMemoryFact(facts, "audience", fragment);
+        }
+        if (/(今天|本周|本月|节假日|周末|晚高峰|午餐|晚餐|天|周|月|hour|day|week|month|timeline)/i.test(fragment)) {
+          appendMemoryFact(facts, "timing", fragment);
+        }
+        if (!/[0-9]/.test(lower)) {
+          continue;
+        }
+        if (/(预算|cap|预算上限|成本|折扣|coupon|voucher|ttl|小时|天|周|月|%)/i.test(lower)) {
+          appendMemoryFact(facts, "constraints", fragment);
+        }
+      }
+    }
+    return facts;
+  }
+
+  function mergeSessionMemoryFacts(session, incomingFacts) {
+    ensureSessionMemoryState(session);
+    const safeIncoming = normalizeMemoryFacts(incomingFacts);
+    for (const key of MEMORY_FACT_KEYS) {
+      for (const fact of safeIncoming[key]) {
+        appendMemoryFact(session.memoryFacts, key, fact);
+      }
+    }
+  }
+
+  function buildMemoryFactsPrefix(memoryFacts) {
+    const safeFacts = normalizeMemoryFacts(memoryFacts);
+    const lines = [];
+    for (const key of MEMORY_FACT_KEYS) {
+      const bucket = safeFacts[key];
+      if (!Array.isArray(bucket) || bucket.length === 0) {
+        continue;
+      }
+      lines.push(`${MEMORY_FACT_LABELS[key]}: ${bucket.join(" | ")}`);
+    }
+    if (lines.length === 0) {
+      return "";
+    }
+    return truncateText(lines.join("\n"), MAX_MEMORY_PREFIX_CHARS);
+  }
+
+  function buildSessionCompactionSummary(messages, extractedFacts = null) {
+    const items = Array.isArray(messages) ? messages : [];
+    if (items.length === 0) {
+      return "";
+    }
+    const safeFacts = normalizeMemoryFacts(extractedFacts || createEmptyMemoryFacts());
+    const recentUserIntents = items
+      .filter((item) => item && item.role === "USER" && item.type === "TEXT")
+      .map((item) => truncateText(item.text, 120))
+      .filter(Boolean)
+      .slice(-3);
+    const proposalActions = items
+      .filter((item) => item && (item.type === "PROPOSAL_CARD" || item.type === "PROPOSAL_REVIEW"))
+      .map((item) => truncateText(item.text, 120))
+      .filter(Boolean)
+      .slice(-3);
+    const segments = [];
+    segments.push(`Turns compacted: ${items.length}`);
+    if (recentUserIntents.length > 0) {
+      segments.push(`Recent intents: ${recentUserIntents.join(" | ")}`);
+    }
+    if (proposalActions.length > 0) {
+      segments.push(`Proposal actions: ${proposalActions.join(" | ")}`);
+    }
+    for (const key of MEMORY_FACT_KEYS) {
+      if (safeFacts[key].length > 0) {
+        segments.push(`${MEMORY_FACT_LABELS[key]}: ${safeFacts[key].join(" | ")}`);
+      }
+    }
+    return `[${new Date().toISOString()}] ${segments.join("; ")}`;
+  }
+
+  function computeCompactionSplitIndex(messages) {
+    const items = Array.isArray(messages) ? messages : [];
+    let keepTokens = 0;
+    let keepCount = 0;
+    let keepStart = items.length;
+    for (let idx = items.length - 1; idx >= 0; idx -= 1) {
+      const tokenCost = Math.max(1, estimateMessageTokens(items[idx]));
+      if (
+        keepCount >= CHAT_COMPACTION_MIN_RECENT_MESSAGES &&
+        keepTokens + tokenCost > CHAT_COMPACTION_KEEP_RECENT_TOKENS
+      ) {
+        break;
+      }
+      keepTokens += tokenCost;
+      keepCount += 1;
+      keepStart = idx;
+    }
+    return keepStart;
+  }
+
+  function compactSessionHistoryForModel(session) {
+    if (!session || !Array.isArray(session.messages)) {
+      return;
+    }
+    ensureSessionMemoryState(session);
+    const totalTokens = estimateMessagesTokens(session.messages);
+    if (
+      totalTokens <= CHAT_COMPACTION_TRIGGER_TOKENS &&
+      session.messages.length <= MAX_CHAT_MESSAGES
+    ) {
+      return;
+    }
+    const keepStart = computeCompactionSplitIndex(session.messages);
+    if (keepStart <= 0) {
+      return;
+    }
+    const archivedMessages = session.messages.slice(0, keepStart);
+    if (archivedMessages.length === 0) {
+      return;
+    }
+    const extractedFacts = extractMemoryFactsFromMessages(archivedMessages);
+    mergeSessionMemoryFacts(session, extractedFacts);
+    const archivedSummary = buildSessionCompactionSummary(archivedMessages, extractedFacts);
+    if (archivedSummary) {
+      const previousSummary = session.memorySummary;
+      const mergedSummary = [previousSummary, archivedSummary].filter(Boolean).join("\n");
+      session.memorySummary = mergedSummary.slice(-MAX_MEMORY_SUMMARY_CHARS);
+    }
+    session.messages = session.messages.slice(keepStart);
+  }
+
+  function buildHistoryForModel(session) {
+    ensureSessionMemoryState(session);
+    const memoryPrefix = [];
+    const memoryFactsText = buildMemoryFactsPrefix(session.memoryFacts);
+    if (memoryFactsText) {
+      memoryPrefix.push({
+        role: "SYSTEM",
+        type: "MEMORY_FACTS",
+        text: memoryFactsText,
+        proposalId: null,
+        createdAt: session.updatedAt || new Date().toISOString()
+      });
+    }
+    const condensedMemory = truncateText(session.memorySummary, MAX_MEMORY_PREFIX_CHARS);
+    if (condensedMemory) {
+      memoryPrefix.push({
+        role: "SYSTEM",
+        type: "MEMORY_SUMMARY",
+        text: condensedMemory,
+        proposalId: null,
+        createdAt: session.updatedAt || new Date().toISOString()
+      });
+    }
+
+    const prefixTokens = estimateMessagesTokens(memoryPrefix);
+    const availableTokens = Math.max(600, MODEL_HISTORY_TOKEN_BUDGET - prefixTokens);
+    const recentHistory = [];
+    let recentTokens = 0;
+    const source = Array.isArray(session.messages) ? session.messages : [];
+    for (let idx = source.length - 1; idx >= 0; idx -= 1) {
+      const item = source[idx];
+      const tokenCost = Math.max(1, estimateMessageTokens(item));
+      if (
+        recentHistory.length > 0 &&
+        (recentTokens + tokenCost > availableTokens ||
+          recentHistory.length >= MODEL_HISTORY_MAX_MESSAGES)
+      ) {
+        break;
+      }
+      recentHistory.push({
+        role: item.role,
+        type: item.type,
+        text: item.text,
+        proposalId: item.proposalId || null,
+        createdAt: item.createdAt
+      });
+      recentTokens += tokenCost;
+    }
+    recentHistory.reverse();
+    return [...memoryPrefix, ...recentHistory];
+  }
+
   function summarizeProposalForReview(proposal) {
     if (!proposal) {
       return null;
@@ -227,6 +566,125 @@ function createMerchantService(db, options = {}) {
       budget: campaign.budget || null,
       createdAt: proposal.createdAt || null
     };
+  }
+
+  function normalizePendingProposalIds(session) {
+    if (!session) {
+      return [];
+    }
+    const rawIds = Array.isArray(session.pendingProposalIds)
+      ? session.pendingProposalIds
+      : session.pendingProposalId
+        ? [session.pendingProposalId]
+        : [];
+    const unique = new Set();
+    for (const item of rawIds) {
+      const normalized = String(item || "").trim();
+      if (!normalized || unique.has(normalized)) {
+        continue;
+      }
+      unique.add(normalized);
+    }
+    return Array.from(unique);
+  }
+
+  function resolvePendingProposals({ merchantId, session }) {
+    const normalizedIds = normalizePendingProposalIds(session);
+    const pending = normalizedIds
+      .map(
+        (proposalId) =>
+          db.proposals.find(
+            (item) =>
+              item.merchantId === merchantId &&
+              item.id === proposalId &&
+              item.status === "PENDING"
+          ) || null
+      )
+      .filter(Boolean);
+    if (session) {
+      session.pendingProposalIds = pending.map((item) => item.id);
+      session.pendingProposalId = session.pendingProposalIds[0] || null;
+    }
+    return pending;
+  }
+
+  function buildReviewProgress(session) {
+    if (!session) {
+      return null;
+    }
+    const pendingCount = Array.isArray(session.pendingProposalIds)
+      ? session.pendingProposalIds.length
+      : session.pendingProposalId
+        ? 1
+        : 0;
+    const reviewedRaw = Math.max(0, Math.floor(Number(session.reviewProcessedCandidates) || 0));
+    const baselineTotal = Math.max(0, Math.floor(Number(session.reviewTotalCandidates) || 0));
+    const computedTotal = Math.max(baselineTotal, reviewedRaw + pendingCount);
+    if (computedTotal <= 0 || pendingCount <= 0) {
+      session.reviewTotalCandidates = 0;
+      session.reviewProcessedCandidates = 0;
+      return null;
+    }
+    const reviewed = Math.min(computedTotal, reviewedRaw);
+    session.reviewTotalCandidates = computedTotal;
+    session.reviewProcessedCandidates = reviewed;
+    return {
+      totalCandidates: computedTotal,
+      reviewedCandidates: reviewed,
+      pendingCandidates: pendingCount
+    };
+  }
+
+  function getMarketingExecutionContext(merchantId) {
+    if (!Array.isArray(db.auditLogs)) {
+      return [];
+    }
+    const allowedActions = new Set([
+      "PROPOSAL_CONFIRM",
+      "STRATEGY_CHAT_REVIEW",
+      "STRATEGY_CHAT_MESSAGE",
+      "CAMPAIGN_STATUS_SET",
+      "FIRE_SALE_CREATE"
+    ]);
+    return db.auditLogs
+      .filter(
+        (item) =>
+          item &&
+          item.merchantId === merchantId &&
+          allowedActions.has(String(item.action || "").toUpperCase())
+      )
+      .slice(-MAX_EXECUTION_HISTORY_CONTEXT)
+      .map((item) => {
+        const details = item && typeof item.details === "object" && item.details ? item.details : {};
+        const compactDetails = {};
+        for (const key of [
+          "proposalId",
+          "campaignId",
+          "templateId",
+          "branchId",
+          "reviewStatus",
+          "turnStatus",
+          "sessionId",
+          "targetSku",
+          "status"
+        ]) {
+          const value = details[key];
+          if (value === undefined || value === null) {
+            continue;
+          }
+          if (typeof value === "number" || typeof value === "boolean") {
+            compactDetails[key] = value;
+            continue;
+          }
+          compactDetails[key] = truncateText(value, MAX_EXECUTION_DETAIL_VALUE_LEN);
+        }
+        return {
+          timestamp: item.timestamp || null,
+          action: item.action || null,
+          status: item.status || null,
+          details: compactDetails
+        };
+      });
   }
 
   function getApprovedStrategyContext(merchantId) {
@@ -261,7 +719,9 @@ function createMerchantService(db, options = {}) {
     const targetSessionId = String(sessionId || bucket.activeSessionId || "").trim();
     if (targetSessionId && bucket.sessions[targetSessionId]) {
       bucket.activeSessionId = targetSessionId;
-      return bucket.sessions[targetSessionId];
+      const existing = bucket.sessions[targetSessionId];
+      ensureSessionMemoryState(existing);
+      return existing;
     }
     if (!autoCreate) {
       return null;
@@ -273,7 +733,11 @@ function createMerchantService(db, options = {}) {
       merchantId,
       status: "ACTIVE",
       messageSeq: 0,
-      pendingProposalId: null,
+      pendingProposalIds: [],
+      reviewTotalCandidates: 0,
+      reviewProcessedCandidates: 0,
+      memorySummary: "",
+      memoryFacts: createEmptyMemoryFacts(),
       createdBy: operatorId || "system",
       createdAt: nowIso,
       updatedAt: nowIso,
@@ -288,26 +752,44 @@ function createMerchantService(db, options = {}) {
       type: "TEXT",
       text: "New strategy session created. You can discuss goals and request a strategy proposal."
     });
+    ensureSessionMemoryState(session);
     return session;
   }
 
   function buildStrategyChatSessionResponse({ merchantId, session }) {
-    const pendingProposal =
-      session && session.pendingProposalId
-        ? db.proposals.find(
-            (item) =>
-              item.merchantId === merchantId &&
-              item.id === session.pendingProposalId &&
-              item.status === "PENDING"
-          ) || null
-        : null;
+    const sessionMessages = session && Array.isArray(session.messages) ? session.messages : [];
+    const pendingProposals = resolvePendingProposals({ merchantId, session });
+    const pendingReviews = pendingProposals.map((proposal) =>
+      summarizeProposalForReview(proposal)
+    ).filter(Boolean);
+    const reviewProgress = buildReviewProgress(session);
     return {
       merchantId,
       sessionId: session ? session.sessionId : null,
-      pendingReview: summarizeProposalForReview(pendingProposal),
-      messages: session && Array.isArray(session.messages) ? cloneJson(session.messages) : [],
+      pendingReview: pendingReviews[0] || null,
+      pendingReviews,
+      reviewProgress,
+      latestMessageId:
+        sessionMessages.length > 0 ? sessionMessages[sessionMessages.length - 1].messageId : null,
+      messageCount: sessionMessages.length,
       activeCampaigns: getActiveCampaignContext(merchantId),
       approvedStrategies: getApprovedStrategyContext(merchantId)
+    };
+  }
+
+  function buildStrategyChatDeltaResponse({ merchantId, session, deltaFrom = 0 }) {
+    const allMessages =
+      session && Array.isArray(session.messages) ? cloneJson(session.messages) : [];
+    const safeDeltaFrom = Math.min(
+      allMessages.length,
+      Math.max(0, Math.floor(Number(deltaFrom) || 0))
+    );
+    const deltaMessages = allMessages.slice(safeDeltaFrom);
+    return {
+      ...buildStrategyChatSessionResponse({ merchantId, session }),
+      deltaMessages,
+      latestMessageId:
+        allMessages.length > 0 ? allMessages[allMessages.length - 1].messageId : null
     };
   }
 
@@ -338,7 +820,7 @@ function createMerchantService(db, options = {}) {
       return {
         status: "BLOCKED",
         reasons: risk.reasons,
-        blocked: [{ title: aiResult.title || `${template.name} Â· ${branch.name}`, reasons: risk.reasons }]
+        blocked: [{ title: aiResult.title || `${template.name} - ${branch.name}`, reasons: risk.reasons }]
       };
     }
 
@@ -349,7 +831,7 @@ function createMerchantService(db, options = {}) {
       id: proposalId,
       merchantId,
       status: "PENDING",
-      title: aiResult.title || `${template.name} Â· ${branch.name}`,
+      title: aiResult.title || `${template.name} - ${branch.name}`,
       createdAt: new Date().toISOString(),
       intent: String(intent || ""),
       strategyMeta: {
@@ -533,7 +1015,11 @@ function createMerchantService(db, options = {}) {
       merchantId,
       status: "ACTIVE",
       messageSeq: 0,
-      pendingProposalId: null,
+      pendingProposalIds: [],
+      reviewTotalCandidates: 0,
+      reviewProcessedCandidates: 0,
+      memorySummary: "",
+      memoryFacts: createEmptyMemoryFacts(),
       createdBy: operatorId || "system",
       createdAt: nowIso,
       updatedAt: nowIso,
@@ -548,18 +1034,18 @@ function createMerchantService(db, options = {}) {
       type: "TEXT",
       text: "New strategy session created. You can discuss goals and request a strategy proposal."
     });
+    ensureSessionMemoryState(session);
     db.save();
     return buildStrategyChatSessionResponse({ merchantId, session });
   }
 
-  function getStrategyChatSession({ merchantId, sessionId = "" }) {
+  function getStrategyChatSession({ merchantId }) {
     const merchant = db.merchants[merchantId];
     if (!merchant) {
       throw new Error("merchant not found");
     }
     const session = resolveStrategyChatSession({
       merchantId,
-      sessionId,
       autoCreate: true,
       operatorId: "system"
     });
@@ -569,9 +1055,56 @@ function createMerchantService(db, options = {}) {
     return buildStrategyChatSessionResponse({ merchantId, session });
   }
 
+  function listStrategyChatMessages({ merchantId, cursor = "", limit = DEFAULT_CHAT_PAGE_LIMIT }) {
+    const merchant = db.merchants[merchantId];
+    if (!merchant) {
+      throw new Error("merchant not found");
+    }
+
+    const session = resolveStrategyChatSession({
+      merchantId,
+      autoCreate: true,
+      operatorId: "system"
+    });
+    if (!session) {
+      throw new Error("strategy chat session not found");
+    }
+
+    const messages = Array.isArray(session.messages) ? session.messages : [];
+    const safeLimit = Math.max(
+      1,
+      Math.min(MAX_CHAT_PAGE_LIMIT, Math.floor(Number(limit) || DEFAULT_CHAT_PAGE_LIMIT))
+    );
+    const normalizedCursor = String(cursor || "").trim();
+
+    let endExclusive = messages.length;
+    if (normalizedCursor) {
+      const anchorIndex = messages.findIndex((item) => item.messageId === normalizedCursor);
+      if (anchorIndex >= 0) {
+        endExclusive = anchorIndex;
+      }
+    }
+
+    const start = Math.max(0, endExclusive - safeLimit);
+    const items = cloneJson(messages.slice(start, endExclusive));
+    const hasMore = start > 0;
+
+    return {
+      merchantId,
+      sessionId: session.sessionId,
+      items,
+      pageInfo: {
+        limit: safeLimit,
+        hasMore,
+        nextCursor: hasMore && items.length > 0 ? items[0].messageId : null
+      },
+      latestMessageId:
+        messages.length > 0 ? messages[messages.length - 1].messageId : null
+    };
+  }
+
   async function sendStrategyChatMessage({
     merchantId,
-    sessionId = "",
     operatorId = "system",
     content = ""
   }) {
@@ -586,27 +1119,30 @@ function createMerchantService(db, options = {}) {
 
     const session = resolveStrategyChatSession({
       merchantId,
-      sessionId,
       autoCreate: true,
       operatorId
     });
-
-    if (session.pendingProposalId) {
-      const pendingProposal = db.proposals.find(
-        (item) =>
-          item.id === session.pendingProposalId &&
-          item.merchantId === merchantId &&
-          item.status === "PENDING"
-      );
-      if (pendingProposal) {
-        return {
-          status: "REVIEW_REQUIRED",
-          message: "A pending proposal requires immediate review (approve/reject) before continuing.",
-          ...buildStrategyChatSessionResponse({ merchantId, session })
-        };
-      }
-      session.pendingProposalId = null;
+    const unresolved = resolvePendingProposals({ merchantId, session });
+    if (unresolved.length > 0) {
+      return {
+        status: "REVIEW_REQUIRED",
+        message: "Pending strategy proposals require review (approve/reject) before continuing.",
+        ...buildStrategyChatDeltaResponse({
+          merchantId,
+          session,
+          deltaFrom: Array.isArray(session.messages) ? session.messages.length : 0
+        })
+      };
     }
+
+    compactSessionHistoryForModel(session);
+    const baselineMessageCount = Array.isArray(session.messages) ? session.messages.length : 0;
+    const buildChatResponse = () =>
+      buildStrategyChatDeltaResponse({
+        merchantId,
+        session,
+        deltaFrom: baselineMessageCount
+      });
 
     appendChatMessage(session, {
       role: "USER",
@@ -618,13 +1154,7 @@ function createMerchantService(db, options = {}) {
       throw new Error("ai strategy chat service is not configured");
     }
 
-    const historyForModel = (session.messages || []).slice(-MAX_CHAT_HISTORY_FOR_MODEL).map((item) => ({
-      role: item.role,
-      type: item.type,
-      text: item.text,
-      proposalId: item.proposalId || null,
-      createdAt: item.createdAt
-    }));
+    const historyForModel = buildHistoryForModel(session);
 
     const aiTurn = await aiStrategyService.generateStrategyChatTurn({
       merchantId,
@@ -633,6 +1163,7 @@ function createMerchantService(db, options = {}) {
       history: historyForModel,
       activeCampaigns: getActiveCampaignContext(merchantId),
       approvedStrategies: getApprovedStrategyContext(merchantId),
+      executionHistory: getMarketingExecutionContext(merchantId),
       salesSnapshot: getSalesSnapshotContext(merchantId)
     });
 
@@ -646,7 +1177,7 @@ function createMerchantService(db, options = {}) {
       return {
         status: "AI_UNAVAILABLE",
         reason: aiTurn && aiTurn.reason ? aiTurn.reason : "AI model unavailable",
-        ...buildStrategyChatSessionResponse({ merchantId, session })
+        ...buildChatResponse()
       };
     }
 
@@ -659,49 +1190,77 @@ function createMerchantService(db, options = {}) {
       db.save();
       return {
         status: "CHAT_REPLY",
-        ...buildStrategyChatSessionResponse({ merchantId, session })
+        ...buildChatResponse()
       };
     }
 
-    if (aiTurn.status === "PROPOSAL_READY" && aiTurn.proposal) {
-      const createdProposal = createProposalFromAiCandidate({
-        merchantId,
-        aiResult: aiTurn.proposal,
-        operatorId,
-        intent: text,
-        source: "CHAT_SESSION",
-        sourceSessionId: session.sessionId
-      });
+    const proposalCandidates = Array.isArray(aiTurn && aiTurn.proposals)
+      ? aiTurn.proposals
+      : aiTurn && aiTurn.proposal
+        ? [aiTurn.proposal]
+        : [];
+    if (aiTurn.status === "PROPOSAL_READY" && proposalCandidates.length > 0) {
+      const pendingCreated = [];
+      const blockedReasons = [];
+      for (const candidate of proposalCandidates.slice(0, MAX_TOTAL_PROPOSAL_CANDIDATES)) {
+        const createdProposal = createProposalFromAiCandidate({
+          merchantId,
+          aiResult: candidate,
+          operatorId,
+          intent: text,
+          source: "CHAT_SESSION",
+          sourceSessionId: session.sessionId
+        });
+        if (createdProposal.status === "PENDING") {
+          pendingCreated.push(createdProposal);
+        } else if (Array.isArray(createdProposal.reasons) && createdProposal.reasons.length > 0) {
+          blockedReasons.push(...createdProposal.reasons);
+        }
+      }
 
-      if (createdProposal.status !== "PENDING") {
-        const blockedReasons = (createdProposal.reasons || []).join("; ");
+      if (pendingCreated.length === 0) {
+        const blockedReasonText = blockedReasons.join("; ");
         appendChatMessage(session, {
           role: "ASSISTANT",
           type: "TEXT",
-          text: blockedReasons
-            ? `I drafted a strategy but it is blocked by guardrails: ${blockedReasons}`
-            : "I drafted a strategy but it is blocked by risk guardrails."
+          text: blockedReasonText
+            ? `I drafted strategies but they are blocked by guardrails: ${blockedReasonText}`
+            : "I drafted strategies but they are blocked by risk guardrails."
         });
         db.save();
         return {
           status: "BLOCKED",
-          reasons: createdProposal.reasons || [],
-          ...buildStrategyChatSessionResponse({ merchantId, session })
+          reasons: blockedReasons,
+          ...buildChatResponse()
         };
       }
 
-      session.pendingProposalId = createdProposal.proposal.id;
+      session.pendingProposalIds = pendingCreated.map((item) => item.proposal.id);
+      session.pendingProposalId = session.pendingProposalIds[0] || null;
+      session.reviewTotalCandidates = pendingCreated.length;
+      session.reviewProcessedCandidates = 0;
+
+      const proposalSummaries = pendingCreated.map((item) =>
+        summarizeProposalForReview(item.proposal)
+      ).filter(Boolean);
+      const defaultMessage =
+        pendingCreated.length > 1
+          ? `I drafted ${pendingCreated.length} strategy proposals. Please review each before continuing.`
+          : "Strategy proposal drafted. Please review now.";
       appendChatMessage(session, {
         role: "ASSISTANT",
         type: "PROPOSAL_CARD",
-        text: String(aiTurn.assistantMessage || "Strategy proposal drafted. Please review now."),
-        proposalId: createdProposal.proposal.id,
-        metadata: summarizeProposalForReview(createdProposal.proposal)
+        text: String(aiTurn.assistantMessage || defaultMessage),
+        proposalId: session.pendingProposalId || null,
+        metadata: {
+          proposals: proposalSummaries
+        }
       });
       db.save();
       return {
         status: "PENDING_REVIEW",
-        ...buildStrategyChatSessionResponse({ merchantId, session })
+        reasons: blockedReasons.length > 0 ? blockedReasons : undefined,
+        ...buildChatResponse()
       };
     }
 
@@ -713,13 +1272,12 @@ function createMerchantService(db, options = {}) {
     db.save();
     return {
       status: "CHAT_REPLY",
-      ...buildStrategyChatSessionResponse({ merchantId, session })
+      ...buildChatResponse()
     };
   }
 
   function reviewStrategyChatProposal({
     merchantId,
-    sessionId = "",
     proposalId,
     decision,
     operatorId = "system"
@@ -735,7 +1293,6 @@ function createMerchantService(db, options = {}) {
 
     const session = resolveStrategyChatSession({
       merchantId,
-      sessionId,
       autoCreate: false,
       operatorId
     });
@@ -747,8 +1304,10 @@ function createMerchantService(db, options = {}) {
     if (!targetProposalId) {
       throw new Error("proposalId is required");
     }
-    if (session.pendingProposalId && session.pendingProposalId !== targetProposalId) {
-      throw new Error("proposal review mismatch with current pending proposal");
+    const pendingQueue = resolvePendingProposals({ merchantId, session });
+    const pendingProposalIds = pendingQueue.map((item) => item.id);
+    if (!pendingProposalIds.includes(targetProposalId)) {
+      throw new Error("proposal is not pending in current strategy session");
     }
 
     const proposal = db.proposals.find(
@@ -760,6 +1319,13 @@ function createMerchantService(db, options = {}) {
     if (proposal.status !== "PENDING") {
       throw new Error("proposal already handled");
     }
+    const baselineMessageCount = Array.isArray(session.messages) ? session.messages.length : 0;
+    const buildReviewResponse = () =>
+      buildStrategyChatDeltaResponse({
+        merchantId,
+        session,
+        deltaFrom: baselineMessageCount
+      });
 
     if (normalizedDecision === "APPROVE") {
       const confirm = confirmProposal({
@@ -767,7 +1333,12 @@ function createMerchantService(db, options = {}) {
         proposalId: targetProposalId,
         operatorId
       });
-      session.pendingProposalId = null;
+      session.pendingProposalIds = pendingProposalIds.filter((id) => id !== targetProposalId);
+      session.pendingProposalId = session.pendingProposalIds[0] || null;
+      session.reviewProcessedCandidates = Math.max(
+        0,
+        Math.floor(Number(session.reviewProcessedCandidates) || 0) + 1
+      );
       appendChatMessage(session, {
         role: "SYSTEM",
         type: "PROPOSAL_REVIEW",
@@ -778,7 +1349,7 @@ function createMerchantService(db, options = {}) {
       return {
         status: "APPROVED",
         campaignId: confirm.campaignId,
-        ...buildStrategyChatSessionResponse({ merchantId, session })
+        ...buildReviewResponse()
       };
     }
 
@@ -792,7 +1363,12 @@ function createMerchantService(db, options = {}) {
         lastProposalId: proposal.id
       });
     }
-    session.pendingProposalId = null;
+    session.pendingProposalIds = pendingProposalIds.filter((id) => id !== targetProposalId);
+    session.pendingProposalId = session.pendingProposalIds[0] || null;
+    session.reviewProcessedCandidates = Math.max(
+      0,
+      Math.floor(Number(session.reviewProcessedCandidates) || 0) + 1
+    );
     appendChatMessage(session, {
       role: "SYSTEM",
       type: "PROPOSAL_REVIEW",
@@ -802,7 +1378,7 @@ function createMerchantService(db, options = {}) {
     db.save();
     return {
       status: "REJECTED",
-      ...buildStrategyChatSessionResponse({ merchantId, session })
+      ...buildReviewResponse()
     };
   }
 
@@ -850,7 +1426,7 @@ function createMerchantService(db, options = {}) {
     const campaign = {
       id: `campaign_fire_sale_${Date.now()}`,
       merchantId,
-      name: `å®šå‘æ€¥å”®-${targetSku}`,
+      name: `targeted-fire-sale-${targetSku}`,
       status: "ACTIVE",
       priority: 999,
       trigger: { event: "INVENTORY_ALERT" },
@@ -868,7 +1444,7 @@ function createMerchantService(db, options = {}) {
         voucher: {
           id: `voucher_fire_sale_${Date.now()}`,
           type: "DISCOUNT_CARD",
-          name: `${targetSku} æ€¥å”®åˆ¸`,
+          name: `${targetSku} fire-sale-voucher`,
           value: 0,
           discountRate: 0.5,
           minSpend: 0
@@ -877,9 +1453,9 @@ function createMerchantService(db, options = {}) {
       ttlUntil: new Date(now.getTime() + durationMinutes * 60 * 1000).toISOString(),
       strategyMeta: {
         templateId: "manual_fire_sale",
-        templateName: "å®šå‘æ€¥å”®",
+        templateName: "targeted_fire_sale",
         branchId: "MANUAL",
-        branchName: "äººå·¥æŽ¥ç®¡",
+        branchName: "manual_takeover",
         category: "REVENUE"
       }
     };
@@ -900,6 +1476,7 @@ function createMerchantService(db, options = {}) {
     setKillSwitch,
     createStrategyChatSession,
     getStrategyChatSession,
+    listStrategyChatMessages,
     sendStrategyChatMessage,
     reviewStrategyChatProposal,
     setCampaignStatus,

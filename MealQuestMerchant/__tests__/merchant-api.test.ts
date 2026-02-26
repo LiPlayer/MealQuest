@@ -1,4 +1,11 @@
 describe('merchantApi audit logs', () => {
+  const okResponse = (body: unknown) => ({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify(body),
+    json: async () => body,
+  });
+
   beforeEach(() => {
     jest.resetModules();
     process.env.MQ_SERVER_URL = 'http://127.0.0.1:3030';
@@ -11,15 +18,13 @@ describe('merchantApi audit logs', () => {
 
   it('requests audit logs with cursor pagination', async () => {
     const fetchMock = global.fetch as jest.Mock;
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({
+    fetchMock.mockResolvedValue(
+      okResponse({
         merchantId: 'm_store_001',
         items: [],
         pageInfo: {limit: 2, hasMore: false, nextCursor: null},
       }),
-    });
+    );
 
     const {MerchantApi} = require('../src/services/merchantApi');
     await MerchantApi.getAuditLogs('token_fixture', {
@@ -40,15 +45,13 @@ describe('merchantApi audit logs', () => {
 
   it('includes action/status/time filters when provided', async () => {
     const fetchMock = global.fetch as jest.Mock;
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({
+    fetchMock.mockResolvedValue(
+      okResponse({
         merchantId: 'm_store_001',
         items: [],
         pageInfo: {limit: 5, hasMore: false, nextCursor: null},
       }),
-    });
+    );
 
     const {MerchantApi} = require('../src/services/merchantApi');
     await MerchantApi.getAuditLogs('token_fixture', {
@@ -69,24 +72,22 @@ describe('merchantApi audit logs', () => {
 
   it('sends strategy chat message to the single chat endpoint', async () => {
     const fetchMock = global.fetch as jest.Mock;
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({
+    fetchMock.mockResolvedValue(
+      okResponse({
         merchantId: 'm_store_001',
         sessionId: 'sc_1',
         status: 'CHAT_REPLY',
         pendingReview: null,
-        messages: [],
+        pendingReviews: [],
+        deltaMessages: [],
         activeCampaigns: [],
         approvedStrategies: [],
       }),
-    });
+    );
 
     const {MerchantApi} = require('../src/services/merchantApi');
     await MerchantApi.sendStrategyChatMessage('token_fixture', {
       merchantId: 'm_store_001',
-      sessionId: 'sc_1',
       content: 'Need lunch acquisition strategy under budget 200',
     });
 
@@ -94,21 +95,19 @@ describe('merchantApi audit logs', () => {
     expect(url).toContain('/api/merchant/strategy-chat/messages');
     expect(options.method).toBe('POST');
     const payload = JSON.parse(options.body);
-    expect(payload.sessionId).toBe('sc_1');
+    expect(payload.sessionId).toBeUndefined();
     expect(payload.content).toContain('lunch acquisition');
   });
 
   it('updates campaign status', async () => {
     const fetchMock = global.fetch as jest.Mock;
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({
+    fetchMock.mockResolvedValue(
+      okResponse({
         merchantId: 'm_store_001',
         campaignId: 'campaign_1',
         status: 'PAUSED',
       }),
-    });
+    );
 
     const {MerchantApi} = require('../src/services/merchantApi');
     await MerchantApi.setCampaignStatus('token_fixture', {
@@ -126,17 +125,15 @@ describe('merchantApi audit logs', () => {
 
   it('updates alliance config', async () => {
     const fetchMock = global.fetch as jest.Mock;
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({
+    fetchMock.mockResolvedValue(
+      okResponse({
         merchantId: 'm_store_001',
         clusterId: 'cluster_fixture_brand',
         stores: ['m_store_001', 'm_bistro'],
         walletShared: true,
         tierShared: false,
       }),
-    });
+    );
 
     const {MerchantApi} = require('../src/services/merchantApi');
     await MerchantApi.setAllianceConfig('token_fixture', {
