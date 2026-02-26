@@ -112,7 +112,7 @@ export interface StrategyChatStatePayload {
   }>;
 }
 
-export interface StrategyChatSessionResult extends StrategyChatStatePayload {}
+export interface StrategyChatSessionResult extends StrategyChatStatePayload { }
 
 export interface StrategyChatTurnResult extends StrategyChatStatePayload {
   status: 'CHAT_REPLY' | 'PENDING_REVIEW' | 'REVIEW_REQUIRED' | 'BLOCKED' | 'AI_UNAVAILABLE';
@@ -144,12 +144,6 @@ export interface CampaignStatusResult {
   status: 'ACTIVE' | 'PAUSED' | 'ARCHIVED';
 }
 
-export interface FireSaleResult {
-  merchantId: string;
-  campaignId: string;
-  priority: number;
-  ttlUntil: string;
-}
 
 export interface AllianceConfig {
   merchantId: string;

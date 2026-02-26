@@ -5,7 +5,6 @@ import {
   AllianceConfig,
   AuditLogPage,
   CampaignStatusResult,
-  FireSaleResult,
   MerchantCatalogResult,
   MerchantContractStatusResult,
   MerchantOnboardResult,
@@ -195,24 +194,6 @@ export const MerchantApi = {
     );
   },
 
-  createFireSale: async (
-    token: string,
-    payload: {
-      merchantId?: string;
-      targetSku: string;
-      ttlMinutes?: number;
-      voucherValue?: number;
-      maxQty?: number;
-    },
-  ) => {
-    return requestJson<FireSaleResult>('POST', '/api/merchant/fire-sale', token, {
-      merchantId: payload.merchantId || getMerchantId(),
-      targetSku: payload.targetSku,
-      ttlMinutes: payload.ttlMinutes,
-      voucherValue: payload.voucherValue,
-      maxQty: payload.maxQty,
-    });
-  },
 
   getAllianceConfig: async (token: string, merchantId = getMerchantId()) => {
     return requestJson<AllianceConfig>(

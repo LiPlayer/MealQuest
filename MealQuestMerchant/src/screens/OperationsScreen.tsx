@@ -11,6 +11,7 @@ import QRCode from 'react-native-qrcode-svg';
 import { useMerchant } from '../context/MerchantContext';
 import { SectionCard } from '../components/SectionCard';
 import { Play, Pause, Archive, Users, QrCode, Clipboard } from 'lucide-react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function OperationsScreen() {
     const {
@@ -32,154 +33,156 @@ export default function OperationsScreen() {
     } = useMerchant();
 
     return (
-        <ScrollView contentContainerStyle={styles.container}>
-            <SectionCard title="活动管理">
-                {merchantState.activeCampaigns.length === 0 ? (
-                    <Text style={styles.mutedText}>暂无已生效活动</Text>
-                ) : (
-                    merchantState.activeCampaigns.map(item => {
-                        const status = item.status || 'ACTIVE';
-                        return (
-                            <View key={`campaign-${item.id}`} style={styles.campaignRow}>
-                                <View style={styles.campaignInfo}>
-                                    <Text style={styles.campaignName}>{item.name}</Text>
-                                    <View style={[styles.statusTag, status === 'ACTIVE' ? styles.statusTagActive : styles.statusTagPaused]}>
-                                        <Text style={styles.statusTagText}>{status === 'ACTIVE' ? '投放中' : '已暂停'}</Text>
+        <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+            <ScrollView contentContainerStyle={styles.container}>
+                <SectionCard title="活动管理">
+                    {merchantState.activeCampaigns.length === 0 ? (
+                        <Text style={styles.mutedText}>暂无已生效活动</Text>
+                    ) : (
+                        merchantState.activeCampaigns.map(item => {
+                            const status = item.status || 'ACTIVE';
+                            return (
+                                <View key={`campaign-${item.id}`} style={styles.campaignRow}>
+                                    <View style={styles.campaignInfo}>
+                                        <Text style={styles.campaignName}>{item.name}</Text>
+                                        <View style={[styles.statusTag, status === 'ACTIVE' ? styles.statusTagActive : styles.statusTagPaused]}>
+                                            <Text style={styles.statusTagText}>{status === 'ACTIVE' ? '投放中' : '已暂停'}</Text>
+                                        </View>
+                                    </View>
+
+                                    <View style={styles.campaignActions}>
+                                        <Pressable
+                                            testID={`campaign-toggle-${item.id}`}
+                                            style={styles.circleBtn}
+                                            onPress={() =>
+                                                onSetCampaignStatus(
+                                                    item.id,
+                                                    status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE',
+                                                )
+                                            }>
+                                            {status === 'ACTIVE' ? <Pause size={16} color="#64748b" /> : <Play size={16} color="#059669" />}
+                                        </Pressable>
+                                        <Pressable
+                                            testID={`campaign-archive-${item.id}`}
+                                            style={styles.circleBtn}
+                                            onPress={() => onSetCampaignStatus(item.id, 'ARCHIVED')}>
+                                            <Archive size={16} color="#94a3b8" />
+                                        </Pressable>
                                     </View>
                                 </View>
+                            );
+                        })
+                    )}
+                </SectionCard>
 
-                                <View style={styles.campaignActions}>
+                <SectionCard title="连锁联盟">
+                    {!allianceConfig ? (
+                        <Text style={styles.mutedText}>未加入或正在加载联盟配置...</Text>
+                    ) : (
+                        <View style={styles.allianceView}>
+                            <View style={styles.allianceHeader}>
+                                <Users size={18} color="#2563eb" />
+                                <Text style={styles.allianceTitle}>集群：{allianceConfig.clusterId || '未命名'}</Text>
+                            </View>
+
+                            <View style={styles.allianceStores}>
+                                <Text style={styles.storeListLabel}>参与门店：</Text>
+                                <Text style={styles.storeListText}>
+                                    {allianceStores.map(item => item.name).join(' · ')}
+                                </Text>
+                            </View>
+
+                            <View style={styles.toggleRow}>
+                                <View>
+                                    <Text style={styles.toggleLabel}>共享钱包状态</Text>
+                                    <Text style={styles.toggleDesc}>{allianceConfig.walletShared ? '已开启跨店余额互通' : '仅限本店消费'}</Text>
+                                </View>
+                                <Pressable
+                                    testID="alliance-wallet-toggle"
+                                    style={[styles.switchBtn, allianceConfig.walletShared ? styles.switchBtnOn : styles.switchBtnOff]}
+                                    onPress={onToggleAllianceWalletShared}>
+                                    <Text style={styles.switchBtnText}>{allianceConfig.walletShared ? '已开启' : '去开启'}</Text>
+                                </Pressable>
+                            </View>
+
+                            <View style={styles.syncSection}>
+                                <Text style={styles.inputLabel}>跨店用户同步</Text>
+                                <View style={styles.inputRow}>
+                                    <TextInput
+                                        testID="alliance-user-id-input"
+                                        value={customerUserId}
+                                        onChangeText={setCustomerUserId}
+                                        placeholder="输入顾客 ID"
+                                        style={styles.compactInput}
+                                    />
                                     <Pressable
-                                        testID={`campaign-toggle-${item.id}`}
-                                        style={styles.circleBtn}
-                                        onPress={() =>
-                                            onSetCampaignStatus(
-                                                item.id,
-                                                status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE',
-                                            )
-                                        }>
-                                        {status === 'ACTIVE' ? <Pause size={16} color="#64748b" /> : <Play size={16} color="#059669" />}
-                                    </Pressable>
-                                    <Pressable
-                                        testID={`campaign-archive-${item.id}`}
-                                        style={styles.circleBtn}
-                                        onPress={() => onSetCampaignStatus(item.id, 'ARCHIVED')}>
-                                        <Archive size={16} color="#94a3b8" />
+                                        testID="alliance-sync-user"
+                                        style={styles.inlineActionBtn}
+                                        onPress={onSyncAllianceUser}>
+                                        <Text style={styles.inlineActionBtnText}>同步</Text>
                                     </Pressable>
                                 </View>
                             </View>
-                        );
-                    })
-                )}
-            </SectionCard>
-
-            <SectionCard title="连锁联盟">
-                {!allianceConfig ? (
-                    <Text style={styles.mutedText}>未加入或正在加载联盟配置...</Text>
-                ) : (
-                    <View style={styles.allianceView}>
-                        <View style={styles.allianceHeader}>
-                            <Users size={18} color="#2563eb" />
-                            <Text style={styles.allianceTitle}>集群：{allianceConfig.clusterId || '未命名'}</Text>
                         </View>
+                    )}
+                </SectionCard>
 
-                        <View style={styles.allianceStores}>
-                            <Text style={styles.storeListLabel}>参与门店：</Text>
-                            <Text style={styles.storeListText}>
-                                {allianceStores.map(item => item.name).join(' · ')}
-                            </Text>
-                        </View>
-
-                        <View style={styles.toggleRow}>
-                            <View>
-                                <Text style={styles.toggleLabel}>共享钱包状态</Text>
-                                <Text style={styles.toggleDesc}>{allianceConfig.walletShared ? '已开启跨店余额互通' : '仅限本店消费'}</Text>
-                            </View>
-                            <Pressable
-                                testID="alliance-wallet-toggle"
-                                style={[styles.switchBtn, allianceConfig.walletShared ? styles.switchBtnOn : styles.switchBtnOff]}
-                                onPress={onToggleAllianceWalletShared}>
-                                <Text style={styles.switchBtnText}>{allianceConfig.walletShared ? '已开启' : '去开启'}</Text>
-                            </Pressable>
-                        </View>
-
-                        <View style={styles.syncSection}>
-                            <Text style={styles.inputLabel}>跨店用户同步</Text>
-                            <View style={styles.inputRow}>
-                                <TextInput
-                                    testID="alliance-user-id-input"
-                                    value={customerUserId}
-                                    onChangeText={setCustomerUserId}
-                                    placeholder="输入顾客 ID"
-                                    style={styles.compactInput}
-                                />
-                                <Pressable
-                                    testID="alliance-sync-user"
-                                    style={styles.inlineActionBtn}
-                                    onPress={onSyncAllianceUser}>
-                                    <Text style={styles.inlineActionBtnText}>同步</Text>
-                                </Pressable>
-                            </View>
-                        </View>
+                <SectionCard title="商户付款码">
+                    <View style={styles.qrHeader}>
+                        <QrCode size={18} color="#64748b" />
+                        <Text style={styles.qrSubtitle}>生成专属聚合支付二维码，支持微信/支付宝扫码即付。</Text>
                     </View>
-                )}
-            </SectionCard>
 
-            <SectionCard title="商户付款码">
-                <View style={styles.qrHeader}>
-                    <QrCode size={18} color="#64748b" />
-                    <Text style={styles.qrSubtitle}>生成专属聚合支付二维码，支持微信/支付宝扫码即付。</Text>
-                </View>
+                    <TextInput
+                        testID="merchant-qr-store-id-input"
+                        value={qrStoreId}
+                        onChangeText={setQrStoreId}
+                        placeholder="门店 ID (m_xxx)"
+                        style={styles.textInput}
+                    />
+                    <TextInput
+                        testID="merchant-qr-scene-input"
+                        value={qrScene}
+                        onChangeText={setQrScene}
+                        placeholder="场景 (如：A1桌)"
+                        style={styles.textInput}
+                    />
 
-                <TextInput
-                    testID="merchant-qr-store-id-input"
-                    value={qrStoreId}
-                    onChangeText={setQrStoreId}
-                    placeholder="门店 ID (m_xxx)"
-                    style={styles.textInput}
-                />
-                <TextInput
-                    testID="merchant-qr-scene-input"
-                    value={qrScene}
-                    onChangeText={setQrScene}
-                    placeholder="场景 (如：A1桌)"
-                    style={styles.textInput}
-                />
-
-                <View style={styles.buttonRow}>
-                    <Pressable
-                        testID="merchant-qr-generate"
-                        style={styles.primaryButton}
-                        onPress={onGenerateMerchantQr}>
-                        <Text style={styles.primaryButtonText}>一键生成二维码</Text>
-                    </Pressable>
-                    {qrPayload ? (
+                    <View style={styles.buttonRow}>
                         <Pressable
-                            testID="merchant-qr-copy"
-                            style={styles.secondaryButton}
-                            onPress={() => onCopyEventDetail(qrPayload)}>
-                            <Clipboard size={16} color="#334155" />
-                            <Text style={styles.secondaryButtonText}>复制链接</Text>
+                            testID="merchant-qr-generate"
+                            style={styles.primaryButton}
+                            onPress={onGenerateMerchantQr}>
+                            <Text style={styles.primaryButtonText}>一键生成二维码</Text>
                         </Pressable>
-                    ) : null}
-                </View>
-
-                {qrPayload ? (
-                    <View style={styles.qrDisplay}>
-                        <View style={styles.qrFrame}>
-                            <QRCode
-                                testID="merchant-qr-native"
-                                value={qrPayload}
-                                size={180}
-                                backgroundColor="#ffffff"
-                                color="#0f172a"
-                            />
-                        </View>
-                        <Text style={styles.qrPayload} numberOfLines={2}>{qrPayload}</Text>
+                        {qrPayload ? (
+                            <Pressable
+                                testID="merchant-qr-copy"
+                                style={styles.secondaryButton}
+                                onPress={() => onCopyEventDetail(qrPayload)}>
+                                <Clipboard size={16} color="#334155" />
+                                <Text style={styles.secondaryButtonText}>复制链接</Text>
+                            </Pressable>
+                        ) : null}
                     </View>
-                ) : null}
-            </SectionCard>
-        </ScrollView>
+
+                    {qrPayload ? (
+                        <View style={styles.qrDisplay}>
+                            <View style={styles.qrFrame}>
+                                <QRCode
+                                    testID="merchant-qr-native"
+                                    value={qrPayload}
+                                    size={180}
+                                    backgroundColor="#ffffff"
+                                    color="#0f172a"
+                                />
+                            </View>
+                            <Text style={styles.qrPayload} numberOfLines={2}>{qrPayload}</Text>
+                        </View>
+                    ) : null}
+                </SectionCard>
+            </ScrollView>
+        </SafeAreaView>
     );
 }
 
@@ -187,7 +190,7 @@ const styles = StyleSheet.create({
     container: {
         paddingHorizontal: 16,
         paddingTop: 16,
-        paddingBottom: 34,
+        paddingBottom: 16,
         gap: 16,
     },
     campaignRow: {

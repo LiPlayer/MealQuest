@@ -122,9 +122,9 @@ function createMerchantService(db, options = {}) {
   function getSalesSnapshotContext(merchantId) {
     const paymentsBucket =
       db.paymentsByMerchant &&
-      typeof db.paymentsByMerchant === "object" &&
-      db.paymentsByMerchant[merchantId] &&
-      typeof db.paymentsByMerchant[merchantId] === "object"
+        typeof db.paymentsByMerchant === "object" &&
+        db.paymentsByMerchant[merchantId] &&
+        typeof db.paymentsByMerchant[merchantId] === "object"
         ? db.paymentsByMerchant[merchantId]
         : {};
     const payments = Object.values(paymentsBucket);
@@ -671,8 +671,7 @@ function createMerchantService(db, options = {}) {
       "PROPOSAL_CONFIRM",
       "STRATEGY_CHAT_REVIEW",
       "STRATEGY_CHAT_MESSAGE",
-      "CAMPAIGN_STATUS_SET",
-      "FIRE_SALE_CREATE"
+      "CAMPAIGN_STATUS_SET"
     ]);
     return db.auditLogs
       .filter(
@@ -1509,78 +1508,6 @@ function createMerchantService(db, options = {}) {
     };
   }
 
-  async function createFireSaleCampaign({
-    merchantId,
-    targetSku = "sku_hot_soup",
-    ttlMinutes = 30,
-    voucherValue = 15,
-    maxQty = 30
-  }) {
-    const freshResult = await runWithFreshState("createFireSaleCampaign", {
-      merchantId,
-      targetSku,
-      ttlMinutes,
-      voucherValue,
-      maxQty
-    });
-    if (freshResult !== FRESH_NOT_USED) {
-      return freshResult;
-    }
-
-    const merchant = db.merchants[merchantId];
-    if (!merchant) {
-      throw new Error("merchant not found");
-    }
-    const durationMinutes = Math.max(5, Math.floor(Number(ttlMinutes) || 30));
-    const safeVoucherValue = Math.max(1, Math.floor(Number(voucherValue) || 15));
-    const safeMaxQty = Math.max(1, Math.floor(Number(maxQty) || 30));
-    const now = new Date();
-    const campaign = {
-      id: `campaign_fire_sale_${Date.now()}`,
-      merchantId,
-      name: `targeted-fire-sale-${targetSku}`,
-      status: "ACTIVE",
-      priority: 999,
-      trigger: { event: "INVENTORY_ALERT" },
-      conditions: [
-        { field: "targetSku", op: "eq", value: targetSku },
-        { field: "inventoryBacklog", op: "gte", value: 1 }
-      ],
-      budget: {
-        used: 0,
-        cap: safeVoucherValue * safeMaxQty,
-        costPerHit: safeVoucherValue
-      },
-      action: {
-        type: "GRANT_VOUCHER",
-        voucher: {
-          id: `voucher_fire_sale_${Date.now()}`,
-          type: "DISCOUNT_CARD",
-          name: `${targetSku} fire-sale-voucher`,
-          value: 0,
-          discountRate: 0.5,
-          minSpend: 0
-        }
-      },
-      ttlUntil: new Date(now.getTime() + durationMinutes * 60 * 1000).toISOString(),
-      strategyMeta: {
-        templateId: "manual_fire_sale",
-        templateName: "targeted_fire_sale",
-        branchId: "MANUAL",
-        branchName: "manual_takeover",
-        category: "REVENUE"
-      }
-    };
-    db.campaigns.push(campaign);
-    db.save();
-
-    return {
-      merchantId,
-      campaignId: campaign.id,
-      priority: campaign.priority,
-      ttlUntil: campaign.ttlUntil
-    };
-  }
 
   return {
     getDashboard,
@@ -1592,7 +1519,6 @@ function createMerchantService(db, options = {}) {
     sendStrategyChatMessage,
     reviewStrategyChatProposal,
     setCampaignStatus,
-    createFireSaleCampaign,
     findTemplate
   };
 }

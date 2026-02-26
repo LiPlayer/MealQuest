@@ -293,52 +293,6 @@ function createMerchantRoutesHandler({
       return true;
     }
 
-    if (method === "POST" && url.pathname === "/api/merchant/fire-sale") {
-      ensureRole(auth, ["MANAGER", "OWNER"]);
-      const body = await readJsonBody(req);
-      const merchantId = auth.merchantId || body.merchantId;
-      if (!merchantId) {
-        sendJson(res, 400, { error: "merchantId is required" });
-        return true;
-      }
-      if (auth.merchantId && auth.merchantId !== merchantId) {
-        sendJson(res, 403, { error: "merchant scope denied" });
-        return true;
-      }
-      if (
-        !enforceTenantPolicyForHttp({
-          tenantPolicyManager,
-          merchantId,
-          operation: "FIRE_SALE_CREATE",
-          res,
-          auth,
-          appendAuditLog,
-        })
-      ) {
-        return true;
-      }
-      const { merchantService } = getServicesForMerchant(merchantId);
-      const result = await merchantService.createFireSaleCampaign({
-        merchantId,
-        targetSku: body.targetSku,
-        ttlMinutes: body.ttlMinutes,
-        voucherValue: body.voucherValue,
-        maxQty: body.maxQty,
-      });
-      appendAuditLog({
-        merchantId,
-        action: "FIRE_SALE_CREATE",
-        status: "SUCCESS",
-        auth,
-        details: {
-          targetSku: body.targetSku || null,
-          campaignId: result.campaignId,
-        },
-      });
-      wsHub.broadcast(merchantId, "FIRE_SALE_CREATED", result);
-      sendJson(res, 200, result);
-      return true;
-    }
 
     if (method === "GET" && url.pathname === "/api/merchant/contract/status") {
       ensureRole(auth, ["OWNER", "MANAGER"]);

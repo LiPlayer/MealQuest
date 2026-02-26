@@ -30,26 +30,12 @@ function TabNavigator() {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
-        headerShown: true,
-        headerStyle: {
-          backgroundColor: '#ffffff',
-          elevation: 0,
-          shadowOpacity: 0,
-          borderBottomWidth: 1,
-          borderBottomColor: '#f1f5f9',
-        },
-        headerTitleStyle: {
-          fontSize: 17,
-          fontWeight: '800',
-          color: '#0f172a',
-        },
+        headerShown: false,
         tabBarStyle: {
           backgroundColor: '#ffffff',
           borderTopWidth: 1,
           borderTopColor: '#f1f5f9',
-          height: 60,
-          paddingBottom: 8,
-          paddingTop: 8,
+          // Removed fixed height and padding to allow react-navigation to handle safe area
         },
         tabBarActiveTintColor: '#2563eb',
         tabBarInactiveTintColor: '#94a3b8',

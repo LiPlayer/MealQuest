@@ -30,7 +30,6 @@ export type AuditActionFilter =
     | 'STRATEGY_CHAT_MESSAGE'
     | 'STRATEGY_CHAT_REVIEW'
     | 'CAMPAIGN_STATUS_SET'
-    | 'FIRE_SALE_CREATE'
     | 'SUPPLIER_VERIFY'
     | 'ALLIANCE_CONFIG_SET'
     | 'ALLIANCE_SYNC_USER'
@@ -107,7 +106,6 @@ interface MerchantContextType {
     onCopyEventDetail: (detail: string) => Promise<void>;
     onCreateIntentProposal: () => Promise<void>;
     onReviewPendingStrategy: (decision: 'APPROVE' | 'REJECT') => Promise<void>;
-    onCreateFireSale: () => Promise<void>;
     onSetCampaignStatus: (campaignId: string, status: 'ACTIVE' | 'PAUSED' | 'ARCHIVED') => Promise<void>;
     onToggleAllianceWalletShared: () => Promise<void>;
     onSyncAllianceUser: () => Promise<void>;
@@ -413,13 +411,6 @@ export function MerchantProvider({
         } catch { setLastAction('策略审核失败，请稍后重试'); }
     };
 
-    const onCreateFireSale = async () => {
-        if (!remoteToken) return;
-        const response = await MerchantApi.createFireSale(remoteToken, { targetSku: 'sku_hot_soup', ttlMinutes: 30, voucherValue: 15, maxQty: 20 });
-        await refreshRemoteState();
-        await refreshAuditLogs();
-        setLastAction(`急售已上线：${response.campaignId}`);
-    };
 
     const onSetCampaignStatus = async (campaignId: string, status: 'ACTIVE' | 'PAUSED' | 'ARCHIVED') => {
         if (!remoteToken) return;
@@ -480,7 +471,7 @@ export function MerchantProvider({
         qrStoreId, setQrStoreId, qrScene, setQrScene, qrPayload, aiIntentDraft, setAiIntentDraft,
         aiIntentSubmitting, strategyChatMessages, strategyChatPendingReview,
         pendingReviewCount, totalReviewCount, currentReviewIndex, contractStatus, setContractStatus,
-        onCopyEventDetail, onCreateIntentProposal, onReviewPendingStrategy, onCreateFireSale,
+        onCopyEventDetail, onCreateIntentProposal, onReviewPendingStrategy,
         onSetCampaignStatus, onToggleAllianceWalletShared, onSyncAllianceUser, onToggleKillSwitch,
         onGenerateMerchantQr, refreshAuditLogs, refreshRemoteState,
     };

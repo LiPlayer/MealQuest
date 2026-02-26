@@ -8,7 +8,8 @@ import {
 } from 'react-native';
 import { useMerchant } from '../context/MerchantContext';
 import { SectionCard } from '../components/SectionCard';
-import { Shield, ShieldAlert, Activity } from 'lucide-react-native';
+import { Shield, ShieldAlert } from 'lucide-react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function HomeScreen() {
     const {
@@ -27,75 +28,77 @@ export default function HomeScreen() {
     );
 
     return (
-        <ScrollView contentContainerStyle={styles.container}>
-            <View style={styles.heroCard}>
-                <View style={styles.heroHead}>
-                    <View style={styles.heroHeadTextWrap}>
-                        <Text style={styles.heroKicker}>MealQuest Merchant OS</Text>
-                        <Text style={styles.appTitle}>有戏掌柜驾驶舱</Text>
-                        <Text style={styles.appSubtitle}>聚合收银、策略确认、商业洞察一体化</Text>
+        <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+            <ScrollView contentContainerStyle={styles.container}>
+                <View style={styles.heroCard}>
+                    <View style={styles.heroHead}>
+                        <View style={styles.heroHeadTextWrap}>
+                            <Text style={styles.heroKicker}>MealQuest Merchant OS</Text>
+                            <Text style={styles.appTitle}>有戏掌柜驾驶舱</Text>
+                            <Text style={styles.appSubtitle}>聚合收银、策略确认、商业洞察一体化</Text>
+                        </View>
+                        <View style={[styles.statusBadge, merchantState.killSwitchEnabled ? styles.statusBadgeWarn : styles.statusBadgeSuccess]}>
+                            {merchantState.killSwitchEnabled ? <ShieldAlert size={14} color="#fef3c7" /> : <Shield size={14} color="#ccfbf1" />}
+                            <Text style={styles.statusBadgeText}>
+                                {merchantState.killSwitchEnabled ? '熔断中' : '运行中'}
+                            </Text>
+                        </View>
                     </View>
-                    <View style={[styles.statusBadge, merchantState.killSwitchEnabled ? styles.statusBadgeWarn : styles.statusBadgeSuccess]}>
-                        {merchantState.killSwitchEnabled ? <ShieldAlert size={14} color="#fef3c7" /> : <Shield size={14} color="#ccfbf1" />}
-                        <Text style={styles.statusBadgeText}>
-                            {merchantState.killSwitchEnabled ? '熔断中' : '运行中'}
+
+                    <View style={styles.heroStatsRow}>
+                        <View style={styles.heroStatCard}>
+                            <Text style={styles.heroStatLabel}>预算使用</Text>
+                            <Text style={styles.heroStatValue}>{budgetUsagePercent}%</Text>
+                            <Text style={styles.heroStatHint}>剩余 ¥{budgetRemaining.toFixed(2)}</Text>
+                        </View>
+                        <View style={styles.heroStatCard}>
+                            <Text style={styles.heroStatLabel}>进行中活动</Text>
+                            <Text style={styles.heroStatValue}>{activeCampaignCount}</Text>
+                            <Text style={styles.heroStatHint}>
+                                共 {merchantState.activeCampaigns.length} 个活动
+                            </Text>
+                        </View>
+                    </View>
+                </View>
+
+                <SectionCard title="经营总览">
+                    <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>当前门店</Text>
+                        <Text style={styles.infoValue}>{merchantState.merchantName}</Text>
+                    </View>
+                    <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>营销预算</Text>
+                        <Text style={styles.infoValue}>¥{merchantState.budgetUsed.toFixed(2)} / ¥{merchantState.budgetCap.toFixed(2)}</Text>
+                    </View>
+                    <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>风控红线</Text>
+                        <Text style={[styles.infoValue, merchantState.killSwitchEnabled ? { color: '#b91c1c', fontWeight: 'bold' } : { color: '#059669' }]}>
+                            {merchantState.killSwitchEnabled ? '已开启熔断' : '安全运行中'}
                         </Text>
                     </View>
-                </View>
 
-                <View style={styles.heroStatsRow}>
-                    <View style={styles.heroStatCard}>
-                        <Text style={styles.heroStatLabel}>预算使用</Text>
-                        <Text style={styles.heroStatValue}>{budgetUsagePercent}%</Text>
-                        <Text style={styles.heroStatHint}>剩余 ¥{budgetRemaining.toFixed(2)}</Text>
-                    </View>
-                    <View style={styles.heroStatCard}>
-                        <Text style={styles.heroStatLabel}>进行中活动</Text>
-                        <Text style={styles.heroStatValue}>{activeCampaignCount}</Text>
-                        <Text style={styles.heroStatHint}>
-                            共 {merchantState.activeCampaigns.length} 个活动
+                    <Pressable
+                        testID="kill-switch-btn"
+                        style={[styles.actionButton, merchantState.killSwitchEnabled ? styles.btnOutline : styles.btnDanger]}
+                        onPress={onToggleKillSwitch}>
+                        <Text style={merchantState.killSwitchEnabled ? styles.btnOutlineText : styles.btnDangerText}>
+                            {merchantState.killSwitchEnabled ? '关闭熔断' : '开启熔断保护'}
                         </Text>
-                    </View>
-                </View>
-            </View>
-
-            <SectionCard title="经营总览">
-                <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>当前门店</Text>
-                    <Text style={styles.infoValue}>{merchantState.merchantName}</Text>
-                </View>
-                <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>营销预算</Text>
-                    <Text style={styles.infoValue}>¥{merchantState.budgetUsed.toFixed(2)} / ¥{merchantState.budgetCap.toFixed(2)}</Text>
-                </View>
-                <View style={styles.infoRow}>
-                    <Text style={styles.infoLabel}>风控红线</Text>
-                    <Text style={[styles.infoValue, merchantState.killSwitchEnabled ? { color: '#b91c1c', fontWeight: 'bold' } : { color: '#059669' }]}>
-                        {merchantState.killSwitchEnabled ? '已开启熔断' : '安全运行中'}
-                    </Text>
-                </View>
-
-                <Pressable
-                    testID="kill-switch-btn"
-                    style={[styles.actionButton, merchantState.killSwitchEnabled ? styles.btnOutline : styles.btnDanger]}
-                    onPress={onToggleKillSwitch}>
-                    <Text style={merchantState.killSwitchEnabled ? styles.btnOutlineText : styles.btnDangerText}>
-                        {merchantState.killSwitchEnabled ? '关闭熔断' : '开启熔断保护'}
-                    </Text>
-                </Pressable>
-            </SectionCard>
-
-            {contractStatus === 'NOT_SUBMITTED' && (
-                <SectionCard title="资质核验 (待办)">
-                    <Text style={styles.mutedText}>
-                        您的门店尚未完成在线经营合同签署，部分营销功能可能受限。
-                    </Text>
-                    <Pressable style={styles.primaryButton}>
-                        <Text style={styles.primaryButtonText}>去签约</Text>
                     </Pressable>
                 </SectionCard>
-            )}
-        </ScrollView>
+
+                {contractStatus === 'NOT_SUBMITTED' && (
+                    <SectionCard title="资质核验 (待办)">
+                        <Text style={styles.mutedText}>
+                            您的门店尚未完成在线经营合同签署，部分营销功能可能受限。
+                        </Text>
+                        <Pressable style={styles.primaryButton}>
+                            <Text style={styles.primaryButtonText}>去签约</Text>
+                        </Pressable>
+                    </SectionCard>
+                )}
+            </ScrollView>
+        </SafeAreaView>
     );
 }
 
@@ -103,7 +106,7 @@ const styles = StyleSheet.create({
     container: {
         paddingHorizontal: 16,
         paddingTop: 16,
-        paddingBottom: 34,
+        paddingBottom: 16,
         gap: 16,
     },
     heroCard: {
