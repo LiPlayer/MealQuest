@@ -585,6 +585,11 @@ function onboardMerchant(db, payload = {}) {
       { uid: "staff_manager", role: "MANAGER" },
       { uid: "staff_clerk", role: "CLERK" }
     ],
+    ownerPhone: (() => {
+      const raw = payload.ownerPhone || payload.contactPhone || payload.phone || "";
+      if (!raw) return "";
+      try { return sanitizePhone(raw); } catch { return ""; }
+    })(),
     onboardedAt: now.toISOString()
   };
 
@@ -632,6 +637,8 @@ function issuePhoneCode(db, phone) {
     expiresAt: new Date(now + 5 * 60 * 1000).toISOString(),
     createdAt: new Date(now).toISOString()
   };
+  // eslint-disable-next-line no-console
+  console.log(`[sms] issued code ${code} for phone ${phone}`);
   db.save();
   return {
     phone,
@@ -753,8 +760,8 @@ function bindCustomerPhoneIdentity(db, {
       : null;
   const existingPhoneUserId =
     existingPhoneBinding &&
-    existingPhoneBinding.userId &&
-    db.merchantUsers[merchantId][existingPhoneBinding.userId]
+      existingPhoneBinding.userId &&
+      db.merchantUsers[merchantId][existingPhoneBinding.userId]
       ? existingPhoneBinding.userId
       : null;
 
@@ -827,11 +834,28 @@ function buildContractApplication(payload = {}, now = new Date()) {
 
 function listMerchantIdsByOwnerPhone(db, phone) {
   const normalizedPhone = sanitizePhone(phone);
+  const matched = new Set();
+
+  // 1. Search by explicit ownerPhone in merchants
+  const merchants = db && db.merchants && typeof db.merchants === "object" ? db.merchants : {};
+  for (const [merchantId, m] of Object.entries(merchants)) {
+    if (!m) continue;
+    const ownerPhone = m.ownerPhone || (m.payload && m.payload.ownerPhone);
+    if (!ownerPhone) continue;
+    try {
+      if (sanitizePhone(ownerPhone) === normalizedPhone) {
+        matched.add(merchantId);
+      }
+    } catch {
+      // ignore invalid stored phone
+    }
+  }
+
+  // 2. Fallback to contract applications
   const applications =
     db && db.contractApplications && typeof db.contractApplications === "object"
       ? db.contractApplications
       : {};
-  const matched = [];
   for (const [merchantId, item] of Object.entries(applications)) {
     if (!item || typeof item !== "object") {
       continue;
@@ -847,10 +871,10 @@ function listMerchantIdsByOwnerPhone(db, phone) {
       continue;
     }
     if (normalizedContactPhone === normalizedPhone) {
-      matched.push(merchantId);
+      matched.add(merchantId);
     }
   }
-  return matched;
+  return Array.from(matched);
 }
 
 function copyMerchantSlice({ sourceDb, targetDb, merchantId }) {
@@ -918,12 +942,12 @@ function copyMerchantSlice({ sourceDb, targetDb, merchantId }) {
   targetDb.socialAuth.customerBindingsByMerchant[merchantId] = jsonClone(
     (sourceDb.socialAuth.customerBindingsByMerchant &&
       sourceDb.socialAuth.customerBindingsByMerchant[merchantId]) ||
-      {}
+    {}
   );
   targetDb.socialAuth.customerPhoneBindingsByMerchant[merchantId] = jsonClone(
     (sourceDb.socialAuth.customerPhoneBindingsByMerchant &&
       sourceDb.socialAuth.customerPhoneBindingsByMerchant[merchantId]) ||
-      {}
+    {}
   );
 
   targetDb.ledger = upsertMerchantRows(

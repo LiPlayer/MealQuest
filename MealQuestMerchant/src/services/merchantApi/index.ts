@@ -32,6 +32,7 @@ export const MerchantApi = {
     merchantId: string;
     name: string;
     budgetCap?: number;
+    ownerPhone?: string;
   }) => {
     const result = await requestPublicJson<MerchantOnboardResult>('POST', '/api/merchant/onboard', payload);
     setMerchantId(result.merchant.merchantId);

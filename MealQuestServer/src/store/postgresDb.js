@@ -136,7 +136,7 @@ async function ensureDatabaseExists({
     }
     throw error;
   } finally {
-    await adminPool.end().catch(() => {});
+    await adminPool.end().catch(() => { });
   }
 }
 
@@ -444,7 +444,7 @@ async function ensureRelationalPool({
     await ensureRelationalTables(pool, schema, { enforceRls });
     return pool;
   } catch (error) {
-    await pool.end().catch(() => {});
+    await pool.end().catch(() => { });
     if (!autoCreateDatabase || !isMissingDatabaseError(error)) {
       throw error;
     }
@@ -459,7 +459,7 @@ async function ensureRelationalPool({
       await ensureRelationalTables(pool, schema, { enforceRls });
       return pool;
     } catch (retryError) {
-      await pool.end().catch(() => {});
+      await pool.end().catch(() => { });
       throw retryError;
     }
   }
@@ -1055,12 +1055,16 @@ async function writeRelationalState(pool, schema, tenantId, state) {
   });
 }
 
-async function withFreshTenantState(pool, schema, tenantId, runner) {
+async function withFreshTenantState(pool, schema, tenantId, runner, syncBack) {
   return runInTenantTransaction(pool, tenantId, async (client) => {
     const currentState = await readRelationalStateWithClient(client, schema, tenantId);
     const workingDb = createInMemoryDb(currentState);
     const result = await runner(workingDb);
-    await replaceTenantState(client, schema, tenantId, workingDb.serialize());
+    const finalState = workingDb.serialize();
+    await replaceTenantState(client, schema, tenantId, finalState);
+    if (typeof syncBack === "function") {
+      syncBack(finalState);
+    }
     return result;
   });
 }
@@ -1195,7 +1199,7 @@ async function createPostgresDb({
       tenantId: normalizedTenantId,
     });
   } catch (error) {
-    await pool.end().catch(() => {});
+    await pool.end().catch(() => { });
     throw error;
   }
 
@@ -1203,7 +1207,7 @@ async function createPostgresDb({
   try {
     initialState = await readRelationalState(pool, normalizedSchema, normalizedTenantId);
   } catch (error) {
-    await pool.end().catch(() => {});
+    await pool.end().catch(() => { });
     throw error;
   }
   const db = createInMemoryDb(initialState);
@@ -1217,7 +1221,13 @@ async function createPostgresDb({
   });
 
   db.runWithFreshState = (runner) =>
-    withFreshTenantState(pool, normalizedSchema, normalizedTenantId, runner);
+    withFreshTenantState(pool, normalizedSchema, normalizedTenantId, runner, (committedState) => {
+      const fresh = createInMemoryDb(committedState);
+      const freshSerialized = fresh.serialize();
+      for (const key of Object.keys(freshSerialized)) {
+        db[key] = freshSerialized[key];
+      }
+    });
   db.runWithFreshRead = (runner) =>
     withFreshTenantRead(pool, normalizedSchema, normalizedTenantId, runner);
 

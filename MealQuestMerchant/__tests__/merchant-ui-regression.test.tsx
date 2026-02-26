@@ -3,11 +3,11 @@ import ReactTestRenderer from 'react-test-renderer';
 
 jest.mock('react-native-safe-area-context', () => {
   const ReactLib = require('react');
-  const {View} = require('react-native');
+  const { View } = require('react-native');
   return {
-    SafeAreaProvider: ({children}: {children: React.ReactNode}) =>
+    SafeAreaProvider: ({ children }: { children: React.ReactNode }) =>
       ReactLib.createElement(View, null, children),
-    SafeAreaView: ({children}: {children: React.ReactNode}) =>
+    SafeAreaView: ({ children }: { children: React.ReactNode }) =>
       ReactLib.createElement(View, null, children),
   };
 });
@@ -20,13 +20,14 @@ jest.mock('../src/services/merchantRealtime', () => ({
 
 jest.mock('react-native-qrcode-svg', () => {
   const ReactLib = require('react');
-  const {View} = require('react-native');
-  return ({testID}: {testID?: string}) => ReactLib.createElement(View, {testID});
+  const { View } = require('react-native');
+  return ({ testID }: { testID?: string }) => ReactLib.createElement(View, { testID });
 });
 
 jest.mock('../src/services/merchantApi', () => ({
   MerchantApi: {
     isConfigured: jest.fn(() => true),
+    getMerchantId: jest.fn(() => 'm_store_001'),
     requestMerchantLoginCode: jest.fn(async () => ({ phone: '+8613800000000', expiresInSec: 300, debugCode: '123456' })),
     loginByPhone: jest.fn(async () => ({ token: 'token_fixture', profile: { role: 'OWNER', merchantId: 'm_store_001', phone: '+8613800000000' } })),
     getState: jest.fn(async () => ({
@@ -42,15 +43,25 @@ jest.mock('../src/services/merchantApi', () => ({
           name: 'Fixture Campaign',
           status: 'ACTIVE',
           triggerEvent: 'APP_OPEN',
-          condition: {field: 'weather', equals: 'RAIN'},
-          budget: {cap: 80, used: 0, costPerHit: 8},
+          condition: { field: 'weather', equals: 'RAIN' },
+          budget: { cap: 80, used: 0, costPerHit: 8 },
         },
       ],
     })),
     getAuditLogs: jest.fn(async () => ({
       merchantId: 'm_store_001',
       items: [],
-      pageInfo: {limit: 6, hasMore: false, nextCursor: null},
+      pageInfo: { limit: 6, hasMore: false, nextCursor: null },
+    })),
+    getContractStatus: jest.fn(async () => ({
+      merchantId: 'm_store_001',
+      status: 'NOT_SUBMITTED',
+      application: null,
+    })),
+    applyContract: jest.fn(async () => ({
+      merchantId: 'm_store_001',
+      status: 'PENDING_REVIEW',
+      application: { merchantId: 'm_store_001', companyName: 'Test Co', licenseNo: '123', settlementAccount: 'acc123', contactPhone: '+8613800000000', submittedAt: '2026-01-01T00:00:00.000Z', status: 'PENDING_REVIEW' },
     })),
     getAllianceConfig: jest.fn(async () => ({
       merchantId: 'm_store_001',
@@ -66,8 +77,8 @@ jest.mock('../src/services/merchantApi', () => ({
       walletShared: false,
       tierShared: false,
       stores: [
-        {merchantId: 'm_store_001', name: 'Fixture Merchant'},
-        {merchantId: 'm_bistro', name: 'Bistro Harbor'},
+        { merchantId: 'm_store_001', name: 'Fixture Merchant' },
+        { merchantId: 'm_bistro', name: 'Bistro Harbor' },
       ],
     })),
     getWsUrl: jest.fn(() => ''),
@@ -135,7 +146,7 @@ jest.mock('../src/services/merchantApi', () => ({
         campaignId: 'campaign_ai_1',
         campaignName: 'AI Strategy Draft',
         triggerEvent: 'APP_OPEN',
-        budget: {cap: 120, used: 0, costPerHit: 10},
+        budget: { cap: 120, used: 0, costPerHit: 10 },
         createdAt: '2026-02-25T00:00:00.000Z',
       },
       pendingReviews: [
@@ -148,7 +159,7 @@ jest.mock('../src/services/merchantApi', () => ({
           campaignId: 'campaign_ai_1',
           campaignName: 'AI Strategy Draft',
           triggerEvent: 'APP_OPEN',
-          budget: {cap: 120, used: 0, costPerHit: 10},
+          budget: { cap: 120, used: 0, costPerHit: 10 },
           createdAt: '2026-02-25T00:00:00.000Z',
         },
       ],
@@ -199,12 +210,12 @@ jest.mock('../src/services/merchantApi', () => ({
       approvedStrategies: [],
     })),
     setKillSwitch: jest.fn(),
-    triggerEvent: jest.fn(async () => ({blockedByKillSwitch: false, executed: []})),
+    triggerEvent: jest.fn(async () => ({ blockedByKillSwitch: false, executed: [] })),
   },
 }));
 
 import App from '../App';
-import {MerchantApi} from '../src/services/merchantApi';
+import { MerchantApi } from '../src/services/merchantApi';
 const mockApi = MerchantApi as any;
 
 const flush = async (times = 1) => {
@@ -230,7 +241,7 @@ describe('merchant ui regression flow', () => {
 
     await ReactTestRenderer.act(async () => {
       tree!.root
-        .findByProps({testID: 'campaign-toggle-campaign_fixture'})
+        .findByProps({ testID: 'campaign-toggle-campaign_fixture' })
         .props.onPress();
       await flush(4);
     });
@@ -240,20 +251,20 @@ describe('merchant ui regression flow', () => {
     });
 
     await ReactTestRenderer.act(async () => {
-      tree!.root.findByProps({testID: 'alliance-wallet-toggle'}).props.onPress();
+      tree!.root.findByProps({ testID: 'alliance-wallet-toggle' }).props.onPress();
       await flush(4);
     });
     expect(mockApi.setAllianceConfig).toHaveBeenCalled();
 
     await ReactTestRenderer.act(async () => {
       tree!.root
-        .findByProps({testID: 'alliance-user-id-input'})
+        .findByProps({ testID: 'alliance-user-id-input' })
         .props.onChangeText('u_customer_001');
       await flush(2);
     });
 
     await ReactTestRenderer.act(async () => {
-      tree!.root.findByProps({testID: 'alliance-sync-user'}).props.onPress();
+      tree!.root.findByProps({ testID: 'alliance-sync-user' }).props.onPress();
       await flush(4);
     });
     expect(mockApi.syncAllianceUser).toHaveBeenCalledWith('token_fixture', {
@@ -262,16 +273,16 @@ describe('merchant ui regression flow', () => {
 
     await ReactTestRenderer.act(async () => {
       tree!.root
-        .findByProps({testID: 'merchant-qr-store-id-input'})
+        .findByProps({ testID: 'merchant-qr-store-id-input' })
         .props.onChangeText('m_store_001');
       tree!.root
-        .findByProps({testID: 'merchant-qr-scene-input'})
+        .findByProps({ testID: 'merchant-qr-scene-input' })
         .props.onChangeText('table_a1');
-      tree!.root.findByProps({testID: 'merchant-qr-generate'}).props.onPress();
+      tree!.root.findByProps({ testID: 'merchant-qr-generate' }).props.onPress();
       await flush(2);
     });
-    tree!.root.findByProps({testID: 'merchant-qr-native'});
-    const qrPayload = tree!.root.findByProps({testID: 'merchant-qr-payload-text'});
+    tree!.root.findByProps({ testID: 'merchant-qr-native' });
+    const qrPayload = tree!.root.findByProps({ testID: 'merchant-qr-payload-text' });
     expect(String(qrPayload.props.children)).toContain('https://mealquest.app/startup?id=m_store_001');
     expect(String(qrPayload.props.children)).toContain('action=pay');
   });
@@ -285,13 +296,13 @@ describe('merchant ui regression flow', () => {
 
     await ReactTestRenderer.act(async () => {
       tree!.root
-        .findByProps({testID: 'ai-intent-input'})
+        .findByProps({ testID: 'ai-intent-input' })
         .props.onChangeText('明天午市拉新20桌，预算控制在200元以内');
       await flush(2);
     });
 
     await ReactTestRenderer.act(async () => {
-      tree!.root.findByProps({testID: 'ai-intent-submit'}).props.onPress();
+      tree!.root.findByProps({ testID: 'ai-intent-submit' }).props.onPress();
       await flush(6);
     });
 

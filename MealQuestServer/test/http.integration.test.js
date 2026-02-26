@@ -1059,7 +1059,8 @@ test("merchant onboarding api allows custom store creation for end-to-end testin
     const onboard = await postJson(baseUrl, "/api/merchant/onboard", {
       merchantId,
       name: "Custom Test Store",
-      budgetCap: 420
+      budgetCap: 420,
+      ownerPhone: "+8613800000000"
     });
     assert.equal(onboard.status, 201);
     assert.equal(onboard.data.merchant.merchantId, merchantId);
@@ -1126,6 +1127,67 @@ test("merchant onboarding api allows custom store creation for end-to-end testin
     assert.ok(catalog.data.items.some((item) => item.merchantId === merchantId));
   } finally {
     await app.stop();
+  }
+});
+
+test("merchant onboarding is preserved across re-logins with persistence", async () => {
+  const dbFactory = createSnapshotBackedDbFactory();
+  const contactPhone = "+8613766667777";
+  const merchantId = "m_persist_test_001";
+
+  // Step 1: Onboard a new merchant
+  const app1 = createAppServer({ db: dbFactory.createDb() });
+  const port1 = await app1.start(0);
+  const base1 = `http://127.0.0.1:${port1}`;
+
+  try {
+    const onboard = await postJson(base1, "/api/merchant/onboard", {
+      merchantId,
+      name: "Persistence Store",
+      budgetCap: 500,
+      ownerPhone: contactPhone
+    });
+    assert.equal(onboard.status, 201);
+
+    // SKIP contract application to verify that resolution works 
+    // based ONLY on the onboarded data (Owner Phone).
+  } finally {
+    await app1.stop();
+  }
+
+  // Step 2: "Clear data" and "Re-login" - Start a fresh server instance with same DB snapshot
+  const app2 = createAppServer({ db: dbFactory.createDb() });
+  const port2 = await app2.start(0);
+  const base2 = `http://127.0.0.1:${port2}`;
+
+  try {
+    // Request login code
+    const requestCode = await postJson(base2, "/api/auth/merchant/request-code", { phone: contactPhone });
+    assert.equal(requestCode.status, 200);
+
+    const code = getIssuedPhoneCode(app2, contactPhone);
+    assert.ok(code);
+
+    // Login - should resolve to the existing merchantId
+    const login = await postJson(base2, "/api/auth/merchant/phone-login", {
+      phone: contactPhone,
+      code
+    });
+
+    assert.equal(login.status, 200);
+    assert.ok(login.data.token);
+    assert.equal(login.data.profile.merchantId, merchantId, "Login should automatically resolve to the existing merchantId");
+
+    // Verify access to the store
+
+    // Verify access to the store
+    const dashboard = await getJson(base2, `/api/merchant/dashboard?merchantId=${merchantId}`, {
+      Authorization: `Bearer ${login.data.token}`
+    });
+    assert.equal(dashboard.status, 200);
+    assert.equal(dashboard.data.merchantId, merchantId);
+  } finally {
+    await app2.stop();
   }
 });
 
@@ -1340,7 +1402,7 @@ test("persistent mode keeps tenant dedicated route after cutover", async () => {
   );
   assert.ok(
     app1.tenantRouter.getDbForMerchant("m_store_001").paymentsByMerchant.m_store_001[
-      verifyAfterCutover.data.paymentTxnId
+    verifyAfterCutover.data.paymentTxnId
     ]
   );
   await app1.stop();

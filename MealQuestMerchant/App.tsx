@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -133,14 +133,21 @@ function isTokenExpiredError(err: unknown) {
 
 function MerchantConsoleApp({
   initialToken,
+  initialMerchantState,
+  contactPhone,
   onAuthExpired,
 }: {
   initialToken: string;
+  initialMerchantState?: import('./src/domain/merchantEngine').MerchantState;
+  contactPhone: string;
   onAuthExpired: () => void;
 }) {
-  const [merchantState, setMerchantState] = useState(createInitialMerchantState);
+  const [merchantState, setMerchantState] = useState(
+    initialMerchantState ?? createInitialMerchantState,
+  );
   const [lastAction, setLastAction] = useState('正在连接...');
   const remoteToken = initialToken || null;
+  const contractStatusFetchedRef = useRef(false);
 
   const [realtimeEvents, setRealtimeEvents] = useState<RealtimeEventRow[]>([]);
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
@@ -174,6 +181,8 @@ function MerchantConsoleApp({
     useState<StrategyChatPendingReview[]>([]);
   const [strategyChatReviewProgress, setStrategyChatReviewProgress] =
     useState<StrategyChatReviewProgress | null>(null);
+
+  const [contractStatus, setContractStatus] = useState<'LOADING' | 'NOT_SUBMITTED' | 'SUBMITTED'>('LOADING');
 
   const pendingReviewCount = strategyChatPendingReviews.length;
   const totalReviewCount = Math.max(
@@ -361,7 +370,9 @@ function MerchantConsoleApp({
     const bootstrapRemote = async () => {
       try {
         setLastAction('已连接服务端驾驶舱');
-        await refreshRemoteState(remoteToken);
+        if (!initialMerchantState) {
+          await refreshRemoteState(remoteToken);
+        }
 
         const wsUrl = MerchantApi.getWsUrl(remoteToken);
         if (wsUrl) {
@@ -447,6 +458,42 @@ function MerchantConsoleApp({
       setQrStoreId(merchantState.merchantId);
     }
   }, [merchantState.merchantId, qrStoreId]);
+
+  useEffect(() => {
+    if (!remoteToken || !MerchantApi.isConfigured()) {
+      return;
+    }
+    // Reset guard when token changes so a re-login triggers a fresh check.
+    contractStatusFetchedRef.current = false;
+  }, [remoteToken]);
+
+  useEffect(() => {
+    if (!remoteToken || !MerchantApi.isConfigured()) {
+      return;
+    }
+    if (contractStatusFetchedRef.current) {
+      return;
+    }
+    const currentMerchantId = MerchantApi.getMerchantId();
+    if (!currentMerchantId) {
+      return;
+    }
+    contractStatusFetchedRef.current = true;
+    MerchantApi.getContractStatus(remoteToken, currentMerchantId)
+      .then(result => {
+        if (result.status === 'NOT_SUBMITTED') {
+          setContractStatus('NOT_SUBMITTED');
+        } else {
+          setContractStatus('SUBMITTED');
+        }
+      })
+      .catch(() => {
+        setContractStatus('SUBMITTED'); // Do not block if unable to detect
+      });
+    // merchantState.merchantId is intentionally omitted: getMerchantId() is
+    // a stable global accessor, and we only want to fire once per remoteToken.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remoteToken]);
 
   const onCreateIntentProposal = async () => {
     if (!remoteToken) {
@@ -850,17 +897,17 @@ function MerchantConsoleApp({
                 <Text style={styles.mutedText}>
                   门店：{allianceStores.map(item => item.name).join(' / ')}
                 </Text>
-                  <TextInput
-                    testID="alliance-user-id-input"
-                    value={customerUserId}
-                    onChangeText={setCustomerUserId}
-                    placeholder="Customer User ID (required for alliance sync)"
-                    style={styles.entryInput}
-                  />
-                  <View style={styles.filterRow}>
-                    <Pressable
-                      testID="alliance-wallet-toggle"
-                      style={styles.filterButton}
+                <TextInput
+                  testID="alliance-user-id-input"
+                  value={customerUserId}
+                  onChangeText={setCustomerUserId}
+                  placeholder="Customer User ID (required for alliance sync)"
+                  style={styles.entryInput}
+                />
+                <View style={styles.filterRow}>
+                  <Pressable
+                    testID="alliance-wallet-toggle"
+                    style={styles.filterButton}
                     onPress={onToggleAllianceWalletShared}>
                     <Text style={styles.filterButtonText}>
                       {allianceConfig.walletShared ? '关闭钱包互通' : '开启钱包互通'}
@@ -1127,13 +1174,102 @@ function MerchantConsoleApp({
               </>
             )}
           </SectionCard>
+          {contractStatus === 'NOT_SUBMITTED' && remoteToken ? (
+            <ContractOnboardingSection
+              token={remoteToken}
+              merchantId={MerchantApi.getMerchantId()}
+              defaultPhone={contactPhone}
+              onSubmitted={() => setContractStatus('SUBMITTED')}
+            />
+          ) : null}
         </ScrollView>
       </SafeAreaView>
     </SafeAreaProvider>
   );
 }
 
-type MerchantEntryStep = 'PHONE_LOGIN' | 'GUIDE' | 'OPEN_STORE' | 'CONTRACT';
+function ContractOnboardingSection({
+  token,
+  merchantId,
+  defaultPhone,
+  onSubmitted,
+}: {
+  token: string;
+  merchantId: string;
+  defaultPhone: string;
+  onSubmitted: () => void;
+}) {
+  const [companyName, setCompanyName] = useState('');
+  const [licenseNo, setLicenseNo] = useState('');
+  const [settlementAccount, setSettlementAccount] = useState('');
+  const [contactPhone, setContactPhone] = useState(defaultPhone || '');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const onSubmitContract = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      await MerchantApi.applyContract(token, {
+        merchantId,
+        companyName,
+        licenseNo,
+        settlementAccount,
+        contactPhone,
+        notes: 'submitted from inline entry section',
+      });
+      onSubmitted();
+    } catch (err: any) {
+      setError(err?.message || 'Contract apply failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <SectionCard title="门店合同签约 (必备)">
+      <Text style={styles.mutedText}>
+        请完善营业执照与结算信息，申请开通线上经营权限。
+      </Text>
+      <TextInput
+        value={companyName}
+        onChangeText={setCompanyName}
+        placeholder="企业名称"
+        style={styles.entryInput}
+      />
+      <TextInput
+        value={licenseNo}
+        onChangeText={setLicenseNo}
+        placeholder="统一社会信用代码"
+        style={styles.entryInput}
+      />
+      <TextInput
+        value={settlementAccount}
+        onChangeText={setSettlementAccount}
+        placeholder="结算银行账号"
+        style={styles.entryInput}
+      />
+      <TextInput
+        value={contactPhone}
+        onChangeText={setContactPhone}
+        placeholder="联系电话"
+        style={styles.entryInput}
+        keyboardType="phone-pad"
+      />
+      {error ? <Text style={styles.entryError}>{error}</Text> : null}
+      <Pressable
+        style={styles.primaryButton}
+        onPress={onSubmitContract}
+        disabled={loading}>
+        <Text style={styles.primaryButtonText}>
+          {loading ? '提交中...' : '提交申请'}
+        </Text>
+      </Pressable>
+    </SectionCard>
+  );
+}
+
+type MerchantEntryStep = 'PHONE_LOGIN' | 'OPEN_STORE';
 
 function buildMerchantIdFromName(name: string): string {
   const trimmed = String(name || '').trim().toLowerCase();
@@ -1153,7 +1289,7 @@ function buildMerchantIdFromName(name: string): string {
 function MerchantEntryFlow({
   onComplete,
 }: {
-  onComplete: (payload: { merchantId: string; token: string }) => void;
+  onComplete: (payload: { merchantId: string; token: string; phone: string }) => void;
 }) {
   const [step, setStep] = useState<MerchantEntryStep>('PHONE_LOGIN');
   const [contactPhone, setContactPhone] = useState('');
@@ -1161,9 +1297,6 @@ function MerchantEntryFlow({
   const [merchantId, setMerchantId] = useState('');
   const [merchantName, setMerchantName] = useState('');
   const [onboardingBudgetCap, setOnboardingBudgetCap] = useState('500');
-  const [companyName, setCompanyName] = useState('');
-  const [licenseNo, setLicenseNo] = useState('');
-  const [settlementAccount, setSettlementAccount] = useState('');
   const [loading, setLoading] = useState(false);
   const [token, setToken] = useState('');
   const [hint, setHint] = useState('');
@@ -1212,11 +1345,11 @@ function MerchantEntryFlow({
       if (result.profile.merchantId) {
         MerchantApi.setMerchantId(result.profile.merchantId);
         setMerchantId(result.profile.merchantId);
-        onComplete({ merchantId: result.profile.merchantId, token: result.token });
+        onComplete({ merchantId: result.profile.merchantId, token: result.token, phone: result.profile.phone || contactPhone.trim() });
         return;
       }
-      setStep('GUIDE');
-      setHint('Phone login verified. No store is bound yet, continue onboarding.');
+      setStep('OPEN_STORE');
+      setHint("Phone login verified. No store is bound yet, let's quick open one.");
     } catch (err: any) {
       setError(err?.message || 'Phone login failed');
     } finally {
@@ -1230,46 +1363,20 @@ function MerchantEntryFlow({
       setError('Please enter a store name');
       return;
     }
-    const budgetCap = Number(onboardingBudgetCap);
-    if (!Number.isFinite(budgetCap) || budgetCap <= 0) {
-      setError('Please enter a valid budget cap');
-      return;
-    }
     setLoading(true);
     try {
       const generatedMerchantId = buildMerchantIdFromName(merchantName);
       const result = await MerchantApi.onboardMerchant({
         merchantId: generatedMerchantId,
         name: merchantName.trim(),
-        budgetCap,
+        ownerPhone: contactPhone,
       });
       const nextMerchantId = result.merchant.merchantId;
       MerchantApi.setMerchantId(nextMerchantId);
       setMerchantId(nextMerchantId);
-      setHint(`Store created: ${nextMerchantId}`);
-      setStep('CONTRACT');
+      onComplete({ merchantId: nextMerchantId, token, phone: contactPhone });
     } catch (err: any) {
       setError(err?.message || 'Store onboarding failed');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const onSubmitContract = async () => {
-    setError('');
-    setLoading(true);
-    try {
-      await MerchantApi.applyContract(token, {
-        merchantId,
-        companyName,
-        licenseNo,
-        settlementAccount,
-        contactPhone,
-        notes: 'submitted from merchant app entry flow',
-      });
-      onComplete({ merchantId, token });
-    } catch (err: any) {
-      setError(err?.message || 'Contract apply failed');
     } finally {
       setLoading(false);
     }
@@ -1316,71 +1423,18 @@ function MerchantEntryFlow({
             </View>
           )}
 
-          {step === 'GUIDE' && (
-            <View style={styles.entryCard}>
-              <Text style={styles.entryCardTitle}>2. Quick Guide</Text>
-              <Text style={styles.dataLine}>- Smart verification supports voucher/bonus/principal.</Text>
-              <Text style={styles.dataLine}>- Strategy templates can generate campaigns quickly.</Text>
-              <Text style={styles.dataLine}>- Audit logs provide traceability for risky operations.</Text>
-              <Pressable style={styles.primaryButton} onPress={() => setStep('OPEN_STORE')}>
-                <Text style={styles.primaryButtonText}>Continue</Text>
-              </Pressable>
-            </View>
-          )}
-
           {step === 'OPEN_STORE' && (
             <View style={styles.entryCard}>
-              <Text style={styles.entryCardTitle}>3. Open Store</Text>
+              <Text style={styles.entryCardTitle}>2. 秒开店 Quick Open Store</Text>
               <TextInput
                 value={merchantName}
                 onChangeText={setMerchantName}
                 placeholder="Store Name"
                 style={styles.entryInput}
               />
-              <TextInput
-                value={onboardingBudgetCap}
-                onChangeText={setOnboardingBudgetCap}
-                placeholder="Marketing Budget Cap (e.g. 500)"
-                style={styles.entryInput}
-                keyboardType="number-pad"
-              />
               <Text style={styles.mutedText}>Auto generated store ID: {suggestedMerchantId}</Text>
               <Pressable style={styles.primaryButton} onPress={onOpenStore}>
                 <Text style={styles.primaryButtonText}>Create Store</Text>
-              </Pressable>
-            </View>
-          )}
-
-          {step === 'CONTRACT' && (
-            <View style={styles.entryCard}>
-              <Text style={styles.entryCardTitle}>4. Contract Apply</Text>
-              <TextInput
-                value={companyName}
-                onChangeText={setCompanyName}
-                placeholder="Company Name"
-                style={styles.entryInput}
-              />
-              <TextInput
-                value={licenseNo}
-                onChangeText={setLicenseNo}
-                placeholder="Business License Number"
-                style={styles.entryInput}
-              />
-              <TextInput
-                value={settlementAccount}
-                onChangeText={setSettlementAccount}
-                placeholder="Settlement Account"
-                style={styles.entryInput}
-              />
-              <TextInput
-                value={contactPhone}
-                onChangeText={setContactPhone}
-                placeholder="Contact Phone"
-                style={styles.entryInput}
-                keyboardType="phone-pad"
-              />
-              <Pressable style={styles.primaryButton} onPress={onSubmitContract}>
-                <Text style={styles.primaryButtonText}>Submit and Enter Console</Text>
               </Pressable>
             </View>
           )}
@@ -1397,6 +1451,7 @@ function MerchantEntryFlow({
 const ENTRY_DONE_KEY = 'mq_merchant_entry_done';
 const ENTRY_MERCHANT_ID_KEY = 'mq_merchant_entry_merchant_id';
 const ENTRY_AUTH_TOKEN_KEY = 'mq_merchant_entry_auth_token';
+const ENTRY_AUTH_PHONE_KEY = 'mq_merchant_entry_auth_phone';
 
 type SimpleStorage = {
   getItem: (key: string) => Promise<string | null>;
@@ -1416,21 +1471,23 @@ const getSimpleStorage = (): SimpleStorage | null => {
 const restoreEntryState = async () => {
   const storage = getSimpleStorage();
   if (!storage) {
-    return { done: false, merchantId: null as string | null, authToken: null as string | null };
+    return { done: false, merchantId: null as string | null, authToken: null as string | null, authPhone: null as string | null };
   }
-  const [doneRaw, merchantId, authToken] = await Promise.all([
+  const [doneRaw, merchantId, authToken, authPhone] = await Promise.all([
     storage.getItem(ENTRY_DONE_KEY),
     storage.getItem(ENTRY_MERCHANT_ID_KEY),
     storage.getItem(ENTRY_AUTH_TOKEN_KEY),
+    storage.getItem(ENTRY_AUTH_PHONE_KEY),
   ]);
   return {
     done: doneRaw === '1',
     merchantId: merchantId ? String(merchantId) : null,
     authToken: authToken ? String(authToken) : null,
+    authPhone: authPhone ? String(authPhone) : null,
   };
 };
 
-const persistEntryState = async (merchantId: string, authToken: string) => {
+const persistEntryState = async (merchantId: string, authToken: string, authPhone: string) => {
   const storage = getSimpleStorage();
   if (!storage) {
     return;
@@ -1439,6 +1496,7 @@ const persistEntryState = async (merchantId: string, authToken: string) => {
     storage.setItem(ENTRY_DONE_KEY, '1'),
     storage.setItem(ENTRY_MERCHANT_ID_KEY, merchantId),
     storage.setItem(ENTRY_AUTH_TOKEN_KEY, authToken),
+    storage.setItem(ENTRY_AUTH_PHONE_KEY, authPhone),
   ]);
 };
 
@@ -1451,6 +1509,7 @@ const clearEntryState = async () => {
     storage.setItem(ENTRY_DONE_KEY, '0'),
     storage.setItem(ENTRY_MERCHANT_ID_KEY, ''),
     storage.setItem(ENTRY_AUTH_TOKEN_KEY, ''),
+    storage.setItem(ENTRY_AUTH_PHONE_KEY, ''),
   ]);
 };
 
@@ -1458,11 +1517,14 @@ export default function App() {
   const [entryBootstrapped, setEntryBootstrapped] = useState(false);
   const [ready, setReady] = useState(false);
   const [authToken, setAuthToken] = useState('');
+  const [authPhone, setAuthPhone] = useState('');
   const [merchantId, setMerchantId] = useState(
     typeof MerchantApi.getMerchantId === 'function'
       ? MerchantApi.getMerchantId()
       : '',
   );
+  const [bootstrappedMerchantState, setBootstrappedMerchantState] =
+    useState<import('./src/domain/merchantEngine').MerchantState | undefined>(undefined);
 
   useEffect(() => {
     let active = true;
@@ -1476,10 +1538,15 @@ export default function App() {
           MerchantApi.setMerchantId(state.merchantId);
           setMerchantId(state.merchantId);
         }
+        if (state.authPhone) {
+          setAuthPhone(state.authPhone);
+        }
         if (state.done && state.merchantId && state.authToken) {
           try {
             // Validate persisted auth eagerly on app launch to avoid delayed failures on first action.
-            await MerchantApi.getState(state.authToken, state.merchantId);
+            // The fetched state is passed down to MerchantConsoleApp to skip a duplicate /api/state call.
+            const validatedState = await MerchantApi.getState(state.authToken, state.merchantId);
+            setBootstrappedMerchantState(validatedState);
             setAuthToken(state.authToken);
             setReady(true);
           } catch (err) {
@@ -1490,6 +1557,7 @@ export default function App() {
               }
               setMerchantId('');
               setAuthToken('');
+              setAuthPhone('');
               setReady(false);
             } else {
               // Keep previous behavior for transient connectivity errors.
@@ -1533,13 +1601,14 @@ export default function App() {
   if (!ready) {
     return (
       <MerchantEntryFlow
-        onComplete={({ merchantId: nextMerchantId, token: nextToken }) => {
+        onComplete={({ merchantId: nextMerchantId, token: nextToken, phone: nextPhone }) => {
           if (typeof MerchantApi.setMerchantId === 'function') {
             MerchantApi.setMerchantId(nextMerchantId);
           }
           setMerchantId(nextMerchantId);
           setAuthToken(nextToken);
-          persistEntryState(nextMerchantId, nextToken).catch(() => { });
+          setAuthPhone(nextPhone);
+          persistEntryState(nextMerchantId, nextToken, nextPhone).catch(() => { });
           setReady(true);
         }}
       />
@@ -1549,12 +1618,16 @@ export default function App() {
     <MerchantConsoleApp
       key={`merchant-console-${merchantId}`}
       initialToken={authToken}
+      initialMerchantState={bootstrappedMerchantState}
+      contactPhone={authPhone}
       onAuthExpired={() => {
         if (typeof MerchantApi.setMerchantId === 'function') {
           MerchantApi.setMerchantId('');
         }
         setMerchantId('');
         setAuthToken('');
+        setAuthPhone('');
+        setBootstrappedMerchantState(undefined);
         clearEntryState().catch(() => { });
         setReady(false);
       }}

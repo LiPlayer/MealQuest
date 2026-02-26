@@ -34,7 +34,9 @@ function createPreAuthRoutesHandler({
     if (typeof actualDb.runWithFreshState === "function") {
       return actualDb.runWithFreshState(async (workingDb) => runner(workingDb));
     }
-    return runner(actualDb);
+    const result = await runner(actualDb);
+    actualDb.save();
+    return result;
   }
 
   async function runWithRootFreshRead(runner) {
@@ -270,16 +272,17 @@ function createPreAuthRoutesHandler({
       }
       const body = await readJsonBody(req);
       try {
-        const result = await runWithRootFreshState(async (rootDb) =>
-          onboardMerchant(rootDb, body)
-        );
-        tenantRepository.appendAuditLog({
-          merchantId: result.merchant.merchantId,
-          action: "MERCHANT_ONBOARD",
-          status: "SUCCESS",
-          role: "SYSTEM",
-          operatorId: "bootstrap",
-          details: {},
+        const result = await runWithRootFreshState(async (rootDb) => {
+          const onboardResult = onboardMerchant(rootDb, body);
+          rootDb.appendAuditLog({
+            merchantId: onboardResult.merchant.merchantId,
+            action: "MERCHANT_ONBOARD",
+            status: "SUCCESS",
+            role: "SYSTEM",
+            operatorId: "bootstrap",
+            details: {},
+          });
+          return onboardResult;
         });
         sendJson(res, 201, result);
         return true;

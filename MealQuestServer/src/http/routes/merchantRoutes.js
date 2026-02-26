@@ -20,7 +20,9 @@ function createMerchantRoutesHandler({
     if (typeof actualDb.runWithFreshState === "function") {
       return actualDb.runWithFreshState(async (workingDb) => runner(workingDb));
     }
-    return runner(actualDb);
+    const result = await runner(actualDb);
+    actualDb.save();
+    return result;
   }
 
   async function runWithRootFreshRead(runner) {
@@ -411,20 +413,19 @@ function createMerchantRoutesHandler({
           merchantId,
           ...application,
         };
-        rootDb.save();
+        rootDb.appendAuditLog({
+          merchantId,
+          action: "CONTRACT_APPLY",
+          status: "SUCCESS",
+          role: auth && auth.role,
+          operatorId: auth && (auth.operatorId || auth.userId),
+          details: {
+            companyName: application.companyName,
+            licenseNo: application.licenseNo,
+            contactPhone: application.contactPhone,
+          },
+        });
         return rootDb.contractApplications[merchantId];
-      });
-
-      appendAuditLog({
-        merchantId,
-        action: "CONTRACT_APPLY",
-        status: "SUCCESS",
-        auth,
-        details: {
-          companyName: application.companyName,
-          licenseNo: application.licenseNo,
-          contactPhone: application.contactPhone,
-        },
       });
 
       sendJson(res, 200, {
