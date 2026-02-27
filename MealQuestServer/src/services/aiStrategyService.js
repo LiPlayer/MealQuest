@@ -765,7 +765,9 @@ function createAiStrategyService(options = {}) {
       });
       // invokeChat returns the raw content string; for new prompt it IS the two-part text
       const rawContent = await modelGateway.invokeChatRaw(prompt.messages);
-      return parseTwoPartResponse(rawContent, input);
+      const result = parseTwoPartResponse(rawContent, input);
+      console.log(`[ai-strategy] [unary] LLM_FULL_MESSAGE at ${new Date().toISOString()} merchant=${input.merchantId} status=${result.status}`);
+      return result;
     } catch (error) {
       return createAiUnavailableResult(`strategy chat failed: ${summarizeError(error)}`);
     }
@@ -822,6 +824,9 @@ function createAiStrategyService(options = {}) {
     };
 
     for await (const chunk of modelGateway.streamChat(prompt.messages)) {
+      if (!sentinelDetected && rawBuffer.length === 0 && chunk.length > 0) {
+        console.log(`[ai-strategy] [stream] LLM_FIRST_MESSAGE at ${new Date().toISOString()} merchant=${input.merchantId}`);
+      }
       rawBuffer += chunk;
       if (sentinelDetected) continue;
 
@@ -848,7 +853,9 @@ function createAiStrategyService(options = {}) {
       yield rawBuffer.slice(yieldedLen);
     }
 
-    return parseTwoPartResponse(rawBuffer, input);
+    const result = parseTwoPartResponse(rawBuffer, input);
+    console.log(`[ai-strategy] [stream] LLM_LAST_MESSAGE at ${new Date().toISOString()} merchant=${input.merchantId} status=${result.status}`);
+    return result;
   }
 
   function getRuntimeInfo() {

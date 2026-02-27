@@ -1065,6 +1065,7 @@ function createMerchantService(db, options = {}) {
       reasons.push("cost per hit exceeds guardrail");
     }
     if (!Number.isFinite(priority) || priority < 40 || priority > 999) {
+      console.warn(`[risk] priority out of safe range: ${priority} (must be 40-999)`);
       reasons.push("priority out of safe range");
     }
     if (campaign && campaign.ttlUntil) {
@@ -1330,6 +1331,8 @@ function createMerchantService(db, options = {}) {
                 sessionId: session.sessionId,
                 deltaMessages: deltaMsgs
               });
+            } else {
+              if (isFirstToken) isFirstToken = false;
             }
           }
           next = await gen.next();
@@ -1425,6 +1428,9 @@ function createMerchantService(db, options = {}) {
         const assistantMessage = blockedReasonText
           ? `I drafted strategies but they are blocked by guardrails: ${blockedReasonText}`
           : "I drafted strategies but they are blocked by risk guardrails.";
+        if (blockedReasons.length > 0) {
+          console.warn(`[ai-strategy] proposals blocked by guardrails: merchant=${merchantId} reasons=${blockedReasons.join("; ")}`);
+        }
         appendChatMessage(session, {
           role: "ASSISTANT",
           type: "TEXT",
