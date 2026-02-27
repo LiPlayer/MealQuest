@@ -827,6 +827,7 @@ function createAiStrategyService(options = {}) {
 
       const sentinelIdx = findFirstSentinelIndex(rawBuffer);
       if (sentinelIdx >= 0) {
+        const textToYield = rawBuffer.slice(yieldedLen, sentinelIdx);
         if (textToYield) {
           yield textToYield;
         }
@@ -834,6 +835,7 @@ function createAiStrategyService(options = {}) {
         sentinelDetected = true;
       } else {
         // Only hold back the tail that *could* be the start of any sentinel
+        const safeLen = computeSafeFlushLen(rawBuffer);
         if (safeLen > yieldedLen) {
           const toYield = rawBuffer.slice(yieldedLen, safeLen);
           yield toYield;
