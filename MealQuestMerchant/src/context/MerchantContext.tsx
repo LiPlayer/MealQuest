@@ -392,6 +392,7 @@ export function MerchantProvider({
                             if (!active) return;
                             if (message.type === 'STRATEGY_CHAT_DELTA') {
                                 const delta = message.payload as StrategyChatDelta;
+                                console.log(`[MerchantContext] RECEIVED DELTA: msgs=${delta.deltaMessages?.length || delta.messages?.length || 0}, pendingReview=${Boolean(delta.pendingReview)}`);
                                 applyStrategyChatDelta(delta);
                                 return;
                             }

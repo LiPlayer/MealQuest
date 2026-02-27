@@ -224,8 +224,8 @@ function createAppServer({
           operatorId: client.auth.operatorId || "system",
           content: data.payload.content,
         });
-        // Strategy service already broadcasts DELTA during streaming; 
-        // the final result is also broadcast if non-streaming fallback used.
+        console.log(`[ws-hub] Chat DONE: status=${result.status}, pendingReview=${Boolean(result.pendingReview)}`);
+        wsHub.broadcast(merchantId, "STRATEGY_CHAT_DELTA", result);
       } catch (err) {
         console.error("[ws-hub] Chat failed:", err.message);
       }
