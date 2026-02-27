@@ -16,7 +16,6 @@ const TENANT_LIMIT_OPERATIONS = [
   "PRIVACY_CANCEL",
   "STRATEGY_CHAT_WRITE",
   "CAMPAIGN_STATUS_SET",
-  "FIRE_SALE_CREATE",
   "SUPPLIER_VERIFY",
   "ALLIANCE_CONFIG_SET",
   "ALLIANCE_SYNC_USER",
@@ -50,13 +49,39 @@ function readJsonBody(req) {
   });
 }
 
-function sendJson(res, statusCode, payload) {
+function sendJson(res, statusCode, payload, extraHeaders = {}) {
   const body = JSON.stringify(payload);
   res.writeHead(statusCode, {
     "Content-Type": "application/json; charset=utf-8",
-    "Content-Length": Buffer.byteLength(body)
+    "Content-Length": Buffer.byteLength(body),
+    ...extraHeaders,
   });
   res.end(body);
+}
+
+function sendNotModified(res, extraHeaders = {}) {
+  res.writeHead(304, {
+    ...extraHeaders,
+  });
+  res.end();
+}
+
+function buildWeakEtag(payload) {
+  const serialized = JSON.stringify(payload);
+  const digest = crypto.createHash("sha1").update(serialized).digest("base64url");
+  return `W/"${digest}"`;
+}
+
+function isIfNoneMatchFresh(req, etag) {
+  const rawHeader = req.headers["if-none-match"];
+  if (!rawHeader || !etag) {
+    return false;
+  }
+  const candidates = String(rawHeader)
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return candidates.includes("*") || candidates.includes(etag);
 }
 
 function getAuthContext(req, secret) {
@@ -123,9 +148,6 @@ function resolveAuditAction(method, pathname) {
   }
   if (method === "POST" && /^\/api\/merchant\/campaigns\/[^/]+\/status$/.test(pathname)) {
     return "CAMPAIGN_STATUS_SET";
-  }
-  if (method === "POST" && pathname === "/api/merchant/fire-sale") {
-    return "FIRE_SALE_CREATE";
   }
   if (method === "POST" && pathname === "/api/supplier/verify-order") {
     return "SUPPLIER_VERIFY";
@@ -1193,6 +1215,9 @@ function applyMigrationStep({
 module.exports = {
   readJsonBody,
   sendJson,
+  sendNotModified,
+  buildWeakEtag,
+  isIfNoneMatchFresh,
   getAuthContext,
   getUpgradeAuthContext,
   ensureRole,

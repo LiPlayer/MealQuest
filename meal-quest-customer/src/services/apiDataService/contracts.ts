@@ -3,6 +3,7 @@ export interface RequestOptions {
   path: string;
   data?: Record<string, any>;
   token?: string;
+  headers?: Record<string, string>;
 }
 
 export interface MerchantCatalogItem {

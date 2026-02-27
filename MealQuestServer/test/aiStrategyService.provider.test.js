@@ -3,6 +3,54 @@ const assert = require("node:assert/strict");
 
 const { createAiStrategyService } = require("../src/services/aiStrategyService");
 
+function safeParseJson(raw) {
+  try {
+    return JSON.parse(String(raw || ""));
+  } catch {
+    return null;
+  }
+}
+
+function extractAiUserPayload(messages) {
+  if (!Array.isArray(messages)) {
+    return {};
+  }
+  const users = messages.filter((item) => item && item.role === "user");
+  const user = users.length > 0 ? users[users.length - 1] : null;
+  const rawText = String(user && user.content ? user.content : "");
+  if (rawText.includes("Context:") && rawText.includes("User:")) {
+    const contextStart = rawText.indexOf("Context:") + "Context:".length;
+    const historyStart = rawText.indexOf("\n\nHistory:");
+    const contextText =
+      historyStart > contextStart
+        ? rawText.slice(contextStart, historyStart).trim()
+        : "";
+    const userMarker = "\n\nUser:";
+    const userStart = rawText.indexOf(userMarker);
+    const historyText =
+      historyStart >= 0
+        ? rawText
+          .slice(historyStart + "\n\nHistory:".length, userStart >= 0 ? userStart : rawText.length)
+          .trim()
+        : "[]";
+    const context = safeParseJson(contextText) || {};
+    const history = safeParseJson(historyText);
+    const userMessage =
+      userStart >= 0 ? rawText.slice(userStart + userMarker.length).trim() : "";
+    return {
+      task: "STRATEGY_CHAT",
+      userMessage,
+      history: Array.isArray(history) ? history : [],
+      salesSnapshot: context.salesSnapshot || null,
+      executionHistory: Array.isArray(context.executionHistory) ? context.executionHistory : [],
+      approvedStrategies: Array.isArray(context.approvedStrategies)
+        ? context.approvedStrategies
+        : [],
+    };
+  }
+  return safeParseJson(rawText) || {};
+}
+
 test("ai strategy provider: bigmodel uses expected defaults", () => {
   const service = createAiStrategyService({
     provider: "bigmodel",
@@ -15,7 +63,7 @@ test("ai strategy provider: bigmodel uses expected defaults", () => {
   assert.equal(runtime.model, "glm-4.7-flash");
   assert.equal(runtime.remoteEnabled, true);
   assert.equal(runtime.remoteConfigured, true);
-  assert.equal(runtime.plannerEngine, "langgraph");
+  assert.equal(runtime.plannerEngine, "dual_channel_strict_v2");
   assert.equal(runtime.modelClient, "langchain_chatopenai");
   assert.equal(runtime.retryPolicy.maxRetries, 2);
 });
@@ -55,20 +103,27 @@ test("ai strategy provider: retries transient upstream failures and then succeed
         choices: [
           {
             message: {
-              content: JSON.stringify({
-                mode: "PROPOSAL",
-                assistantMessage: "Recovered after retries.",
-                proposal: {
-                  templateId: "activation_contextual_drop",
-                  branchId: "COOLING",
-                  title: "Recovered Strategy",
-                  rationale: "retry path works",
-                  confidence: 0.79,
-                  campaignPatch: {
-                    name: "Recovered Strategy",
-                  },
-                },
-              }),
+              content: [
+                "Recovered after retries.",
+                "---STRUCTURED_OUTPUT---",
+                JSON.stringify({
+                  schemaVersion: "2026-02-27",
+                  assistantMessage: "Recovered after retries.",
+                  proposals: [
+                    {
+                      templateId: "activation_contextual_drop",
+                      branchId: "COOLING",
+                      title: "Recovered Strategy",
+                      rationale: "retry path works",
+                      confidence: 0.79,
+                      campaignPatch: {
+                        name: "Recovered Strategy",
+                      },
+                    },
+                  ],
+                }),
+                "---END_STRUCTURED_OUTPUT---",
+              ].join("\n"),
             },
           },
         ],
@@ -116,32 +171,37 @@ test("ai strategy provider: strategy chat supports multiple proposal candidates"
         choices: [
           {
             message: {
-              content: JSON.stringify({
-                mode: "PROPOSAL",
-                assistantMessage: "Drafted multiple options.",
-                proposals: [
-                  {
-                    templateId: "activation_contextual_drop",
-                    branchId: "COOLING",
-                    title: "Option A",
-                    rationale: "for hot weather",
-                    confidence: 0.75,
-                    campaignPatch: {
-                      name: "Option A",
+              content: [
+                "Drafted multiple options.",
+                "---STRUCTURED_OUTPUT---",
+                JSON.stringify({
+                  schemaVersion: "2026-02-27",
+                  assistantMessage: "Drafted multiple options.",
+                  proposals: [
+                    {
+                      templateId: "activation_contextual_drop",
+                      branchId: "COOLING",
+                      title: "Option A",
+                      rationale: "for hot weather",
+                      confidence: 0.75,
+                      campaignPatch: {
+                        name: "Option A",
+                      },
                     },
-                  },
-                  {
-                    templateId: "activation_contextual_drop",
-                    branchId: "COMFORT",
-                    title: "Option B",
-                    rationale: "for fallback users",
-                    confidence: 0.7,
-                    campaignPatch: {
-                      name: "Option B",
+                    {
+                      templateId: "activation_contextual_drop",
+                      branchId: "COMFORT",
+                      title: "Option B",
+                      rationale: "for fallback users",
+                      confidence: 0.7,
+                      campaignPatch: {
+                        name: "Option B",
+                      },
                     },
-                  },
-                ],
-              }),
+                  ],
+                }),
+                "---END_STRUCTURED_OUTPUT---",
+              ].join("\n"),
             },
           },
         ],
@@ -193,22 +253,14 @@ test("ai strategy provider: strategy chat payload includes sanitized sales snaps
       body = await input.text();
     }
     const requestJson = JSON.parse(String(body || "{}"));
-    const userMessage = Array.isArray(requestJson.messages)
-      ? requestJson.messages.find((item) => item && item.role === "user")
-      : null;
-    capturedPayload = userMessage && typeof userMessage.content === "string"
-      ? JSON.parse(userMessage.content)
-      : null;
+    capturedPayload = extractAiUserPayload(requestJson.messages);
 
     return new Response(
       JSON.stringify({
         choices: [
           {
             message: {
-              content: JSON.stringify({
-                mode: "CHAT_REPLY",
-                assistantMessage: "snapshot received",
-              }),
+              content: "snapshot received",
             },
           },
         ],
@@ -314,22 +366,14 @@ test("ai strategy provider: prompt history keeps MEMORY prefixes while trimming"
       body = await input.text();
     }
     const requestJson = JSON.parse(String(body || "{}"));
-    const userMessage = Array.isArray(requestJson.messages)
-      ? requestJson.messages.find((item) => item && item.role === "user")
-      : null;
-    capturedPayload = userMessage && typeof userMessage.content === "string"
-      ? JSON.parse(userMessage.content)
-      : null;
+    capturedPayload = extractAiUserPayload(requestJson.messages);
 
     return new Response(
       JSON.stringify({
         choices: [
           {
             message: {
-              content: JSON.stringify({
-                mode: "CHAT_REPLY",
-                assistantMessage: "history received",
-              }),
+              content: "history received",
             },
           },
         ],

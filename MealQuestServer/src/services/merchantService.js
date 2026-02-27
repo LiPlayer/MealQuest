@@ -26,6 +26,11 @@ function createMerchantService(db, options = {}) {
   const MAX_EXECUTION_DETAIL_VALUE_LEN = 80;
   const MAX_TOTAL_PROPOSAL_CANDIDATES = 12;
   const SALES_WINDOWS_DAYS = [7, 30];
+  const STRATEGY_CHAT_PROTOCOL = {
+    name: "MQ_STRATEGY_CHAT",
+    version: "2.0",
+    mode: "DUAL_CHANNEL_STRICT",
+  };
   const MEMORY_FACT_KEYS = ["goals", "constraints", "audience", "timing", "decisions"];
   const MEMORY_FACT_LABELS = {
     goals: "Goals",
@@ -600,6 +605,39 @@ function createMerchantService(db, options = {}) {
     };
   }
 
+  function summarizeCandidateFromAiResult(candidate) {
+    if (!candidate || typeof candidate !== "object") {
+      return null;
+    }
+    const strategyMeta =
+      candidate.strategyMeta && typeof candidate.strategyMeta === "object"
+        ? candidate.strategyMeta
+        : {};
+    const campaign =
+      candidate.campaign && typeof candidate.campaign === "object"
+        ? candidate.campaign
+        : {};
+    return {
+      title: String(candidate.title || "").trim(),
+      templateId: strategyMeta.templateId || null,
+      branchId: strategyMeta.branchId || null,
+      confidence:
+        Number.isFinite(Number(strategyMeta.confidence))
+          ? Number(strategyMeta.confidence)
+          : null,
+      campaignName: campaign.name || null,
+      priority: Number.isFinite(Number(campaign.priority))
+        ? Number(campaign.priority)
+        : null,
+      triggerEvent:
+        campaign.trigger &&
+        typeof campaign.trigger === "object" &&
+        campaign.trigger.event
+          ? campaign.trigger.event
+          : null,
+    };
+  }
+
   function normalizePendingProposalIds(session) {
     if (!session) {
       return [];
@@ -796,6 +834,7 @@ function createMerchantService(db, options = {}) {
     const reviewProgress = buildReviewProgress(session);
     return {
       merchantId,
+      protocol: STRATEGY_CHAT_PROTOCOL,
       sessionId: session ? session.sessionId : null,
       pendingReview: pendingReviews[0] || null,
       pendingReviews,
@@ -1212,6 +1251,8 @@ function createMerchantService(db, options = {}) {
       return {
         status: "REVIEW_REQUIRED",
         message: "Pending strategy proposals require review (approve/reject) before continuing.",
+        assistantMessage:
+          "Pending strategy proposals require review (approve/reject) before continuing.",
         ...buildStrategyChatDeltaResponse({
           merchantId,
           session,
@@ -1228,6 +1269,10 @@ function createMerchantService(db, options = {}) {
         session,
         deltaFrom: baselineMessageCount
       });
+    const buildBaseProtocolResponse = (extras = {}) => ({
+      protocol: STRATEGY_CHAT_PROTOCOL,
+      ...extras,
+    });
 
     const userMessageWrapper = appendChatMessage(session, {
       role: "USER",
@@ -1322,19 +1367,30 @@ function createMerchantService(db, options = {}) {
       return {
         status: "AI_UNAVAILABLE",
         reason: aiTurn && aiTurn.reason ? aiTurn.reason : "AI model unavailable",
+        assistantMessage: "AI is temporarily unavailable. Please retry in a moment.",
+        ...buildBaseProtocolResponse({
+          aiProtocol: aiTurn && aiTurn.protocol ? aiTurn.protocol : null,
+        }),
         ...buildChatResponse()
       };
     }
 
     if (aiTurn.status === "CHAT_REPLY") {
+      const assistantMessage = String(
+        aiTurn.assistantMessage || "Please provide more details."
+      );
       appendChatMessage(session, {
         role: "ASSISTANT",
         type: "TEXT",
-        text: String(aiTurn.assistantMessage || "Please provide more details.")
+        text: assistantMessage
       });
       db.save();
       return {
         status: "CHAT_REPLY",
+        assistantMessage,
+        ...buildBaseProtocolResponse({
+          aiProtocol: aiTurn.protocol || null,
+        }),
         ...buildChatResponse()
       };
     }
@@ -1365,17 +1421,25 @@ function createMerchantService(db, options = {}) {
 
       if (pendingCreated.length === 0) {
         const blockedReasonText = blockedReasons.join("; ");
+        const assistantMessage = blockedReasonText
+          ? `I drafted strategies but they are blocked by guardrails: ${blockedReasonText}`
+          : "I drafted strategies but they are blocked by risk guardrails.";
         appendChatMessage(session, {
           role: "ASSISTANT",
           type: "TEXT",
-          text: blockedReasonText
-            ? `I drafted strategies but they are blocked by guardrails: ${blockedReasonText}`
-            : "I drafted strategies but they are blocked by risk guardrails."
+          text: assistantMessage
         });
         db.save();
         return {
           status: "BLOCKED",
           reasons: blockedReasons,
+          assistantMessage,
+          proposalCandidates: proposalCandidates
+            .map((candidate) => summarizeCandidateFromAiResult(candidate))
+            .filter(Boolean),
+          ...buildBaseProtocolResponse({
+            aiProtocol: aiTurn.protocol || null,
+          }),
           ...buildChatResponse()
         };
       }
@@ -1392,10 +1456,11 @@ function createMerchantService(db, options = {}) {
         pendingCreated.length > 1
           ? `I drafted ${pendingCreated.length} strategy proposals. Please review each before continuing.`
           : "Strategy proposal drafted. Please review now.";
+      const assistantMessage = String(aiTurn.assistantMessage || defaultMessage);
       appendChatMessage(session, {
         role: "ASSISTANT",
         type: "PROPOSAL_CARD",
-        text: String(aiTurn.assistantMessage || defaultMessage),
+        text: assistantMessage,
         proposalId: session.pendingProposalId || null,
         metadata: {
           proposals: proposalSummaries
@@ -1405,18 +1470,28 @@ function createMerchantService(db, options = {}) {
       return {
         status: "PENDING_REVIEW",
         reasons: blockedReasons.length > 0 ? blockedReasons : undefined,
+        assistantMessage,
+        proposalCandidates: proposalSummaries,
+        ...buildBaseProtocolResponse({
+          aiProtocol: aiTurn.protocol || null,
+        }),
         ...buildChatResponse()
       };
     }
 
+    const fallbackAssistantMessage = "I can continue helping with strategy details.";
     appendChatMessage(session, {
       role: "ASSISTANT",
       type: "TEXT",
-      text: "I can continue helping with strategy details."
+      text: fallbackAssistantMessage
     });
     db.save();
     return {
       status: "CHAT_REPLY",
+      assistantMessage: fallbackAssistantMessage,
+      ...buildBaseProtocolResponse({
+        aiProtocol: aiTurn.protocol || null,
+      }),
       ...buildChatResponse()
     };
   }

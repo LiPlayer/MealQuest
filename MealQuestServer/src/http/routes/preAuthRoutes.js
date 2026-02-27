@@ -265,6 +265,19 @@ function createPreAuthRoutesHandler({
       return true;
     }
 
+    if (method === "GET" && url.pathname === "/api/merchant/exists") {
+      const merchantId = String(url.searchParams.get("merchantId") || "").trim();
+      if (!merchantId) {
+        sendJson(res, 400, { error: "merchantId is required" });
+        return true;
+      }
+      const exists = await runWithRootFreshRead(async (rootDb) =>
+        Boolean(rootDb.merchants && rootDb.merchants[merchantId])
+      );
+      sendJson(res, 200, { merchantId, exists });
+      return true;
+    }
+
     if (method === "POST" && url.pathname === "/api/merchant/onboard") {
       if (!validateOnboardSecret(req, onboardSecret)) {
         sendJson(res, 403, { error: "onboard secret invalid" });

@@ -362,8 +362,76 @@ function sanitizeExecutionHistory(input) {
   });
 }
 
-const PROPOSAL_SENTINEL_START = "---PROPOSAL---";
-const PROPOSAL_SENTINEL_END = "---END---";
+const PROTOCOL_NAME = "MQ_STRATEGY_CHAT";
+const PROTOCOL_VERSION = "2.0";
+const STRUCTURED_BLOCK_START = "---STRUCTURED_OUTPUT---";
+const STRUCTURED_BLOCK_END = "---END_STRUCTURED_OUTPUT---";
+const STRUCTURED_SCHEMA_VERSION = "2026-02-27";
+
+function coerceProposalCandidates(decision) {
+  const safeDecision = isObjectLike(decision) ? decision : {};
+  const rawCandidates = [];
+  if (Array.isArray(safeDecision.proposals)) {
+    rawCandidates.push(...safeDecision.proposals.filter(isObjectLike));
+  }
+  if (isObjectLike(safeDecision.proposal)) {
+    rawCandidates.push(safeDecision.proposal);
+  }
+  return rawCandidates.slice(0, MAX_PROPOSAL_CANDIDATES);
+}
+
+function normalizeCandidatesFromRaw({ rawCandidates, input, provider, model }) {
+  const normalizedCandidates = [];
+  for (const candidate of rawCandidates.slice(0, MAX_PROPOSAL_CANDIDATES)) {
+    try {
+      const normalized = normalizeAiDecision({
+        input: {
+          merchantId: input.merchantId,
+          templateId: asString(candidate.templateId) || input.templateId,
+          branchId: asString(candidate.branchId) || input.branchId,
+          overrides: {},
+        },
+        rawDecision: candidate,
+        provider,
+        model,
+        templates: listStrategyTemplates(),
+      });
+      normalizedCandidates.push(normalized);
+    } catch {
+      // skip invalid candidate
+    }
+  }
+  return normalizedCandidates;
+}
+
+function parseStructuredDecisionBlock(rawText) {
+  const text = asString(rawText);
+  const blockStartIdx = text.indexOf(STRUCTURED_BLOCK_START);
+  const blockEndIdx = text.indexOf(STRUCTURED_BLOCK_END);
+  const assistantMessageCutoffCandidates = [blockStartIdx].filter((idx) => idx >= 0);
+  const assistantMessageCutoff =
+    assistantMessageCutoffCandidates.length > 0 ? Math.min(...assistantMessageCutoffCandidates) : -1;
+  const assistantMessage =
+    assistantMessageCutoff >= 0 ? text.slice(0, assistantMessageCutoff).trim() : text.trim();
+
+  if (blockStartIdx >= 0) {
+    const afterStart = text.slice(blockStartIdx + STRUCTURED_BLOCK_START.length);
+    const structuredEndIdx = afterStart.indexOf(STRUCTURED_BLOCK_END);
+    const jsonText = structuredEndIdx >= 0 ? afterStart.slice(0, structuredEndIdx).trim() : afterStart.trim();
+    const rawDecision = parseJsonLoose(jsonText);
+    const decision = isObjectLike(rawDecision) ? rawDecision : {};
+    return {
+      assistantMessage:
+        asString(decision.assistantMessage) || assistantMessage,
+      decision,
+      sourceFormat: "structured_block",
+      schemaVersion:
+        asString(decision.schemaVersion) || STRUCTURED_SCHEMA_VERSION,
+    };
+  }
+
+  return null;
+}
 
 function buildChatPromptPayload({
   merchantId,
@@ -434,13 +502,13 @@ function buildChatPromptPayload({
     "   - Use **bold** for key terms.",
     "   - Be concise and practical.",
     "2. ONLY if the user clearly asks to create/finalize a strategy, append AFTER your text:",
-    `   ${PROPOSAL_SENTINEL_START}`,
-    `   {"proposals":[${JSON.stringify(proposalSchema)}]}`,
-    `   ${PROPOSAL_SENTINEL_END}`,
+    `   ${STRUCTURED_BLOCK_START}`,
+    `   {"schemaVersion":"${STRUCTURED_SCHEMA_VERSION}","assistantMessage":"string","proposals":[${JSON.stringify(proposalSchema)}]}`,
+    `   ${STRUCTURED_BLOCK_END}`,
     "",
     "RULES:",
-    "- Never output JSON outside the sentinel block.",
-    "- Only use the sentinel block when user explicitly requests a strategy proposal.",
+    "- Never output JSON outside the structured block.",
+    "- Only use structured block when user explicitly requests a strategy proposal.",
     "- Avoid repeating approved strategies with the same templateId+branchId.",
     "- Reference salesSnapshot for optimization direction.",
     "- Reference executionHistory to avoid repeated operations.",
@@ -599,73 +667,90 @@ function createAiStrategyService(options = {}) {
     parseJsonLoose,
   });
 
-  // Parses the new two-part format: plain text + optional ---PROPOSAL--- JSON block
+  // Parses dual-channel response:
+  // plain-text assistant message + optional structured proposal block.
   function parseTwoPartResponse(rawText, input) {
-    const sentinelIdx = rawText.indexOf(PROPOSAL_SENTINEL_START);
-    const assistantMessage = sentinelIdx >= 0
-      ? rawText.slice(0, sentinelIdx).trim()
-      : rawText.trim();
-
-    if (sentinelIdx < 0) {
-      return { status: "CHAT_REPLY", assistantMessage };
-    }
-
-    // Extract JSON between sentinel markers
-    const afterStart = rawText.slice(sentinelIdx + PROPOSAL_SENTINEL_START.length);
-    const endIdx = afterStart.indexOf(PROPOSAL_SENTINEL_END);
-    const jsonText = endIdx >= 0 ? afterStart.slice(0, endIdx).trim() : afterStart.trim();
-
-    let rawDecision;
+    const text = asString(rawText);
+    let assistantMessage = text;
+    let sourceFormat = "plain_text";
+    let schemaVersion = "";
+    let decision = {};
     try {
-      rawDecision = parseJsonLoose(jsonText);
-    } catch {
-      return { status: "CHAT_REPLY", assistantMessage };
-    }
-
-    const decision = isObjectLike(rawDecision) ? rawDecision : {};
-    const rawCandidates = [];
-    if (Array.isArray(decision.proposals)) {
-      rawCandidates.push(...decision.proposals.filter(isObjectLike));
-    }
-    if (isObjectLike(decision.proposal)) {
-      rawCandidates.push(decision.proposal);
-    }
-
-    const normalizedCandidates = [];
-    for (const candidate of rawCandidates.slice(0, MAX_PROPOSAL_CANDIDATES)) {
-      try {
-        const normalized = normalizeAiDecision({
-          input: {
-            merchantId: input.merchantId,
-            templateId: asString(candidate.templateId) || input.templateId,
-            branchId: asString(candidate.branchId) || input.branchId,
-            overrides: {},
-          },
-          rawDecision: candidate,
-          provider,
-          model,
-          templates: listStrategyTemplates(),
-        });
-        normalizedCandidates.push(normalized);
-      } catch {
-        // skip invalid candidate
+      const parsed = parseStructuredDecisionBlock(text);
+      if (parsed) {
+        assistantMessage = asString(parsed.assistantMessage);
+        sourceFormat = parsed.sourceFormat;
+        schemaVersion = asString(parsed.schemaVersion);
+        decision = isObjectLike(parsed.decision) ? parsed.decision : {};
       }
+    } catch {
+      return {
+        status: "CHAT_REPLY",
+        assistantMessage: assistantMessage || text,
+        protocol: {
+          name: PROTOCOL_NAME,
+          version: PROTOCOL_VERSION,
+          constrained: true,
+          sourceFormat: "parse_error",
+          schemaVersion: STRUCTURED_SCHEMA_VERSION,
+        },
+      };
     }
 
-    if (normalizedCandidates.length === 0) {
-      return { status: "CHAT_REPLY", assistantMessage };
+    const mode = asString(decision.mode).toUpperCase();
+    const forceProposal = mode === "PROPOSAL";
+    const rawCandidates = coerceProposalCandidates(decision);
+    const normalizedCandidates = normalizeCandidatesFromRaw({
+      rawCandidates,
+      input,
+      provider,
+      model,
+    });
+    if (forceProposal && normalizedCandidates.length === 0) {
+      return {
+        status: "CHAT_REPLY",
+        assistantMessage:
+          assistantMessage || "I can draft strategy options once budget and audience are confirmed.",
+        protocol: {
+          name: PROTOCOL_NAME,
+          version: PROTOCOL_VERSION,
+          constrained: true,
+          sourceFormat,
+          schemaVersion: schemaVersion || STRUCTURED_SCHEMA_VERSION,
+        },
+      };
+    }
+    if (normalizedCandidates.length > 0) {
+      return {
+        status: "PROPOSAL_READY",
+        assistantMessage: assistantMessage || "Strategy proposal drafted. Please review immediately.",
+        proposals: normalizedCandidates,
+        proposal: normalizedCandidates[0],
+        protocol: {
+          name: PROTOCOL_NAME,
+          version: PROTOCOL_VERSION,
+          constrained: true,
+          sourceFormat,
+          schemaVersion: schemaVersion || STRUCTURED_SCHEMA_VERSION,
+        },
+      };
     }
     return {
-      status: "PROPOSAL_READY",
-      assistantMessage: assistantMessage || "Strategy proposal drafted. Please review immediately.",
-      proposals: normalizedCandidates,
-      proposal: normalizedCandidates[0],
+      status: "CHAT_REPLY",
+      assistantMessage: assistantMessage || "Please tell me your goal, budget, and expected time window.",
+      protocol: {
+        name: PROTOCOL_NAME,
+        version: PROTOCOL_VERSION,
+        constrained: true,
+        sourceFormat,
+        schemaVersion: schemaVersion || STRUCTURED_SCHEMA_VERSION,
+      },
     };
   }
 
   async function generateStrategyChatTurn(input) {
     if (provider === "bigmodel" && !apiKey) {
-      throw new Error("MQ_AI_API_KEY is required for provider=bigmodel");
+      return createAiUnavailableResult("MQ_AI_API_KEY is required for provider=bigmodel");
     }
     try {
       const prompt = buildChatPromptPayload({
@@ -706,13 +791,41 @@ function createAiStrategyService(options = {}) {
     let rawBuffer = "";
     let yieldedLen = 0;
     let sentinelDetected = false;
-    const SENTINEL = PROPOSAL_SENTINEL_START;
+    const SENTINELS = [STRUCTURED_BLOCK_START];
+
+    const findFirstSentinelIndex = (text) => {
+      let first = -1;
+      for (const sentinel of SENTINELS) {
+        const idx = text.indexOf(sentinel);
+        if (idx < 0) {
+          continue;
+        }
+        if (first < 0 || idx < first) {
+          first = idx;
+        }
+      }
+      return first;
+    };
+
+    const computeSafeFlushLen = (text) => {
+      let holdBack = 0;
+      for (const sentinel of SENTINELS) {
+        const maxPrefix = Math.min(sentinel.length - 1, text.length);
+        for (let i = maxPrefix; i > 0; i -= 1) {
+          if (text.endsWith(sentinel.slice(0, i))) {
+            holdBack = Math.max(holdBack, i);
+            break;
+          }
+        }
+      }
+      return text.length - holdBack;
+    };
 
     for await (const chunk of modelGateway.streamChat(prompt.messages)) {
       rawBuffer += chunk;
       if (sentinelDetected) continue;
 
-      const sentinelIdx = rawBuffer.indexOf(SENTINEL);
+      const sentinelIdx = findFirstSentinelIndex(rawBuffer);
       if (sentinelIdx >= 0) {
         console.log(`[ai-strategy] Sentinel detected at index ${sentinelIdx}`);
         const textToYield = rawBuffer.slice(yieldedLen, sentinelIdx);
@@ -723,14 +836,8 @@ function createAiStrategyService(options = {}) {
         yieldedLen = sentinelIdx;
         sentinelDetected = true;
       } else {
-        // Only hold back the tail that *could* be the start of the sentinel
-        let safeLen = rawBuffer.length;
-        for (let i = Math.min(SENTINEL.length - 1, rawBuffer.length); i > 0; i--) {
-          if (rawBuffer.endsWith(SENTINEL.slice(0, i))) {
-            safeLen = rawBuffer.length - i;
-            break;
-          }
-        }
+        // Only hold back the tail that *could* be the start of any sentinel
+        const safeLen = computeSafeFlushLen(rawBuffer);
         if (safeLen > yieldedLen) {
           const toYield = rawBuffer.slice(yieldedLen, safeLen);
           console.log(`[ai-strategy] Yielding token: "${toYield.replace(/\n/g, "\\n")}"`);
@@ -759,7 +866,7 @@ function createAiStrategyService(options = {}) {
       configured: true,
       remoteEnabled,
       remoteConfigured: remoteEnabled ? Boolean(apiKey) : false,
-      plannerEngine: "streaming_sentinel",
+      plannerEngine: "dual_channel_strict_v2",
       retryPolicy: gatewayInfo.retry,
       modelClient: gatewayInfo.modelClient,
     };

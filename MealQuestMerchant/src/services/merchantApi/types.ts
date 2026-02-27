@@ -87,8 +87,28 @@ export interface StrategyChatReviewProgress {
   pendingCandidates: number;
 }
 
+export interface StrategyChatProtocol {
+  name: string;
+  version: string;
+  mode?: string;
+  constrained?: boolean;
+  sourceFormat?: string;
+  schemaVersion?: string;
+}
+
+export interface StrategyChatProposalCandidate {
+  title: string;
+  templateId: string | null;
+  branchId: string | null;
+  confidence?: number | null;
+  campaignName?: string | null;
+  priority?: number | null;
+  triggerEvent?: string | null;
+}
+
 export interface StrategyChatStatePayload {
   merchantId: string;
+  protocol?: StrategyChatProtocol;
   sessionId: string | null;
   pendingReview: StrategyChatPendingReview | null;
   pendingReviews?: StrategyChatPendingReview[];
@@ -121,6 +141,9 @@ export interface StrategyChatTurnResult extends StrategyChatStatePayload {
   reason?: string;
   reasons?: string[];
   message?: string;
+  assistantMessage?: string;
+  proposalCandidates?: StrategyChatProposalCandidate[];
+  aiProtocol?: StrategyChatProtocol | null;
 }
 
 export interface StrategyChatReviewResult extends StrategyChatStatePayload {

@@ -469,8 +469,45 @@ function extractAiUserPayload(messages) {
   if (!Array.isArray(messages)) {
     return {};
   }
-  const user = messages.find((item) => item && item.role === "user");
-  const parsed = safeParseJson(user && user.content);
+  const users = messages.filter((item) => item && item.role === "user");
+  const user = users.length > 0 ? users[users.length - 1] : null;
+  let rawContent = user && user.content;
+  if (Array.isArray(rawContent)) {
+    rawContent = rawContent
+      .map((part) => {
+        if (typeof part === "string") return part;
+        if (part && typeof part.text === "string") return part.text;
+        return "";
+      })
+      .filter(Boolean)
+      .join("\n");
+  } else if (rawContent && typeof rawContent === "object" && typeof rawContent.text === "string") {
+    rawContent = rawContent.text;
+  }
+  const rawText = String(rawContent || "");
+  if (rawText.includes("Context:") && rawText.includes("User:")) {
+    const contextStart = rawText.indexOf("Context:") + "Context:".length;
+    const historyStart = rawText.indexOf("\n\nHistory:");
+    const contextText =
+      historyStart > contextStart
+        ? rawText.slice(contextStart, historyStart).trim()
+        : "";
+    const context = safeParseJson(contextText) || {};
+    const userMarker = "\n\nUser:";
+    const userStart = rawText.indexOf(userMarker);
+    const userMessage =
+      userStart >= 0
+        ? rawText.slice(userStart + userMarker.length).trim()
+        : "";
+    return {
+      task: "STRATEGY_CHAT",
+      userMessage,
+      approvedStrategies: Array.isArray(context.approvedStrategies)
+        ? context.approvedStrategies
+        : [],
+    };
+  }
+  const parsed = safeParseJson(rawContent);
   return parsed && typeof parsed === "object" ? parsed : {};
 }
 
@@ -559,6 +596,28 @@ function pickAiChatDecision(payload) {
   };
 }
 
+function toMockAiContent(payload, decision) {
+  if (payload && payload.task === "STRATEGY_CHAT") {
+    if (decision && decision.mode === "PROPOSAL" && decision.proposal) {
+      return [
+        String(decision.assistantMessage || "Strategy proposal drafted."),
+        "---STRUCTURED_OUTPUT---",
+        JSON.stringify({
+          schemaVersion: "2026-02-27",
+          assistantMessage: String(decision.assistantMessage || "Strategy proposal drafted."),
+          proposals: [decision.proposal],
+        }),
+        "---END_STRUCTURED_OUTPUT---",
+      ].join("\n");
+    }
+    return String(
+      (decision && decision.assistantMessage) ||
+      "Please share goal, budget, and time window."
+    );
+  }
+  return JSON.stringify(decision || {});
+}
+
 async function startMockAiServer() {
   const server = http.createServer((req, res) => {
     if (req.method !== "POST" || !/\/chat\/completions$/.test(String(req.url || ""))) {
@@ -582,6 +641,55 @@ async function startMockAiServer() {
         payload && payload.task === "STRATEGY_CHAT"
           ? pickAiChatDecision(payload)
           : pickAiDecision(payload);
+      const content = toMockAiContent(payload, decision);
+      const wantsStream = Boolean(parsed.stream);
+      if (wantsStream) {
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        });
+        const chunks = [];
+        const text = String(content || "");
+        const step = 24;
+        for (let i = 0; i < text.length; i += step) {
+          chunks.push(text.slice(i, i + step));
+        }
+        if (chunks.length === 0) {
+          chunks.push("");
+        }
+        for (const piece of chunks) {
+          res.write(
+            `data: ${JSON.stringify({
+              id: "mock-chatcmpl-1",
+              object: "chat.completion.chunk",
+              choices: [
+                {
+                  index: 0,
+                  delta: { content: piece },
+                  finish_reason: null,
+                },
+              ],
+            })}\n\n`
+          );
+        }
+        res.write(
+          `data: ${JSON.stringify({
+            id: "mock-chatcmpl-1",
+            object: "chat.completion.chunk",
+            choices: [
+              {
+                index: 0,
+                delta: {},
+                finish_reason: "stop",
+              },
+            ],
+          })}\n\n`
+        );
+        res.write("data: [DONE]\n\n");
+        res.end();
+        return;
+      }
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(
         JSON.stringify({
@@ -592,7 +700,7 @@ async function startMockAiServer() {
               index: 0,
               message: {
                 role: "assistant",
-                content: JSON.stringify(decision),
+                content,
               },
               finish_reason: "stop",
             },
@@ -1125,6 +1233,62 @@ test("merchant onboarding api allows custom store creation for end-to-end testin
     const catalog = await getJson(baseUrl, "/api/merchant/catalog");
     assert.equal(catalog.status, 200);
     assert.ok(catalog.data.items.some((item) => item.merchantId === merchantId));
+  } finally {
+    await app.stop();
+  }
+});
+
+test("merchant exists endpoint returns precise availability", async () => {
+  const app = createAppServer({ persist: false });
+  const port = await app.start(0);
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const found = await getJson(
+      baseUrl,
+      "/api/merchant/exists?merchantId=m_store_001"
+    );
+    assert.equal(found.status, 200);
+    assert.equal(found.data.exists, true);
+    assert.equal(found.data.merchantId, "m_store_001");
+
+    const missing = await getJson(
+      baseUrl,
+      "/api/merchant/exists?merchantId=missing_store_x"
+    );
+    assert.equal(missing.status, 200);
+    assert.equal(missing.data.exists, false);
+    assert.equal(missing.data.merchantId, "missing_store_x");
+  } finally {
+    await app.stop();
+  }
+});
+
+test("payment verify supports includeState payload for post-payment refresh", async () => {
+  const app = createAppServer({ persist: false });
+  const port = await app.start(0);
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const customerToken = await mockLogin(baseUrl, "CUSTOMER");
+    const verify = await postJson(
+      baseUrl,
+      "/api/payment/verify",
+      {
+        merchantId: "m_store_001",
+        userId: "u_fixture_001",
+        orderAmount: 48,
+        includeState: true,
+        idempotencyKey: `include_state_${Date.now()}`
+      },
+      { Authorization: `Bearer ${customerToken}` }
+    );
+    assert.equal(verify.status, 200);
+    assert.equal(typeof verify.data.paymentTxnId, "string");
+    assert.ok(verify.data.state);
+    assert.equal(verify.data.state.merchant.merchantId, "m_store_001");
+    assert.equal(verify.data.state.user.uid, "u_fixture_001");
+    assert.ok(Array.isArray(verify.data.state.activities));
   } finally {
     await app.stop();
   }
@@ -1814,6 +1978,59 @@ test("audit log endpoint supports pagination and denies customer access", async 
         (item) => item.action === "KILL_SWITCH_SET" && item.status === "SUCCESS"
       )
     );
+  } finally {
+    await app.stop();
+  }
+});
+
+test("state and audit endpoints support ETag conditional requests", async () => {
+  const app = createAppServer({ persist: false });
+  const port = await app.start(0);
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const ownerToken = await mockLogin(baseUrl, "OWNER", {
+      merchantId: "m_store_001"
+    });
+    const ownerHeaders = { Authorization: `Bearer ${ownerToken}` };
+
+    const firstState = await fetch(
+      `${baseUrl}/api/state?merchantId=m_store_001&userId=u_fixture_001`,
+      { headers: ownerHeaders }
+    );
+    assert.equal(firstState.status, 200);
+    const stateEtag = firstState.headers.get("etag");
+    assert.ok(stateEtag);
+
+    const secondState = await fetch(
+      `${baseUrl}/api/state?merchantId=m_store_001&userId=u_fixture_001`,
+      {
+        headers: {
+          ...ownerHeaders,
+          "If-None-Match": stateEtag
+        }
+      }
+    );
+    assert.equal(secondState.status, 304);
+
+    const firstAudit = await fetch(
+      `${baseUrl}/api/audit/logs?merchantId=m_store_001&limit=2`,
+      { headers: ownerHeaders }
+    );
+    assert.equal(firstAudit.status, 200);
+    const auditEtag = firstAudit.headers.get("etag");
+    assert.ok(auditEtag);
+
+    const secondAudit = await fetch(
+      `${baseUrl}/api/audit/logs?merchantId=m_store_001&limit=2`,
+      {
+        headers: {
+          ...ownerHeaders,
+          "If-None-Match": auditEtag
+        }
+      }
+    );
+    assert.equal(secondAudit.status, 304);
   } finally {
     await app.stop();
   }
@@ -2776,6 +2993,9 @@ test("strategy chat supports multi-turn proposal drafting, immediate review, and
     assert.equal(turn1.status, 200);
     assert.equal(turn1.data.status, "CHAT_REPLY");
     assert.equal(turn1.data.sessionId, sessionId);
+    assert.equal(turn1.data.protocol.name, "MQ_STRATEGY_CHAT");
+    assert.equal(turn1.data.protocol.version, "2.0");
+    assert.ok(typeof turn1.data.assistantMessage === "string");
 
     const turn2 = await postJson(
       baseUrl,
@@ -2790,6 +3010,8 @@ test("strategy chat supports multi-turn proposal drafting, immediate review, and
     assert.equal(turn2.data.status, "PENDING_REVIEW");
     assert.ok(turn2.data.pendingReview);
     assert.ok(turn2.data.pendingReview.proposalId);
+    assert.ok(Array.isArray(turn2.data.proposalCandidates));
+    assert.ok(turn2.data.proposalCandidates.length >= 1);
     const firstProposalId = turn2.data.pendingReview.proposalId;
 
     const blockedByReview = await postJson(
@@ -2804,6 +3026,7 @@ test("strategy chat supports multi-turn proposal drafting, immediate review, and
     assert.equal(blockedByReview.status, 200);
     assert.equal(blockedByReview.data.status, "REVIEW_REQUIRED");
     assert.equal(blockedByReview.data.pendingReview.proposalId, firstProposalId);
+    assert.ok(String(blockedByReview.data.assistantMessage || "").includes("review"));
 
     const reject = await postJson(
       baseUrl,
@@ -2879,7 +3102,7 @@ test("strategy chat supports multi-turn proposal drafting, immediate review, and
   }
 });
 
-test("supplier verify and fire-sale endpoints work in merchant scope", async () => {
+test("supplier verify endpoint works in merchant scope", async () => {
   const app = createAppServer({ persist: false });
   const port = await app.start(0);
   const baseUrl = `http://127.0.0.1:${port}`;
@@ -2917,38 +3140,6 @@ test("supplier verify and fire-sale endpoints work in merchant scope", async () 
     assert.equal(verifyTooHigh.status, 200);
     assert.equal(verifyTooHigh.data.verified, false);
 
-    const fireSale = await postJson(
-      baseUrl,
-      "/api/merchant/fire-sale",
-      {
-        merchantId: "m_store_001",
-        targetSku: "sku_hot_soup",
-        ttlMinutes: 30,
-        voucherValue: 12,
-        maxQty: 10
-      },
-      { Authorization: `Bearer ${ownerToken}` }
-    );
-    assert.equal(fireSale.status, 200);
-    assert.ok(fireSale.data.campaignId);
-    assert.equal(fireSale.data.priority, 999);
-
-    const trigger = await postJson(
-      baseUrl,
-      "/api/tca/trigger",
-      {
-        merchantId: "m_store_001",
-        userId: "u_fixture_001",
-        event: "INVENTORY_ALERT",
-        context: {
-          targetSku: "sku_hot_soup",
-          inventoryBacklog: 20
-        }
-      },
-      { Authorization: `Bearer ${ownerToken}` }
-    );
-    assert.equal(trigger.status, 200);
-    assert.ok(trigger.data.executed.includes(fireSale.data.campaignId));
   } finally {
     await app.stop();
   }

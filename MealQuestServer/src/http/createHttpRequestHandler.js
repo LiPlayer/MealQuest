@@ -60,6 +60,8 @@ function createHttpRequestHandler(deps) {
     createPaymentRoutesHandler({
       tenantPolicyManager,
       getServicesForMerchant,
+      getServicesForDb,
+      tenantRepository,
       tenantRouter,
       CASHIER_ROLES,
       MERCHANT_ROLES,

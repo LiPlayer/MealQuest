@@ -1,9 +1,12 @@
 const {
   sendJson,
+  sendNotModified,
   ensureRole,
-  buildCustomerActivities,
   enforceTenantPolicyForHttp,
+  buildWeakEtag,
+  isIfNoneMatchFresh,
 } = require("../serverHelpers");
+const { buildStateSnapshot } = require("./stateSnapshot");
 
 function createSystemRoutesHandler({
   tenantPolicyManager,
@@ -14,7 +17,7 @@ function createSystemRoutesHandler({
   appendAuditLog,
   wsHub,
 }) {
-  return async function handleSystemRoutes({ method, url, auth, res }) {
+  return async function handleSystemRoutes({ method, url, req, auth, res }) {
     if (method === "GET" && url.pathname === "/api/state") {
       const merchantId = url.searchParams.get("merchantId");
       const userId = url.searchParams.get("userId");
@@ -35,8 +38,6 @@ function createSystemRoutesHandler({
         return true;
       }
 
-      const scopedDb = tenantRouter.getDbForMerchant(merchantId);
-      const { merchantService, allianceService } = getServicesForDb(scopedDb);
       const merchant = await tenantRepository.getMerchant(merchantId);
       const user = userId ? await tenantRepository.getMerchantUser(merchantId, userId) : null;
       if (!merchant) {
@@ -48,19 +49,23 @@ function createSystemRoutesHandler({
         return true;
       }
 
-      const campaigns = await tenantRepository.listCampaigns(merchantId);
-      const allianceConfig = await allianceService.getAllianceConfig({ merchantId });
-      const dashboard = await merchantService.getDashboard({ merchantId });
-      sendJson(res, 200, {
-        merchant,
-        user,
-        dashboard,
-        campaigns,
-        proposals: await tenantRepository.listProposals(merchantId),
-        strategyConfigs: await tenantRepository.listStrategyConfigs(merchantId),
-        activities: buildCustomerActivities(campaigns),
-        allianceConfig,
+      const payload = await buildStateSnapshot({
+        merchantId,
+        userId,
+        tenantRouter,
+        tenantRepository,
+        getServicesForDb,
       });
+      const etag = buildWeakEtag(payload);
+      const cacheHeaders = {
+        ETag: etag,
+        "Cache-Control": "private, max-age=0, must-revalidate",
+      };
+      if (isIfNoneMatchFresh(req, etag)) {
+        sendNotModified(res, cacheHeaders);
+        return true;
+      }
+      sendJson(res, 200, payload, cacheHeaders);
       return true;
     }
 
@@ -121,7 +126,16 @@ function createSystemRoutesHandler({
         action: url.searchParams.get("action") || "",
         status: url.searchParams.get("status") || "",
       });
-      sendJson(res, 200, result);
+      const etag = buildWeakEtag(result);
+      const cacheHeaders = {
+        ETag: etag,
+        "Cache-Control": "private, max-age=0, must-revalidate",
+      };
+      if (isIfNoneMatchFresh(req, etag)) {
+        sendNotModified(res, cacheHeaders);
+        return true;
+      }
+      sendJson(res, 200, result, cacheHeaders);
       return true;
     }
 

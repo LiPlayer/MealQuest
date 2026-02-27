@@ -113,7 +113,7 @@ interface MerchantContextType {
     onToggleKillSwitch: () => Promise<void>;
     onGenerateMerchantQr: () => void;
     refreshAuditLogs: (options?: { append?: boolean; cursor?: string | null; forceReset?: boolean }) => Promise<void>;
-    refreshRemoteState: () => Promise<void>;
+    refreshRemoteState: (options?: { force?: boolean }) => Promise<void>;
 }
 
 const MerchantContext = createContext<MerchantContextType | undefined>(undefined);
@@ -135,6 +135,10 @@ export function MerchantProvider({
     const [lastAction, setLastAction] = useState('已连接...');
     const remoteToken = initialToken || null;
     const contractStatusFetchedRef = useRef(false);
+    const stateRefreshInFlightRef = useRef<Promise<void> | null>(null);
+    const lastStateRefreshAtRef = useRef(0);
+    const auditRefreshInFlightRef = useRef<Promise<void> | null>(null);
+    const lastAuditRefreshAtRef = useRef(0);
 
     const [realtimeEvents, setRealtimeEvents] = useState<RealtimeEventRow[]>([]);
     const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
@@ -193,10 +197,29 @@ export function MerchantProvider({
         setLastAction('当前环境不支持一键复制，请长按文本复制');
     };
 
-    const refreshRemoteState = async () => {
+    const refreshRemoteState = async (options: { force?: boolean } = {}) => {
         if (!remoteToken) return;
-        const remoteState = await MerchantApi.getState(remoteToken);
-        setMerchantState(remoteState);
+        if (stateRefreshInFlightRef.current) {
+            await stateRefreshInFlightRef.current;
+            return;
+        }
+        const force = Boolean(options.force);
+        if (!force && Date.now() - lastStateRefreshAtRef.current < 800) {
+            return;
+        }
+        const task = (async () => {
+            const remoteState = await MerchantApi.getState(remoteToken);
+            setMerchantState(remoteState);
+            lastStateRefreshAtRef.current = Date.now();
+        })();
+        stateRefreshInFlightRef.current = task;
+        try {
+            await task;
+        } finally {
+            if (stateRefreshInFlightRef.current === task) {
+                stateRefreshInFlightRef.current = null;
+            }
+        }
     };
 
     const applyStrategyChatSnapshot = (snapshot: StrategyChatSnapshot) => {
@@ -292,30 +315,48 @@ export function MerchantProvider({
     const refreshAuditLogs = async (options: { append?: boolean; cursor?: string | null; forceReset?: boolean } = {}) => {
         if (!remoteToken) return;
         const append = Boolean(options.append && !options.forceReset);
+        if (auditRefreshInFlightRef.current) {
+            await auditRefreshInFlightRef.current;
+            return;
+        }
+        if (!append && !options.forceReset && Date.now() - lastAuditRefreshAtRef.current < 500) {
+            return;
+        }
         const cursor = append ? options.cursor ?? auditCursor : null;
         const startTime = buildAuditStartTime(auditTimeRange);
-        setAuditLoading(true);
-        try {
-            const page = await MerchantApi.getAuditLogs(remoteToken, {
-                limit: 6,
-                cursor,
-                action: auditActionFilter,
-                status: auditStatusFilter,
-                startTime,
-            });
-            const rows = (page.items || []).map(buildAuditLogRow);
-            setAuditLogs(prev => (append ? [...prev, ...rows] : rows));
-            setAuditCursor(page.pageInfo?.nextCursor || null);
-            setAuditHasMore(Boolean(page.pageInfo?.hasMore));
-            if (!append) setExpandedAuditId(null);
-        } catch {
-            if (!append) {
-                setAuditLogs([]);
-                setAuditCursor(null);
-                setAuditHasMore(false);
+        const task = (async () => {
+            setAuditLoading(true);
+            try {
+                const page = await MerchantApi.getAuditLogs(remoteToken, {
+                    limit: 6,
+                    cursor,
+                    action: auditActionFilter,
+                    status: auditStatusFilter,
+                    startTime,
+                });
+                const rows = (page.items || []).map(buildAuditLogRow);
+                setAuditLogs(prev => (append ? [...prev, ...rows] : rows));
+                setAuditCursor(page.pageInfo?.nextCursor || null);
+                setAuditHasMore(Boolean(page.pageInfo?.hasMore));
+                if (!append) setExpandedAuditId(null);
+                lastAuditRefreshAtRef.current = Date.now();
+            } catch {
+                if (!append) {
+                    setAuditLogs([]);
+                    setAuditCursor(null);
+                    setAuditHasMore(false);
+                }
+            } finally {
+                setAuditLoading(false);
             }
+        })();
+        auditRefreshInFlightRef.current = task;
+        try {
+            await task;
         } finally {
-            setAuditLoading(false);
+            if (auditRefreshInFlightRef.current === task) {
+                auditRefreshInFlightRef.current = null;
+            }
         }
     };
 
@@ -335,7 +376,7 @@ export function MerchantProvider({
             }
             try {
                 setLastAction('已连接服务端驾驶舱');
-                if (!initialMerchantState) await refreshRemoteState();
+                if (!initialMerchantState) await refreshRemoteState({ force: true });
                 const wsUrl = MerchantApi.getWsUrl(remoteToken);
                 console.log(`[MerchantContext] Calculated wsUrl: ${wsUrl}`);
 
@@ -475,7 +516,7 @@ export function MerchantProvider({
                 decision,
             });
             applyStrategyChatDelta(result);
-            await refreshRemoteState();
+            await refreshRemoteState({ force: true });
             await refreshAuditLogs();
             setLastAction(result.status === 'APPROVED' ? '策略已确认并生效' : '策略已拒绝');
         } catch { setLastAction('策略审核失败，请稍后重试'); }
@@ -485,7 +526,7 @@ export function MerchantProvider({
     const onSetCampaignStatus = async (campaignId: string, status: 'ACTIVE' | 'PAUSED' | 'ARCHIVED') => {
         if (!remoteToken) return;
         const response = await MerchantApi.setCampaignStatus(remoteToken, { campaignId, status });
-        await refreshRemoteState();
+        await refreshRemoteState({ force: true });
         await refreshAuditLogs();
         setLastAction(`活动状态已更新：${response.campaignId} -> ${response.status}`);
     };
@@ -517,7 +558,7 @@ export function MerchantProvider({
         if (!remoteToken) return;
         const targetEnabled = !merchantState.killSwitchEnabled;
         await MerchantApi.setKillSwitch(remoteToken, targetEnabled);
-        await refreshRemoteState();
+        await refreshRemoteState({ force: true });
         await refreshAuditLogs();
         setLastAction(targetEnabled ? '已开启预算熔断' : '已关闭预算熔断');
     };

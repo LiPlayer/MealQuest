@@ -5,10 +5,18 @@ const {
   toListLimit,
   enforceTenantPolicyForHttp,
 } = require("../serverHelpers");
+const { buildStateSnapshot } = require("./stateSnapshot");
+
+function toBooleanFlag(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+}
 
 function createPaymentRoutesHandler({
   tenantPolicyManager,
   getServicesForMerchant,
+  getServicesForDb,
+  tenantRepository,
   tenantRouter,
   CASHIER_ROLES,
   MERCHANT_ROLES,
@@ -54,6 +62,17 @@ function createPaymentRoutesHandler({
         ...body,
         idempotencyKey: req.headers["idempotency-key"] || body.idempotencyKey,
       });
+      const includeState = toBooleanFlag(body.includeState) || toBooleanFlag(url.searchParams.get("includeState"));
+      let state = null;
+      if (includeState) {
+        state = await buildStateSnapshot({
+          merchantId: body.merchantId,
+          userId: body.userId,
+          tenantRouter,
+          tenantRepository,
+          getServicesForDb,
+        });
+      }
       appendAuditLog({
         merchantId: body.merchantId,
         action: "PAYMENT_VERIFY",
@@ -66,7 +85,7 @@ function createPaymentRoutesHandler({
         },
       });
       wsHub.broadcast(body.merchantId, "PAYMENT_VERIFIED", result);
-      sendJson(res, 200, result);
+      sendJson(res, 200, includeState ? { ...result, state } : result);
       return true;
     }
 

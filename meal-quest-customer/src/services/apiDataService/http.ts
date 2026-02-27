@@ -3,7 +3,7 @@ import Taro from '@tarojs/taro';
 import { RequestOptions } from './contracts';
 import { getServerBaseUrl } from './env';
 
-export const requestJson = async ({ method, path, data, token }: RequestOptions) => {
+export const requestJson = async ({ method, path, data, token, headers }: RequestOptions) => {
   const baseUrl = getServerBaseUrl();
   if (!baseUrl) {
     throw new Error('Missing TARO_APP_SERVER_URL');
@@ -16,6 +16,7 @@ export const requestJson = async ({ method, path, data, token }: RequestOptions)
     header: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(headers || {}),
     },
   });
 

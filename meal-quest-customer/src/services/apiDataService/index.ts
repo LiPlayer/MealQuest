@@ -2,7 +2,6 @@ import { CheckoutQuote } from '@/domain/smartCheckout';
 import { storage } from '@/utils/storage';
 
 import { HomeSnapshot, InvoiceItem, PaymentLedgerItem } from '../dataTypes';
-import { MerchantCatalogItem } from './contracts';
 import { getEnv, getServerBaseUrl } from './env';
 import { requestJson } from './http';
 import { toHomeSnapshot } from './mappers';
@@ -25,6 +24,13 @@ const getHomeSnapshot = async (storeId: string, userId = ''): Promise<HomeSnapsh
   return snapshot;
 };
 
+const toStatePayload = (payload: any) => {
+  if (payload && typeof payload === 'object' && payload.state && typeof payload.state === 'object') {
+    return payload.state;
+  }
+  return payload;
+};
+
 export const ApiDataService = {
   isConfigured: () => Boolean(getServerBaseUrl()),
 
@@ -33,12 +39,11 @@ export const ApiDataService = {
     if (!target) {
       return false;
     }
-    const catalog = await requestJson({
+    const existsResult = await requestJson({
       method: 'GET',
-      path: '/api/merchant/catalog',
+      path: `/api/merchant/exists?merchantId=${encodeURIComponent(target)}`,
     });
-    const items = Array.isArray(catalog?.items) ? (catalog.items as MerchantCatalogItem[]) : [];
-    return items.some((item) => String(item?.merchantId || '').trim() === target);
+    return Boolean((existsResult as any)?.exists);
   },
 
   getHomeSnapshot,
@@ -71,11 +76,15 @@ export const ApiDataService = {
         merchantId: storeId,
         userId: session.userId,
         orderAmount,
+        includeState: true,
         idempotencyKey: `mini_${Date.now()}`,
       },
     });
 
-    const snapshot = await getHomeSnapshot(storeId, session.userId);
+    const nextState = toStatePayload(quote);
+    const snapshot = nextState && nextState.merchant && nextState.user
+      ? toHomeSnapshot(nextState)
+      : await getHomeSnapshot(storeId, session.userId);
     storage.setCachedHomeSnapshot(storeId, session.userId, snapshot);
     return {
       paymentId: quote.paymentTxnId,
