@@ -1281,8 +1281,6 @@ function createMerchantService(db, options = {}) {
                 text: fullText,
                 isStreaming: true
               });
-
-              console.log(`[merchant-service] Broadcasting delta: merchant=${merchantId}, len=${fullText.length}, isStreaming=true`);
               wsHub.broadcast(merchantId, "STRATEGY_CHAT_DELTA", {
                 sessionId: session.sessionId,
                 deltaMessages: deltaMsgs

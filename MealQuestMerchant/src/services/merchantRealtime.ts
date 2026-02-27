@@ -36,19 +36,28 @@ export interface RealtimeClient {
 export function createRealtimeClient({
   wsUrl,
   onMessage,
+  onConnect,
+  onClose,
   onError,
 }: {
   wsUrl: string;
   onMessage: (message: RealtimeMessage) => void;
+  onConnect?: () => void;
+  onClose?: () => void;
   onError?: (error: Error) => void;
 }): RealtimeClient {
   // RN runtime provides WebSocket. In unsupported runtime, fail gracefully.
   if (typeof WebSocket === 'undefined') {
     onError?.(new Error('WebSocket is not available in current runtime'));
-    return {close: () => {}};
+    return { close: () => { } };
   }
 
   const socket = new WebSocket(wsUrl);
+
+  socket.onopen = () => {
+    onConnect?.();
+  };
+
   socket.onmessage = event => {
     const raw = String(event.data || '');
     const parsed = parseRealtimeMessage(raw);
@@ -56,8 +65,13 @@ export function createRealtimeClient({
       onMessage(parsed);
     }
   };
+
   socket.onerror = () => {
     onError?.(new Error('websocket connection error'));
+  };
+
+  socket.onclose = () => {
+    onClose?.();
   };
 
   return {

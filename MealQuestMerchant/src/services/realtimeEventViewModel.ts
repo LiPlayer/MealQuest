@@ -1,4 +1,4 @@
-import {RealtimeMessage} from './merchantRealtime';
+import { RealtimeMessage } from './merchantRealtime';
 
 export type RealtimeSeverity = 'info' | 'warn' | 'error';
 
@@ -14,7 +14,7 @@ export interface RealtimeEventRow {
 
 const EVENT_META: Record<
   string,
-  {label: string; severity: RealtimeSeverity; isAnomaly: boolean}
+  { label: string; severity: RealtimeSeverity; isAnomaly: boolean }
 > = {
   PAYMENT_VERIFIED: {
     label: '支付完成',
@@ -56,6 +56,11 @@ const EVENT_META: Record<
     severity: 'info',
     isAnomaly: false,
   },
+  SYSTEM_WS_DISCONNECTED: {
+    label: '连接断开',
+    severity: 'warn',
+    isAnomaly: true,
+  },
   SYSTEM_WS_ERROR: {
     label: '连接异常',
     severity: 'error',
@@ -78,7 +83,7 @@ function toTimeLabel(timestamp: string) {
   if (Number.isNaN(date.getTime())) {
     return '--:--:--';
   }
-  return date.toLocaleTimeString('zh-CN', {hour12: false});
+  return date.toLocaleTimeString('zh-CN', { hour12: false });
 }
 
 function stringifyPayload(payload: Record<string, unknown>) {
@@ -112,7 +117,7 @@ export function buildSystemEventRow({
   detail,
   timestamp = new Date().toISOString(),
 }: {
-  type: 'SYSTEM_WS_CONNECTED' | 'SYSTEM_WS_ERROR';
+  type: 'SYSTEM_WS_CONNECTED' | 'SYSTEM_WS_DISCONNECTED' | 'SYSTEM_WS_ERROR';
   detail: string;
   timestamp?: string;
 }): RealtimeEventRow {

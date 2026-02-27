@@ -101,6 +101,7 @@ interface MerchantContextType {
     currentReviewIndex: number;
     contractStatus: 'LOADING' | 'NOT_SUBMITTED' | 'SUBMITTED';
     setContractStatus: (val: 'LOADING' | 'NOT_SUBMITTED' | 'SUBMITTED') => void;
+    wsConnected: boolean;
 
     // Handlers
     onCopyEventDetail: (detail: string) => Promise<void>;
@@ -164,6 +165,7 @@ export function MerchantProvider({
     const [strategyChatReviewProgress, setStrategyChatReviewProgress] = useState<StrategyChatReviewProgress | null>(null);
 
     const [contractStatus, setContractStatus] = useState<'LOADING' | 'NOT_SUBMITTED' | 'SUBMITTED'>('LOADING');
+    const [wsConnected, setWsConnected] = useState(false);
 
     const pendingReviewCount = strategyChatPendingReviews.length;
     const totalReviewCount = Math.max(pendingReviewCount, Number(strategyChatReviewProgress?.totalCandidates || 0));
@@ -340,12 +342,20 @@ export function MerchantProvider({
                 if (wsUrl) {
                     realtimeClient = createRealtimeClient({
                         wsUrl,
+                        onConnect: () => {
+                            if (!active) return;
+                            setWsConnected(true);
+                            appendRealtimeEvent(buildSystemEventRow({ type: 'SYSTEM_WS_CONNECTED', detail: '已连接实时流服务器' }));
+                        },
+                        onClose: () => {
+                            if (!active) return;
+                            setWsConnected(false);
+                            appendRealtimeEvent(buildSystemEventRow({ type: 'SYSTEM_WS_DISCONNECTED', detail: '连接已断开，正在轮询' }));
+                        },
                         onMessage: message => {
                             if (!active) return;
-                            console.log(`[MerchantContext] WS Message: ${message.type}`);
                             if (message.type === 'STRATEGY_CHAT_DELTA') {
                                 const delta = message.payload as StrategyChatDelta;
-                                console.log(`[MerchantContext] Applying Delta: len=${delta.deltaMessages?.length}, isStreaming=${delta.deltaMessages?.[0]?.isStreaming}`);
                                 applyStrategyChatDelta(delta);
                                 return;
                             }
@@ -374,10 +384,10 @@ export function MerchantProvider({
                         },
                         onError: () => {
                             if (!active) return;
+                            setWsConnected(false);
                             appendRealtimeEvent(buildSystemEventRow({ type: 'SYSTEM_WS_ERROR', detail: '已保持 HTTP 轮询模式' }));
                         },
                     });
-                    appendRealtimeEvent(buildSystemEventRow({ type: 'SYSTEM_WS_CONNECTED', detail: '正在监听 PAYMENT/TCA/KILL_SWITCH 等事件' }));
                 }
             } catch (err) {
                 if (!active) return;
@@ -531,6 +541,7 @@ export function MerchantProvider({
         qrStoreId, setQrStoreId, qrScene, setQrScene, qrPayload, aiIntentDraft, setAiIntentDraft,
         aiIntentSubmitting, strategyChatMessages, strategyChatPendingReview,
         pendingReviewCount, totalReviewCount, currentReviewIndex, contractStatus, setContractStatus,
+        wsConnected,
         onCopyEventDetail, onCreateIntentProposal, onReviewPendingStrategy,
         onSetCampaignStatus, onToggleAllianceWalletShared, onSyncAllianceUser, onToggleKillSwitch,
         onGenerateMerchantQr, refreshAuditLogs, refreshRemoteState,

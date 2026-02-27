@@ -112,11 +112,7 @@ function createWebSocketHub() {
         client.socket.write(frame);
         sentCount++;
       } catch {
-        cleanupClient(client);
       }
-    }
-    if (event === "STRATEGY_CHAT_DELTA") {
-      console.log(`[ws-hub] Broadcast ${event} to merchant=${merchantId}, sentCount=${sentCount}/${clients.size}`);
     }
   }
 
