@@ -30,6 +30,7 @@ export function parseRealtimeMessage(raw: string): RealtimeMessage | null {
 }
 
 export interface RealtimeClient {
+  send: (message: any) => void;
   close: () => void;
 }
 
@@ -49,7 +50,7 @@ export function createRealtimeClient({
   // RN runtime provides WebSocket. In unsupported runtime, fail gracefully.
   if (typeof WebSocket === 'undefined') {
     onError?.(new Error('WebSocket is not available in current runtime'));
-    return { close: () => { } };
+    return { send: () => { }, close: () => { } };
   }
 
   const socket = new WebSocket(wsUrl);
@@ -75,6 +76,11 @@ export function createRealtimeClient({
   };
 
   return {
+    send: (message: any) => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(message));
+      }
+    },
     close: () => {
       try {
         socket.close();

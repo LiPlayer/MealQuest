@@ -237,14 +237,16 @@ function createMerchantService(db, options = {}) {
     return db.strategyChats[merchantId];
   }
 
-  function createSessionId() {
-    return `sc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  function createSessionId(merchantId) {
+    return `sc_${merchantId}`;
   }
 
   function createChatMessage(session, message) {
-    session.messageSeq = Number(session.messageSeq || 0) + 1;
+    const seq = Number(session.messageSeq || 0) + 1;
+    session.messageSeq = seq;
+    const messageId = message.messageId || `msg_${session.sessionId}_${seq}`;
     return {
-      messageId: `msg_${session.sessionId}_${session.messageSeq}`,
+      messageId,
       role: String(message.role || "ASSISTANT").toUpperCase(),
       type: String(message.type || "TEXT").toUpperCase(),
       text: String(message.text || ""),
@@ -631,8 +633,8 @@ function createMerchantService(db, options = {}) {
         : null,
       triggerEvent:
         campaign.trigger &&
-        typeof campaign.trigger === "object" &&
-        campaign.trigger.event
+          typeof campaign.trigger === "object" &&
+          campaign.trigger.event
           ? campaign.trigger.event
           : null,
     };
@@ -796,7 +798,7 @@ function createMerchantService(db, options = {}) {
       return null;
     }
     const nowIso = new Date().toISOString();
-    const nextSessionId = createSessionId();
+    const nextSessionId = createSessionId(merchantId);
     const session = {
       sessionId: nextSessionId,
       merchantId,
@@ -1108,7 +1110,7 @@ function createMerchantService(db, options = {}) {
     const bucket = ensureStrategyChatBucket(merchantId);
     const nowIso = new Date().toISOString();
     const session = {
-      sessionId: createSessionId(),
+      sessionId: createSessionId(merchantId),
       merchantId,
       status: "ACTIVE",
       messageSeq: 0,
@@ -1132,7 +1134,7 @@ function createMerchantService(db, options = {}) {
       text: "New strategy session created. You can discuss goals and request a strategy proposal."
     });
     ensureSessionMemoryState(session);
-    db.save();
+    // db.save(); // Removed persistence
     return buildStrategyChatSessionResponse({ merchantId, session });
   }
 
@@ -1289,10 +1291,8 @@ function createMerchantService(db, options = {}) {
     // True streaming: text tokens arrive from the first LLM token and are broadcast via WS
     let aiTurn;
     const assistantMessageId = `msg_${Date.now()}_ai`;
-    console.log(`[merchant-service] sendStrategyChatMessage: merchant=${merchantId}, wsHub=${Boolean(wsHub)}`);
-
     if (typeof aiStrategyService.streamStrategyChatTurn === "function") {
-      console.log(`[merchant-service] Starting streaming for merchant=${merchantId}`);
+      console.log(`[ai-strategy] [stream] START merchant=${merchantId} ws=${Boolean(wsHub)}`);
       try {
         let fullText = "";
         const gen = aiStrategyService.streamStrategyChatTurn({
@@ -1335,16 +1335,16 @@ function createMerchantService(db, options = {}) {
           next = await gen.next();
         }
         aiTurn = next.value;
-        console.log(`[merchant-service] Streaming done: status=${aiTurn && aiTurn.status}, chars=${fullText.length}`);
+        console.log(`[ai-strategy] [stream] DONE status=${aiTurn?.status || "OK"} chars=${fullText.length}`);
       } catch (err) {
-        console.error("[merchant-service] Streaming failed, falling back:", err.message);
+        console.error(`[ai-strategy] [stream] FAILED: ${err.message}`);
         aiTurn = null;
       }
     }
 
     // Fallback: non-streaming if streaming not available or failed
     if (!aiTurn) {
-      console.log(`[merchant-service] Using non-streaming AI call`);
+      console.log(`[ai-strategy] [unary] FALLBACK merchant=${merchantId}`);
       aiTurn = await aiStrategyService.generateStrategyChatTurn({
         merchantId,
         sessionId: session.sessionId,
@@ -1363,7 +1363,7 @@ function createMerchantService(db, options = {}) {
         type: "TEXT",
         text: "AI is temporarily unavailable. Please retry in a moment."
       });
-      db.save();
+      // db.save();
       return {
         status: "AI_UNAVAILABLE",
         reason: aiTurn && aiTurn.reason ? aiTurn.reason : "AI model unavailable",
@@ -1382,9 +1382,10 @@ function createMerchantService(db, options = {}) {
       appendChatMessage(session, {
         role: "ASSISTANT",
         type: "TEXT",
-        text: assistantMessage
+        text: assistantMessage,
+        messageId: assistantMessageId
       });
-      db.save();
+      // db.save();
       return {
         status: "CHAT_REPLY",
         assistantMessage,
@@ -1429,7 +1430,7 @@ function createMerchantService(db, options = {}) {
           type: "TEXT",
           text: assistantMessage
         });
-        db.save();
+        // db.save();
         return {
           status: "BLOCKED",
           reasons: blockedReasons,
@@ -1461,12 +1462,13 @@ function createMerchantService(db, options = {}) {
         role: "ASSISTANT",
         type: "PROPOSAL_CARD",
         text: assistantMessage,
+        messageId: assistantMessageId,
         proposalId: session.pendingProposalId || null,
         metadata: {
           proposals: proposalSummaries
         }
       });
-      db.save();
+      // db.save();
       return {
         status: "PENDING_REVIEW",
         reasons: blockedReasons.length > 0 ? blockedReasons : undefined,
@@ -1485,7 +1487,7 @@ function createMerchantService(db, options = {}) {
       type: "TEXT",
       text: fallbackAssistantMessage
     });
-    db.save();
+    // db.save();
     return {
       status: "CHAT_REPLY",
       assistantMessage: fallbackAssistantMessage,

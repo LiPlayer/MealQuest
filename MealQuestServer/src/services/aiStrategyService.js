@@ -827,20 +827,15 @@ function createAiStrategyService(options = {}) {
 
       const sentinelIdx = findFirstSentinelIndex(rawBuffer);
       if (sentinelIdx >= 0) {
-        console.log(`[ai-strategy] Sentinel detected at index ${sentinelIdx}`);
-        const textToYield = rawBuffer.slice(yieldedLen, sentinelIdx);
         if (textToYield) {
-          console.log(`[ai-strategy] Yielding final token before sentinel: "${textToYield.replace(/\n/g, "\\n")}"`);
           yield textToYield;
         }
         yieldedLen = sentinelIdx;
         sentinelDetected = true;
       } else {
         // Only hold back the tail that *could* be the start of any sentinel
-        const safeLen = computeSafeFlushLen(rawBuffer);
         if (safeLen > yieldedLen) {
           const toYield = rawBuffer.slice(yieldedLen, safeLen);
-          console.log(`[ai-strategy] Yielding token: "${toYield.replace(/\n/g, "\\n")}"`);
           yield toYield;
           yieldedLen = safeLen;
         }
@@ -848,9 +843,7 @@ function createAiStrategyService(options = {}) {
     }
 
     if (!sentinelDetected && rawBuffer.length > yieldedLen) {
-      const remaining = rawBuffer.slice(yieldedLen);
-      console.log(`[ai-strategy] Yielding remaining tail: "${remaining.replace(/\n/g, "\\n")}"`);
-      yield remaining;
+      yield rawBuffer.slice(yieldedLen);
     }
 
     return parseTwoPartResponse(rawBuffer, input);

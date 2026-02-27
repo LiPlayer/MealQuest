@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
     KeyboardAvoidingView,
     Platform,
@@ -11,31 +11,16 @@ import {
 } from 'react-native';
 import { useMerchant } from '../context/MerchantContext';
 import { SectionCard } from '../components/SectionCard';
-import { MessageSquare, Send, Check, X, Info } from 'lucide-react-native';
+import { MessageSquare, Send, Check, X, Info, AlertCircle, Loader2 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StrategyChatMessage } from '../services/merchantApi/types';
 
-const TYPEWRITER_CHAR_MS = 12; // ms per character
-
 const RichText = ({ text, style, isStreaming }: { text: string; style?: object; isStreaming?: boolean }) => {
-    const [cursorVisible, setCursorVisible] = useState(true);
-
-    useEffect(() => {
-        if (!isStreaming) return;
-        const interval = setInterval(() => {
-            setCursorVisible(v => !v);
-        }, 530);
-        return () => clearInterval(interval);
-    }, [isStreaming]);
-
     if (!text && !isStreaming) return null;
     if (!text && isStreaming) {
         return (
             <Text style={[style, { color: '#94a3b8' }]}>
                 思考中...
-                <Text style={{ opacity: cursorVisible ? 1 : 0, fontWeight: '800', color: '#0f766e' }}>
-                    ┃
-                </Text>
             </Text>
         );
     }
@@ -52,57 +37,8 @@ const RichText = ({ text, style, isStreaming }: { text: string; style?: object; 
                 }
                 return part;
             })}
-            {isStreaming && (
-                <Text style={{ opacity: cursorVisible ? 1 : 0, fontWeight: '800', color: '#0f766e' }}>
-                    ┃
-                </Text>
-            )}
         </Text>
     );
-};
-
-// Typewriter component: progressively reveals streamFullText, then stays static
-const TypewriterMessage = ({
-    message,
-    style,
-}: {
-    message: StrategyChatMessage;
-    style?: object;
-}) => {
-    const fullText: string = (message as any).streamFullText || message.text || '';
-    const shouldAnimate = message.isStreaming && (message as any).streamFullText;
-
-    const [displayedText, setDisplayedText] = useState(shouldAnimate ? '' : fullText);
-    const [animating, setAnimating] = useState(shouldAnimate);
-    const indexRef = useRef(shouldAnimate ? 0 : fullText.length);
-    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-    useEffect(() => {
-        if (!shouldAnimate) {
-            setDisplayedText(fullText);
-            setAnimating(false);
-            return;
-        }
-        // Reset and start animation
-        setDisplayedText('');
-        setAnimating(true);
-        indexRef.current = 0;
-
-        const tick = () => {
-            indexRef.current += 1;
-            const slice = fullText.slice(0, indexRef.current);
-            setDisplayedText(slice);
-            if (indexRef.current < fullText.length) {
-                timerRef.current = setTimeout(tick, TYPEWRITER_CHAR_MS);
-            } else {
-                setAnimating(false);
-            }
-        };
-        timerRef.current = setTimeout(tick, TYPEWRITER_CHAR_MS);
-        return () => { if (timerRef.current) clearTimeout(timerRef.current); };
-    }, [message.messageId, fullText]);
-
-    return <RichText text={displayedText} style={style} isStreaming={animating} />;
 };
 
 export default function StrategyScreen() {
@@ -111,12 +47,13 @@ export default function StrategyScreen() {
         setAiIntentDraft,
         aiIntentSubmitting,
         onCreateIntentProposal,
+        onRetryMessage,
         strategyChatMessages,
         strategyChatPendingReview,
         onReviewPendingStrategy,
-        pendingReviewCount,
         totalReviewCount,
         currentReviewIndex,
+        pendingReviewCount,
     } = useMerchant();
 
     const scrollViewRef = useRef<ScrollView>(null);
@@ -128,7 +65,7 @@ export default function StrategyScreen() {
         }, 100);
     }, [strategyChatMessages]);
 
-    // Live scroll during typewriter animation
+    // Live scroll during typewriter animation (simplified as we removed cursor and specialized typewriter if not needed)
     const lastMessageText = strategyChatMessages[strategyChatMessages.length - 1]?.text;
     useEffect(() => {
         if (strategyChatMessages[strategyChatMessages.length - 1]?.role === 'ASSISTANT') {
@@ -150,7 +87,7 @@ export default function StrategyScreen() {
                         <View style={styles.headerText}>
                             <Text style={styles.headerTitle}>AI 经营助手</Text>
                             <Text style={styles.headerSubtitle}>
-                                描述明天午市客流等目标，AI 为您生成策略
+                                描述营销目标，AI 为您实时生成策略
                             </Text>
                         </View>
                     </View>
@@ -167,26 +104,41 @@ export default function StrategyScreen() {
                     {strategyChatMessages.length === 0 ? (
                         <View style={styles.emptyState}>
                             <Info size={32} color="#cbd5e1" />
-                            <Text style={styles.emptyText}>尚未开始对话。试着告诉 AI 您的目标和预算。</Text>
+                            <Text style={styles.emptyText}>尚未开始对话。试着告诉 AI 您的目标。</Text>
                         </View>
                     ) : (
-                        strategyChatMessages.map(item => (
-                            <View
-                                key={item.messageId}
-                                style={[
-                                    styles.messageBubble,
-                                    item.role === 'USER' ? styles.userBubble : styles.botBubble
-                                ]}
-                            >
-                                <Text style={styles.roleLabel}>{item.role === 'USER' ? '您' : 'AI 助手'}</Text>
-                                <RichText
-                                    text={item.text}
-                                    isStreaming={item.isStreaming}
+                        strategyChatMessages.map((item: any) => (
+                            <View key={item.messageId} style={styles.messageRow}>
+                                <View
                                     style={[
-                                        styles.messageText,
-                                        item.role === 'USER' ? styles.userText : styles.botText
+                                        styles.messageBubble,
+                                        item.role === 'USER' ? styles.userBubble : styles.botBubble
                                     ]}
-                                />
+                                >
+                                    <Text style={styles.roleLabel}>{item.role === 'USER' ? '您' : 'AI 助手'}</Text>
+                                    <RichText
+                                        text={item.text}
+                                        isStreaming={item.isStreaming}
+                                        style={[
+                                            styles.messageText,
+                                            item.role === 'USER' ? styles.userText : styles.botText
+                                        ]}
+                                    />
+                                    {item.role === 'USER' && item.deliveryStatus === 'sending' && (
+                                        <View style={styles.statusIndicator}>
+                                            <Text style={styles.statusText}>发送中</Text>
+                                        </View>
+                                    )}
+                                    {item.role === 'USER' && item.deliveryStatus === 'failed' && (
+                                        <View style={styles.statusIndicator}>
+                                            <AlertCircle size={12} color="#fee2e2" />
+                                            <Text style={[styles.statusText, { color: '#fca5a5' }]}>发送失败</Text>
+                                            <Pressable onPress={() => onRetryMessage(item.messageId)} style={styles.retryBtn}>
+                                                <Text style={styles.retryText}>重试</Text>
+                                            </Pressable>
+                                        </View>
+                                    )}
+                                </View>
                             </View>
                         ))
                     )}
@@ -263,7 +215,7 @@ export default function StrategyScreen() {
 const styles = StyleSheet.create({
     safeArea: {
         flex: 1,
-        backgroundColor: '#f8fafc', // Match chat background
+        backgroundColor: '#f8fafc',
     },
     container: {
         flex: 1,
@@ -301,6 +253,9 @@ const styles = StyleSheet.create({
         padding: 16,
         gap: 16,
         paddingBottom: 24,
+    },
+    messageRow: {
+        width: '100%',
     },
     messageBubble: {
         padding: 14,
@@ -340,6 +295,29 @@ const styles = StyleSheet.create({
     },
     botText: {
         color: '#1e293b',
+    },
+    statusIndicator: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 6,
+        gap: 4,
+    },
+    statusText: {
+        fontSize: 10,
+        color: 'rgba(255,255,255,0.7)',
+        fontWeight: '600',
+    },
+    retryBtn: {
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 4,
+        marginLeft: 4,
+    },
+    retryText: {
+        fontSize: 10,
+        color: '#ffffff',
+        fontWeight: '800',
     },
     emptyState: {
         alignItems: 'center',
@@ -430,7 +408,6 @@ const styles = StyleSheet.create({
         paddingLeft: 4,
         paddingRight: 6,
         paddingVertical: 6,
-        // Floating effect
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.1,

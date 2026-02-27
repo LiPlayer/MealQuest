@@ -77,12 +77,10 @@ function createLangChainModelGateway(options = {}) {
   }
 
   async function* streamChat(messages) {
-    console.log(`[langchain-gateway] Starting stream for model=${model}`);
     const stream = await chatModel.stream(messages);
     for await (const chunk of stream) {
       if (chunk.content) {
         const content = normalizeMessageContent(chunk.content);
-        console.log(`[langchain-gateway] Chunk: "${content.replace(/\n/g, "\\n")}"`);
         yield content;
       }
     }

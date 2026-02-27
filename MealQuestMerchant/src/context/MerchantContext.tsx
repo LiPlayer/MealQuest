@@ -4,7 +4,7 @@ import {
     AuditLogRow,
     buildAuditLogRow,
 } from '../services/auditLogViewModel';
-import { createRealtimeClient } from '../services/merchantRealtime';
+import { createRealtimeClient, RealtimeClient } from '../services/merchantRealtime';
 import {
     buildRealtimeEventRow,
     buildSystemEventRow,
@@ -19,6 +19,11 @@ import {
     StrategyChatSessionResult,
 } from '../services/merchantApi/types';
 import { createInitialMerchantState, MerchantState } from '../domain/merchantEngine';
+
+export type MessageStatus = 'sending' | 'sent' | 'failed';
+export type StrategyChatMessageWithStatus = StrategyChatMessage & {
+    deliveryStatus?: MessageStatus;
+};
 
 export type AuditActionFilter =
     | 'ALL'
@@ -94,7 +99,7 @@ interface MerchantContextType {
     aiIntentDraft: string;
     setAiIntentDraft: (val: string) => void;
     aiIntentSubmitting: boolean;
-    strategyChatMessages: StrategyChatMessage[];
+    strategyChatMessages: StrategyChatMessageWithStatus[];
     strategyChatPendingReview: StrategyChatPendingReview | null;
     pendingReviewCount: number;
     totalReviewCount: number;
@@ -106,6 +111,7 @@ interface MerchantContextType {
     // Handlers
     onCopyEventDetail: (detail: string) => Promise<void>;
     onCreateIntentProposal: () => Promise<void>;
+    onRetryMessage: (messageId: string) => Promise<void>;
     onReviewPendingStrategy: (decision: 'APPROVE' | 'REJECT') => Promise<void>;
     onSetCampaignStatus: (campaignId: string, status: 'ACTIVE' | 'PAUSED' | 'ARCHIVED') => Promise<void>;
     onToggleAllianceWalletShared: () => Promise<void>;
@@ -163,13 +169,14 @@ export function MerchantProvider({
     const [aiIntentDraft, setAiIntentDraft] = useState('');
     const [aiIntentSubmitting, setAiIntentSubmitting] = useState(false);
     const [strategyChatSessionId, setStrategyChatSessionId] = useState('');
-    const [strategyChatMessages, setStrategyChatMessages] = useState<StrategyChatMessage[]>([]);
+    const [strategyChatMessages, setStrategyChatMessages] = useState<StrategyChatMessageWithStatus[]>([]);
     const [strategyChatPendingReview, setStrategyChatPendingReview] = useState<StrategyChatPendingReview | null>(null);
     const [strategyChatPendingReviews, setStrategyChatPendingReviews] = useState<StrategyChatPendingReview[]>([]);
     const [strategyChatReviewProgress, setStrategyChatReviewProgress] = useState<StrategyChatReviewProgress | null>(null);
 
     const [contractStatus, setContractStatus] = useState<'LOADING' | 'NOT_SUBMITTED' | 'SUBMITTED'>('LOADING');
     const [wsConnected, setWsConnected] = useState(false);
+    const realtimeClientRef = useRef<RealtimeClient | null>(null);
 
     const pendingReviewCount = strategyChatPendingReviews.length;
     const totalReviewCount = Math.max(pendingReviewCount, Number(strategyChatReviewProgress?.totalCandidates || 0));
@@ -244,13 +251,13 @@ export function MerchantProvider({
         }
         if (delta.reviewProgress !== undefined) setStrategyChatReviewProgress(delta.reviewProgress || null);
 
-        // full replace only when we get the full messages snapshot from HTTP
+        // full replace (snapshot)
         if (Array.isArray(delta.messages)) {
             setStrategyChatMessages(prev => {
-                // Merge: keep any streamed messages not in delta.messages
                 const finalById = new Map(delta.messages!.map(m => [m.messageId, m]));
                 const streamingKept = prev.filter(m => m.isStreaming && !finalById.has(m.messageId));
-                return [...delta.messages!, ...streamingKept];
+                const messages = [...delta.messages!, ...streamingKept];
+                return messages.map(m => ({ ...m, deliveryStatus: 'sent' }));
             });
             return;
         }
@@ -274,28 +281,21 @@ export function MerchantProvider({
                 const existing = indexById.get(item.messageId);
                 if (existing === undefined) {
                     indexById.set(item.messageId, merged.length);
-                    merged.push(item);
+                    merged.push({ ...item, deliveryStatus: 'sent' });
                 } else {
                     // When the final non-streaming message lands, clear isStreaming
-                    merged[existing] = { ...merged[existing], ...item };
+                    merged[existing] = { ...merged[existing], ...item, deliveryStatus: 'sent' };
                 }
             }
             return merged;
         });
     };
 
-    const bootstrapStrategyChatSession = async (token: string): Promise<string> => {
+    const ensureStrategyChatSession = async (): Promise<string> => {
         const merchantId = String((MerchantApi.getMerchantId() || merchantState.merchantId) || '').trim();
-        if (!merchantId) throw new Error('merchantId missing');
-        const response = await MerchantApi.createStrategyChatSession(token, { merchantId });
-        const page = await MerchantApi.getStrategyChatMessages(token, { merchantId, limit: 40 });
-        applyStrategyChatSnapshot({ ...response, messages: Array.isArray(page.items) ? page.items : [] });
-        return String(response.sessionId || '').trim();
-    };
-
-    const ensureStrategyChatSession = async (token: string): Promise<string> => {
-        if (strategyChatSessionId) return strategyChatSessionId;
-        return bootstrapStrategyChatSession(token);
+        const sid = `sc_${merchantId}`;
+        setStrategyChatSessionId(sid);
+        return sid;
     };
 
     const refreshAllianceData = async (token: string) => {
@@ -367,56 +367,32 @@ export function MerchantProvider({
 
     useEffect(() => {
         let active = true;
-        let realtimeClient: { close: () => void } | null = null;
+        let realtimeClientInstance: RealtimeClient | null = null;
         const bootstrapRemote = async () => {
-            console.log(`[MerchantContext] bootstrapRemote started. tokenLen=${remoteToken?.length}, isConfigured=${MerchantApi.isConfigured()}`);
             if (!MerchantApi.isConfigured() || !remoteToken) {
-                console.log(`[MerchantContext] aborting WS bootstrap! isConfigured=${MerchantApi.isConfigured()}, hasToken=${!!remoteToken}`);
                 return;
             }
             try {
                 setLastAction('已连接服务端驾驶舱');
                 if (!initialMerchantState) await refreshRemoteState({ force: true });
                 const wsUrl = MerchantApi.getWsUrl(remoteToken);
-                console.log(`[MerchantContext] Calculated wsUrl: ${wsUrl}`);
 
                 if (wsUrl) {
-                    realtimeClient = createRealtimeClient({
+                    realtimeClientInstance = createRealtimeClient({
                         wsUrl,
                         onConnect: () => {
                             if (!active) return;
                             setWsConnected(true);
-                            appendRealtimeEvent(buildSystemEventRow({ type: 'SYSTEM_WS_CONNECTED', detail: '已连接实时流服务器' }));
                         },
                         onClose: () => {
                             if (!active) return;
                             setWsConnected(false);
-                            appendRealtimeEvent(buildSystemEventRow({ type: 'SYSTEM_WS_DISCONNECTED', detail: '连接已断开，正在轮询' }));
                         },
                         onMessage: message => {
                             if (!active) return;
                             if (message.type === 'STRATEGY_CHAT_DELTA') {
                                 const delta = message.payload as StrategyChatDelta;
                                 applyStrategyChatDelta(delta);
-                                return;
-                            }
-                            if (message.type === 'STRATEGY_CHAT_STREAM') {
-                                // Full text received — inject as a streaming message for the UI to animate
-                                const payload = message.payload as { messageId: string; text: string };
-                                if (payload?.messageId && typeof payload.text === 'string') {
-                                    applyStrategyChatDelta({
-                                        sessionId: null,
-                                        pendingReview: null,
-                                        deltaMessages: [{
-                                            messageId: payload.messageId,
-                                            role: 'ASSISTANT',
-                                            type: 'TEXT',
-                                            text: '',
-                                            isStreaming: true,
-                                            streamFullText: payload.text,
-                                        } as any],
-                                    });
-                                }
                                 return;
                             }
                             appendRealtimeEvent(buildRealtimeEventRow(message));
@@ -426,9 +402,9 @@ export function MerchantProvider({
                         onError: () => {
                             if (!active) return;
                             setWsConnected(false);
-                            appendRealtimeEvent(buildSystemEventRow({ type: 'SYSTEM_WS_ERROR', detail: '已保持 HTTP 轮询模式' }));
                         },
                     });
+                    realtimeClientRef.current = realtimeClientInstance;
                 }
             } catch (err) {
                 if (!active) return;
@@ -437,7 +413,7 @@ export function MerchantProvider({
             }
         };
         bootstrapRemote().catch(() => { });
-        return () => { active = false; realtimeClient?.close(); };
+        return () => { active = false; realtimeClientInstance?.close(); realtimeClientRef.current = null; };
     }, [remoteToken]);
 
     useEffect(() => {
@@ -452,10 +428,13 @@ export function MerchantProvider({
         setStrategyChatPendingReview(null);
         setStrategyChatPendingReviews([]);
         setStrategyChatReviewProgress(null);
-        bootstrapStrategyChatSession(remoteToken).catch((err: any) => {
-            if (isTokenExpiredError(err)) { onAuthExpired(); return; }
-            setLastAction(`AI session init failed: ${err?.message || 'failed'}`);
-        });
+
+        // Static session initialization (local only, no HTTP)
+        const merchantId = MerchantApi.getMerchantId();
+        if (merchantId) {
+            setStrategyChatSessionId(`sc_${merchantId}`);
+        }
+
         refreshAllianceData(remoteToken).catch(() => { });
     }, [remoteToken]);
 
@@ -480,32 +459,91 @@ export function MerchantProvider({
 
     const onCreateIntentProposal = async () => {
         if (!remoteToken) { setLastAction('连接未就绪'); return; }
+        if (!wsConnected || !realtimeClientRef.current) { setLastAction('实时连接已断开'); return; }
         const intent = aiIntentDraft.trim();
         if (intent.length < 4) { setLastAction('请输入更具体的经营需求（至少4个字）'); return; }
         if (strategyChatPendingReviews.length > 0) { setLastAction('存在待审核策略，请先确认或拒绝'); return; }
+
         setAiIntentSubmitting(true);
-        // Optimistic user message so the chat doesn't feel frozen
         const optimisticUserMsgId = `opt_user_${Date.now()}`;
         const optimisticAiMsgId = `opt_ai_${Date.now()}`;
+
         setStrategyChatMessages(prev => [
             ...prev,
-            { messageId: optimisticUserMsgId, role: 'USER', type: 'TEXT', text: intent, isStreaming: false } as any,
-            { messageId: optimisticAiMsgId, role: 'ASSISTANT', type: 'TEXT', text: '', isStreaming: true } as any,
+            {
+                messageId: optimisticUserMsgId,
+                role: 'USER',
+                type: 'TEXT',
+                text: intent,
+                isStreaming: false,
+                deliveryStatus: 'sending'
+            } as any,
+            {
+                messageId: optimisticAiMsgId,
+                role: 'ASSISTANT',
+                type: 'TEXT',
+                text: '',
+                isStreaming: true
+            } as any,
         ]);
         setAiIntentDraft('');
+
         try {
-            await ensureStrategyChatSession(remoteToken);
-            const result = await MerchantApi.sendStrategyChatMessage(remoteToken, { content: intent });
-            // Remove optimistic messages and apply real delta
-            setStrategyChatMessages(prev => prev.filter(m => m.messageId !== optimisticUserMsgId && m.messageId !== optimisticAiMsgId));
-            applyStrategyChatDelta(result);
-            await refreshAuditLogs();
-            setLastAction(result.status === 'PENDING_REVIEW' ? 'AI 已生成策略，请确认或拒绝' : 'AI 已回复，请继续对话');
+            await ensureStrategyChatSession();
+            realtimeClientRef.current.send({
+                type: 'STRATEGY_CHAT_SEND_MESSAGE',
+                merchantId: MerchantApi.getMerchantId(),
+                payload: { content: intent },
+                timestamp: new Date().toISOString()
+            });
+
+            // Status tracking timeout
+            setTimeout(() => {
+                setStrategyChatMessages(prev => {
+                    const msg = prev.find(m => m.messageId === optimisticUserMsgId);
+                    if (msg && msg.deliveryStatus === 'sending') {
+                        return prev.map(m => m.messageId === optimisticUserMsgId ? { ...m, deliveryStatus: 'failed' } : m);
+                    }
+                    return prev;
+                });
+            }, 8000);
+
         } catch (err: any) {
-            setStrategyChatMessages(prev => prev.filter(m => m.messageId !== optimisticUserMsgId && m.messageId !== optimisticAiMsgId));
-            if (isTokenExpiredError(err)) { onAuthExpired(); return; }
+            setStrategyChatMessages(prev => prev.map(m => m.messageId === optimisticUserMsgId ? { ...m, deliveryStatus: 'failed' } : m));
             setLastAction(`AI request failed: ${err?.message || 'failed'}`);
-        } finally { setAiIntentSubmitting(false); }
+        } finally {
+            setAiIntentSubmitting(false);
+        }
+    };
+
+    const onRetryMessage = async (messageId: string) => {
+        const msg = strategyChatMessages.find(m => m.messageId === messageId);
+        if (!msg || msg.role !== 'USER') return;
+
+        if (!wsConnected || !realtimeClientRef.current) { setLastAction('实时连接已断开'); return; }
+
+        setStrategyChatMessages(prev => prev.map(m => m.messageId === messageId ? { ...m, deliveryStatus: 'sending' } : m));
+
+        try {
+            realtimeClientRef.current.send({
+                type: 'STRATEGY_CHAT_SEND_MESSAGE',
+                merchantId: MerchantApi.getMerchantId(),
+                payload: { content: msg.text },
+                timestamp: new Date().toISOString()
+            });
+
+            setTimeout(() => {
+                setStrategyChatMessages(prev => {
+                    const current = prev.find(m => m.messageId === messageId);
+                    if (current && current.deliveryStatus === 'sending') {
+                        return prev.map(m => m.messageId === messageId ? { ...m, deliveryStatus: 'failed' } : m);
+                    }
+                    return prev;
+                });
+            }, 8000);
+        } catch {
+            setStrategyChatMessages(prev => prev.map(m => m.messageId === messageId ? { ...m, deliveryStatus: 'failed' } : m));
+        }
     };
 
     const onReviewPendingStrategy = async (decision: 'APPROVE' | 'REJECT') => {
@@ -521,7 +559,6 @@ export function MerchantProvider({
             setLastAction(result.status === 'APPROVED' ? '策略已确认并生效' : '策略已拒绝');
         } catch { setLastAction('策略审核失败，请稍后重试'); }
     };
-
 
     const onSetCampaignStatus = async (campaignId: string, status: 'ACTIVE' | 'PAUSED' | 'ARCHIVED') => {
         if (!remoteToken) return;
@@ -583,7 +620,7 @@ export function MerchantProvider({
         aiIntentSubmitting, strategyChatMessages, strategyChatPendingReview,
         pendingReviewCount, totalReviewCount, currentReviewIndex, contractStatus, setContractStatus,
         wsConnected,
-        onCopyEventDetail, onCreateIntentProposal, onReviewPendingStrategy,
+        onCopyEventDetail, onCreateIntentProposal, onRetryMessage, onReviewPendingStrategy,
         onSetCampaignStatus, onToggleAllianceWalletShared, onSyncAllianceUser, onToggleKillSwitch,
         onGenerateMerchantQr, refreshAuditLogs, refreshRemoteState,
     };

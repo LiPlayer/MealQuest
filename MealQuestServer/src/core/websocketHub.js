@@ -31,8 +31,46 @@ function encodeTextFrame(payloadText) {
   return Buffer.concat([header, payload]);
 }
 
+function decodeFrame(buffer) {
+  if (buffer.length < 2) return null;
+  const byte0 = buffer[0];
+  const byte1 = buffer[1];
+  const opcode = byte0 & 0x0f;
+  const isMasked = (byte1 & 0x80) !== 0;
+  let payloadLen = byte1 & 0x7f;
+  let offset = 2;
+
+  if (payloadLen === 126) {
+    if (buffer.length < 4) return null;
+    payloadLen = buffer.readUInt16BE(2);
+    offset = 4;
+  } else if (payloadLen === 127) {
+    if (buffer.length < 10) return null;
+    payloadLen = Number(buffer.readBigUInt64BE(2));
+    offset = 10;
+  }
+
+  let mask;
+  if (isMasked) {
+    if (buffer.length < offset + 4) return null;
+    mask = buffer.slice(offset, offset + 4);
+    offset += 4;
+  }
+
+  if (buffer.length < offset + payloadLen) return null;
+  const data = buffer.slice(offset, offset + payloadLen);
+  if (isMasked) {
+    for (let i = 0; i < data.length; i++) {
+      data[i] = data[i] ^ mask[i % 4];
+    }
+  }
+
+  return { opcode, payload: data.toString("utf8") };
+}
+
 function createWebSocketHub() {
   const clients = new Set();
+  let messageHandler = null;
 
   function cleanupClient(client) {
     clients.delete(client);
@@ -66,22 +104,31 @@ function createWebSocketHub() {
     const client = {
       socket,
       merchantId: auth.merchantId,
-      role: auth.role
+      role: auth.role,
+      auth
     };
     clients.add(client);
 
     socket.on("data", (buffer) => {
-      // minimal handling: close frame / ping frame
-      if (!Buffer.isBuffer(buffer) || buffer.length < 2) {
-        return;
-      }
-      const opcode = buffer[0] & 0x0f;
+      const decoded = decodeFrame(buffer);
+      if (!decoded) return;
+
+      const { opcode, payload } = decoded;
       if (opcode === 0x8) {
         cleanupClient(client);
-      }
-      if (opcode === 0x9) {
-        // pong
+      } else if (opcode === 0x9) {
+        // ping -> pong
         socket.write(Buffer.from([0x8a, 0x00]));
+      } else if (opcode === 0x1) {
+        // text frame
+        if (messageHandler) {
+          try {
+            const data = JSON.parse(payload);
+            messageHandler(client, data);
+          } catch (err) {
+            console.error("[ws-hub] Failed to parse payload:", err.message);
+          }
+        }
       }
     });
 
@@ -99,7 +146,6 @@ function createWebSocketHub() {
     });
     const frame = encodeTextFrame(message);
 
-    let sentCount = 0;
     for (const client of clients) {
       if (client.socket.destroyed) {
         clients.delete(client);
@@ -110,20 +156,13 @@ function createWebSocketHub() {
       }
       try {
         client.socket.write(frame);
-        sentCount++;
       } catch {
       }
     }
   }
 
-  function getOnlineCount(merchantId) {
-    let count = 0;
-    for (const client of clients) {
-      if (!client.socket.destroyed && client.merchantId === merchantId) {
-        count += 1;
-      }
-    }
-    return count;
+  function onMessage(handler) {
+    messageHandler = handler;
   }
 
   function closeAll() {
@@ -135,7 +174,7 @@ function createWebSocketHub() {
   return {
     handleUpgrade,
     broadcast,
-    getOnlineCount,
+    onMessage,
     closeAll
   };
 }

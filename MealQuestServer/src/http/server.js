@@ -213,6 +213,25 @@ function createAppServer({
     }
   });
 
+  // Handle incoming WebSocket messages
+  wsHub.onMessage(async (client, data) => {
+    if (data.type === "STRATEGY_CHAT_SEND_MESSAGE") {
+      const merchantId = client.merchantId;
+      const { merchantService } = getServicesForMerchant(merchantId);
+      try {
+        const result = await merchantService.sendStrategyChatMessage({
+          merchantId,
+          operatorId: client.auth.operatorId || "system",
+          content: data.payload.content,
+        });
+        // Strategy service already broadcasts DELTA during streaming; 
+        // the final result is also broadcast if non-streaming fallback used.
+      } catch (err) {
+        console.error("[ws-hub] Chat failed:", err.message);
+      }
+    }
+  });
+
   server.on("connection", (socket) => {
     allSockets.add(socket);
     socket.on("close", () => allSockets.delete(socket));
