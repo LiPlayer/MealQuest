@@ -487,22 +487,6 @@ function createDecisionService({
     appendMetric("decisions_executed_total", executed.length);
     appendMetric("decisions_rejected_total", decision.rejected.length);
     appendMetric("decision_latency_ms_total", decision.elapsed_ms);
-    // structured log
-    // eslint-disable-next-line no-console
-    console.log(
-      JSON.stringify({
-        tag: "policyos.decision",
-        trace_id: traceId,
-        merchant_id: merchantId,
-        decision_id: decision.decision_id,
-        mode: decisionMode,
-        event,
-        selected: selected.length,
-        executed: executed.length,
-        rejected: decision.rejected.length,
-        elapsed_ms: decision.elapsed_ms
-      })
-    );
     return decision;
   }
 

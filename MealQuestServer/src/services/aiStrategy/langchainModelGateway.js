@@ -26,6 +26,30 @@ function normalizeMessageContent(content) {
     .trim();
 }
 
+function buildRawMessageSnapshot(message) {
+  const safe = message && typeof message === "object" ? message : {};
+  return {
+    id: typeof safe.id === "string" ? safe.id : "",
+    content: safe.content,
+    additional_kwargs:
+      safe.additional_kwargs && typeof safe.additional_kwargs === "object"
+        ? safe.additional_kwargs
+        : {},
+    response_metadata:
+      safe.response_metadata && typeof safe.response_metadata === "object"
+        ? safe.response_metadata
+        : {},
+    tool_calls: Array.isArray(safe.tool_calls) ? safe.tool_calls : [],
+    invalid_tool_calls: Array.isArray(safe.invalid_tool_calls)
+      ? safe.invalid_tool_calls
+      : [],
+    usage_metadata:
+      safe.usage_metadata && typeof safe.usage_metadata === "object"
+        ? safe.usage_metadata
+        : {},
+  };
+}
+
 function createLangChainModelGateway(options = {}) {
   const {
     provider,
@@ -71,12 +95,38 @@ function createLangChainModelGateway(options = {}) {
   }
 
   async function invokeChatRaw(messages) {
+    const verbose = await invokeChatRawVerbose(messages);
+    return verbose.content;
+  }
+
+  async function invokeChatRawVerbose(messages) {
     const response = await chatModel.invoke(messages);
-    const rawContent = response && response.content;
-    return normalizeMessageContent(rawContent);
+    return {
+      content: normalizeMessageContent(response && response.content),
+      raw: buildRawMessageSnapshot(response),
+    };
   }
 
   async function* streamChat(messages) {
+    const stream = streamChatWithRaw(messages);
+    for await (const item of stream) {
+      yield item.text;
+    }
+  }
+
+  async function* streamChatWithRaw(messages) {
+    const stream = await chatModel.stream(messages);
+    for await (const chunk of stream) {
+      const raw = buildRawMessageSnapshot(chunk);
+      const text = normalizeMessageContent(raw.content);
+      yield {
+        text,
+        raw,
+      };
+    }
+  }
+
+  async function* streamChatLegacy(messages) {
     const stream = await chatModel.stream(messages);
     for await (const chunk of stream) {
       if (chunk.content) {
@@ -89,7 +139,10 @@ function createLangChainModelGateway(options = {}) {
   return {
     invokeChat,
     invokeChatRaw,
+    invokeChatRawVerbose,
     streamChat,
+    streamChatWithRaw,
+    streamChatLegacy,
     getRuntimeInfo() {
       return {
         retry: { maxRetries: resolvedMaxRetries },

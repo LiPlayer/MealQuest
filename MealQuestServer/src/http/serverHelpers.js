@@ -101,7 +101,6 @@ function getUpgradeAuthContext(req, secret, parsedUrl) {
   const queryToken = parsedUrl.searchParams.get("token");
   const bearerToken = parseBearerToken(req.headers.authorization);
   const token = queryToken || bearerToken;
-  console.log(`[ws-upgrade] extracted token: queryToken=${Boolean(queryToken)}, bearerToken=${Boolean(bearerToken)}, tokenLen=${token ? token.length : 0}`);
   if (!token) {
     throw new Error("Authorization Bearer token is required");
   }
@@ -695,8 +694,6 @@ function issuePhoneCode(db, phone) {
     expiresAt: new Date(now + 5 * 60 * 1000).toISOString(),
     createdAt: new Date(now).toISOString()
   };
-  // eslint-disable-next-line no-console
-  console.log(`[sms] issued code ${code} for phone ${phone}`);
   db.save();
   return {
     phone,

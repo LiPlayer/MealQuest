@@ -64,7 +64,7 @@ test("ai strategy provider: bigmodel uses expected defaults", () => {
   assert.equal(runtime.model, "glm-4.7-flash");
   assert.equal(runtime.remoteEnabled, true);
   assert.equal(runtime.remoteConfigured, true);
-  assert.equal(runtime.plannerEngine, "dual_channel_strict_v2");
+  assert.equal(runtime.plannerEngine, "text_json_envelope_v3");
   assert.equal(runtime.criticLoop.enabled, true);
   assert.equal(runtime.criticLoop.maxRounds, 1);
   assert.equal(runtime.modelClient, "langchain_chatopenai");
@@ -90,7 +90,6 @@ test("ai strategy provider: retries transient upstream failures and then succeed
             message: {
               content: [
                 "Recovered after retries.",
-                "---STRUCTURED_OUTPUT---",
                 JSON.stringify({
                   schemaVersion: "2026-02-27",
                   assistantMessage: "Recovered after retries.",
@@ -107,7 +106,6 @@ test("ai strategy provider: retries transient upstream failures and then succeed
                     },
                   ],
                 }),
-                "---END_STRUCTURED_OUTPUT---",
               ].join("\n"),
             },
           },
@@ -158,7 +156,6 @@ test("ai strategy provider: strategy chat supports multiple proposal candidates"
             message: {
               content: [
                 "Drafted multiple options.",
-                "---STRUCTURED_OUTPUT---",
                 JSON.stringify({
                   schemaVersion: "2026-02-27",
                   assistantMessage: "Drafted multiple options.",
@@ -185,7 +182,6 @@ test("ai strategy provider: strategy chat supports multiple proposal candidates"
                     },
                   ],
                 }),
-                "---END_STRUCTURED_OUTPUT---",
               ].join("\n"),
             },
           },
@@ -225,7 +221,6 @@ test("ai strategy provider: strategy chat supports multiple proposal candidates"
     global.fetch = originalFetch;
   }
 });
-
 test("ai strategy provider: unary graph ranks proposals with evaluation tool and adds explain pack", async () => {
   const originalFetch = global.fetch;
   global.fetch = async () =>
@@ -236,7 +231,6 @@ test("ai strategy provider: unary graph ranks proposals with evaluation tool and
             message: {
               content: [
                 "Drafted two options.",
-                "---STRUCTURED_OUTPUT---",
                 JSON.stringify({
                   schemaVersion: "2026-02-27",
                   assistantMessage: "Drafted two options.",
@@ -264,7 +258,6 @@ test("ai strategy provider: unary graph ranks proposals with evaluation tool and
                     },
                   ],
                 }),
-                "---END_STRUCTURED_OUTPUT---",
               ].join("\n"),
             },
           },
@@ -351,7 +344,6 @@ test("ai strategy provider: publish intent requires approval and can invoke publ
             message: {
               content: [
                 "Drafted two options for publish.",
-                "---STRUCTURED_OUTPUT---",
                 JSON.stringify({
                   schemaVersion: "2026-02-27",
                   assistantMessage: "Drafted two options for publish.",
@@ -379,7 +371,6 @@ test("ai strategy provider: publish intent requires approval and can invoke publ
                     },
                   ],
                 }),
-                "---END_STRUCTURED_OUTPUT---",
               ].join("\n"),
             },
           },
@@ -462,7 +453,6 @@ test("ai strategy provider: post-publish monitor and memory update hooks are att
             message: {
               content: [
                 "Ready to publish.",
-                "---STRUCTURED_OUTPUT---",
                 JSON.stringify({
                   schemaVersion: "2026-02-27",
                   assistantMessage: "Ready to publish.",
@@ -480,7 +470,6 @@ test("ai strategy provider: post-publish monitor and memory update hooks are att
                     },
                   ],
                 }),
-                "---END_STRUCTURED_OUTPUT---",
               ].join("\n"),
             },
           },
@@ -579,7 +568,6 @@ test("ai strategy provider: critic revise loop rewrites proposal candidates when
               message: {
                 content: [
                   "Drafted initial options.",
-                  "---STRUCTURED_OUTPUT---",
                   JSON.stringify({
                     schemaVersion: "2026-02-27",
                     assistantMessage: "Drafted initial options.",
@@ -606,7 +594,6 @@ test("ai strategy provider: critic revise loop rewrites proposal candidates when
                       },
                     ],
                   }),
-                  "---END_STRUCTURED_OUTPUT---",
                 ].join("\n"),
               },
             },
@@ -736,7 +723,6 @@ test("ai strategy provider: invalid policyPatch is revised before returning prop
               message: {
                 content: [
                   "Draft created.",
-                  "---STRUCTURED_OUTPUT---",
                   JSON.stringify({
                     schemaVersion: "2026-02-27",
                     mode: "PROPOSAL",
@@ -755,7 +741,6 @@ test("ai strategy provider: invalid policyPatch is revised before returning prop
                       },
                     },
                   }),
-                  "---END_STRUCTURED_OUTPUT---",
                 ].join("\n"),
               },
             },
@@ -1125,3 +1110,5 @@ test("ai strategy provider: prompt history keeps MEMORY prefixes while trimming"
     global.fetch = originalFetch;
   }
 });
+
+

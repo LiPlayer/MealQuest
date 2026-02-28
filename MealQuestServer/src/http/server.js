@@ -183,7 +183,6 @@ function createAppServer({
     try {
       const parsedUrl = new URL(req.url || "/", "http://localhost");
       if (parsedUrl.pathname !== "/ws") {
-        console.error(`[ws-upgrade] Rejected: invalid path ${parsedUrl.pathname}`);
         socket.write("HTTP/1.1 404 Not Found\r\n\r\n");
         socket.destroy();
         return;
@@ -192,7 +191,6 @@ function createAppServer({
       const auth = getUpgradeAuthContext(req, jwtSecret, parsedUrl);
       const merchantId = parsedUrl.searchParams.get("merchantId");
       if (merchantId && auth.merchantId && merchantId !== auth.merchantId) {
-        console.error(`[ws-upgrade] Rejected: merchant mismatch (req=${merchantId}, auth=${auth.merchantId})`);
         socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
         socket.destroy();
         return;
@@ -203,7 +201,6 @@ function createAppServer({
         operation: "WS_CONNECT"
       });
       if (!wsPolicy.allowed) {
-        console.error(`[ws-upgrade] Rejected: policy denied for merchant ${scopedMerchantId}`);
         const statusLine =
           wsPolicy.statusCode === 429
             ? "HTTP/1.1 429 Too Many Requests\r\n\r\n"
@@ -213,13 +210,11 @@ function createAppServer({
         return;
       }
 
-      console.log(`[ws-upgrade] Accepted: merchant=${scopedMerchantId}`);
       wsHub.handleUpgrade(req, socket, {
         ...auth,
         merchantId: scopedMerchantId
       });
     } catch (err) {
-      console.error(`[ws-upgrade] Rejected: Auth or internal error:`, err.message);
       socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
       socket.destroy();
     }
@@ -236,10 +231,8 @@ function createAppServer({
           operatorId: client.auth.operatorId || "system",
           content: data.payload.content,
         });
-        console.log(`[ws-hub] Chat DONE: status=${result.status}, pendingReview=${Boolean(result.pendingReview)}`);
         wsHub.broadcast(merchantId, "STRATEGY_CHAT_DELTA", result);
       } catch (err) {
-        console.error("[ws-hub] Chat failed:", err.message);
       }
     }
   });
@@ -366,8 +359,6 @@ async function createAppServerAsync(options = {}) {
     (await createPostgresDb({
       ...postgresOptions,
       onPersistError: (error) => {
-        // eslint-disable-next-line no-console
-        console.error("[postgres-db] persist failed:", error.message);
       },
     }));
 
@@ -384,8 +375,6 @@ async function createAppServerAsync(options = {}) {
       ...postgresOptions,
       snapshotKey: snapshotRef.trim(),
       onPersistError: (error) => {
-        // eslint-disable-next-line no-console
-        console.error("[postgres-db] tenant persist failed:", error.message);
       },
     });
   }
@@ -418,12 +407,7 @@ if (require.main === module) {
     }
     shuttingDown = true;
 
-    // eslint-disable-next-line no-console
-    console.log(`[server] received ${signal}, shutting down gracefully...`);
-
     const forceExitTimer = setTimeout(() => {
-      // eslint-disable-next-line no-console
-      console.error("[server] graceful shutdown timeout, forcing exit.");
       process.exit(1);
     }, 10000);
     if (typeof forceExitTimer.unref === "function") {
@@ -438,8 +422,6 @@ if (require.main === module) {
       process.exit(0);
     } catch (error) {
       clearTimeout(forceExitTimer);
-      // eslint-disable-next-line no-console
-      console.error("[server] graceful shutdown failed:", error);
       process.exit(1);
     }
   };
@@ -474,15 +456,7 @@ if (require.main === module) {
       appInstance = app;
       return app.start(runtimeEnv.port, runtimeEnv.host);
     })
-    .then((startedPort) => {
-      // eslint-disable-next-line no-console
-      console.log(`MealQuestServer listening on ${runtimeEnv.host}:${startedPort}`);
-      // eslint-disable-next-line no-console
-      console.log("[db] driver=postgres");
-    })
     .catch(async (error) => {
-      // eslint-disable-next-line no-console
-      console.error("Failed to start server:", error);
       if (appInstance && typeof appInstance.stop === "function") {
         try {
           await appInstance.stop();

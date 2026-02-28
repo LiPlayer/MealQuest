@@ -207,6 +207,20 @@ function summarizeError(error) {
   return raw.replace(/\s+/g, " ").slice(0, 180);
 }
 
+function logFullLlmOutput({ channel, merchantId, sessionId, text }) {
+  void channel;
+  void merchantId;
+  void sessionId;
+  void text;
+}
+
+function logRawLlmResponse({ channel, merchantId, sessionId, payload }) {
+  void channel;
+  void merchantId;
+  void sessionId;
+  void payload;
+}
+
 function createAiUnavailableResult(reason) {
   return {
     status: "AI_UNAVAILABLE",
@@ -459,9 +473,28 @@ function sanitizeExecutionHistory(input) {
 
 const PROTOCOL_NAME = "MQ_STRATEGY_CHAT";
 const PROTOCOL_VERSION = "2.0";
-const STRUCTURED_BLOCK_START = "---STRUCTURED_OUTPUT---";
-const STRUCTURED_BLOCK_END = "---END_STRUCTURED_OUTPUT---";
 const STRUCTURED_SCHEMA_VERSION = "2026-02-27";
+const DECISION_ENVELOPE_STARTS = [
+  "\n{\"schemaVersion\"",
+  "\n{\"mode\"",
+  "\n{\"assistantMessage\"",
+  "{\"schemaVersion\"",
+];
+
+function findFirstDecisionEnvelopeStart(text) {
+  const source = asString(text);
+  let first = -1;
+  for (const marker of DECISION_ENVELOPE_STARTS) {
+    const idx = source.indexOf(marker);
+    if (idx < 0) {
+      continue;
+    }
+    if (first < 0 || idx < first) {
+      first = idx;
+    }
+  }
+  return first;
+}
 
 function coerceProposalCandidates(decision) {
   const safeDecision = isObjectLike(decision) ? decision : {};
@@ -600,60 +633,83 @@ function shouldRunCriticLoop({
   );
 }
 
-function parseStructuredDecisionBlock(rawText) {
-  const text = asString(rawText);
-  const blockStartIdx = text.indexOf(STRUCTURED_BLOCK_START);
-  const blockEndIdx = text.indexOf(STRUCTURED_BLOCK_END);
-  const assistantMessageCutoffCandidates = [blockStartIdx].filter((idx) => idx >= 0);
-  const assistantMessageCutoff =
-    assistantMessageCutoffCandidates.length > 0 ? Math.min(...assistantMessageCutoffCandidates) : -1;
-  const assistantMessage =
-    assistantMessageCutoff >= 0 ? text.slice(0, assistantMessageCutoff).trim() : text.trim();
-
-  if (blockStartIdx >= 0) {
-    const afterStart = text.slice(blockStartIdx + STRUCTURED_BLOCK_START.length);
-    const structuredEndIdx = afterStart.indexOf(STRUCTURED_BLOCK_END);
-    const jsonText = structuredEndIdx >= 0 ? afterStart.slice(0, structuredEndIdx).trim() : afterStart.trim();
-    const rawDecision = parseJsonLoose(jsonText);
-    const decision = isObjectLike(rawDecision) ? rawDecision : {};
-    return {
-      assistantMessage:
-        asString(decision.assistantMessage) || assistantMessage,
-      decision,
-      sourceFormat: "structured_block",
-      schemaVersion:
-        asString(decision.schemaVersion) || STRUCTURED_SCHEMA_VERSION,
-    };
+function looksLikeDecisionEnvelope(value) {
+  if (!isObjectLike(value)) {
+    return false;
   }
+  return (
+    Array.isArray(value.proposals) ||
+    isObjectLike(value.proposal) ||
+    Boolean(asString(value.mode)) ||
+    Boolean(asString(value.schemaVersion)) ||
+    Boolean(asString(value.assistantMessage))
+  );
+}
 
+function parseTextWithTrailingDecisionEnvelope(rawText) {
+  const text = asString(rawText);
+  if (!text || !text.includes("{")) {
+    return null;
+  }
+  let cursor = text.lastIndexOf("{");
+  while (cursor >= 0) {
+    const decisionText = text.slice(cursor).trim();
+    if (!decisionText) {
+      cursor = text.lastIndexOf("{", cursor - 1);
+      continue;
+    }
+    try {
+      const parsed = parseJsonLoose(decisionText);
+      if (looksLikeDecisionEnvelope(parsed)) {
+        return {
+          assistantMessage: text.slice(0, cursor).trim(),
+          decision: parsed,
+          sourceFormat: "text_plus_json",
+          schemaVersion: asString(parsed.schemaVersion) || STRUCTURED_SCHEMA_VERSION,
+        };
+      }
+    } catch {
+      // continue scanning previous "{"
+    }
+    cursor = text.lastIndexOf("{", cursor - 1);
+  }
   return null;
 }
 
 function parseAssistantDecisionEnvelope(rawText) {
   const text = asString(rawText);
-  let assistantMessage = text;
+  const envelopeStartIdx = findFirstDecisionEnvelopeStart(text);
+  let assistantMessage =
+    envelopeStartIdx >= 0 ? text.slice(0, envelopeStartIdx).trim() : text;
   let sourceFormat = "plain_text";
   let schemaVersion = STRUCTURED_SCHEMA_VERSION;
   let decision = {};
 
   try {
-    const parsed = parseStructuredDecisionBlock(text);
+    const direct = parseJsonLoose(text);
+    if (looksLikeDecisionEnvelope(direct)) {
+      const directDecision = isObjectLike(direct) ? direct : {};
+      assistantMessage = asString(directDecision.assistantMessage) || assistantMessage;
+      sourceFormat = "json_envelope";
+      schemaVersion = asString(directDecision.schemaVersion) || STRUCTURED_SCHEMA_VERSION;
+      decision = directDecision;
+    } else {
+      const parsed = parseTextWithTrailingDecisionEnvelope(text);
+      if (parsed) {
+        assistantMessage = asString(parsed.assistantMessage);
+        sourceFormat = parsed.sourceFormat;
+        schemaVersion = asString(parsed.schemaVersion) || STRUCTURED_SCHEMA_VERSION;
+        decision = isObjectLike(parsed.decision) ? parsed.decision : {};
+      }
+    }
+  } catch {
+    const parsed = parseTextWithTrailingDecisionEnvelope(text);
     if (parsed) {
       assistantMessage = asString(parsed.assistantMessage);
       sourceFormat = parsed.sourceFormat;
       schemaVersion = asString(parsed.schemaVersion) || STRUCTURED_SCHEMA_VERSION;
       decision = isObjectLike(parsed.decision) ? parsed.decision : {};
     }
-  } catch {
-    return {
-      assistantMessage: assistantMessage || text,
-      sourceFormat: "parse_error",
-      schemaVersion: STRUCTURED_SCHEMA_VERSION,
-      decision: {},
-      forceProposal: false,
-      rawCandidates: [],
-      parseError: true,
-    };
   }
 
   const mode = asString(decision.mode).toUpperCase();
@@ -1345,14 +1401,14 @@ function buildChatPromptPayload({
     "1. Write your conversational reply as plain text directly (no prefix, no JSON wrapper).",
     "   - Use **bold** for key terms.",
     "   - Be concise and practical.",
-    "2. ONLY if the user clearly asks to create/finalize a strategy, append AFTER your text:",
-    `   ${STRUCTURED_BLOCK_START}`,
-    `   {"schemaVersion":"${STRUCTURED_SCHEMA_VERSION}","assistantMessage":"string","proposals":[${JSON.stringify(proposalSchema)}]}`,
-    `   ${STRUCTURED_BLOCK_END}`,
+    "2. ONLY if the user clearly asks to create/finalize a strategy, append ONE compact JSON object",
+    "   on a new line after your text:",
+    `   {"schemaVersion":"${STRUCTURED_SCHEMA_VERSION}","mode":"PROPOSAL","assistantMessage":"string","proposals":[${JSON.stringify(proposalSchema)}]}`,
     "",
     "RULES:",
-    "- Never output JSON outside the structured block.",
-    "- Only use structured block when user explicitly requests a strategy proposal.",
+    "- Do not output custom separators.",
+    "- Do not wrap JSON in markdown code fences.",
+    "- Only append JSON when user explicitly requests a strategy proposal.",
     "- Avoid repeating approved strategies with the same templateId+branchId.",
     "- Reference salesSnapshot for optimization direction.",
     "- Reference executionHistory to avoid repeated operations.",
@@ -1405,48 +1461,14 @@ function createStrategyChatGraph({
     turn: Annotation({ default: () => null }),
   });
 
-  const formatGraphLogContext = (state) => {
-    const safeState = isObjectLike(state) ? state : {};
-    const input = isObjectLike(safeState.input) ? safeState.input : {};
-    const turn = isObjectLike(safeState.turn) ? safeState.turn : null;
-    const evaluationPayload = isObjectLike(safeState.evaluationPayload) ? safeState.evaluationPayload : null;
-    const proposals = Array.isArray(turn && turn.proposals) ? turn.proposals.length : 0;
-    const evaluationItems = Array.isArray(evaluationPayload && evaluationPayload.items)
-      ? evaluationPayload.items.length
-      : 0;
-    return [
-      `merchant=${asString(input.merchantId) || "-"}`,
-      `session=${asString(input.sessionId) || "-"}`,
-      `status=${asString(turn && turn.status) || "-"}`,
-      `proposals=${proposals}`,
-      `evaluations=${evaluationItems}`,
-      `critic_round=${Math.max(0, Math.floor(toFiniteNumber(safeState.criticRound, 0)))}`,
-    ].join(" ");
-  };
-
   const withGraphNodeLog = (nodeName, handler) => async (state) => {
-    const startedAt = Date.now();
-    console.log(`[ai-strategy] [graph] enter node=${nodeName} ${formatGraphLogContext(state)}`);
-    try {
-      const result = await handler(state);
-      const mergedState =
-        isObjectLike(state) && isObjectLike(result)
-          ? { ...state, ...result }
-          : state;
-      console.log(
-        `[ai-strategy] [graph] exit node=${nodeName} elapsed_ms=${Date.now() - startedAt} ${formatGraphLogContext(mergedState)}`,
-      );
-      return result;
-    } catch (error) {
-      console.warn(
-        `[ai-strategy] [graph] error node=${nodeName} elapsed_ms=${Date.now() - startedAt} error=${summarizeError(error)} ${formatGraphLogContext(state)}`,
-      );
-      throw error;
-    }
+    void nodeName;
+    return handler(state);
   };
 
   const logGraphRoute = (nodeName, nextNode, state) => {
-    console.log(`[ai-strategy] [graph] route node=${nodeName} next=${nextNode} ${formatGraphLogContext(state)}`);
+    void nodeName;
+    void state;
     return nextNode;
   };
 
@@ -1484,7 +1506,26 @@ function createStrategyChatGraph({
 
   const remoteDecide = async (state) => {
     try {
-      const remoteDecision = await modelGateway.invokeChatRaw(state.promptMessages);
+      let remoteDecision = "";
+      const input = isObjectLike(state.input) ? state.input : {};
+      if (typeof modelGateway.invokeChatRawVerbose === "function") {
+        const verbose = await modelGateway.invokeChatRawVerbose(state.promptMessages);
+        remoteDecision = asString(verbose && verbose.content);
+        logRawLlmResponse({
+          channel: "unary",
+          merchantId: input.merchantId,
+          sessionId: input.sessionId,
+          payload: verbose && verbose.raw ? verbose.raw : {},
+        });
+      } else {
+        remoteDecision = await modelGateway.invokeChatRaw(state.promptMessages);
+      }
+      logFullLlmOutput({
+        channel: "unary",
+        merchantId: input.merchantId,
+        sessionId: input.sessionId,
+        text: asString(remoteDecision),
+      });
       return {
         rawContent: asString(remoteDecision),
       };
@@ -1611,7 +1652,7 @@ function createStrategyChatGraph({
         criticDecision: normalizeCriticDecision(criticRaw),
       };
     } catch (error) {
-      console.warn(`[ai-strategy] critic failed: ${summarizeError(error)}`);
+      void error;
       return {
         criticDecision: {
           needRevision: false,
@@ -1703,7 +1744,7 @@ function createStrategyChatGraph({
         criticDecision: null,
       };
     } catch (error) {
-      console.warn(`[ai-strategy] revise failed: ${summarizeError(error)}`);
+      void error;
       return {
         criticRound: criticMaxRounds,
         criticDecision: null,
@@ -2428,7 +2469,7 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
           );
           criticDecision = normalizeCriticDecision(criticRaw);
         } catch (error) {
-          console.warn(`[ai-strategy] critic failed: ${summarizeError(error)}`);
+          void error;
           break;
         }
       }
@@ -2493,7 +2534,7 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
           break;
         }
       } catch (error) {
-        console.warn(`[ai-strategy] revise failed: ${summarizeError(error)}`);
+        void error;
         break;
       }
     }
@@ -2825,7 +2866,7 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
   }
 
   // Parses dual-channel response:
-  // plain-text assistant message + optional structured proposal block.
+  // plain-text assistant message + optional trailing JSON decision envelope.
   function parseTwoPartResponse(rawText, input) {
     const parsed = parseAssistantDecisionEnvelope(rawText);
     const { normalizedCandidates, invalidCandidates } = normalizeCandidatesFromRaw({
@@ -2860,7 +2901,6 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
             status: "CHAT_REPLY",
             assistantMessage: "Please tell me your goal, budget, and expected time window.",
           };
-      console.log(`[ai-strategy] [unary] LLM_FULL_MESSAGE at ${new Date().toISOString()} merchant=${input.merchantId} status=${parsedTurn.status}`);
       return parsedTurn;
     } catch (error) {
       return createAiUnavailableResult(`strategy chat failed: ${summarizeError(error)}`);
@@ -2887,21 +2927,8 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
     let rawBuffer = "";
     let yieldedLen = 0;
     let sentinelDetected = false;
-    const SENTINELS = [STRUCTURED_BLOCK_START];
-
-    const findFirstSentinelIndex = (text) => {
-      let first = -1;
-      for (const sentinel of SENTINELS) {
-        const idx = text.indexOf(sentinel);
-        if (idx < 0) {
-          continue;
-        }
-        if (first < 0 || idx < first) {
-          first = idx;
-        }
-      }
-      return first;
-    };
+    const rawChunks = [];
+    const SENTINELS = DECISION_ENVELOPE_STARTS;
 
     const computeSafeFlushLen = (text) => {
       let holdBack = 0;
@@ -2917,14 +2944,25 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
       return text.length - holdBack;
     };
 
-    for await (const chunk of modelGateway.streamChat(prompt.messages)) {
-      if (!sentinelDetected && rawBuffer.length === 0 && chunk.length > 0) {
-        console.log(`[ai-strategy] [stream] LLM_FIRST_MESSAGE at ${new Date().toISOString()} merchant=${input.merchantId}`);
+    const streamIterator =
+      typeof modelGateway.streamChatWithRaw === "function"
+        ? modelGateway.streamChatWithRaw(prompt.messages)
+        : modelGateway.streamChat(prompt.messages);
+
+    for await (const streamItem of streamIterator) {
+      let chunk = "";
+      if (isObjectLike(streamItem) && Object.prototype.hasOwnProperty.call(streamItem, "text")) {
+        chunk = typeof streamItem.text === "string" ? streamItem.text : String(streamItem.text || "");
+        if (isObjectLike(streamItem.raw)) {
+          rawChunks.push(streamItem.raw);
+        }
+      } else {
+        chunk = typeof streamItem === "string" ? streamItem : String(streamItem || "");
       }
       rawBuffer += chunk;
       if (sentinelDetected) continue;
 
-      const sentinelIdx = findFirstSentinelIndex(rawBuffer);
+      const sentinelIdx = findFirstDecisionEnvelopeStart(rawBuffer);
       if (sentinelIdx >= 0) {
         const textToYield = rawBuffer.slice(yieldedLen, sentinelIdx);
         if (textToYield) {
@@ -2947,6 +2985,22 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
       yield rawBuffer.slice(yieldedLen);
     }
 
+    logFullLlmOutput({
+      channel: "stream",
+      merchantId: input.merchantId,
+      sessionId: input.sessionId,
+      text: rawBuffer,
+    });
+    logRawLlmResponse({
+      channel: "stream",
+      merchantId: input.merchantId,
+      sessionId: input.sessionId,
+      payload: {
+        chunkCount: rawChunks.length,
+        chunks: rawChunks,
+      },
+    });
+
     const parsedTurn = parseTwoPartResponse(rawBuffer, input);
     const revisedTurn = await maybeRunCriticReviseLoop({
       input,
@@ -2964,7 +3018,6 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
       input,
       turn: result
     });
-    console.log(`[ai-strategy] [stream] LLM_LAST_MESSAGE at ${new Date().toISOString()} merchant=${input.merchantId} status=${finalized.status}`);
     return finalized;
   }
 
@@ -2978,7 +3031,7 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
       configured: true,
       remoteEnabled,
       remoteConfigured: remoteEnabled ? Boolean(apiKey) : false,
-      plannerEngine: "dual_channel_strict_v2",
+      plannerEngine: "text_json_envelope_v3",
       criticLoop: {
         enabled: criticEnabled,
         maxRounds: criticMaxRounds,

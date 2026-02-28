@@ -109,7 +109,6 @@ function createHttpRequestHandler(deps) {
     }),
   ];
 
-  const httpLogEnabled = String(process.env.MQ_HTTP_LOG || "true").toLowerCase() !== "false";
   const tenantLocks = new Map();
 
   async function withTenantLock(key, runner) {
@@ -162,28 +161,10 @@ function createHttpRequestHandler(deps) {
   return async function requestHandler(req, res) {
     const method = req.method || "GET";
     const url = new URL(req.url || "/", "http://localhost");
-    const startedAt = Date.now();
     const auditAction = resolveAuditAction(method, url.pathname);
     metrics.requestsTotal += 1;
     metrics.requestsByPath[url.pathname] = (metrics.requestsByPath[url.pathname] || 0) + 1;
     let auth = null;
-
-    if (httpLogEnabled) {
-      const originalEnd = res.end.bind(res);
-      let ended = false;
-      res.end = (...args) => {
-        if (!ended) {
-          ended = true;
-          const durationMs = Date.now() - startedAt;
-          const statusCode = Number(res.statusCode || 0);
-          const level = statusCode >= 400 ? "error" : "log";
-          console[level](
-            `[http] ${method} ${url.pathname} -> ${statusCode} (${durationMs}ms)`
-          );
-        }
-        return originalEnd(...args);
-      };
-    }
 
     try {
       const baseContext = {

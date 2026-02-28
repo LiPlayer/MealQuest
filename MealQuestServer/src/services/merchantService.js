@@ -2,7 +2,6 @@ function createMerchantService(db, options = {}) {
   const aiStrategyService = options.aiStrategyService;
   const policyOsService = options.policyOsService;
   const wsHub = options.wsHub;
-  console.log(`[merchant-service] Initializing: wsHub=${Boolean(wsHub)}`);
   const fromFreshState = Boolean(options.__fromFreshState);
   const FRESH_NOT_USED = Symbol("FRESH_NOT_USED");
   const MAX_CHAT_MESSAGES = 180;
@@ -2088,7 +2087,6 @@ function createMerchantService(db, options = {}) {
     let aiTurn;
     const assistantMessageId = `msg_${Date.now()}_ai`;
     if (typeof aiStrategyService.streamStrategyChatTurn === "function") {
-      console.log(`[ai-strategy] [stream] START merchant=${merchantId} ws=${Boolean(wsHub)}`);
       try {
         let fullText = "";
         const gen = aiStrategyService.streamStrategyChatTurn(aiInput);
@@ -2124,16 +2122,13 @@ function createMerchantService(db, options = {}) {
           next = await gen.next();
         }
         aiTurn = next.value;
-        console.log(`[ai-strategy] [stream] DONE status=${aiTurn?.status || "OK"} chars=${fullText.length}`);
       } catch (err) {
-        console.error(`[ai-strategy] [stream] FAILED: ${err.message}`);
         aiTurn = null;
       }
     }
 
     // Fallback: non-streaming if streaming not available or failed
     if (!aiTurn) {
-      console.log(`[ai-strategy] [unary] FALLBACK merchant=${merchantId}`);
       aiTurn = await aiStrategyService.generateStrategyChatTurn(aiInput);
     }
 
@@ -2205,9 +2200,6 @@ function createMerchantService(db, options = {}) {
         const assistantMessage = blockedReasonText
           ? `I drafted strategies but they are blocked by guardrails: ${blockedReasonText}`
           : "I drafted strategies but they are blocked by risk guardrails.";
-        if (blockedReasons.length > 0) {
-          console.warn(`[ai-strategy] proposals blocked by guardrails: merchant=${merchantId} reasons=${blockedReasons.join("; ")}`);
-        }
         appendChatMessage(session, {
           role: "ASSISTANT",
           type: "TEXT",

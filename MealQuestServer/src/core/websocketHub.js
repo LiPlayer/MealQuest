@@ -126,7 +126,6 @@ function createWebSocketHub() {
             const data = JSON.parse(payload);
             messageHandler(client, data);
           } catch (err) {
-            console.error("[ws-hub] Failed to parse payload:", err.message);
           }
         }
       }

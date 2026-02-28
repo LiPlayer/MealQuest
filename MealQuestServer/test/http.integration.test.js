@@ -633,13 +633,11 @@ function toMockAiContent(payload, decision) {
     if (decision && decision.mode === "PROPOSAL" && decision.proposal) {
       return [
         String(decision.assistantMessage || "Strategy proposal drafted."),
-        "---STRUCTURED_OUTPUT---",
         JSON.stringify({
           schemaVersion: "2026-02-27",
           assistantMessage: String(decision.assistantMessage || "Strategy proposal drafted."),
           proposals: [decision.proposal],
         }),
-        "---END_STRUCTURED_OUTPUT---",
       ].join("\n");
     }
     return String(
@@ -2706,3 +2704,4 @@ test("metrics endpoint is publicly readable", async () => {
     await app.stop();
   }
 });
+
