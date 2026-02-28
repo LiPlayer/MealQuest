@@ -104,7 +104,7 @@ function createPolicyOsService(db, { wsHub = null, metrics = null, now = () => D
     return decision;
   }
 
-  async function simulateDecision({
+  async function evaluateDecision({
     merchantId,
     userId = "",
     event,
@@ -247,7 +247,7 @@ function createPolicyOsService(db, { wsHub = null, metrics = null, now = () => D
     listPolicies: policyRegistry.listPolicies,
     listActivePolicies: policyRegistry.listActivePolicies,
     executeDecision,
-    simulateDecision,
+    evaluateDecision,
     getDecisionExplain: decisionService.getDecisionExplain,
     appendBehaviorLog,
     runRetentionJobs,

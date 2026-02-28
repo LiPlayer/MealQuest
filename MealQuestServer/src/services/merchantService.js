@@ -779,7 +779,7 @@ function createMerchantService(db, options = {}) {
     userMessage = "",
     salesSnapshot = null
   }) {
-    if (!policyOsService || typeof policyOsService.simulateDecision !== "function") {
+    if (!policyOsService || typeof policyOsService.evaluateDecision !== "function") {
       return null;
     }
     const simulationUserId = resolveSimulationUserId(merchantId, "");
@@ -810,7 +810,7 @@ function createMerchantService(db, options = {}) {
         }
         const event = getPrimaryTriggerEvent(spec) || "APP_OPEN";
         try {
-          const simulation = await policyOsService.simulateDecision({
+          const simulation = await policyOsService.evaluateDecision({
             merchantId,
             userId: simulationUserId,
             event,
@@ -876,7 +876,7 @@ function createMerchantService(db, options = {}) {
         }
       }
       return {
-        source: "POLICYOS_SIMULATE",
+        source: "POLICYOS_EVALUATE",
         userId: simulationUserId,
         results
       };
@@ -891,7 +891,7 @@ function createMerchantService(db, options = {}) {
     if (!Array.isArray(pendingCreated) || pendingCreated.length === 0) {
       return pendingCreated || [];
     }
-    if (!policyOsService || typeof policyOsService.simulateDecision !== "function") {
+    if (!policyOsService || typeof policyOsService.evaluateDecision !== "function") {
       return pendingCreated;
     }
     const salesSnapshot = getSalesSnapshotContext(merchantId);
@@ -1552,7 +1552,7 @@ function createMerchantService(db, options = {}) {
     if (!["PENDING", "APPROVED"].includes(String(proposal.status || "").toUpperCase())) {
       throw new Error("proposal status does not allow evaluate");
     }
-    if (!policyOsService || typeof policyOsService.simulateDecision !== "function") {
+    if (!policyOsService || typeof policyOsService.evaluateDecision !== "function") {
       throw new Error("policy os service is not configured");
     }
     const draftId = ensurePolicyDraftForProposal({
@@ -1582,7 +1582,7 @@ function createMerchantService(db, options = {}) {
         };
       }
     }
-    const simulation = await policyOsService.simulateDecision({
+    const simulation = await policyOsService.evaluateDecision({
       merchantId,
       userId: resolvedUserId,
       event: resolvedEvent,

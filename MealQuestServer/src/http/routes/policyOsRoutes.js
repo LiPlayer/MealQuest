@@ -363,7 +363,7 @@ function createPolicyOsRoutesHandler({
         return true;
       }
       const { policyOsService } = getServicesForMerchant(merchantId);
-      const result = await policyOsService.simulateDecision({
+      const result = await policyOsService.evaluateDecision({
         merchantId,
         userId: body.userId,
         event,

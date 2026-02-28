@@ -204,25 +204,25 @@ export default function StrategyScreen() {
                                         />
                                     </View>
                                     {strategyChatEvaluation ? (
-                                        <View style={styles.simulationSummary}>
-                                            <Text style={styles.simulationTitle}>Evaluation Summary</Text>
-                                            <Text style={styles.simulationText}>
+                                        <View style={styles.evaluationSummary}>
+                                            <Text style={styles.evaluationTitle}>Evaluation Summary</Text>
+                                            <Text style={styles.evaluationText}>
                                                 Selected {Array.isArray(strategyChatEvaluation.selected) ? strategyChatEvaluation.selected.length : 0},
                                                 Rejected {Array.isArray(strategyChatEvaluation.rejected) ? strategyChatEvaluation.rejected.length : 0},
                                                 Mode {String(strategyChatEvaluation.mode || 'SIMULATE')}
                                             </Text>
                                         </View>
                                     ) : hasAutoEvaluation ? (
-                                        <View style={styles.simulationSummary}>
-                                            <Text style={styles.simulationTitle}>Auto Evaluation Ready</Text>
-                                            <Text style={styles.simulationText}>
+                                        <View style={styles.evaluationSummary}>
+                                            <Text style={styles.evaluationTitle}>Auto Evaluation Ready</Text>
+                                            <Text style={styles.evaluationText}>
                                                 Selected {pendingEvaluation?.selectedCount || 0},
                                                 Rejected {pendingEvaluation?.rejectedCount || 0},
                                                 Score {(pendingEvaluation?.score || 0).toFixed(2)}
                                             </Text>
                                         </View>
                                     ) : (
-                                        <Text style={styles.simulationHint}>Evaluation is required before approve.</Text>
+                                        <Text style={styles.evaluationHint}>Evaluation is required before approve.</Text>
                                     )}
 
                                     <View style={styles.actionRow}>

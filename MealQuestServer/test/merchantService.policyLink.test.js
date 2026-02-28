@@ -42,11 +42,11 @@ test("merchant service links AI proposal evaluate -> approve -> publish lifecycl
   db.save = () => {};
   seedMerchant(db);
   const policyOsService = createPolicyOsService(db);
-  const rawSimulateDecision = policyOsService.simulateDecision.bind(policyOsService);
-  let simulateCalls = 0;
-  policyOsService.simulateDecision = async (...args) => {
-    simulateCalls += 1;
-    return rawSimulateDecision(...args);
+  const rawEvaluateDecision = policyOsService.evaluateDecision.bind(policyOsService);
+  let evaluateCalls = 0;
+  policyOsService.evaluateDecision = async (...args) => {
+    evaluateCalls += 1;
+    return rawEvaluateDecision(...args);
   };
   const { spec, template, branch } = createPolicySpecFromTemplate({
     merchantId: "m_policy_link",
@@ -87,7 +87,7 @@ test("merchant service links AI proposal evaluate -> approve -> publish lifecycl
   assert.equal(turn.status, "PENDING_REVIEW");
   assert.ok(turn.pendingReview);
   assert.ok(turn.pendingReview.policyDraftId);
-  assert.equal(simulateCalls, 1);
+  assert.equal(evaluateCalls, 1);
 
   const reviewed = await merchantService.reviewStrategyChatProposal({
     merchantId: "m_policy_link",
@@ -109,7 +109,7 @@ test("merchant service links AI proposal evaluate -> approve -> publish lifecycl
   assert.ok(evaluated.evaluation);
   assert.equal(evaluated.evaluation.mode, "SIMULATE");
   assert.equal(evaluated.reused, true);
-  assert.equal(simulateCalls, 1);
+  assert.equal(evaluateCalls, 1);
 
   const published = await merchantService.publishApprovedProposalPolicy({
     merchantId: "m_policy_link",
@@ -125,7 +125,7 @@ test("merchant service links AI proposal evaluate -> approve -> publish lifecycl
   assert.equal(activePolicies[0].policy_id, published.policyId);
 });
 
-test("merchant service auto-simulates and ranks multiple proposal candidates", async () => {
+test("merchant service auto-evaluates and ranks multiple proposal candidates", async () => {
   const db = createInMemoryDb();
   db.save = () => {};
   seedMerchant(db, "m_policy_rank");
@@ -239,11 +239,11 @@ test("merchant service supports force refresh evaluation after cached auto evalu
   db.save = () => {};
   seedMerchant(db, "m_policy_force_refresh");
   const policyOsService = createPolicyOsService(db);
-  const rawSimulateDecision = policyOsService.simulateDecision.bind(policyOsService);
-  let simulateCalls = 0;
-  policyOsService.simulateDecision = async (...args) => {
-    simulateCalls += 1;
-    return rawSimulateDecision(...args);
+  const rawEvaluateDecision = policyOsService.evaluateDecision.bind(policyOsService);
+  let evaluateCalls = 0;
+  policyOsService.evaluateDecision = async (...args) => {
+    evaluateCalls += 1;
+    return rawEvaluateDecision(...args);
   };
   const { spec, template, branch } = createPolicySpecFromTemplate({
     merchantId: "m_policy_force_refresh",
@@ -282,7 +282,7 @@ test("merchant service supports force refresh evaluation after cached auto evalu
     content: "Please create strategy proposal now."
   });
   assert.equal(turn.status, "PENDING_REVIEW");
-  assert.equal(simulateCalls, 1);
+  assert.equal(evaluateCalls, 1);
 
   const reused = await merchantService.evaluateProposalPolicy({
     merchantId: "m_policy_force_refresh",
@@ -292,7 +292,7 @@ test("merchant service supports force refresh evaluation after cached auto evalu
     event: triggerEvent
   });
   assert.equal(reused.reused, true);
-  assert.equal(simulateCalls, 1);
+  assert.equal(evaluateCalls, 1);
 
   const refreshed = await merchantService.evaluateProposalPolicy({
     merchantId: "m_policy_force_refresh",
@@ -303,5 +303,5 @@ test("merchant service supports force refresh evaluation after cached auto evalu
     forceRefresh: true
   });
   assert.equal(refreshed.reused, false);
-  assert.equal(simulateCalls, 2);
+  assert.equal(evaluateCalls, 2);
 });

@@ -234,7 +234,7 @@ test("policy os can simulate an ephemeral policySpec without creating draft", as
     }
   };
 
-  const simulated = await policyOsService.simulateDecision({
+  const simulated = await policyOsService.evaluateDecision({
     merchantId: "m_ai_ephemeral",
     userId: "u_001",
     event: "APP_OPEN",

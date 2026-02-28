@@ -226,7 +226,7 @@ test("ai strategy provider: strategy chat supports multiple proposal candidates"
   }
 });
 
-test("ai strategy provider: unary graph ranks proposals with simulation tool and adds explain pack", async () => {
+test("ai strategy provider: unary graph ranks proposals with evaluation tool and adds explain pack", async () => {
   const originalFetch = global.fetch;
   global.fetch = async () =>
     new Response(
@@ -296,7 +296,7 @@ test("ai strategy provider: unary graph ranks proposals with simulation tool and
       activePolicies: [],
       approvedStrategies: [],
       simulatePolicyCandidates: async () => ({
-        source: "POLICYOS_SIMULATE",
+        source: "POLICYOS_EVALUATE",
         userId: "u_001",
         results: [
           {
@@ -332,9 +332,9 @@ test("ai strategy provider: unary graph ranks proposals with simulation tool and
     assert.ok(result.proposals[0].evaluation);
     assert.equal(result.proposals[0].evaluation.rank_score, 7.2);
     assert.ok(result.explainPack);
-    assert.equal(result.explainPack.source, "POLICYOS_SIMULATE");
+    assert.equal(result.explainPack.source, "POLICYOS_EVALUATE");
     assert.equal(result.explainPack.items[0].title, "Option High");
-    assert.equal(result.protocol.simulation.source, "POLICYOS_SIMULATE");
+    assert.equal(result.protocol.simulation.source, "POLICYOS_EVALUATE");
     assert.equal(result.protocol.ranking.strategy, "VALUE_RISK_COST_V1");
   } finally {
     global.fetch = originalFetch;

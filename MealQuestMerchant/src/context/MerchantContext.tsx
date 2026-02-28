@@ -582,7 +582,7 @@ export function MerchantProvider({
                 eventId: `evt_eval_${Date.now()}`,
                 userId: chosenUserId || undefined,
                 context: {
-                    source: 'MERCHANT_REVIEW_SIMULATE',
+                    source: 'MERCHANT_REVIEW_EVALUATE',
                     proposalId: currentPending.proposalId,
                 },
             });
