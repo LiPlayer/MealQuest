@@ -5,10 +5,11 @@
   "type": "commonjs",
   "scripts": {
     "start": "node src/http/server.js",
-    "test": "node --test --test-concurrency=1",
+    "test": "npm run policyos:validate-templates && node --test --test-concurrency=1",
     "test:smoke": "node scripts/smoke-local-server.js",
     "onboard:merchant": "node scripts/onboard-merchant.js",
-    "policyos:retention": "node scripts/policyos-retention-job.js"
+    "policyos:retention": "node scripts/policyos-retention-job.js",
+    "policyos:validate-templates": "node scripts/policyos-validate-templates.js"
   },
   "dependencies": {
     "@langchain/core": "^1.1.28",

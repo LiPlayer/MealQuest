@@ -75,10 +75,14 @@ function createPolicyOsService(db, { wsHub = null, metrics = null, now = () => D
     context = {},
     eventId = ""
   }) {
+    const normalizedEvent = String(event || "").trim().toUpperCase();
+    if (!normalizedEvent) {
+      throw new Error("event is required");
+    }
     const { merchant, user } = resolveMerchantAndUser(merchantId, userId);
     const decision = await decisionService.evaluateEvent({
       merchantId,
-      event,
+      event: normalizedEvent,
       eventId,
       context: {
         ...context,
@@ -106,11 +110,16 @@ function createPolicyOsService(db, { wsHub = null, metrics = null, now = () => D
     event,
     context = {},
     eventId = "",
-    draftId = ""
+    draftId = "",
+    policySpec = null,
   }) {
     const { merchant, user } = resolveMerchantAndUser(merchantId, userId);
     let policies = null;
     const safeDraftId = String(draftId || "").trim();
+    const hasPolicySpec = Boolean(policySpec && typeof policySpec === "object");
+    if (safeDraftId && hasPolicySpec) {
+      throw new Error("draftId and policySpec cannot be used together");
+    }
     if (safeDraftId) {
       const draft = policyRegistry.getDraft({
         merchantId,
@@ -130,10 +139,29 @@ function createPolicyOsService(db, { wsHub = null, metrics = null, now = () => D
           expires_at: new Date(now() + Number(draft.spec.program.ttl_sec || 3600) * 1000).toISOString()
         }
       ];
+    } else if (hasPolicySpec) {
+      const validatedSpec = schemaRegistry.validatePolicySpec(policySpec);
+      const nowIso = new Date(now()).toISOString();
+      const ttlSec = Number(validatedSpec.program && validatedSpec.program.ttl_sec) || 3600;
+      policies = [
+        {
+          ...validatedSpec,
+          policy_id: `ephemeral:${validatedSpec.policy_key || "policy"}:${Math.floor(now())}`,
+          status: "SIMULATE_ONLY",
+          source_draft_id: null,
+          published_at: null,
+          updated_at: nowIso,
+          expires_at: new Date(now() + ttlSec * 1000).toISOString()
+        }
+      ];
+    }
+    const normalizedEvent = String(event || "").trim().toUpperCase();
+    if (!normalizedEvent) {
+      throw new Error("event is required");
     }
     return decisionService.evaluateEvent({
       merchantId,
-      event,
+      event: normalizedEvent,
       eventId,
       context: {
         ...context,
@@ -212,13 +240,14 @@ function createPolicyOsService(db, { wsHub = null, metrics = null, now = () => D
     submitDraft: policyRegistry.submitDraft,
     approveDraft: policyRegistry.approveDraft,
     publishDraft: policyRegistry.publishDraft,
+    pausePolicy: policyRegistry.pausePolicy,
+    resumePolicy: policyRegistry.resumePolicy,
     getDraft: policyRegistry.getDraft,
     listDrafts: policyRegistry.listDrafts,
     listPolicies: policyRegistry.listPolicies,
     listActivePolicies: policyRegistry.listActivePolicies,
     executeDecision,
     simulateDecision,
-    evaluateDecision: executeDecision,
     getDecisionExplain: decisionService.getDecisionExplain,
     appendBehaviorLog,
     runRetentionJobs,

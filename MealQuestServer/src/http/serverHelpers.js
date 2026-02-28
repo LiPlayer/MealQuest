@@ -22,6 +22,8 @@ const TENANT_LIMIT_OPERATIONS = [
   "POLICY_DRAFT_SUBMIT",
   "POLICY_DRAFT_APPROVE",
   "POLICY_PUBLISH",
+  "POLICY_PAUSE",
+  "POLICY_RESUME",
   "POLICY_SIMULATE",
   "POLICY_EXECUTE",
   "WS_CONNECT",
@@ -179,12 +181,18 @@ function resolveAuditAction(method, pathname) {
   if (method === "POST" && /^\/api\/policyos\/drafts\/[^/]+\/publish$/.test(pathname)) {
     return "POLICY_PUBLISH";
   }
+  if (method === "POST" && /^\/api\/policyos\/policies\/[^/]+\/pause$/.test(pathname)) {
+    return "POLICY_PAUSE";
+  }
+  if (method === "POST" && /^\/api\/policyos\/policies\/[^/]+\/resume$/.test(pathname)) {
+    return "POLICY_RESUME";
+  }
   if (method === "POST" && pathname === "/api/policyos/decision/simulate") {
     return "POLICY_SIMULATE";
   }
   if (
     method === "POST" &&
-    (pathname === "/api/policyos/decision/execute" || pathname === "/api/policyos/decision/evaluate")
+    pathname === "/api/policyos/decision/execute"
   ) {
     return "POLICY_EXECUTE";
   }
@@ -392,7 +400,7 @@ function buildMerchantSnapshotSummary(db, merchantId) {
     usersCount: Object.keys(users).length,
     paymentsCount: Object.keys(payments).length,
     invoicesCount: Object.keys(invoices).length,
-    campaignsCount: activePolicies.length,
+    activePoliciesCount: activePolicies.length,
     proposalsCount: proposals.length,
     strategyConfigCount: strategyConfigs.length,
     strategyChatSessionsCount,
@@ -451,24 +459,24 @@ function toActivityTheme(category = "") {
   return { color: "bg-slate-50", textColor: "text-slate-600" };
 }
 
-function buildCustomerActivities(campaigns = []) {
-  return (campaigns || [])
-    .filter((campaign) => campaign && campaign.status === "ACTIVE")
+function buildCustomerActivities(policies = []) {
+  return (policies || [])
+    .filter((policy) => policy && policy.status === "ACTIVE")
     .sort((a, b) => Number(b.priority || 0) - Number(a.priority || 0))
     .slice(0, 6)
-    .map((campaign) => {
-      const meta = campaign.strategyMeta || {};
+    .map((policy) => {
+      const meta = policy.strategyMeta || {};
       const theme = toActivityTheme(meta.category);
       const narrative =
-        campaign.action &&
-          campaign.action.type === "STORY_CARD" &&
-          campaign.action.story &&
-          campaign.action.story.narrative
-          ? campaign.action.story.narrative
-          : `活动触发事件：${campaign.trigger && campaign.trigger.event ? campaign.trigger.event : "CUSTOM"}`;
+        policy.action &&
+          policy.action.type === "STORY_CARD" &&
+          policy.action.story &&
+          policy.action.story.narrative
+          ? policy.action.story.narrative
+          : `Triggered by event: ${policy.trigger && policy.trigger.event ? policy.trigger.event : "CUSTOM"}`;
       return {
-        id: campaign.id,
-        title: campaign.name,
+        id: policy.id,
+        title: policy.name,
         desc: narrative,
         icon: "✨",
         color: theme.color,
@@ -947,11 +955,6 @@ function copyMerchantSlice({ sourceDb, targetDb, merchantId }) {
     (sourceDb.invoicesByMerchant && sourceDb.invoicesByMerchant[merchantId]) || {}
   );
 
-  targetDb.campaigns = upsertMerchantRows(
-    targetDb.campaigns,
-    merchantId,
-    jsonClone((sourceDb.campaigns || []).filter((item) => item.merchantId === merchantId))
-  );
   targetDb.proposals = upsertMerchantRows(
     targetDb.proposals,
     merchantId,
@@ -1144,7 +1147,6 @@ async function cutoverMerchantToDedicatedDb({
     dedicatedDb = await createPostgresDb({
       connectionString: postgresOptions.connectionString,
       schema: postgresOptions.schema,
-      table: postgresOptions.table,
       snapshotKey: dedicatedDbFilePath,
       maxPoolSize: postgresOptions.maxPoolSize,
     });

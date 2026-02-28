@@ -19,7 +19,7 @@ export default function HomeScreen() {
         onReviewPendingStrategy, // Actually not needed here but kept for context if needed
     } = useMerchant();
 
-    const activeCampaignCount = merchantState.activeCampaigns.filter(
+    const activePolicyCount = merchantState.activePolicies.filter(
         item => (item.status || 'ACTIVE') === 'ACTIVE',
     ).length;
     const budgetRemaining = Math.max(merchantState.budgetCap - merchantState.budgetUsed, 0);
@@ -53,9 +53,9 @@ export default function HomeScreen() {
                         </View>
                         <View style={styles.heroStatCard}>
                             <Text style={styles.heroStatLabel}>进行中活动</Text>
-                            <Text style={styles.heroStatValue}>{activeCampaignCount}</Text>
+                            <Text style={styles.heroStatValue}>{activePolicyCount}</Text>
                             <Text style={styles.heroStatHint}>
-                                共 {merchantState.activeCampaigns.length} 个活动
+                                共 {merchantState.activePolicies.length} 个活动
                             </Text>
                         </View>
                     </View>

@@ -43,9 +43,6 @@ At minimum, configure:
 ```ini
 MQ_DB_URL=postgres://user:password@host:5432/mealquest
 MQ_DB_SCHEMA=public
-MQ_DB_LEGACY_SNAPSHOT_TABLE=mealquest_state_snapshots
-# backward compatible alias:
-MQ_DB_STATE_TABLE=mealquest_state_snapshots
 MQ_DB_SNAPSHOT_KEY=main
 MQ_DB_AUTO_CREATE=true
 MQ_DB_ENFORCE_RLS=true
@@ -62,13 +59,14 @@ MQ_AI_MODEL=glm-4.7-flash
 MQ_AI_API_KEY=
 MQ_AI_TIMEOUT_MS=45000
 MQ_AI_MAX_RETRIES=2
+MQ_POLICY_TEMPLATE_VALIDATE_ON_BOOT=true
 ```
 
 Notes:
 
 1. Runtime state model is still in-memory first.
 2. `save()` persists runtime state into relational tables under `MQ_DB_SCHEMA`.
-3. On first run, if relational rows do not exist for `MQ_DB_SNAPSHOT_KEY`, server tries one-time import from the legacy snapshot table.
+3. Runtime state is fully managed by relational tenant tables keyed by `MQ_DB_SNAPSHOT_KEY`.
 4. Migration cutover keeps working with tenant snapshot keys.
 5. Shared-db tables are persisted by `tenant_id`, with transaction-scoped `app.tenant_id` context.
 6. PostgreSQL RLS is enabled by default (`MQ_DB_ENFORCE_RLS=true`) and can be disabled only for troubleshooting.
@@ -82,6 +80,7 @@ Notes:
 14. `MQ_AI_MAX_RETRIES` controls LangChain model retry attempts (`@langchain/openai`).
 15. Strategy planning is orchestrated by LangGraph (`prepare_input -> remote_decide -> assemble_plan`).
 16. Payment write operations execute on fresh tenant state within one PostgreSQL transaction (`runWithFreshState`).
+17. Policy template catalog is validated at boot by default (`MQ_POLICY_TEMPLATE_VALIDATE_ON_BOOT=true`).
 
 ## Merchant Onboarding
 
@@ -250,6 +249,7 @@ Prometheus-style text output.
 
 ```powershell
 npm test
+npm run policyos:validate-templates
 ```
 
 ## Docker

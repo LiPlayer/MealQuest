@@ -1,6 +1,7 @@
 const {
   createPolicySpecFromTemplate,
   listStrategyTemplates,
+  validatePolicyPatchForTemplate,
 } = require("./strategyLibrary");
 const { Annotation, StateGraph, START, END } = require("@langchain/langgraph");
 const { createLangChainModelGateway } = require("./aiStrategy/langchainModelGateway");
@@ -17,6 +18,10 @@ const MAX_HISTORY_ITEMS_FOR_PROMPT = 48;
 const MAX_HISTORY_TOKENS_FOR_PROMPT = 2600;
 const MAX_HISTORY_TEXT_CHARS = 640;
 const MAX_MEMORY_PREFIX_HISTORY_ITEMS = 2;
+const DEFAULT_CRITIC_ENABLED = true;
+const DEFAULT_CRITIC_MAX_ROUNDS = 1;
+const DEFAULT_CRITIC_MIN_PROPOSALS = 2;
+const DEFAULT_CRITIC_MIN_CONFIDENCE = 0.72;
 
 function asString(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -153,6 +158,16 @@ function normalizeAiDecision({
     decision.policyPatch || decision.spec || {},
     input.overrides || {}
   );
+  const patchValidation = validatePolicyPatchForTemplate({
+    templateId: resolved.templateId,
+    branchId: resolved.branchId,
+    policyPatch: mergedOverrides
+  });
+  if (!patchValidation.ok) {
+    const error = new Error("policyPatch contains illegal fields");
+    error.patchViolations = patchValidation.violations;
+    throw error;
+  }
   const { spec, template, branch } = createPolicySpecFromTemplate({
     merchantId: input.merchantId,
     templateId: resolved.templateId,
@@ -342,6 +357,80 @@ function sanitizeSalesSnapshot(input) {
   };
 }
 
+function inferIntentFrame({
+  userMessage,
+  salesSnapshot = null
+}) {
+  const text = asString(userMessage);
+  const lower = text.toLowerCase();
+  const matchAny = (patterns) => patterns.some((item) => lower.includes(item));
+  const containsChinese = (patterns) => patterns.some((item) => text.includes(item));
+
+  let primaryGoal = "GENERAL";
+  if (matchAny(["acquisition", "new user", "onboard"]) || containsChinese(["拉新", "新客", "获客"])) {
+    primaryGoal = "ACQUISITION";
+  } else if (matchAny(["retention", "wake up", "reactivate", "winback"]) || containsChinese(["复购", "召回", "唤醒", "沉默"])) {
+    primaryGoal = "RETENTION";
+  } else if (matchAny(["clear stock", "inventory", "sell-through"]) || containsChinese(["清库存", "库存", "滞销"])) {
+    primaryGoal = "CLEAR_STOCK";
+  } else if (matchAny(["aov", "average order", "basket"]) || containsChinese(["客单", "客单价", "连带"])) {
+    primaryGoal = "AOV";
+  }
+
+  let urgency = "LOW";
+  if (matchAny(["urgent", "asap", "immediately", "right now"]) || containsChinese(["紧急", "马上", "立刻", "立即"])) {
+    urgency = "HIGH";
+  } else if (matchAny(["today", "tonight", "this week"]) || containsChinese(["今天", "今晚", "本周"])) {
+    urgency = "MEDIUM";
+  }
+
+  let riskPreference = "BALANCED";
+  if (matchAny(["aggressive", "extreme", "max growth"]) || containsChinese(["激进", "冲量", "放量"])) {
+    riskPreference = "AGGRESSIVE";
+  } else if (matchAny(["conservative", "safe", "low risk"]) || containsChinese(["保守", "稳健", "低风险"])) {
+    riskPreference = "CONSERVATIVE";
+  }
+
+  const budgetPatterns = [
+    /budget\s*[:=]?\s*(\d+(?:\.\d+)?)/i,
+    /预算\s*[:：]?\s*(\d+(?:\.\d+)?)/,
+  ];
+  let budgetHint = null;
+  for (const pattern of budgetPatterns) {
+    const matched = text.match(pattern);
+    if (matched && matched[1]) {
+      const parsed = Number(matched[1]);
+      if (Number.isFinite(parsed) && parsed >= 0) {
+        budgetHint = Math.round(parsed * 100) / 100;
+        break;
+      }
+    }
+  }
+
+  let timeWindowHint = "";
+  if (matchAny(["today", "tonight"]) || containsChinese(["今天", "今晚"])) {
+    timeWindowHint = "TODAY";
+  } else if (matchAny(["this week", "weekend"]) || containsChinese(["本周", "周末"])) {
+    timeWindowHint = "THIS_WEEK";
+  } else if (matchAny(["this month"]) || containsChinese(["本月"])) {
+    timeWindowHint = "THIS_MONTH";
+  }
+
+  const requiresProposal =
+    matchAny(["create", "generate", "draft", "proposal", "publish strategy"]) ||
+    containsChinese(["生成", "创建", "提案", "策略", "上活动", "发布策略"]);
+
+  return {
+    primaryGoal,
+    urgency,
+    riskPreference,
+    budgetHint,
+    timeWindowHint,
+    requiresProposal,
+    salesSnapshotAvailable: Boolean(salesSnapshot),
+  };
+}
+
 function sanitizeExecutionHistory(input) {
   if (!Array.isArray(input)) {
     return [];
@@ -388,6 +477,7 @@ function coerceProposalCandidates(decision) {
 
 function normalizeCandidatesFromRaw({ rawCandidates, input, provider, model }) {
   const normalizedCandidates = [];
+  const invalidCandidates = [];
   for (const candidate of rawCandidates.slice(0, MAX_PROPOSAL_CANDIDATES)) {
     try {
       const normalized = normalizeAiDecision({
@@ -403,11 +493,111 @@ function normalizeCandidatesFromRaw({ rawCandidates, input, provider, model }) {
         templates: listStrategyTemplates(),
       });
       normalizedCandidates.push(normalized);
-    } catch {
-      // skip invalid candidate
+    } catch (error) {
+      invalidCandidates.push({
+        templateId: asString(candidate && candidate.templateId),
+        branchId: asString(candidate && candidate.branchId),
+        title: asString(candidate && candidate.title),
+        reason: error && error.message ? String(error.message) : "invalid candidate",
+        violations:
+          Array.isArray(error && error.patchViolations) && error.patchViolations.length > 0
+            ? error.patchViolations.map((item) => ({
+              path: asString(item && item.path),
+              reason: asString(item && item.reason)
+            }))
+            : []
+      });
     }
   }
-  return normalizedCandidates;
+  return {
+    normalizedCandidates,
+    invalidCandidates
+  };
+}
+
+function summarizeProposalsForCritic(proposals) {
+  const safeItems = Array.isArray(proposals) ? proposals : [];
+  return safeItems.slice(0, MAX_PROPOSAL_CANDIDATES).map((item, idx) => {
+    const spec = isObjectLike(item && item.spec) ? item.spec : {};
+    const constraints = Array.isArray(spec.constraints) ? spec.constraints : [];
+    const budget = constraints.find((entry) =>
+      entry && (entry.plugin === "budget_guard_v1" || entry.plugin === "global_budget_guard_v1")
+    );
+    return {
+      rank: idx + 1,
+      title: asString(item && item.title),
+      templateId: asString(item && item.template && item.template.templateId),
+      branchId: asString(item && item.branch && item.branch.branchId),
+      confidence: toFiniteNumber(item && item.strategyMeta && item.strategyMeta.confidence, 0),
+      triggerEvent: asString(spec && spec.triggers && spec.triggers[0] && spec.triggers[0].event).toUpperCase(),
+      lane: asString(spec && spec.lane).toUpperCase(),
+      ttlSec: Math.max(0, Math.floor(toFiniteNumber(spec && spec.program && spec.program.ttl_sec, 0))),
+      budgetCap: Math.max(
+        0,
+        Math.floor(toFiniteNumber(budget && budget.params && budget.params.cap, 0))
+      ),
+      costPerHit: Math.max(
+        0,
+        Math.floor(toFiniteNumber(budget && budget.params && budget.params.cost_per_hit, 0))
+      ),
+      rationale: truncateText(item && item.strategyMeta && item.strategyMeta.rationale, 180)
+    };
+  });
+}
+
+function normalizeCriticDecision(raw) {
+  const input = isObjectLike(raw) ? raw : {};
+  const issues = Array.isArray(input.issues)
+    ? input.issues.map((item) => truncateText(item, 160)).filter(Boolean).slice(0, 8)
+    : [];
+  const focus = Array.isArray(input.focus)
+    ? input.focus.map((item) => truncateText(item, 120)).filter(Boolean).slice(0, 6)
+    : [];
+  const needRevision = Boolean(input.needRevision || input.need_revision);
+  return {
+    needRevision,
+    issues,
+    focus,
+    summary: truncateText(input.summary, 240)
+  };
+}
+
+function summarizeValidationIssues(validationIssues) {
+  const items = Array.isArray(validationIssues) ? validationIssues : [];
+  const lines = [];
+  for (const item of items.slice(0, MAX_PROPOSAL_CANDIDATES)) {
+    const title = asString(item && item.title) || `${asString(item && item.templateId)}:${asString(item && item.branchId)}`;
+    const baseReason = asString(item && item.reason) || "invalid candidate";
+    lines.push(`${title || "candidate"}: ${baseReason}`);
+    const violations = Array.isArray(item && item.violations) ? item.violations : [];
+    for (const violation of violations.slice(0, 4)) {
+      const path = asString(violation && violation.path) || "policyPatch";
+      const reason = asString(violation && violation.reason) || "invalid";
+      lines.push(`${path}: ${reason}`);
+    }
+  }
+  return lines.slice(0, 12);
+}
+
+function shouldRunCriticLoop({
+  turn,
+  minProposals,
+  minConfidence
+}) {
+  if (!turn || turn.status !== "PROPOSAL_READY") {
+    return false;
+  }
+  const proposals = Array.isArray(turn.proposals) ? turn.proposals : [];
+  if (proposals.length === 0) {
+    return false;
+  }
+  if (proposals.length >= Math.max(1, Math.floor(toFiniteNumber(minProposals, 2)))) {
+    return true;
+  }
+  const threshold = Math.max(0, Math.min(1, toFiniteNumber(minConfidence, DEFAULT_CRITIC_MIN_CONFIDENCE)));
+  return proposals.some(
+    (item) => toFiniteNumber(item && item.strategyMeta && item.strategyMeta.confidence, 0) < threshold
+  );
 }
 
 function parseStructuredDecisionBlock(rawText) {
@@ -439,20 +629,655 @@ function parseStructuredDecisionBlock(rawText) {
   return null;
 }
 
+function parseAssistantDecisionEnvelope(rawText) {
+  const text = asString(rawText);
+  let assistantMessage = text;
+  let sourceFormat = "plain_text";
+  let schemaVersion = STRUCTURED_SCHEMA_VERSION;
+  let decision = {};
+
+  try {
+    const parsed = parseStructuredDecisionBlock(text);
+    if (parsed) {
+      assistantMessage = asString(parsed.assistantMessage);
+      sourceFormat = parsed.sourceFormat;
+      schemaVersion = asString(parsed.schemaVersion) || STRUCTURED_SCHEMA_VERSION;
+      decision = isObjectLike(parsed.decision) ? parsed.decision : {};
+    }
+  } catch {
+    return {
+      assistantMessage: assistantMessage || text,
+      sourceFormat: "parse_error",
+      schemaVersion: STRUCTURED_SCHEMA_VERSION,
+      decision: {},
+      forceProposal: false,
+      rawCandidates: [],
+      parseError: true,
+    };
+  }
+
+  const mode = asString(decision.mode).toUpperCase();
+  return {
+    assistantMessage: assistantMessage || text,
+    sourceFormat,
+    schemaVersion,
+    decision,
+    forceProposal: mode === "PROPOSAL",
+    rawCandidates: coerceProposalCandidates(decision),
+    parseError: false,
+  };
+}
+
+function buildTurnFromCandidateEvaluation({
+  assistantMessage,
+  sourceFormat,
+  schemaVersion,
+  forceProposal,
+  parseError = false,
+  normalizedCandidates = [],
+  invalidCandidates = [],
+}) {
+  if (parseError) {
+    return {
+      status: "CHAT_REPLY",
+      assistantMessage: assistantMessage || "",
+      protocol: {
+        name: PROTOCOL_NAME,
+        version: PROTOCOL_VERSION,
+        constrained: true,
+        sourceFormat: "parse_error",
+        schemaVersion: STRUCTURED_SCHEMA_VERSION,
+      },
+    };
+  }
+
+  const safeNormalized = Array.isArray(normalizedCandidates) ? normalizedCandidates : [];
+  const safeInvalid = Array.isArray(invalidCandidates) ? invalidCandidates : [];
+  const resolvedSchemaVersion = asString(schemaVersion) || STRUCTURED_SCHEMA_VERSION;
+
+  if (forceProposal && safeNormalized.length === 0 && safeInvalid.length > 0) {
+    return {
+      status: "PROPOSAL_READY",
+      assistantMessage:
+        assistantMessage || "I drafted options but need to revise invalid fields before submission.",
+      proposals: [],
+      proposal: null,
+      validationIssues: safeInvalid,
+      protocol: {
+        name: PROTOCOL_NAME,
+        version: PROTOCOL_VERSION,
+        constrained: true,
+        sourceFormat,
+        schemaVersion: resolvedSchemaVersion,
+        validationIssueCount: safeInvalid.length
+      },
+    };
+  }
+  if (forceProposal && safeNormalized.length === 0) {
+    return {
+      status: "CHAT_REPLY",
+      assistantMessage:
+        assistantMessage || "I can draft strategy options once budget and audience are confirmed.",
+      protocol: {
+        name: PROTOCOL_NAME,
+        version: PROTOCOL_VERSION,
+        constrained: true,
+        sourceFormat,
+        schemaVersion: resolvedSchemaVersion,
+      },
+    };
+  }
+  if (safeNormalized.length > 0) {
+    return {
+      status: "PROPOSAL_READY",
+      assistantMessage: assistantMessage || "Strategy proposal drafted. Please review immediately.",
+      proposals: safeNormalized,
+      proposal: safeNormalized[0],
+      validationIssues: safeInvalid,
+      protocol: {
+        name: PROTOCOL_NAME,
+        version: PROTOCOL_VERSION,
+        constrained: true,
+        sourceFormat,
+        schemaVersion: resolvedSchemaVersion,
+        validationIssueCount: safeInvalid.length
+      },
+    };
+  }
+  return {
+    status: "CHAT_REPLY",
+    assistantMessage: assistantMessage || "Please tell me your goal, budget, and expected time window.",
+    protocol: {
+      name: PROTOCOL_NAME,
+      version: PROTOCOL_VERSION,
+      constrained: true,
+      sourceFormat,
+      schemaVersion: resolvedSchemaVersion,
+    },
+  };
+}
+
+function toRankNumber(value, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function normalizeExpectedRange(raw) {
+  if (!isObjectLike(raw)) {
+    return null;
+  }
+  const min = toRankNumber(raw.min, 0);
+  const max = toRankNumber(raw.max, 0);
+  if (!Number.isFinite(min) || !Number.isFinite(max)) {
+    return null;
+  }
+  return {
+    min,
+    max
+  };
+}
+
+function normalizeSimulationPayload(raw, proposalCount) {
+  const payload = isObjectLike(raw) ? raw : {};
+  const source = asString(payload.source) || "UNKNOWN";
+  const rawItems = Array.isArray(payload.results)
+    ? payload.results
+    : Array.isArray(raw)
+      ? raw
+      : [];
+  const items = rawItems.map((item, idx) => {
+    const safe = isObjectLike(item) ? item : {};
+    const index = Math.max(
+      0,
+      Math.min(
+        Math.max(0, proposalCount - 1),
+        Math.floor(toRankNumber(
+          safe.proposalIndex !== undefined ? safe.proposalIndex : safe.index,
+          idx
+        ))
+      )
+    );
+    return {
+      proposalIndex: index,
+      blocked: Boolean(safe.blocked),
+      score: toRankNumber(safe.score, Number.NaN),
+      reasonCodes: Array.isArray(safe.reason_codes)
+        ? safe.reason_codes.map((entry) => asString(entry)).filter(Boolean).slice(0, 8)
+        : [],
+      riskFlags: Array.isArray(safe.risk_flags)
+        ? safe.risk_flags.map((entry) => asString(entry)).filter(Boolean).slice(0, 8)
+        : [],
+      expectedRange: normalizeExpectedRange(safe.expected_range),
+      selectedCount: Math.max(0, Math.floor(toRankNumber(safe.selected_count, 0))),
+      rejectedCount: Math.max(0, Math.floor(toRankNumber(safe.rejected_count, 0))),
+      estimatedCost: Math.max(0, toRankNumber(safe.estimated_cost, 0)),
+      error: asString(safe.error),
+      decisionId: asString(safe.decision_id),
+      source
+    };
+  });
+  return {
+    source,
+    userId: asString(payload.userId),
+    items
+  };
+}
+
+function computeProposalRankScore({ proposal, simulation }) {
+  const confidence = toRankNumber(
+    proposal && proposal.strategyMeta && proposal.strategyMeta.confidence,
+    0
+  );
+  const expectedRange = simulation && simulation.expectedRange ? simulation.expectedRange : null;
+  const expectedMid = expectedRange ? (expectedRange.min + expectedRange.max) / 2 : 0;
+  const riskPenalty =
+    Math.max(0, toRankNumber(simulation && simulation.riskFlags && simulation.riskFlags.length, 0)) * 2;
+  const rejectPenalty = Math.max(0, toRankNumber(simulation && simulation.rejectedCount, 0));
+  const selectedBoost = Math.max(0, toRankNumber(simulation && simulation.selectedCount, 0));
+  const estimatedCost = Math.max(0, toRankNumber(simulation && simulation.estimatedCost, 0));
+  const simScore = simulation ? toRankNumber(simulation.score, Number.NaN) : Number.NaN;
+  const baseScore =
+    Number.isFinite(simScore)
+      ? simScore
+      : expectedMid + confidence * 10 - riskPenalty - rejectPenalty + selectedBoost - estimatedCost;
+  return {
+    rankScore: Number(baseScore.toFixed(4)),
+    expectedMid: Number(expectedMid.toFixed(4)),
+    confidence: Number(confidence.toFixed(4))
+  };
+}
+
+function buildExplainPackFromRanked({ ranked, source = "NONE" }) {
+  return {
+    source,
+    generatedAt: new Date().toISOString(),
+    items: ranked.slice(0, MAX_PROPOSAL_CANDIDATES).map((item, idx) => ({
+      rank: idx + 1,
+      title: asString(item && item.proposal && item.proposal.title),
+      templateId: asString(item && item.proposal && item.proposal.template && item.proposal.template.templateId),
+      branchId: asString(item && item.proposal && item.proposal.branch && item.proposal.branch.branchId),
+      rankScore: toRankNumber(item && item.rankScore, 0),
+      blocked: Boolean(item && item.simulation && item.simulation.blocked),
+      reason_codes:
+        Array.isArray(item && item.simulation && item.simulation.reasonCodes)
+          ? item.simulation.reasonCodes
+          : [],
+      risk_flags:
+        Array.isArray(item && item.simulation && item.simulation.riskFlags)
+          ? item.simulation.riskFlags
+          : [],
+      expected_range:
+        item && item.simulation && item.simulation.expectedRange
+          ? item.simulation.expectedRange
+          : null,
+      selected_count: Math.max(0, Math.floor(toRankNumber(item && item.simulation && item.simulation.selectedCount, 0))),
+      rejected_count: Math.max(0, Math.floor(toRankNumber(item && item.simulation && item.simulation.rejectedCount, 0))),
+      estimated_cost: Math.max(0, toRankNumber(item && item.simulation && item.simulation.estimatedCost, 0)),
+      decision_id: asString(item && item.simulation && item.simulation.decisionId),
+      simulation_error: asString(item && item.simulation && item.simulation.error),
+    }))
+  };
+}
+
+function normalizeApprovalDecision(raw, required = true) {
+  const payload = isObjectLike(raw) ? raw : {};
+  return {
+    required: Boolean(required),
+    approved: Boolean(payload.approved),
+    approvalId: asString(payload.approvalId || payload.approval_id),
+    reason: asString(payload.reason) || (payload.approved ? "" : "approval denied"),
+    source: asString(payload.source) || "APPROVAL_TOOL",
+  };
+}
+
+function normalizePublishResult(raw, proposalCount) {
+  const payload = isObjectLike(raw) ? raw : {};
+  const source = asString(payload.source) || "PUBLISH_TOOL";
+  const items = [];
+  if (Array.isArray(payload.items)) {
+    for (const [idx, entry] of payload.items.entries()) {
+      const item = isObjectLike(entry) ? entry : {};
+      const proposalIndex = Math.max(
+        0,
+        Math.min(
+          Math.max(0, proposalCount - 1),
+          Math.floor(toRankNumber(
+            item.proposalIndex !== undefined ? item.proposalIndex : item.index,
+            idx
+          ))
+        )
+      );
+      items.push({
+        proposalIndex,
+        ok: Boolean(item.ok),
+        policyId: asString(item.policyId || item.policy_id),
+        draftId: asString(item.draftId || item.draft_id),
+        publishId: asString(item.publishId || item.publish_id),
+        error: asString(item.error),
+      });
+    }
+  } else {
+    const published = Array.isArray(payload.published) ? payload.published : [];
+    for (const [idx, entry] of published.entries()) {
+      const item = isObjectLike(entry) ? entry : {};
+      const proposalIndex = Math.max(
+        0,
+        Math.min(
+          Math.max(0, proposalCount - 1),
+          Math.floor(toRankNumber(
+            item.proposalIndex !== undefined ? item.proposalIndex : item.index,
+            idx
+          ))
+        )
+      );
+      items.push({
+        proposalIndex,
+        ok: true,
+        policyId: asString(item.policyId || item.policy_id),
+        draftId: asString(item.draftId || item.draft_id),
+        publishId: asString(item.publishId || item.publish_id),
+        error: "",
+      });
+    }
+    const failed = Array.isArray(payload.failed) ? payload.failed : [];
+    for (const [idx, entry] of failed.entries()) {
+      const item = isObjectLike(entry) ? entry : {};
+      const proposalIndex = Math.max(
+        0,
+        Math.min(
+          Math.max(0, proposalCount - 1),
+          Math.floor(toRankNumber(
+            item.proposalIndex !== undefined ? item.proposalIndex : item.index,
+            idx
+          ))
+        )
+      );
+      items.push({
+        proposalIndex,
+        ok: false,
+        policyId: asString(item.policyId || item.policy_id),
+        draftId: asString(item.draftId || item.draft_id),
+        publishId: asString(item.publishId || item.publish_id),
+        error: asString(item.error) || "publish failed",
+      });
+    }
+  }
+  const publishedCount = items.filter((item) => item.ok).length;
+  const failedCount = Math.max(0, items.length - publishedCount);
+  return {
+    source,
+    items,
+    publishedCount,
+    failedCount,
+  };
+}
+
+function attachApprovalPublishToTurn({
+  turn,
+  publishIntent,
+  approvalDecision = null,
+  publishResult = null,
+}) {
+  const safeTurn = isObjectLike(turn) ? turn : null;
+  if (!safeTurn || safeTurn.status !== "PROPOSAL_READY") {
+    return safeTurn;
+  }
+  const safeApproval = isObjectLike(approvalDecision)
+    ? approvalDecision
+    : {
+      required: Boolean(publishIntent),
+      approved: false,
+      approvalId: "",
+      reason: publishIntent ? "approval not requested" : "",
+      source: "NONE",
+    };
+  const safePublish = isObjectLike(publishResult)
+    ? publishResult
+    : {
+      source: "NONE",
+      items: [],
+      publishedCount: 0,
+      failedCount: 0,
+    };
+  const proposalItems = Array.isArray(safeTurn.proposals) ? safeTurn.proposals : [];
+  const publishByIndex = new Map();
+  for (const item of Array.isArray(safePublish.items) ? safePublish.items : []) {
+    const current = publishByIndex.get(item.proposalIndex);
+    if (!current || (!current.ok && item.ok)) {
+      publishByIndex.set(item.proposalIndex, item);
+    }
+  }
+  const proposals = proposalItems.map((proposal, idx) => {
+    const publish = publishByIndex.get(idx);
+    return {
+      ...proposal,
+      publish: publish
+        ? {
+          ok: Boolean(publish.ok),
+          policy_id: asString(publish.policyId),
+          draft_id: asString(publish.draftId),
+          publish_id: asString(publish.publishId),
+          error: asString(publish.error),
+        }
+        : null,
+    };
+  });
+  const protocol = {
+    ...(isObjectLike(safeTurn.protocol) ? safeTurn.protocol : {}),
+    approval: {
+      required: Boolean(safeApproval.required),
+      approved: Boolean(safeApproval.approved),
+      approvalId: asString(safeApproval.approvalId),
+      reason: asString(safeApproval.reason),
+      source: asString(safeApproval.source),
+    },
+    publish: {
+      intent: Boolean(publishIntent),
+      source: asString(safePublish.source),
+      publishedCount: Math.max(0, Math.floor(toRankNumber(safePublish.publishedCount, 0))),
+      failedCount: Math.max(0, Math.floor(toRankNumber(safePublish.failedCount, 0))),
+    }
+  };
+  let assistantMessage = asString(safeTurn.assistantMessage);
+  if (publishIntent && safeApproval.approved && toRankNumber(safePublish.publishedCount, 0) > 0) {
+    if (!assistantMessage) {
+      assistantMessage = "Strategy proposal drafted and published.";
+    }
+  } else if (publishIntent && !safeApproval.approved) {
+    if (!assistantMessage) {
+      assistantMessage = "Strategy proposal drafted. Approval is required before publish.";
+    }
+  }
+  return {
+    ...safeTurn,
+    assistantMessage,
+    proposals,
+    proposal: proposals[0] || safeTurn.proposal || null,
+    publishReport: {
+      approval: safeApproval,
+      publish: safePublish,
+    },
+    protocol,
+  };
+}
+
+function normalizePostPublishMonitorReport(raw, { publishedCount = 0 } = {}) {
+  const payload = isObjectLike(raw) ? raw : {};
+  const alerts = Array.isArray(payload.alerts)
+    ? payload.alerts
+      .map((item) => asString(item))
+      .filter(Boolean)
+      .slice(0, 12)
+    : [];
+  const recommendations = Array.isArray(payload.recommendations)
+    ? payload.recommendations
+      .map((item) => asString(item))
+      .filter(Boolean)
+      .slice(0, 12)
+    : [];
+  return {
+    source: asString(payload.source) || "MONITOR_TOOL",
+    publishedCount: Math.max(0, Math.floor(toRankNumber(payload.publishedCount, publishedCount))),
+    alerts,
+    recommendations,
+    summary: asString(payload.summary),
+  };
+}
+
+function buildFallbackPostPublishMonitorReport({ turn, publishedProposals = [] }) {
+  const alerts = [];
+  const recommendations = [];
+  for (const proposal of publishedProposals) {
+    const evaluation = isObjectLike(proposal && proposal.evaluation) ? proposal.evaluation : {};
+    const riskFlags = Array.isArray(evaluation.risk_flags) ? evaluation.risk_flags : [];
+    const rejectedCount = Math.max(0, Math.floor(toRankNumber(evaluation.rejected_count, 0)));
+    if (riskFlags.length > 0) {
+      alerts.push(`risk_flags:${riskFlags.join(",")}`);
+      recommendations.push("monitor_risk_flags_hourly");
+    }
+    if (rejectedCount > 0) {
+      alerts.push(`rejected_count:${rejectedCount}`);
+      recommendations.push("consider_pause_or_threshold_adjustment");
+    }
+  }
+  const uniqueAlerts = [...new Set(alerts)].slice(0, 12);
+  const uniqueRecommendations = [...new Set(recommendations)].slice(0, 12);
+  const count = publishedProposals.length;
+  return {
+    source: "HEURISTIC",
+    publishedCount: count,
+    alerts: uniqueAlerts,
+    recommendations: uniqueRecommendations,
+    summary: count > 0
+      ? `Published ${count} policies; ${uniqueAlerts.length} alerts detected.`
+      : "No published policy to monitor."
+  };
+}
+
+function attachPostPublishMonitorToTurn({ turn, report }) {
+  const safeTurn = isObjectLike(turn) ? turn : null;
+  if (!safeTurn) {
+    return safeTurn;
+  }
+  const safeReport = isObjectLike(report)
+    ? report
+    : {
+      source: "NONE",
+      publishedCount: 0,
+      alerts: [],
+      recommendations: [],
+      summary: ""
+    };
+  return {
+    ...safeTurn,
+    postPublishMonitor: safeReport,
+    protocol: {
+      ...(isObjectLike(safeTurn.protocol) ? safeTurn.protocol : {}),
+      post_publish_monitor: {
+        source: asString(safeReport.source),
+        publishedCount: Math.max(0, Math.floor(toRankNumber(safeReport.publishedCount, 0))),
+        alertCount: Array.isArray(safeReport.alerts) ? safeReport.alerts.length : 0,
+        recommendationCount: Array.isArray(safeReport.recommendations) ? safeReport.recommendations.length : 0,
+      }
+    }
+  };
+}
+
+function buildMemoryFactsFromInput({ input, turn, intentFrame, monitorReport }) {
+  const goals = [];
+  const constraints = [];
+  const audience = [];
+  const timing = [];
+  const decisions = [];
+  const userMessage = asString(input && input.userMessage);
+  if (userMessage) {
+    goals.push(truncateText(userMessage, 120));
+  }
+  const goalType = asString(intentFrame && intentFrame.primaryGoal);
+  if (goalType) {
+    goals.push(`goal:${goalType}`);
+  }
+  const riskPreference = asString(intentFrame && intentFrame.riskPreference);
+  if (riskPreference) {
+    constraints.push(`risk:${riskPreference}`);
+  }
+  const budgetHint = toRankNumber(intentFrame && intentFrame.budgetHint, Number.NaN);
+  if (Number.isFinite(budgetHint)) {
+    constraints.push(`budget_hint:${budgetHint}`);
+  }
+  const timeWindowHint = asString(intentFrame && intentFrame.timeWindowHint);
+  if (timeWindowHint) {
+    timing.push(`window:${timeWindowHint}`);
+  }
+  const turnStatus = asString(turn && turn.status);
+  if (turnStatus) {
+    decisions.push(`turn_status:${turnStatus}`);
+  }
+  if (turn && Array.isArray(turn.proposals) && turn.proposals.length > 0) {
+    const top = turn.proposals[0];
+    const templateId = asString(top && top.template && top.template.templateId);
+    const branchId = asString(top && top.branch && top.branch.branchId);
+    if (templateId) {
+      decisions.push(`top_template:${templateId}`);
+    }
+    if (branchId) {
+      decisions.push(`top_branch:${branchId}`);
+    }
+    const blocked = Boolean(top && top.evaluation && top.evaluation.blocked);
+    decisions.push(`top_blocked:${blocked ? "yes" : "no"}`);
+  }
+  if (monitorReport && Array.isArray(monitorReport.recommendations) && monitorReport.recommendations.length > 0) {
+    decisions.push(...monitorReport.recommendations.map((item) => `monitor:${asString(item)}`));
+  }
+  return {
+    goals: [...new Set(goals)].slice(0, 8),
+    constraints: [...new Set(constraints)].slice(0, 8),
+    audience: [...new Set(audience)].slice(0, 8),
+    timing: [...new Set(timing)].slice(0, 8),
+    decisions: [...new Set(decisions)].slice(0, 12),
+  };
+}
+
+function summarizeMemoryFacts(memoryFacts) {
+  const safe = isObjectLike(memoryFacts) ? memoryFacts : {};
+  const segments = [];
+  const pushBucket = (label, key) => {
+    const items = Array.isArray(safe[key]) ? safe[key].slice(0, 3) : [];
+    if (items.length > 0) {
+      segments.push(`${label}: ${items.join(" | ")}`);
+    }
+  };
+  pushBucket("Goals", "goals");
+  pushBucket("Constraints", "constraints");
+  pushBucket("Timing", "timing");
+  pushBucket("Decisions", "decisions");
+  return segments.join("; ");
+}
+
+function normalizeMemoryUpdateResult(raw, memoryFacts, summaryText) {
+  const payload = isObjectLike(raw) ? raw : {};
+  const source = asString(payload.source) || "INLINE";
+  const persisted = payload.persisted === undefined ? false : Boolean(payload.persisted);
+  const memoryId = asString(payload.memoryId || payload.memory_id);
+  return {
+    source,
+    persisted,
+    memoryId,
+    summary: asString(payload.summary) || summaryText,
+    facts: isObjectLike(payload.facts) ? payload.facts : memoryFacts,
+  };
+}
+
+function attachMemoryUpdateToTurn({ turn, memoryUpdate }) {
+  const safeTurn = isObjectLike(turn) ? turn : null;
+  if (!safeTurn) {
+    return safeTurn;
+  }
+  const payload = isObjectLike(memoryUpdate)
+    ? memoryUpdate
+    : {
+      source: "NONE",
+      persisted: false,
+      memoryId: "",
+      summary: "",
+      facts: {}
+    };
+  const factCount = Object.values(isObjectLike(payload.facts) ? payload.facts : {}).reduce((sum, bucket) => {
+    if (!Array.isArray(bucket)) {
+      return sum;
+    }
+    return sum + bucket.length;
+  }, 0);
+  return {
+    ...safeTurn,
+    memoryUpdate: payload,
+    protocol: {
+      ...(isObjectLike(safeTurn.protocol) ? safeTurn.protocol : {}),
+      memory_update: {
+        source: asString(payload.source),
+        persisted: Boolean(payload.persisted),
+        memoryId: asString(payload.memoryId),
+        factCount: Math.max(0, Math.floor(toRankNumber(factCount, 0))),
+      }
+    }
+  };
+}
+
 function buildChatPromptPayload({
   merchantId,
   sessionId,
   userMessage,
   history = [],
-  activeCampaigns = [],
+  activePolicies = [],
   approvedStrategies = [],
   executionHistory = [],
   salesSnapshot = null,
+  intentFrame = null,
 }) {
   const safeHistory = sanitizeHistoryForPrompt(history);
 
-  const safeActiveCampaigns = Array.isArray(activeCampaigns)
-    ? activeCampaigns.slice(0, 12).map((item) => ({
+  const safeActivePolicies = Array.isArray(activePolicies)
+    ? activePolicies.slice(0, 12).map((item) => ({
       id: asString(item.id),
       name: truncateText(item.name || "", 120),
       status: asString(item.status || "UNKNOWN").toUpperCase(),
@@ -464,7 +1289,6 @@ function buildChatPromptPayload({
   const safeApprovedStrategies = Array.isArray(approvedStrategies)
     ? approvedStrategies.slice(0, 12).map((item) => ({
       proposalId: asString(item.proposalId),
-      campaignId: asString(item.campaignId),
       policyId: asString(item.policyId),
       title: truncateText(item.title || "", 120),
       templateId: asString(item.templateId),
@@ -474,11 +1298,18 @@ function buildChatPromptPayload({
     : [];
   const safeExecutionHistory = sanitizeExecutionHistory(executionHistory);
   const safeSalesSnapshot = sanitizeSalesSnapshot(salesSnapshot);
+  const resolvedIntentFrame = isObjectLike(intentFrame)
+    ? intentFrame
+    : inferIntentFrame({
+      userMessage,
+      salesSnapshot: safeSalesSnapshot
+    });
 
   const contextPayload = {
     merchantId,
     sessionId,
-    activeCampaigns: safeActiveCampaigns,
+    intentFrame: resolvedIntentFrame,
+    activePolicies: safeActivePolicies,
     approvedStrategies: safeApprovedStrategies,
     executionHistory: safeExecutionHistory,
     salesSnapshot: safeSalesSnapshot,
@@ -495,7 +1326,7 @@ function buildChatPromptPayload({
       lane: "EMERGENCY|GUARDED|NORMAL|BACKGROUND",
       triggers: [{ event: "string" }],
       segment: {
-        plugin: "legacy_condition_segment_v1|tag_segment_v1|all_users_v1",
+        plugin: "condition_segment_v1|tag_segment_v1|all_users_v1",
         params: { conditions: [{ field: "string", op: "eq|neq|gte|lte|includes", value: "any" }] }
       },
       program: {
@@ -503,7 +1334,7 @@ function buildChatPromptPayload({
         pacing: { max_cost_per_minute: "number" }
       },
       actions: [{ plugin: "voucher_grant_v1|wallet_grant_v1|story_inject_v1|fragment_grant_v1", params: "object" }],
-      constraints: [{ plugin: "kill_switch_v1|budget_guard_v1|inventory_lock_v1|frequency_cap_v1|anti_fraud_hook_v1", params: "object" }]
+      constraints: [{ plugin: "kill_switch_v1|budget_guard_v1|global_budget_guard_v1|inventory_lock_v1|frequency_cap_v1|anti_fraud_hook_v1", params: "object" }]
     },
   };
 
@@ -542,14 +1373,35 @@ function buildChatPromptPayload({
 }
 
 function createStrategyChatGraph({
-  resolveRemoteChatDecision,
-  normalizeAiDecision,
+  modelGateway,
   provider,
   model,
+  criticEnabled,
+  criticMaxRounds,
+  criticMinProposals,
+  criticMinConfidence,
+  buildCriticMessages,
+  buildReviseMessages,
+  attachCriticProtocol,
 }) {
   const ChatState = Annotation.Root({
     input: Annotation(),
-    remoteDecision: Annotation({ default: () => null }),
+    intentFrame: Annotation({ default: () => null }),
+    promptMessages: Annotation({ default: () => [] }),
+    rawContent: Annotation({ default: () => "" }),
+    parsedResponse: Annotation({ default: () => null }),
+    rawCandidates: Annotation({ default: () => [] }),
+    normalizedCandidates: Annotation({ default: () => [] }),
+    invalidCandidates: Annotation({ default: () => [] }),
+    criticRound: Annotation({ default: () => 0 }),
+    criticDecision: Annotation({ default: () => null }),
+    simulationPayload: Annotation({ default: () => ({ source: "NONE", userId: "", items: [] }) }),
+    rankedCandidates: Annotation({ default: () => [] }),
+    explainPack: Annotation({ default: () => null }),
+    approvalDecision: Annotation({ default: () => null }),
+    publishResult: Annotation({ default: () => null }),
+    postPublishMonitorReport: Annotation({ default: () => null }),
+    memoryUpdateResult: Annotation({ default: () => null }),
     turn: Annotation({ default: () => null }),
   });
 
@@ -557,11 +1409,39 @@ function createStrategyChatGraph({
     input: isObjectLike(state.input) ? state.input : {},
   });
 
+  const intentParse = (state) => {
+    const input = isObjectLike(state.input) ? state.input : {};
+    return {
+      intentFrame: inferIntentFrame({
+        userMessage: input.userMessage,
+        salesSnapshot: sanitizeSalesSnapshot(input.salesSnapshot),
+      })
+    };
+  };
+
+  const buildPrompt = (state) => {
+    const input = isObjectLike(state.input) ? state.input : {};
+    const prompt = buildChatPromptPayload({
+      merchantId: input.merchantId,
+      sessionId: input.sessionId,
+      userMessage: input.userMessage,
+      history: input.history,
+      activePolicies: input.activePolicies,
+      approvedStrategies: input.approvedStrategies,
+      executionHistory: input.executionHistory,
+      salesSnapshot: input.salesSnapshot,
+      intentFrame: state.intentFrame,
+    });
+    return {
+      promptMessages: Array.isArray(prompt.messages) ? prompt.messages : [],
+    };
+  };
+
   const remoteDecide = async (state) => {
     try {
-      const remoteDecision = await resolveRemoteChatDecision(state.input);
+      const remoteDecision = await modelGateway.invokeChatRaw(state.promptMessages);
       return {
-        remoteDecision: isObjectLike(remoteDecision) ? remoteDecision : {},
+        rawContent: asString(remoteDecision),
       };
     } catch (error) {
       return {
@@ -570,79 +1450,737 @@ function createStrategyChatGraph({
     }
   };
 
+  const parseResponse = (state) => {
+    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
+      return {};
+    }
+    return {
+      parsedResponse: parseAssistantDecisionEnvelope(state.rawContent),
+    };
+  };
+
+  const candidateGenerate = (state) => {
+    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
+      return {};
+    }
+    const parsed = isObjectLike(state.parsedResponse) ? state.parsedResponse : {};
+    return {
+      rawCandidates: Array.isArray(parsed.rawCandidates) ? parsed.rawCandidates : [],
+    };
+  };
+
+  const patchValidate = (state) => {
+    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
+      return {};
+    }
+    const input = isObjectLike(state.input) ? state.input : {};
+    const rawCandidates = Array.isArray(state.rawCandidates) ? state.rawCandidates : [];
+    const { normalizedCandidates, invalidCandidates } = normalizeCandidatesFromRaw({
+      rawCandidates,
+      input,
+      provider,
+      model,
+    });
+    return {
+      normalizedCandidates,
+      invalidCandidates,
+    };
+  };
+
   const finalizeTurn = (state) => {
     if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
       return {};
     }
+    const parsed = isObjectLike(state.parsedResponse) ? state.parsedResponse : {};
+    return {
+      turn: buildTurnFromCandidateEvaluation({
+        assistantMessage: asString(parsed.assistantMessage),
+        sourceFormat: asString(parsed.sourceFormat) || "plain_text",
+        schemaVersion: asString(parsed.schemaVersion) || STRUCTURED_SCHEMA_VERSION,
+        forceProposal: Boolean(parsed.forceProposal),
+        parseError: Boolean(parsed.parseError),
+        normalizedCandidates: state.normalizedCandidates,
+        invalidCandidates: state.invalidCandidates,
+      })
+    };
+  };
 
-    const decision = isObjectLike(state.remoteDecision) ? state.remoteDecision : {};
-    const mode = asString(decision.mode || "").toUpperCase();
-    const assistantMessage = asString(decision.assistantMessage);
+  const criticGate = (state) => {
+    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
+      return {};
+    }
+    return {};
+  };
 
-    if (mode === "PROPOSAL") {
-      const input = isObjectLike(state.input) ? state.input : {};
-      const rawCandidates = [];
-      if (Array.isArray(decision.proposals)) {
-        rawCandidates.push(...decision.proposals.filter((item) => isObjectLike(item)));
-      }
-      if (isObjectLike(decision.proposal)) {
-        rawCandidates.push(decision.proposal);
-      }
-      const normalizedCandidates = [];
-      for (const candidate of rawCandidates.slice(0, MAX_PROPOSAL_CANDIDATES)) {
-        try {
-          const normalized = normalizeAiDecision({
-            input: {
-              merchantId: input.merchantId,
-              templateId: asString(candidate.templateId) || input.templateId,
-              branchId: asString(candidate.branchId) || input.branchId,
-              overrides: {},
-            },
-            rawDecision: candidate,
-            provider,
-            model,
-            templates: listStrategyTemplates(),
-          });
-          normalizedCandidates.push(normalized);
-        } catch {
-          // skip invalid candidate and continue
+  const routeCriticGate = (state) => {
+    if (!criticEnabled || criticMaxRounds <= 0) {
+      return "critic_finalize";
+    }
+    const turn = isObjectLike(state.turn) ? state.turn : null;
+    if (!turn || turn.status !== "PROPOSAL_READY") {
+      return "critic_finalize";
+    }
+    const round = Math.max(0, Math.floor(toFiniteNumber(state.criticRound, 0)));
+    if (round >= criticMaxRounds) {
+      return "critic_finalize";
+    }
+    const pendingValidationIssues = Array.isArray(turn.validationIssues) ? turn.validationIssues : [];
+    const needQualityRevision = shouldRunCriticLoop({
+      turn,
+      minProposals: criticMinProposals,
+      minConfidence: criticMinConfidence
+    });
+    if (!needQualityRevision && pendingValidationIssues.length === 0) {
+      return "critic_finalize";
+    }
+    return "critic_node";
+  };
+
+  const criticNode = async (state) => {
+    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
+      return {};
+    }
+    const input = isObjectLike(state.input) ? state.input : {};
+    const turn = isObjectLike(state.turn) ? state.turn : {};
+    const round = Math.max(0, Math.floor(toFiniteNumber(state.criticRound, 0)));
+    const pendingValidationIssues = Array.isArray(turn.validationIssues) ? turn.validationIssues : [];
+    if (pendingValidationIssues.length > 0) {
+      return {
+        criticDecision: {
+          needRevision: true,
+          issues: summarizeValidationIssues(pendingValidationIssues),
+          focus: ["policyPatch compliance"],
+          summary: "proposal violates policyPatch allowlist"
         }
-      }
+      };
+    }
+    try {
+      const criticRaw = await modelGateway.invokeChat(
+        buildCriticMessages({
+          input,
+          turn,
+          round
+        })
+      );
+      return {
+        criticDecision: normalizeCriticDecision(criticRaw),
+      };
+    } catch (error) {
+      console.warn(`[ai-strategy] critic failed: ${summarizeError(error)}`);
+      return {
+        criticDecision: {
+          needRevision: false,
+          issues: [],
+          focus: [],
+          summary: "critic unavailable"
+        }
+      };
+    }
+  };
+
+  const routeAfterCritic = (state) => {
+    const decision = isObjectLike(state.criticDecision) ? state.criticDecision : {};
+    if (!decision.needRevision) {
+      return "critic_finalize";
+    }
+    const round = Math.max(0, Math.floor(toFiniteNumber(state.criticRound, 0)));
+    if (round >= criticMaxRounds) {
+      return "critic_finalize";
+    }
+    return "revise_node";
+  };
+
+  const reviseNode = async (state) => {
+    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
+      return {};
+    }
+    const input = isObjectLike(state.input) ? state.input : {};
+    const turn = isObjectLike(state.turn) ? state.turn : {};
+    const round = Math.max(0, Math.floor(toFiniteNumber(state.criticRound, 0)));
+    const criticDecision = isObjectLike(state.criticDecision) ? state.criticDecision : {
+      needRevision: true,
+      issues: [],
+      focus: [],
+      summary: ""
+    };
+    const pendingValidationIssues = Array.isArray(turn.validationIssues) ? turn.validationIssues : [];
+
+    try {
+      const revisedRaw = await modelGateway.invokeChat(
+        buildReviseMessages({
+          input,
+          turn,
+          criticDecision,
+          round,
+          validationIssues: pendingValidationIssues
+        })
+      );
+      const { normalizedCandidates, invalidCandidates } = normalizeCandidatesFromRaw({
+        rawCandidates: coerceProposalCandidates(revisedRaw),
+        input,
+        provider,
+        model,
+      });
+      const nextRound = round + 1;
       if (normalizedCandidates.length === 0) {
         return {
           turn: {
-            status: "CHAT_REPLY",
-            assistantMessage:
-              assistantMessage || "Please tell me your goal, budget, and expected time window.",
+            ...turn,
+            validationIssues: invalidCandidates,
+            protocol: attachCriticProtocol(turn.protocol, {
+              round: nextRound,
+              issues: criticDecision.issues,
+              summary: criticDecision.summary
+            })
           },
+          criticRound: nextRound,
+          criticDecision: null,
         };
       }
       return {
         turn: {
+          ...turn,
           status: "PROPOSAL_READY",
-          assistantMessage: assistantMessage || "Strategy proposal drafted. Please review immediately.",
+          assistantMessage:
+            asString(revisedRaw && revisedRaw.assistantMessage) ||
+            turn.assistantMessage ||
+            "Strategy proposal drafted. Please review immediately.",
           proposals: normalizedCandidates,
           proposal: normalizedCandidates[0],
+          validationIssues: invalidCandidates,
+          protocol: attachCriticProtocol(turn.protocol, {
+            round: nextRound,
+            issues: criticDecision.issues,
+            summary: criticDecision.summary
+          })
         },
+        criticRound: nextRound,
+        criticDecision: null,
+      };
+    } catch (error) {
+      console.warn(`[ai-strategy] revise failed: ${summarizeError(error)}`);
+      return {
+        criticRound: criticMaxRounds,
+        criticDecision: null,
       };
     }
+  };
 
+  const criticFinalize = (state) => {
+    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
+      return {};
+    }
+    const turn = isObjectLike(state.turn) ? state.turn : null;
+    if (
+      turn &&
+      turn.status === "PROPOSAL_READY" &&
+      (!Array.isArray(turn.proposals) || turn.proposals.length === 0)
+    ) {
+      return {
+        turn: {
+          status: "CHAT_REPLY",
+          assistantMessage:
+            "I need a quick clarification before drafting a compliant strategy proposal.",
+          protocol: attachCriticProtocol(turn.protocol, {
+            round: criticMaxRounds,
+            issues: summarizeValidationIssues(turn.validationIssues || []),
+            summary: "proposal validation failed"
+          })
+        }
+      };
+    }
+    return {};
+  };
+
+  const simulateCandidates = async (state) => {
+    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
+      return {};
+    }
+    const turn = isObjectLike(state.turn) ? state.turn : {};
+    if (turn.status !== "PROPOSAL_READY" || !Array.isArray(turn.proposals) || turn.proposals.length === 0) {
+      return {
+        simulationPayload: {
+          source: "NONE",
+          userId: "",
+          items: []
+        }
+      };
+    }
+    const input = isObjectLike(state.input) ? state.input : {};
+    const simulateTool = typeof input.simulatePolicyCandidates === "function"
+      ? input.simulatePolicyCandidates
+      : null;
+    if (!simulateTool) {
+      return {
+        simulationPayload: {
+          source: "UNAVAILABLE",
+          userId: "",
+          items: []
+        }
+      };
+    }
+    try {
+      const rawPayload = await simulateTool({
+        proposals: turn.proposals,
+        merchantId: input.merchantId,
+        sessionId: input.sessionId,
+        userMessage: input.userMessage,
+        intentFrame: state.intentFrame,
+      });
+      return {
+        simulationPayload: normalizeSimulationPayload(rawPayload, turn.proposals.length),
+      };
+    } catch (error) {
+      return {
+        simulationPayload: normalizeSimulationPayload({
+          source: "TOOL_ERROR",
+          results: turn.proposals.map((_, idx) => ({
+            proposalIndex: idx,
+            blocked: true,
+            error: summarizeError(error),
+            reason_codes: ["simulate_tool_error"],
+            risk_flags: ["SIMULATION_ERROR"],
+            selected_count: 0,
+            rejected_count: 1,
+            estimated_cost: 0,
+            score: -100
+          }))
+        }, turn.proposals.length),
+      };
+    }
+  };
+
+  const rankCandidates = (state) => {
+    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
+      return {};
+    }
+    const turn = isObjectLike(state.turn) ? state.turn : {};
+    if (turn.status !== "PROPOSAL_READY" || !Array.isArray(turn.proposals) || turn.proposals.length === 0) {
+      return {
+        rankedCandidates: []
+      };
+    }
+    const simulationItems = Array.isArray(state.simulationPayload && state.simulationPayload.items)
+      ? state.simulationPayload.items
+      : [];
+    const hasSimulationData = simulationItems.length > 0;
+    const simulationByIndex = new Map();
+    for (const item of simulationItems) {
+      simulationByIndex.set(item.proposalIndex, item);
+    }
+    const rankedBase = turn.proposals.map((proposal, idx) => {
+      const simulation = simulationByIndex.get(idx) || null;
+      const scorePack = computeProposalRankScore({
+        proposal,
+        simulation
+      });
+      return {
+        proposal,
+        simulation,
+        rankScore: scorePack.rankScore,
+        expectedMid: scorePack.expectedMid,
+        confidence: scorePack.confidence
+      };
+    });
+    const ranked = hasSimulationData
+      ? rankedBase.sort((left, right) => {
+      const leftBlocked = Boolean(left.simulation && left.simulation.blocked);
+      const rightBlocked = Boolean(right.simulation && right.simulation.blocked);
+      if (leftBlocked !== rightBlocked) {
+        return leftBlocked ? 1 : -1;
+      }
+      if (right.rankScore !== left.rankScore) {
+        return right.rankScore - left.rankScore;
+      }
+      return right.confidence - left.confidence;
+      })
+      : rankedBase;
     return {
-      turn: {
-        status: "CHAT_REPLY",
-        assistantMessage: assistantMessage || "Please tell me your goal, budget, and expected time window.",
-      },
+      rankedCandidates: ranked
     };
+  };
+
+  const explainPack = (state) => {
+    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
+      return {};
+    }
+    const turn = isObjectLike(state.turn) ? state.turn : {};
+    if (turn.status !== "PROPOSAL_READY" || !Array.isArray(turn.proposals) || turn.proposals.length === 0) {
+      return {};
+    }
+    const ranked = Array.isArray(state.rankedCandidates) ? state.rankedCandidates : [];
+    if (ranked.length === 0) {
+      return {};
+    }
+    const source = asString(state.simulationPayload && state.simulationPayload.source) || "NONE";
+    const rankedProposals = ranked.map((item) => ({
+      ...item.proposal,
+      evaluation: {
+        rank_score: item.rankScore,
+        expected_mid: item.expectedMid,
+        confidence: item.confidence,
+        blocked: Boolean(item.simulation && item.simulation.blocked),
+        reason_codes: item.simulation && Array.isArray(item.simulation.reasonCodes)
+          ? item.simulation.reasonCodes
+          : [],
+        risk_flags: item.simulation && Array.isArray(item.simulation.riskFlags)
+          ? item.simulation.riskFlags
+          : [],
+        expected_range: item.simulation && item.simulation.expectedRange ? item.simulation.expectedRange : null,
+        selected_count: item.simulation ? item.simulation.selectedCount : 0,
+        rejected_count: item.simulation ? item.simulation.rejectedCount : 0,
+        estimated_cost: item.simulation ? item.simulation.estimatedCost : 0,
+        decision_id: item.simulation ? item.simulation.decisionId : "",
+        simulation_error: item.simulation ? item.simulation.error : "",
+      }
+    }));
+    const pack = buildExplainPackFromRanked({
+      ranked,
+      source
+    });
+    const protocol = isObjectLike(turn.protocol) ? turn.protocol : {};
+    const nextProtocol = {
+      ...protocol,
+      simulation: {
+        source,
+        count: pack.items.length
+      },
+      ranking: {
+        strategy: "VALUE_RISK_COST_V1",
+        count: pack.items.length
+      }
+    };
+    return {
+      explainPack: pack,
+      turn: {
+        ...turn,
+        proposals: rankedProposals,
+        proposal: rankedProposals[0] || null,
+        explainPack: pack,
+        protocol: nextProtocol
+      }
+    };
+  };
+
+  const approvalGate = async (state) => {
+    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
+      return {};
+    }
+    const turn = isObjectLike(state.turn) ? state.turn : {};
+    if (turn.status !== "PROPOSAL_READY" || !Array.isArray(turn.proposals) || turn.proposals.length === 0) {
+      return {};
+    }
+    const input = isObjectLike(state.input) ? state.input : {};
+    const publishIntent = Boolean(input.publishIntent);
+    if (!publishIntent) {
+      return {
+        approvalDecision: normalizeApprovalDecision({
+          approved: false,
+          reason: "",
+          source: "DISABLED"
+        }, false)
+      };
+    }
+    const approvalToken = asString(input.approvalToken);
+    if (!approvalToken) {
+      return {
+        approvalDecision: normalizeApprovalDecision({
+          approved: false,
+          reason: "approval token is required",
+          source: "MISSING_TOKEN"
+        }, true)
+      };
+    }
+    const validator = typeof input.validateApproval === "function"
+      ? input.validateApproval
+      : null;
+    if (!validator) {
+      return {
+        approvalDecision: normalizeApprovalDecision({
+          approved: false,
+          reason: "approval validator is not configured",
+          source: "VALIDATOR_MISSING"
+        }, true)
+      };
+    }
+    try {
+      const raw = await validator({
+        merchantId: input.merchantId,
+        sessionId: input.sessionId,
+        approvalToken,
+        proposals: turn.proposals,
+      });
+      return {
+        approvalDecision: normalizeApprovalDecision(raw, true),
+      };
+    } catch (error) {
+      return {
+        approvalDecision: normalizeApprovalDecision({
+          approved: false,
+          reason: summarizeError(error),
+          source: "VALIDATOR_ERROR"
+        }, true)
+      };
+    }
+  };
+
+  const routeAfterApprovalGate = (state) => {
+    const turn = isObjectLike(state.turn) ? state.turn : {};
+    if (turn.status !== "PROPOSAL_READY" || !Array.isArray(turn.proposals) || turn.proposals.length === 0) {
+      return "publish_finalize";
+    }
+    const input = isObjectLike(state.input) ? state.input : {};
+    const publishIntent = Boolean(input.publishIntent);
+    if (!publishIntent) {
+      return "publish_finalize";
+    }
+    const approvalDecision = isObjectLike(state.approvalDecision) ? state.approvalDecision : {};
+    if (!approvalDecision.approved) {
+      return "publish_finalize";
+    }
+    const publishFn = typeof input.publishPolicies === "function" ? input.publishPolicies : null;
+    if (!publishFn) {
+      return "publish_finalize";
+    }
+    return "publish_policy";
+  };
+
+  const publishPolicy = async (state) => {
+    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
+      return {};
+    }
+    const turn = isObjectLike(state.turn) ? state.turn : {};
+    if (turn.status !== "PROPOSAL_READY" || !Array.isArray(turn.proposals) || turn.proposals.length === 0) {
+      return {};
+    }
+    const input = isObjectLike(state.input) ? state.input : {};
+    const publishFn = typeof input.publishPolicies === "function" ? input.publishPolicies : null;
+    if (!publishFn) {
+      return {
+        publishResult: normalizePublishResult({
+          source: "UNAVAILABLE",
+          items: []
+        }, turn.proposals.length)
+      };
+    }
+    const approvalDecision = isObjectLike(state.approvalDecision) ? state.approvalDecision : {};
+    try {
+      const raw = await publishFn({
+        merchantId: input.merchantId,
+        sessionId: input.sessionId,
+        approvalId: asString(approvalDecision.approvalId),
+        approvalToken: asString(input.approvalToken),
+        proposals: turn.proposals,
+        intentFrame: state.intentFrame,
+        userMessage: input.userMessage,
+      });
+      return {
+        publishResult: normalizePublishResult(raw, turn.proposals.length),
+      };
+    } catch (error) {
+      return {
+        publishResult: normalizePublishResult({
+          source: "PUBLISH_TOOL_ERROR",
+          failed: turn.proposals.map((_, idx) => ({
+            proposalIndex: idx,
+            error: summarizeError(error)
+          }))
+        }, turn.proposals.length)
+      };
+    }
+  };
+
+  const publishFinalize = (state) => {
+    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
+      return {};
+    }
+    const input = isObjectLike(state.input) ? state.input : {};
+    const turn = attachApprovalPublishToTurn({
+      turn: state.turn,
+      publishIntent: Boolean(input.publishIntent),
+      approvalDecision: state.approvalDecision,
+      publishResult: state.publishResult,
+    });
+    return {
+      turn: turn || state.turn,
+    };
+  };
+
+  const postPublishMonitor = async (state) => {
+    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
+      return {};
+    }
+    const turn = isObjectLike(state.turn) ? state.turn : {};
+    const proposals = Array.isArray(turn.proposals) ? turn.proposals : [];
+    const publishedProposals = proposals.filter(
+      (item) => isObjectLike(item && item.publish) && Boolean(item.publish.ok)
+    );
+    if (publishedProposals.length === 0) {
+      const report = normalizePostPublishMonitorReport({
+        source: "SKIPPED",
+        summary: "No published policy to monitor.",
+        alerts: [],
+        recommendations: [],
+        publishedCount: 0
+      }, { publishedCount: 0 });
+      return {
+        postPublishMonitorReport: report,
+        turn: attachPostPublishMonitorToTurn({ turn, report }),
+      };
+    }
+    const input = isObjectLike(state.input) ? state.input : {};
+    const monitorFn = typeof input.monitorPublishedPolicies === "function"
+      ? input.monitorPublishedPolicies
+      : null;
+    if (!monitorFn) {
+      const report = buildFallbackPostPublishMonitorReport({ turn, publishedProposals });
+      return {
+        postPublishMonitorReport: report,
+        turn: attachPostPublishMonitorToTurn({ turn, report }),
+      };
+    }
+    try {
+      const raw = await monitorFn({
+        merchantId: input.merchantId,
+        sessionId: input.sessionId,
+        proposals: proposals,
+        publishedProposals,
+        intentFrame: state.intentFrame,
+        explainPack: state.explainPack,
+        publishReport: turn.publishReport,
+      });
+      const report = normalizePostPublishMonitorReport(raw, { publishedCount: publishedProposals.length });
+      return {
+        postPublishMonitorReport: report,
+        turn: attachPostPublishMonitorToTurn({ turn, report }),
+      };
+    } catch (error) {
+      const report = normalizePostPublishMonitorReport({
+        source: "MONITOR_ERROR",
+        summary: summarizeError(error),
+        alerts: ["monitor_tool_failed"],
+        recommendations: ["fallback_to_manual_review"],
+        publishedCount: publishedProposals.length
+      }, { publishedCount: publishedProposals.length });
+      return {
+        postPublishMonitorReport: report,
+        turn: attachPostPublishMonitorToTurn({ turn, report }),
+      };
+    }
+  };
+
+  const memoryUpdate = async (state) => {
+    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
+      return {};
+    }
+    const input = isObjectLike(state.input) ? state.input : {};
+    const turn = isObjectLike(state.turn) ? state.turn : {};
+    const monitorReport = isObjectLike(state.postPublishMonitorReport)
+      ? state.postPublishMonitorReport
+      : null;
+    const memoryFacts = buildMemoryFactsFromInput({
+      input,
+      turn,
+      intentFrame: state.intentFrame,
+      monitorReport
+    });
+    const summaryText = summarizeMemoryFacts(memoryFacts);
+    const updateFn = typeof input.updateStrategyMemory === "function"
+      ? input.updateStrategyMemory
+      : null;
+    if (!updateFn) {
+      const result = normalizeMemoryUpdateResult({
+        source: "INLINE",
+        persisted: false,
+        summary: summaryText,
+        facts: memoryFacts
+      }, memoryFacts, summaryText);
+      return {
+        memoryUpdateResult: result,
+        turn: attachMemoryUpdateToTurn({ turn, memoryUpdate: result }),
+      };
+    }
+    try {
+      const raw = await updateFn({
+        merchantId: input.merchantId,
+        sessionId: input.sessionId,
+        userMessage: asString(input.userMessage),
+        intentFrame: state.intentFrame,
+        turn,
+        monitorReport,
+        memoryFacts,
+        summary: summaryText
+      });
+      const result = normalizeMemoryUpdateResult(raw, memoryFacts, summaryText);
+      return {
+        memoryUpdateResult: result,
+        turn: attachMemoryUpdateToTurn({ turn, memoryUpdate: result }),
+      };
+    } catch (error) {
+      const result = normalizeMemoryUpdateResult({
+        source: "MEMORY_ERROR",
+        persisted: false,
+        summary: summarizeError(error),
+        facts: memoryFacts
+      }, memoryFacts, summaryText);
+      return {
+        memoryUpdateResult: result,
+        turn: attachMemoryUpdateToTurn({ turn, memoryUpdate: result }),
+      };
+    }
   };
 
   return new StateGraph(ChatState)
     .addNode("prepare_input", prepareInput)
+    .addNode("intent_parse", intentParse)
+    .addNode("build_prompt", buildPrompt)
     .addNode("remote_decide", remoteDecide)
+    .addNode("parse_response", parseResponse)
+    .addNode("candidate_generate", candidateGenerate)
+    .addNode("patch_validate", patchValidate)
     .addNode("finalize_turn", finalizeTurn)
+    .addNode("critic_gate", criticGate)
+    .addNode("critic_node", criticNode)
+    .addNode("revise_node", reviseNode)
+    .addNode("critic_finalize", criticFinalize)
+    .addNode("simulate_candidates", simulateCandidates)
+    .addNode("rank_candidates", rankCandidates)
+    .addNode("explain_pack", explainPack)
+    .addNode("approval_gate", approvalGate)
+    .addNode("publish_policy", publishPolicy)
+    .addNode("publish_finalize", publishFinalize)
+    .addNode("post_publish_monitor", postPublishMonitor)
+    .addNode("memory_update", memoryUpdate)
     .addEdge(START, "prepare_input")
-    .addEdge("prepare_input", "remote_decide")
-    .addEdge("remote_decide", "finalize_turn")
-    .addEdge("finalize_turn", END)
+    .addEdge("prepare_input", "intent_parse")
+    .addEdge("intent_parse", "build_prompt")
+    .addEdge("build_prompt", "remote_decide")
+    .addEdge("remote_decide", "parse_response")
+    .addEdge("parse_response", "candidate_generate")
+    .addEdge("candidate_generate", "patch_validate")
+    .addEdge("patch_validate", "finalize_turn")
+    .addEdge("finalize_turn", "critic_gate")
+    .addConditionalEdges("critic_gate", routeCriticGate, {
+      critic_node: "critic_node",
+      critic_finalize: "critic_finalize",
+    })
+    .addConditionalEdges("critic_node", routeAfterCritic, {
+      revise_node: "revise_node",
+      critic_finalize: "critic_finalize",
+    })
+    .addEdge("revise_node", "critic_gate")
+    .addEdge("critic_finalize", "simulate_candidates")
+    .addEdge("simulate_candidates", "rank_candidates")
+    .addEdge("rank_candidates", "explain_pack")
+    .addEdge("explain_pack", "approval_gate")
+    .addConditionalEdges("approval_gate", routeAfterApprovalGate, {
+      publish_policy: "publish_policy",
+      publish_finalize: "publish_finalize",
+    })
+    .addEdge("publish_policy", "publish_finalize")
+    .addEdge("publish_finalize", "post_publish_monitor")
+    .addEdge("post_publish_monitor", "memory_update")
+    .addEdge("memory_update", END)
     .compile();
 }
 
@@ -679,86 +2217,587 @@ function createAiStrategyService(options = {}) {
     maxRetries,
     parseJsonLoose,
   });
+  const criticEnabled = options.criticEnabled !== undefined
+    ? Boolean(options.criticEnabled)
+    : DEFAULT_CRITIC_ENABLED;
+  const criticMaxRounds = Math.max(
+    0,
+    Math.floor(
+      toFiniteNumber(
+        options.criticMaxRounds !== undefined ? options.criticMaxRounds : DEFAULT_CRITIC_MAX_ROUNDS,
+        DEFAULT_CRITIC_MAX_ROUNDS
+      )
+    )
+  );
+  const criticMinProposals = Math.max(
+    1,
+    Math.floor(
+      toFiniteNumber(
+        options.criticMinProposals !== undefined
+          ? options.criticMinProposals
+          : DEFAULT_CRITIC_MIN_PROPOSALS,
+        DEFAULT_CRITIC_MIN_PROPOSALS
+      )
+    )
+  );
+  const criticMinConfidence = Math.max(
+    0,
+    Math.min(
+      1,
+      toFiniteNumber(
+        options.criticMinConfidence !== undefined
+          ? options.criticMinConfidence
+          : DEFAULT_CRITIC_MIN_CONFIDENCE,
+        DEFAULT_CRITIC_MIN_CONFIDENCE
+      )
+    )
+  );
+  const strategyChatGraph = createStrategyChatGraph({
+    modelGateway,
+    provider,
+    model,
+    criticEnabled,
+    criticMaxRounds,
+    criticMinProposals,
+    criticMinConfidence,
+    buildCriticMessages,
+    buildReviseMessages,
+    attachCriticProtocol,
+  });
+
+  function buildCriticMessages({ input, turn, round }) {
+    const proposals = summarizeProposalsForCritic(turn.proposals || []);
+    const payload = {
+      merchantId: asString(input && input.merchantId),
+      sessionId: asString(input && input.sessionId),
+      userMessage: asString(input && input.userMessage),
+      round: round + 1,
+      proposals
+    };
+    const system = [
+      "You are Strategy Critic. Evaluate proposal quality and execution safety.",
+      "Return strict JSON only:",
+      '{"needRevision":boolean,"summary":"string","issues":["string"],"focus":["string"]}',
+      "Rules:",
+      "- needRevision=true if proposals conflict with user goal, are duplicated, or are weakly differentiated.",
+      "- Keep issues short and actionable.",
+      "- If proposals are already good, set needRevision=false."
+    ].join("\n");
+    return [
+      { role: "system", content: system },
+      { role: "user", content: JSON.stringify(payload) }
+    ];
+  }
+
+function buildReviseMessages({ input, turn, criticDecision, round, validationIssues = [] }) {
+  const proposals = summarizeProposalsForCritic(turn.proposals || []);
+  const payload = {
+    merchantId: asString(input && input.merchantId),
+    sessionId: asString(input && input.sessionId),
+    userMessage: asString(input && input.userMessage),
+      round: round + 1,
+      currentProposals: proposals,
+      critic: {
+      summary: criticDecision.summary,
+      issues: criticDecision.issues,
+      focus: criticDecision.focus
+    },
+    validationIssues: summarizeValidationIssues(validationIssues)
+  };
+    const outputSchema = {
+      assistantMessage: "string",
+      proposals: [
+        {
+          templateId: "string",
+          branchId: "string",
+          title: "string",
+          rationale: "string",
+          confidence: "number 0-1",
+          policyPatch: "object"
+        }
+      ]
+    };
+    const system = [
+      "You are Strategy Rewriter. Rewrite proposals according to critic feedback.",
+      "Return strict JSON only and do not add markdown.",
+      JSON.stringify(outputSchema),
+      "Rules:",
+      "- Keep proposals executable in a policy system.",
+      "- Prefer diverse options with clear differences.",
+      "- Preserve user's business intent and budget sensitivity."
+    ].join("\n");
+    return [
+      { role: "system", content: system },
+      { role: "user", content: JSON.stringify(payload) }
+    ];
+  }
+
+  function attachCriticProtocol(protocol, metadata) {
+    const safeProtocol = isObjectLike(protocol) ? protocol : {};
+    return {
+      ...safeProtocol,
+      critic: {
+        applied: true,
+        round: metadata.round,
+        issues: Array.isArray(metadata.issues) ? metadata.issues : [],
+        summary: asString(metadata.summary)
+      }
+    };
+  }
+
+  async function maybeRunCriticReviseLoop({ input, turn }) {
+    if (!criticEnabled || criticMaxRounds <= 0) {
+      return turn;
+    }
+    let currentTurn = turn;
+    let pendingValidationIssues = Array.isArray(currentTurn && currentTurn.validationIssues)
+      ? currentTurn.validationIssues
+      : [];
+
+    const needQualityRevision = shouldRunCriticLoop({
+      turn: currentTurn,
+      minProposals: criticMinProposals,
+      minConfidence: criticMinConfidence
+    });
+    if (!needQualityRevision && pendingValidationIssues.length === 0) {
+      return currentTurn;
+    }
+
+    for (let round = 0; round < criticMaxRounds; round += 1) {
+      let criticDecision = null;
+      if (pendingValidationIssues.length > 0) {
+        criticDecision = {
+          needRevision: true,
+          issues: summarizeValidationIssues(pendingValidationIssues),
+          focus: ["policyPatch compliance"],
+          summary: "proposal violates policyPatch allowlist"
+        };
+      } else {
+        try {
+          const criticRaw = await modelGateway.invokeChat(
+            buildCriticMessages({
+              input,
+              turn: currentTurn,
+              round
+            })
+          );
+          criticDecision = normalizeCriticDecision(criticRaw);
+        } catch (error) {
+          console.warn(`[ai-strategy] critic failed: ${summarizeError(error)}`);
+          break;
+        }
+      }
+      if (!criticDecision.needRevision) {
+        break;
+      }
+
+      try {
+        const revisedRaw = await modelGateway.invokeChat(
+          buildReviseMessages({
+            input,
+            turn: currentTurn,
+            criticDecision,
+            round,
+            validationIssues: pendingValidationIssues
+          })
+        );
+        const { normalizedCandidates, invalidCandidates } = normalizeCandidatesFromRaw({
+          rawCandidates: coerceProposalCandidates(revisedRaw),
+          input,
+          provider,
+          model,
+        });
+        if (normalizedCandidates.length === 0) {
+          pendingValidationIssues = invalidCandidates;
+          currentTurn = {
+            ...currentTurn,
+            validationIssues: invalidCandidates,
+            protocol: attachCriticProtocol(currentTurn.protocol, {
+              round: round + 1,
+              issues: criticDecision.issues,
+              summary: criticDecision.summary
+            })
+          };
+          continue;
+        }
+        currentTurn = {
+          ...currentTurn,
+          status: "PROPOSAL_READY",
+          assistantMessage:
+            asString(revisedRaw && revisedRaw.assistantMessage) ||
+            currentTurn.assistantMessage ||
+            "Strategy proposal drafted. Please review immediately.",
+          proposals: normalizedCandidates,
+          proposal: normalizedCandidates[0],
+          validationIssues: invalidCandidates,
+          protocol: attachCriticProtocol(currentTurn.protocol, {
+            round: round + 1,
+            issues: criticDecision.issues,
+            summary: criticDecision.summary
+          })
+        };
+        pendingValidationIssues = invalidCandidates;
+        if (
+          pendingValidationIssues.length === 0 &&
+          !shouldRunCriticLoop({
+            turn: currentTurn,
+            minProposals: criticMinProposals,
+            minConfidence: criticMinConfidence
+          })
+        ) {
+          break;
+        }
+      } catch (error) {
+        console.warn(`[ai-strategy] revise failed: ${summarizeError(error)}`);
+        break;
+      }
+    }
+    if (
+      currentTurn &&
+      currentTurn.status === "PROPOSAL_READY" &&
+      (!Array.isArray(currentTurn.proposals) || currentTurn.proposals.length === 0)
+    ) {
+      return {
+        status: "CHAT_REPLY",
+        assistantMessage:
+          "I need a quick clarification before drafting a compliant strategy proposal.",
+        protocol: attachCriticProtocol(currentTurn.protocol, {
+          round: criticMaxRounds,
+          issues: summarizeValidationIssues(currentTurn.validationIssues || []),
+          summary: "proposal validation failed"
+        })
+      };
+    }
+    return currentTurn;
+  }
+
+  async function maybeRunSimulationRankExplain({ input, turn }) {
+    if (!turn || turn.status !== "PROPOSAL_READY" || !Array.isArray(turn.proposals) || turn.proposals.length === 0) {
+      return turn;
+    }
+    const simulateTool = typeof input.simulatePolicyCandidates === "function"
+      ? input.simulatePolicyCandidates
+      : null;
+    const intentFrame = inferIntentFrame({
+      userMessage: input.userMessage,
+      salesSnapshot: sanitizeSalesSnapshot(input.salesSnapshot),
+    });
+    let simulationPayload = {
+      source: "UNAVAILABLE",
+      userId: "",
+      items: []
+    };
+    if (simulateTool) {
+      try {
+        const rawPayload = await simulateTool({
+          proposals: turn.proposals,
+          merchantId: input.merchantId,
+          sessionId: input.sessionId,
+          userMessage: input.userMessage,
+          intentFrame,
+        });
+        simulationPayload = normalizeSimulationPayload(rawPayload, turn.proposals.length);
+      } catch (error) {
+        simulationPayload = normalizeSimulationPayload({
+          source: "TOOL_ERROR",
+          results: turn.proposals.map((_, idx) => ({
+            proposalIndex: idx,
+            blocked: true,
+            error: summarizeError(error),
+            reason_codes: ["simulate_tool_error"],
+            risk_flags: ["SIMULATION_ERROR"],
+            selected_count: 0,
+            rejected_count: 1,
+            estimated_cost: 0,
+            score: -100
+          }))
+        }, turn.proposals.length);
+      }
+    }
+    const simulationByIndex = new Map();
+    for (const item of simulationPayload.items) {
+      simulationByIndex.set(item.proposalIndex, item);
+    }
+    const hasSimulationData = simulationPayload.items.length > 0;
+    const rankedBase = turn.proposals.map((proposal, idx) => {
+      const simulation = simulationByIndex.get(idx) || null;
+      const scorePack = computeProposalRankScore({ proposal, simulation });
+      return {
+        proposal,
+        simulation,
+        rankScore: scorePack.rankScore,
+        expectedMid: scorePack.expectedMid,
+        confidence: scorePack.confidence
+      };
+    });
+    const ranked = hasSimulationData
+      ? rankedBase.sort((left, right) => {
+      const leftBlocked = Boolean(left.simulation && left.simulation.blocked);
+      const rightBlocked = Boolean(right.simulation && right.simulation.blocked);
+      if (leftBlocked !== rightBlocked) {
+        return leftBlocked ? 1 : -1;
+      }
+      if (right.rankScore !== left.rankScore) {
+        return right.rankScore - left.rankScore;
+      }
+      return right.confidence - left.confidence;
+      })
+      : rankedBase;
+    const rankedProposals = ranked.map((item) => ({
+      ...item.proposal,
+      evaluation: {
+        rank_score: item.rankScore,
+        expected_mid: item.expectedMid,
+        confidence: item.confidence,
+        blocked: Boolean(item.simulation && item.simulation.blocked),
+        reason_codes: item.simulation && Array.isArray(item.simulation.reasonCodes)
+          ? item.simulation.reasonCodes
+          : [],
+        risk_flags: item.simulation && Array.isArray(item.simulation.riskFlags)
+          ? item.simulation.riskFlags
+          : [],
+        expected_range: item.simulation && item.simulation.expectedRange ? item.simulation.expectedRange : null,
+        selected_count: item.simulation ? item.simulation.selectedCount : 0,
+        rejected_count: item.simulation ? item.simulation.rejectedCount : 0,
+        estimated_cost: item.simulation ? item.simulation.estimatedCost : 0,
+        decision_id: item.simulation ? item.simulation.decisionId : "",
+        simulation_error: item.simulation ? item.simulation.error : "",
+      }
+    }));
+    const explainPack = buildExplainPackFromRanked({
+      ranked,
+      source: simulationPayload.source
+    });
+    return {
+      ...turn,
+      proposals: rankedProposals,
+      proposal: rankedProposals[0] || null,
+      explainPack,
+      protocol: {
+        ...(isObjectLike(turn.protocol) ? turn.protocol : {}),
+        simulation: {
+          source: simulationPayload.source,
+          count: explainPack.items.length
+        },
+        ranking: {
+          strategy: "VALUE_RISK_COST_V1",
+          count: explainPack.items.length
+        }
+      }
+    };
+  }
+
+  async function maybeRunApprovalPublish({ input, turn }) {
+    if (!turn || turn.status !== "PROPOSAL_READY" || !Array.isArray(turn.proposals) || turn.proposals.length === 0) {
+      return turn;
+    }
+    const publishIntent = Boolean(input && input.publishIntent);
+    if (!publishIntent) {
+      return turn;
+    }
+    const approvalToken = asString(input && input.approvalToken);
+    const validator = input && typeof input.validateApproval === "function"
+      ? input.validateApproval
+      : null;
+    let approvalDecision = null;
+    if (!approvalToken) {
+      approvalDecision = normalizeApprovalDecision({
+        approved: false,
+        reason: "approval token is required",
+        source: "MISSING_TOKEN"
+      }, true);
+    } else if (!validator) {
+      approvalDecision = normalizeApprovalDecision({
+        approved: false,
+        reason: "approval validator is not configured",
+        source: "VALIDATOR_MISSING"
+      }, true);
+    } else {
+      try {
+        const rawApproval = await validator({
+          merchantId: input.merchantId,
+          sessionId: input.sessionId,
+          approvalToken,
+          proposals: turn.proposals
+        });
+        approvalDecision = normalizeApprovalDecision(rawApproval, true);
+      } catch (error) {
+        approvalDecision = normalizeApprovalDecision({
+          approved: false,
+          reason: summarizeError(error),
+          source: "VALIDATOR_ERROR"
+        }, true);
+      }
+    }
+
+    let publishResult = {
+      source: "SKIPPED",
+      items: [],
+      publishedCount: 0,
+      failedCount: 0,
+    };
+    if (approvalDecision.approved) {
+      const publishFn = input && typeof input.publishPolicies === "function"
+        ? input.publishPolicies
+        : null;
+      if (!publishFn) {
+        publishResult = normalizePublishResult({
+          source: "UNAVAILABLE",
+          items: []
+        }, turn.proposals.length);
+      } else {
+        try {
+          const rawPublish = await publishFn({
+            merchantId: input.merchantId,
+            sessionId: input.sessionId,
+            approvalId: asString(approvalDecision.approvalId),
+            approvalToken,
+            proposals: turn.proposals,
+          });
+          publishResult = normalizePublishResult(rawPublish, turn.proposals.length);
+        } catch (error) {
+          publishResult = normalizePublishResult({
+            source: "PUBLISH_TOOL_ERROR",
+            failed: turn.proposals.map((_, idx) => ({
+              proposalIndex: idx,
+              error: summarizeError(error)
+            }))
+          }, turn.proposals.length);
+        }
+      }
+    }
+    return attachApprovalPublishToTurn({
+      turn,
+      publishIntent,
+      approvalDecision,
+      publishResult,
+    });
+  }
+
+  async function maybeRunPostPublishMonitorAndMemory({ input, turn }) {
+    if (!turn || turn.status === "AI_UNAVAILABLE") {
+      return turn;
+    }
+    const proposals = Array.isArray(turn.proposals) ? turn.proposals : [];
+    const publishedProposals = proposals.filter(
+      (item) => isObjectLike(item && item.publish) && Boolean(item.publish.ok)
+    );
+    let nextTurn = turn;
+    let monitorReport;
+    if (publishedProposals.length === 0) {
+      monitorReport = normalizePostPublishMonitorReport({
+        source: "SKIPPED",
+        summary: "No published policy to monitor.",
+        alerts: [],
+        recommendations: [],
+        publishedCount: 0
+      }, { publishedCount: 0 });
+    } else {
+      const monitorFn = typeof input.monitorPublishedPolicies === "function"
+        ? input.monitorPublishedPolicies
+        : null;
+      if (!monitorFn) {
+        monitorReport = buildFallbackPostPublishMonitorReport({ turn: nextTurn, publishedProposals });
+      } else {
+        try {
+          const rawMonitor = await monitorFn({
+            merchantId: input.merchantId,
+            sessionId: input.sessionId,
+            proposals,
+            publishedProposals,
+            intentFrame: inferIntentFrame({
+              userMessage: input.userMessage,
+              salesSnapshot: sanitizeSalesSnapshot(input.salesSnapshot),
+            }),
+            explainPack: nextTurn.explainPack,
+            publishReport: nextTurn.publishReport,
+          });
+          monitorReport = normalizePostPublishMonitorReport(rawMonitor, { publishedCount: publishedProposals.length });
+        } catch (error) {
+          monitorReport = normalizePostPublishMonitorReport({
+            source: "MONITOR_ERROR",
+            summary: summarizeError(error),
+            alerts: ["monitor_tool_failed"],
+            recommendations: ["fallback_to_manual_review"],
+            publishedCount: publishedProposals.length
+          }, { publishedCount: publishedProposals.length });
+        }
+      }
+    }
+    nextTurn = attachPostPublishMonitorToTurn({
+      turn: nextTurn,
+      report: monitorReport
+    });
+
+    const intentFrame = inferIntentFrame({
+      userMessage: input.userMessage,
+      salesSnapshot: sanitizeSalesSnapshot(input.salesSnapshot),
+    });
+    const memoryFacts = buildMemoryFactsFromInput({
+      input,
+      turn: nextTurn,
+      intentFrame,
+      monitorReport
+    });
+    const summaryText = summarizeMemoryFacts(memoryFacts);
+    const updateFn = typeof input.updateStrategyMemory === "function"
+      ? input.updateStrategyMemory
+      : null;
+    let memoryUpdate;
+    if (!updateFn) {
+      memoryUpdate = normalizeMemoryUpdateResult({
+        source: "INLINE",
+        persisted: false,
+        summary: summaryText,
+        facts: memoryFacts
+      }, memoryFacts, summaryText);
+    } else {
+      try {
+        const rawMemory = await updateFn({
+          merchantId: input.merchantId,
+          sessionId: input.sessionId,
+          userMessage: asString(input.userMessage),
+          intentFrame,
+          turn: nextTurn,
+          monitorReport,
+          memoryFacts,
+          summary: summaryText
+        });
+        memoryUpdate = normalizeMemoryUpdateResult(rawMemory, memoryFacts, summaryText);
+      } catch (error) {
+        memoryUpdate = normalizeMemoryUpdateResult({
+          source: "MEMORY_ERROR",
+          persisted: false,
+          summary: summarizeError(error),
+          facts: memoryFacts
+        }, memoryFacts, summaryText);
+      }
+    }
+    return attachMemoryUpdateToTurn({
+      turn: nextTurn,
+      memoryUpdate
+    });
+  }
 
   // Parses dual-channel response:
   // plain-text assistant message + optional structured proposal block.
   function parseTwoPartResponse(rawText, input) {
-    const text = asString(rawText);
-    let assistantMessage = text;
-    let sourceFormat = "plain_text";
-    let schemaVersion = "";
-    let decision = {};
-    try {
-      const parsed = parseStructuredDecisionBlock(text);
-      if (parsed) {
-        assistantMessage = asString(parsed.assistantMessage);
-        sourceFormat = parsed.sourceFormat;
-        schemaVersion = asString(parsed.schemaVersion);
-        decision = isObjectLike(parsed.decision) ? parsed.decision : {};
-      }
-    } catch {
-      return {
-        status: "CHAT_REPLY",
-        assistantMessage: assistantMessage || text,
-        protocol: {
-          name: PROTOCOL_NAME,
-          version: PROTOCOL_VERSION,
-          constrained: true,
-          sourceFormat: "parse_error",
-          schemaVersion: STRUCTURED_SCHEMA_VERSION,
-        },
-      };
-    }
-
-    const mode = asString(decision.mode).toUpperCase();
-    const forceProposal = mode === "PROPOSAL";
-    const rawCandidates = coerceProposalCandidates(decision);
-    const normalizedCandidates = normalizeCandidatesFromRaw({
-      rawCandidates,
+    const parsed = parseAssistantDecisionEnvelope(rawText);
+    const { normalizedCandidates, invalidCandidates } = normalizeCandidatesFromRaw({
+      rawCandidates: parsed.rawCandidates,
       input,
       provider,
       model,
     });
-    if (forceProposal && normalizedCandidates.length === 0) {
-      return {
-        status: "CHAT_REPLY",
-        assistantMessage:
-          assistantMessage || "I can draft strategy options once budget and audience are confirmed.",
-        protocol: {
-          name: PROTOCOL_NAME,
-          version: PROTOCOL_VERSION,
-          constrained: true,
-          sourceFormat,
-          schemaVersion: schemaVersion || STRUCTURED_SCHEMA_VERSION,
-        },
-      };
-    }
-    if (normalizedCandidates.length > 0) {
-      return {
-        status: "PROPOSAL_READY",
-        assistantMessage: assistantMessage || "Strategy proposal drafted. Please review immediately.",
-        proposals: normalizedCandidates,
-        proposal: normalizedCandidates[0],
-        protocol: {
-          name: PROTOCOL_NAME,
-          version: PROTOCOL_VERSION,
-          constrained: true,
-          sourceFormat,
-          schemaVersion: schemaVersion || STRUCTURED_SCHEMA_VERSION,
-        },
-      };
-    }
-    return {
-      status: "CHAT_REPLY",
-      assistantMessage: assistantMessage || "Please tell me your goal, budget, and expected time window.",
-      protocol: {
-        name: PROTOCOL_NAME,
-        version: PROTOCOL_VERSION,
-        constrained: true,
-        sourceFormat,
-        schemaVersion: schemaVersion || STRUCTURED_SCHEMA_VERSION,
-      },
-    };
+    return buildTurnFromCandidateEvaluation({
+      assistantMessage: parsed.assistantMessage,
+      sourceFormat: parsed.sourceFormat,
+      schemaVersion: parsed.schemaVersion,
+      forceProposal: parsed.forceProposal,
+      parseError: parsed.parseError,
+      normalizedCandidates,
+      invalidCandidates,
+    });
   }
 
   async function generateStrategyChatTurn(input) {
@@ -766,21 +2805,18 @@ function createAiStrategyService(options = {}) {
       return createAiUnavailableResult("MQ_AI_API_KEY is required for provider=bigmodel");
     }
     try {
-      const prompt = buildChatPromptPayload({
-        merchantId: input.merchantId,
-        sessionId: input.sessionId,
-        userMessage: input.userMessage,
-        history: input.history,
-        activeCampaigns: input.activeCampaigns,
-        approvedStrategies: input.approvedStrategies,
-        executionHistory: input.executionHistory,
-        salesSnapshot: input.salesSnapshot,
+      const graphResult = await strategyChatGraph.invoke({
+        input: isObjectLike(input) ? input : {},
       });
-      // invokeChat returns the raw content string; for new prompt it IS the two-part text
-      const rawContent = await modelGateway.invokeChatRaw(prompt.messages);
-      const result = parseTwoPartResponse(rawContent, input);
-      console.log(`[ai-strategy] [unary] LLM_FULL_MESSAGE at ${new Date().toISOString()} merchant=${input.merchantId} status=${result.status}`);
-      return result;
+      const parsedTurn =
+        graphResult && isObjectLike(graphResult.turn)
+          ? graphResult.turn
+          : {
+            status: "CHAT_REPLY",
+            assistantMessage: "Please tell me your goal, budget, and expected time window.",
+          };
+      console.log(`[ai-strategy] [unary] LLM_FULL_MESSAGE at ${new Date().toISOString()} merchant=${input.merchantId} status=${parsedTurn.status}`);
+      return parsedTurn;
     } catch (error) {
       return createAiUnavailableResult(`strategy chat failed: ${summarizeError(error)}`);
     }
@@ -797,7 +2833,7 @@ function createAiStrategyService(options = {}) {
       sessionId: input.sessionId,
       userMessage: input.userMessage,
       history: input.history,
-      activeCampaigns: input.activeCampaigns,
+      activePolicies: input.activePolicies,
       approvedStrategies: input.approvedStrategies,
       executionHistory: input.executionHistory,
       salesSnapshot: input.salesSnapshot,
@@ -866,9 +2902,25 @@ function createAiStrategyService(options = {}) {
       yield rawBuffer.slice(yieldedLen);
     }
 
-    const result = parseTwoPartResponse(rawBuffer, input);
-    console.log(`[ai-strategy] [stream] LLM_LAST_MESSAGE at ${new Date().toISOString()} merchant=${input.merchantId} status=${result.status}`);
-    return result;
+    const parsedTurn = parseTwoPartResponse(rawBuffer, input);
+    const revisedTurn = await maybeRunCriticReviseLoop({
+      input,
+      turn: parsedTurn
+    });
+    const rankedTurn = await maybeRunSimulationRankExplain({
+      input,
+      turn: revisedTurn
+    });
+    const result = await maybeRunApprovalPublish({
+      input,
+      turn: rankedTurn
+    });
+    const finalized = await maybeRunPostPublishMonitorAndMemory({
+      input,
+      turn: result
+    });
+    console.log(`[ai-strategy] [stream] LLM_LAST_MESSAGE at ${new Date().toISOString()} merchant=${input.merchantId} status=${finalized.status}`);
+    return finalized;
   }
 
   function getRuntimeInfo() {
@@ -882,6 +2934,12 @@ function createAiStrategyService(options = {}) {
       remoteEnabled,
       remoteConfigured: remoteEnabled ? Boolean(apiKey) : false,
       plannerEngine: "dual_channel_strict_v2",
+      criticLoop: {
+        enabled: criticEnabled,
+        maxRounds: criticMaxRounds,
+        minProposals: criticMinProposals,
+        minConfidence: criticMinConfidence
+      },
       retryPolicy: gatewayInfo.retry,
       modelClient: gatewayInfo.modelClient,
     };

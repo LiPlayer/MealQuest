@@ -23,7 +23,6 @@ const TABLES = {
   idempotencyRecords: "mq_idempotency_records",
   ledgerEntries: "mq_ledger_entries",
   auditLogs: "mq_audit_logs",
-  campaigns: "mq_campaigns",
   proposals: "mq_proposals",
 };
 
@@ -391,17 +390,6 @@ async function ensureRelationalTables(pool, schema, { enforceRls = true } = {}) 
   `);
 
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS ${schemaSql}.${qIdent(TABLES.campaigns)} (
-      tenant_id TEXT NOT NULL,
-      campaign_id TEXT NOT NULL,
-      seq_no BIGINT NOT NULL,
-      payload JSONB NOT NULL,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      PRIMARY KEY (tenant_id, campaign_id)
-    )
-  `);
-
-  await pool.query(`
     CREATE TABLE IF NOT EXISTS ${schemaSql}.${qIdent(TABLES.proposals)} (
       tenant_id TEXT NOT NULL,
       proposal_id TEXT NOT NULL,
@@ -423,10 +411,6 @@ async function ensureRelationalTables(pool, schema, { enforceRls = true } = {}) 
   await pool.query(`
     CREATE INDEX IF NOT EXISTS ${qIdent(`${TABLES.auditLogs}_tenant_seq_idx`)}
     ON ${schemaSql}.${qIdent(TABLES.auditLogs)} (tenant_id, seq_no)
-  `);
-  await pool.query(`
-    CREATE INDEX IF NOT EXISTS ${qIdent(`${TABLES.campaigns}_tenant_seq_idx`)}
-    ON ${schemaSql}.${qIdent(TABLES.campaigns)} (tenant_id, seq_no)
   `);
   await pool.query(`
     CREATE INDEX IF NOT EXISTS ${qIdent(`${TABLES.proposals}_tenant_seq_idx`)}
@@ -522,7 +506,6 @@ function createEmptyState() {
     idempotencyRecords: {},
     ledger: [],
     auditLogs: [],
-    campaigns: [],
     proposals: [],
   };
 }
@@ -773,17 +756,6 @@ async function readRelationalStateWithClient(client, schema, tenantId) {
     [tenantId],
   );
   state.auditLogs = auditRows.rows.map((row) => row.payload);
-
-  const campaignRows = await client.query(
-    `
-      SELECT payload
-      FROM ${schemaSql}.${qIdent(TABLES.campaigns)}
-      WHERE tenant_id = $1
-      ORDER BY seq_no ASC
-    `,
-    [tenantId],
-  );
-  state.campaigns = campaignRows.rows.map((row) => row.payload);
 
   const proposalRows = await client.query(
     `
@@ -1063,22 +1035,6 @@ async function replaceTenantState(client, schema, tenantId, rawState) {
     );
   }
 
-  const campaigns = Array.isArray(normalizedState.campaigns) ? normalizedState.campaigns : [];
-  for (let index = 0; index < campaigns.length; index += 1) {
-    const payload = campaigns[index];
-    const campaignId =
-      payload && payload.id
-        ? String(payload.id)
-        : `campaign_${index + 1}`;
-    await insertRow(
-      client,
-      schema,
-      TABLES.campaigns,
-      ["tenant_id", "campaign_id", "seq_no", "payload"],
-      [tenantId, campaignId, index + 1, toJsonb(payload)],
-    );
-  }
-
   const proposals = Array.isArray(normalizedState.proposals) ? normalizedState.proposals : [];
   for (let index = 0; index < proposals.length; index += 1) {
     const payload = proposals[index];
@@ -1123,57 +1079,6 @@ async function withFreshTenantRead(pool, schema, tenantId, runner) {
     return runner(workingDb);
   });
 }
-async function hasLegacySnapshotTable(pool, schema, legacyTable) {
-  const result = await pool.query(
-    `
-      SELECT 1
-      FROM information_schema.tables
-      WHERE table_schema = $1 AND table_name = $2
-      LIMIT 1
-    `,
-    [schema, legacyTable],
-  );
-  return result.rowCount > 0;
-}
-
-async function importLegacySnapshotIfNeeded({
-  pool,
-  schema,
-  legacySnapshotTable,
-  tenantId,
-}) {
-  if (!legacySnapshotTable) {
-    return false;
-  }
-  const exists = await runInTenantTransaction(pool, tenantId, async (client) =>
-    hasTenantData(client, schema, tenantId),
-  );
-  if (exists) {
-    return false;
-  }
-  if (!(await hasLegacySnapshotTable(pool, schema, legacySnapshotTable))) {
-    return false;
-  }
-
-  const schemaSql = qIdent(schema);
-  const tableSql = qIdent(legacySnapshotTable);
-  const snapshot = await pool.query(
-    `
-      SELECT state
-      FROM ${schemaSql}.${tableSql}
-      WHERE snapshot_key = $1
-      LIMIT 1
-    `,
-    [tenantId],
-  );
-  if (!snapshot.rows[0]) {
-    return false;
-  }
-
-  await writeRelationalState(pool, schema, tenantId, snapshot.rows[0].state || null);
-  return true;
-}
-
 function createSaveQueue({
   db,
   pool,
@@ -1207,7 +1112,6 @@ function createSaveQueue({
 async function createPostgresDb({
   connectionString,
   schema = "public",
-  table = "mealquest_state_snapshots",
   snapshotKey = "main",
   maxPoolSize = 5,
   autoCreateDatabase = true,
@@ -1216,10 +1120,6 @@ async function createPostgresDb({
   onPersistError = null,
 } = {}) {
   const normalizedSchema = normalizeIdentifier(schema, "public");
-  const normalizedLegacySnapshotTable = normalizeIdentifier(
-    table,
-    "mealquest_state_snapshots",
-  );
   const normalizedTenantId =
     typeof snapshotKey === "string" && snapshotKey.trim()
       ? snapshotKey.trim()
@@ -1237,18 +1137,6 @@ async function createPostgresDb({
     adminConnectionString,
     enforceRls: Boolean(enforceRls),
   });
-
-  try {
-    await importLegacySnapshotIfNeeded({
-      pool,
-      schema: normalizedSchema,
-      legacySnapshotTable: normalizedLegacySnapshotTable,
-      tenantId: normalizedTenantId,
-    });
-  } catch (error) {
-    await pool.end().catch(() => { });
-    throw error;
-  }
 
   let initialState = null;
   try {

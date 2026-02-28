@@ -26,7 +26,7 @@
 
 1. 展示 AI 提案列表（标题、状态、创建时间）。
 2. 仅允许 `PENDING -> APPROVED` 单向确认。
-3. 确认后将提案转化为 `ACTIVE campaign`。
+3. 确认并发布后将提案转化为 `ACTIVE policy`。
 
 ## 2.3 标准营销策略库（Strategy Library）
 
@@ -77,7 +77,7 @@
 ## 3. 领域模型
 
 1. `MerchantState`：门店、预算、熔断状态、提案、活动策略。
-2. `Proposal`：`id/title/status/campaignDraft`。
+2. `Proposal`：`id/title/status/policyDraft`。
 3. `Campaign`：`trigger + condition + budget + action + status + strategyMeta`。
 4. `CashierSettlement`：结算分解与外部支付结果。
 5. `StrategyTemplate`：`templateId/category/phase/branches[]/currentConfig`。
@@ -90,7 +90,7 @@
 
 1. 仅 `PENDING` 提案可确认。
 2. 确认后提案状态变 `APPROVED`。
-3. 同步加入 `activeCampaigns`。
+3. 同步加入 `activePolicies`。
 
 ## 4.2 Policy OS 触发规则
 
@@ -189,7 +189,7 @@
 
 反推检查：
 1. 文档需定义“确认前不可执行”。
-2. 代码需体现“确认后才进入 activeCampaigns”。
+2. 代码需体现“确认后才进入 activePolicies”。
 3. 熔断后触发必须返回 blocked。
 
 ## 8.2 角色 B：店员（Staff）

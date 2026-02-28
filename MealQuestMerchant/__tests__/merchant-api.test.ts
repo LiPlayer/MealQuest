@@ -80,7 +80,7 @@ describe('merchantApi audit logs', () => {
         pendingReview: null,
         pendingReviews: [],
         deltaMessages: [],
-        activeCampaigns: [],
+        activePolicies: [],
         approvedStrategies: [],
       }),
     );

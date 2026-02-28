@@ -79,6 +79,15 @@ function createPolicyRegistry({
     return clone(draft);
   }
 
+  function getPolicy({ merchantId, policyId }) {
+    const state = ensureState();
+    const policy = state.policies[policyId];
+    if (!policy || !policy.resource_scope || policy.resource_scope.merchant_id !== merchantId) {
+      return null;
+    }
+    return clone(policy);
+  }
+
   function createDraft({ merchantId, operatorId, spec, templateId = "" }) {
     const state = ensureState();
     const validated = schemaRegistry.validatePolicySpec(spec);
@@ -311,6 +320,59 @@ function createPolicyRegistry({
       .map((item) => clone(item));
   }
 
+  function pausePolicy({ merchantId, policyId, operatorId = "", reason = "" }) {
+    const state = ensureState();
+    const policy = state.policies[policyId];
+    if (!policy || !policy.resource_scope || policy.resource_scope.merchant_id !== merchantId) {
+      throw new Error("policy not found");
+    }
+    if (policy.status !== "PUBLISHED") {
+      throw new Error("policy is not active");
+    }
+    policy.status = "PAUSED";
+    policy.paused_at = nowIso();
+    policy.paused_by = operatorId || "system";
+    policy.pause_reason = String(reason || "").trim();
+    policy.updated_at = nowIso();
+    const active = Array.isArray(state.publishedByMerchant[merchantId])
+      ? state.publishedByMerchant[merchantId]
+      : [];
+    state.publishedByMerchant[merchantId] = active.filter((id) => id !== policyId);
+    db.save();
+    return clone(policy);
+  }
+
+  function resumePolicy({ merchantId, policyId, operatorId = "" }) {
+    const state = ensureState();
+    const policy = state.policies[policyId];
+    if (!policy || !policy.resource_scope || policy.resource_scope.merchant_id !== merchantId) {
+      throw new Error("policy not found");
+    }
+    if (policy.status !== "PAUSED") {
+      throw new Error("policy is not paused");
+    }
+    const expiresAtMs = Date.parse(String(policy.expires_at || ""));
+    if (Number.isFinite(expiresAtMs) && expiresAtMs <= now()) {
+      policy.status = "EXPIRED";
+      policy.expired_at = nowIso();
+      policy.updated_at = nowIso();
+      db.save();
+      throw new Error("policy already expired");
+    }
+    policy.status = "PUBLISHED";
+    policy.resumed_at = nowIso();
+    policy.resumed_by = operatorId || "system";
+    policy.updated_at = nowIso();
+    if (!Array.isArray(state.publishedByMerchant[merchantId])) {
+      state.publishedByMerchant[merchantId] = [];
+    }
+    state.publishedByMerchant[merchantId] = Array.from(
+      new Set([...(state.publishedByMerchant[merchantId] || []), policyId])
+    );
+    db.save();
+    return clone(policy);
+  }
+
   function getExecutionPlan(policyId) {
     const state = ensureState();
     return state.executionPlans[policyId] ? clone(state.executionPlans[policyId]) : null;
@@ -332,7 +394,10 @@ function createPolicyRegistry({
     submitDraft,
     approveDraft,
     publishDraft,
+    pausePolicy,
+    resumePolicy,
     getDraft,
+    getPolicy,
     listDrafts,
     listPolicies,
     listActivePolicies,

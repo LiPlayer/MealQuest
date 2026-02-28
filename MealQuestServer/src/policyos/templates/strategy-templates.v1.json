@@ -1,0 +1,218 @@
+{
+  "catalog_version": "strategy_templates.v1",
+  "updated_at": "2026-02-28T00:00:00.000Z",
+  "templates": [
+    {
+      "templateId": "acquisition_welcome_gift",
+      "category": "ACQUISITION",
+      "phase": "P1",
+      "name": "New User Welcome Gift",
+      "description": "Offer a starter voucher when a new user enters the store.",
+      "triggerEvent": "USER_ENTER_SHOP",
+      "defaultBranchId": "DEFAULT",
+      "branches": [
+        {
+          "branchId": "DEFAULT",
+          "name": "Standard Welcome",
+          "description": "Baseline welcome voucher for first-time visitors.",
+          "policySpec": {
+            "name": "New User Welcome Gift - Standard",
+            "lane": "NORMAL",
+            "tie_breaker": "UTILITY_DESC",
+            "goal": {
+              "type": "ACQUISITION",
+              "kpi": "new_user_conversion"
+            },
+            "segment": {
+              "plugin": "condition_segment_v1",
+              "params": {
+                "logic": "AND",
+                "conditions": [
+                  {
+                    "field": "isNewUser",
+                    "op": "eq",
+                    "value": true
+                  }
+                ]
+              }
+            },
+            "triggers": [
+              {
+                "plugin": "event_trigger_v1",
+                "event": "USER_ENTER_SHOP",
+                "params": {}
+              }
+            ],
+            "program": {
+              "ttl_sec": 14400,
+              "max_instances": 1,
+              "pacing": {
+                "max_cost_per_minute": 18
+              }
+            },
+            "actions": [
+              {
+                "plugin": "voucher_grant_v1",
+                "channel": "default",
+                "params": {
+                  "cost": 6,
+                  "expires_in_sec": 14400,
+                  "voucher": {
+                    "type": "ITEM_WARRANT",
+                    "name": "New User Welcome Gift",
+                    "value": 18,
+                    "minSpend": 0
+                  }
+                }
+              }
+            ],
+            "constraints": [
+              {
+                "plugin": "kill_switch_v1",
+                "params": {}
+              },
+              {
+                "plugin": "budget_guard_v1",
+                "params": {
+                  "cap": 120,
+                  "cost_per_hit": 6
+                }
+              },
+              {
+                "plugin": "frequency_cap_v1",
+                "params": {
+                  "daily": 1,
+                  "window_sec": 86400
+                }
+              },
+              {
+                "plugin": "anti_fraud_hook_v1",
+                "params": {
+                  "max_risk_score": 0.75
+                }
+              }
+            ],
+            "scoring": {
+              "plugin": "expected_profit_v1",
+              "params": {}
+            },
+            "overlap_policy": {
+              "mode": "SOFT_EXCLUSIVE",
+              "conflict_set": "acquisition_welcome_gift",
+              "max_winners": 1,
+              "cooldown_sec": 0
+            },
+            "governance": {
+              "approval_required": true,
+              "approval_level": "OWNER",
+              "approval_token_ttl_sec": 3600
+            }
+          }
+        },
+        {
+          "branchId": "CHANNEL",
+          "name": "Referral Welcome",
+          "description": "Stronger welcome package for referred new users.",
+          "policySpec": {
+            "name": "New User Welcome Gift - Referral",
+            "lane": "GUARDED",
+            "tie_breaker": "UTILITY_DESC",
+            "goal": {
+              "type": "ACQUISITION",
+              "kpi": "new_user_conversion"
+            },
+            "segment": {
+              "plugin": "condition_segment_v1",
+              "params": {
+                "logic": "AND",
+                "conditions": [
+                  {
+                    "field": "isNewUser",
+                    "op": "eq",
+                    "value": true
+                  },
+                  {
+                    "field": "hasReferral",
+                    "op": "eq",
+                    "value": true
+                  }
+                ]
+              }
+            },
+            "triggers": [
+              {
+                "plugin": "event_trigger_v1",
+                "event": "USER_ENTER_SHOP",
+                "params": {}
+              }
+            ],
+            "program": {
+              "ttl_sec": 14400,
+              "max_instances": 1,
+              "pacing": {
+                "max_cost_per_minute": 20
+              }
+            },
+            "actions": [
+              {
+                "plugin": "voucher_grant_v1",
+                "channel": "default",
+                "params": {
+                  "cost": 8,
+                  "expires_in_sec": 14400,
+                  "voucher": {
+                    "type": "NO_THRESHOLD_VOUCHER",
+                    "name": "Referral Welcome Bonus",
+                    "value": 10,
+                    "minSpend": 20
+                  }
+                }
+              }
+            ],
+            "constraints": [
+              {
+                "plugin": "kill_switch_v1",
+                "params": {}
+              },
+              {
+                "plugin": "budget_guard_v1",
+                "params": {
+                  "cap": 140,
+                  "cost_per_hit": 8
+                }
+              },
+              {
+                "plugin": "frequency_cap_v1",
+                "params": {
+                  "daily": 1,
+                  "window_sec": 86400
+                }
+              },
+              {
+                "plugin": "anti_fraud_hook_v1",
+                "params": {
+                  "max_risk_score": 0.75
+                }
+              }
+            ],
+            "scoring": {
+              "plugin": "expected_profit_v1",
+              "params": {}
+            },
+            "overlap_policy": {
+              "mode": "SOFT_EXCLUSIVE",
+              "conflict_set": "acquisition_welcome_gift",
+              "max_winners": 1,
+              "cooldown_sec": 0
+            },
+            "governance": {
+              "approval_required": true,
+              "approval_level": "OWNER",
+              "approval_token_ttl_sec": 3600
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

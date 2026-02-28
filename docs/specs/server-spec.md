@@ -43,7 +43,7 @@
 
 1. `killSwitchEnabled`：熔断状态。
 2. `budgetCap/budgetUsed`：营销预算红线。
-3. `campaigns[]`：已激活策略。
+3. `policies[]`：已发布并激活的策略。
 4. `proposals[]`：待确认 AI 提案。
 5. `tenantPolicies[merchantId]`：租户策略（写冻结/实时开关/限流配额）。
 6. `tenantMigrations[merchantId]`：迁移编排状态（phase/step/note/updatedAt）。
@@ -238,7 +238,7 @@
 21. 隐私合规：Owner 可导出与匿名化删除，非 Owner 拒绝
 22. 指标接口：`/metrics` 可读并输出请求/错误计数
 23. 策略库：可查询模板库并按模板+分支生成提案，确认后进入活动策略
-24. 策略启停：`campaign status` 改变可立即影响 Policy OS 执行结果
+24. 策略启停：`policy status` 改变可立即影响 Policy OS 执行结果
 25. 紧急急售：可创建 `Priority:999 + TTL` 人工接管策略并触发执行
 26. 供应商核验：联盟订单核验成功/失败均可返回并落审计
 27. 多店连锁：可配置跨店共享钱包并在支付链路生效
@@ -281,7 +281,7 @@
 
 反推检查：
 1. 文档必须定义“确认后执行”与熔断优先级。
-2. 代码必须实现 proposal -> campaign 转换。
+2. 代码必须实现 proposal -> policy 发布链路。
 3. 测试必须覆盖 blockedByKillSwitch。
 
 ---

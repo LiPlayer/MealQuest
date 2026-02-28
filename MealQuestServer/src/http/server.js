@@ -13,6 +13,7 @@ const { createWebSocketHub } = require("../core/websocketHub");
 const { createInvoiceService } = require("../services/invoiceService");
 const { createMerchantService } = require("../services/merchantService");
 const { createAiStrategyService } = require("../services/aiStrategyService");
+const { assertStrategyTemplatesValid } = require("../services/strategyLibrary");
 const { createAllianceService } = require("../services/allianceService");
 const { createPaymentService } = require("../services/paymentService");
 const { createPrivacyService } = require("../services/privacyService");
@@ -45,7 +46,8 @@ function createAppServer({
   paymentProvider = null,
   socialAuthService = null,
   socialAuthOptions = {},
-  aiStrategyOptions = {}
+  aiStrategyOptions = {},
+  policyTemplateValidateOnBoot = true
 } = {}) {
   const actualDb = db || createInMemoryDb();
   if (typeof actualDb.save !== "function") {
@@ -138,6 +140,11 @@ function createAppServer({
     return getServicesForDb(scopedDb);
   };
   const services = getServicesForDb(actualDb);
+  if (policyTemplateValidateOnBoot) {
+    assertStrategyTemplatesValid({
+      knownPlugins: services.policyOsService.listPlugins()
+    });
+  }
   const allSockets = new Set();
   const appendAuditLog = ({ merchantId, action, status, auth, details }) => {
     tenantRepository.appendAuditLog({
@@ -331,10 +338,6 @@ async function createAppServerAsync(options = {}) {
       inputPostgresOptions.schema ||
       runtimeEnv.dbSchema ||
       "public",
-    table:
-      inputPostgresOptions.table ||
-      runtimeEnv.dbStateTable ||
-      "mealquest_state_snapshots",
     snapshotKey:
       inputPostgresOptions.snapshotKey ||
       runtimeEnv.dbSnapshotKey ||
@@ -393,6 +396,10 @@ async function createAppServerAsync(options = {}) {
     postgresOptions,
     socialAuthOptions,
     aiStrategyOptions: options.aiStrategyOptions || runtimeEnv.aiStrategy,
+    policyTemplateValidateOnBoot:
+      options.policyTemplateValidateOnBoot === undefined
+        ? runtimeEnv.policyTemplateValidateOnBoot
+        : Boolean(options.policyTemplateValidateOnBoot),
     tenantDbMap: {
       ...persistedTenantDbMap,
       ...(options.tenantDbMap || {}),
@@ -448,7 +455,6 @@ if (require.main === module) {
     postgresOptions: {
       connectionString: runtimeEnv.dbUrl,
       schema: runtimeEnv.dbSchema,
-      table: runtimeEnv.dbStateTable,
       snapshotKey: runtimeEnv.dbSnapshotKey,
       maxPoolSize: runtimeEnv.dbPoolMax,
       enforceRls: runtimeEnv.dbEnforceRls,

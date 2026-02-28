@@ -65,3 +65,22 @@ test("runtime env: db rls enforcement defaults on and can be disabled", () => {
   });
   assert.equal(disabled.dbEnforceRls, false);
 });
+
+test("runtime env: policy template boot validation defaults on and can be disabled", () => {
+  const defaults = resolveServerRuntimeEnv({
+    NODE_ENV: "development",
+    MQ_DB_URL: "postgres://postgres:postgres@127.0.0.1:5432/mealquest",
+    MQ_AUTH_WECHAT_MINI_APP_ID: "wx_fixture",
+    MQ_AUTH_WECHAT_MINI_APP_SECRET: "wx_secret",
+  });
+  assert.equal(defaults.policyTemplateValidateOnBoot, true);
+
+  const disabled = resolveServerRuntimeEnv({
+    NODE_ENV: "development",
+    MQ_DB_URL: "postgres://postgres:postgres@127.0.0.1:5432/mealquest",
+    MQ_AUTH_WECHAT_MINI_APP_ID: "wx_fixture",
+    MQ_AUTH_WECHAT_MINI_APP_SECRET: "wx_secret",
+    MQ_POLICY_TEMPLATE_VALIDATE_ON_BOOT: "false",
+  });
+  assert.equal(disabled.policyTemplateValidateOnBoot, false);
+});

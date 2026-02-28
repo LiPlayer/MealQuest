@@ -2,7 +2,7 @@ import { MerchantState } from '../../domain/merchantEngine';
 
 interface MerchantStatePayload {
   dashboard: any;
-  campaigns: any[];
+  policies: any[];
   proposals?: any[];
 }
 
@@ -44,34 +44,20 @@ export function toMerchantState(payload: MerchantStatePayload): MerchantState {
       approvalId: item.policyWorkflow?.approvalId || null,
       approvedAt: item.approvedAt || null,
     }));
-  const pending =
-    pendingFromState.length > 0
-      ? pendingFromState.map((item: any) => ({
-          id: item.id,
-          title: item.title,
-          status: 'PENDING' as const,
-          templateId: item.strategyMeta?.templateId,
-          branchId: item.strategyMeta?.branchId,
-          campaignDraft: {
-            id: item.policyWorkflow?.draftId || `${item.id}_draft`,
-            name: item.suggestedPolicySpec?.name || item.title,
-            triggerEvent: getTriggerEventFromPolicySpec(item.suggestedPolicySpec),
-            condition: getFirstConditionFromPolicySpec(item.suggestedPolicySpec),
-            budget: getBudgetFromPolicySpec(item.suggestedPolicySpec),
-          },
-        }))
-      : (payload.dashboard.pendingProposals || []).map((item: any) => ({
-          id: item.id,
-          title: item.title,
-          status: 'PENDING' as const,
-          campaignDraft: {
-            id: `${item.id}_draft`,
-            name: item.title,
-            triggerEvent: 'WEATHER_CHANGE' as const,
-            condition: { field: 'weather', equals: 'RAIN' },
-            budget: { cap: 0, used: 0, costPerHit: 0 },
-          },
-        }));
+  const pending = pendingFromState.map((item: any) => ({
+    id: item.id,
+    title: item.title,
+    status: 'PENDING' as const,
+    templateId: item.strategyMeta?.templateId,
+    branchId: item.strategyMeta?.branchId,
+    policyDraft: {
+      id: item.policyWorkflow?.draftId || `${item.id}_draft`,
+      name: item.suggestedPolicySpec?.name || item.title,
+      triggerEvent: getTriggerEventFromPolicySpec(item.suggestedPolicySpec),
+      condition: getFirstConditionFromPolicySpec(item.suggestedPolicySpec),
+      budget: getBudgetFromPolicySpec(item.suggestedPolicySpec),
+    },
+  }));
 
   return {
     merchantId: payload.dashboard.merchantId,
@@ -81,29 +67,22 @@ export function toMerchantState(payload: MerchantStatePayload): MerchantState {
     budgetUsed: Number(payload.dashboard.budgetUsed || 0),
     pendingProposals: pending,
     approvedPendingPublish,
-    activeCampaigns: (payload.campaigns || []).map((campaign: any) => ({
-      id: campaign.id,
-      name: campaign.name,
-      status: campaign.status || 'ACTIVE',
-      triggerEvent:
-        campaign.trigger?.event ||
-        getTriggerEventFromPolicySpec(campaign) ||
-        'WEATHER_CHANGE',
-      condition:
-        (campaign.conditions && campaign.conditions.length > 0
-          ? {
-              field: campaign.conditions[0]?.field || 'weather',
-              equals: campaign.conditions[0]?.value ?? campaign.conditions[0]?.equals ?? 'RAIN',
-            }
-          : getFirstConditionFromPolicySpec(campaign)),
-      budget:
-        campaign.budget
-          ? {
-              cap: Number(campaign.budget?.cap || 0),
-              used: Number(campaign.budget?.used || 0),
-              costPerHit: Number(campaign.budget?.costPerHit || 0),
-            }
-          : getBudgetFromPolicySpec(campaign),
+    activePolicies: (payload.policies || []).map((policy: any) => ({
+      id: policy.id,
+      name: policy.name,
+      status: policy.status || 'ACTIVE',
+      triggerEvent: String(policy.trigger?.event || 'APP_OPEN').toUpperCase(),
+      condition: Array.isArray(policy.conditions) && policy.conditions.length > 0
+        ? {
+            field: String(policy.conditions[0]?.field || 'event'),
+            equals: policy.conditions[0]?.value ?? policy.conditions[0]?.equals ?? 'ANY',
+          }
+        : { field: 'event', equals: 'ANY' },
+      budget: {
+        cap: Number(policy.budget?.cap || 0),
+        used: Number(policy.budget?.used || 0),
+        costPerHit: Number(policy.budget?.costPerHit || 0),
+      },
     })),
   };
 }

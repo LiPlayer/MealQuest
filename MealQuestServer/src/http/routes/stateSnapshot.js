@@ -14,7 +14,7 @@ function laneToPriority(lane = "") {
   return 40;
 }
 
-function toCampaignLike(policy) {
+function toPolicyView(policy) {
   const safe = policy && typeof policy === "object" ? policy : {};
   const firstTrigger =
     Array.isArray(safe.triggers) && safe.triggers[0] && typeof safe.triggers[0] === "object"
@@ -77,25 +77,25 @@ async function buildStateSnapshot({
   const dashboard = await merchantService.getDashboard({ merchantId });
   const { policyOsService } = getServicesForDb(scopedDb);
   const policyDrafts = policyOsService.listDrafts({ merchantId });
-  const policies = policyOsService.listPolicies({ merchantId, includeInactive: true });
+  const allPolicies = policyOsService.listPolicies({ merchantId, includeInactive: true });
   const activePolicies = policyOsService.listActivePolicies({ merchantId });
-  const campaigns = activePolicies.map((item) => toCampaignLike(item));
+  const activePolicyViews = activePolicies.map((item) => toPolicyView(item));
 
   return {
     merchant,
     user,
     dashboard,
-    campaigns,
+    policies: activePolicyViews,
     proposals: await tenantRepository.listProposals(merchantId),
     strategyConfigs: await tenantRepository.listStrategyConfigs(merchantId),
-    activities: buildCustomerActivities(campaigns),
+    activities: buildCustomerActivities(activePolicyViews),
     allianceConfig,
     policyOs: {
       draftCount: policyDrafts.length,
-      policyCount: policies.length,
+      policyCount: allPolicies.length,
       activePolicyCount: activePolicies.length,
       drafts: policyDrafts,
-      policies,
+      policies: allPolicies,
       plugins: policyOsService.listPlugins()
     }
   };

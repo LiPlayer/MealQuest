@@ -10,6 +10,21 @@ function createPolicyOsRoutesHandler({
   getServicesForMerchant,
   appendAuditLog
 }) {
+  function isExecutionConfirmed(req, body = {}) {
+    const headerValue = String(
+      (req.headers && (req.headers["x-execute-confirmed"] || req.headers["x-policyos-execute-confirmed"])) || ""
+    )
+      .trim()
+      .toLowerCase();
+    if (["1", "true", "yes", "y"].includes(headerValue)) {
+      return true;
+    }
+    if (body.confirmed === true || body.executeConfirmed === true) {
+      return true;
+    }
+    return false;
+  }
+
   function readApprovalId(req, body = {}) {
     return (
       (req.headers && req.headers["x-approval-id"]) ||
@@ -244,10 +259,97 @@ function createPolicyOsRoutesHandler({
       return true;
     }
 
+    const pauseMatch = url.pathname.match(/^\/api\/policyos\/policies\/([^/]+)\/pause$/);
+    if (method === "POST" && pauseMatch) {
+      ensureRole(auth, ["OWNER"]);
+      const body = await readJsonBody(req);
+      const merchantId = auth.merchantId || body.merchantId;
+      if (
+        !enforceTenantPolicyForHttp({
+          tenantPolicyManager,
+          merchantId,
+          operation: "POLICY_PAUSE",
+          res,
+          auth,
+          appendAuditLog
+        })
+      ) {
+        return true;
+      }
+      const policyId = decodeURIComponent(pauseMatch[1]);
+      const { policyOsService } = getServicesForMerchant(merchantId);
+      const policy = policyOsService.pausePolicy({
+        merchantId,
+        policyId,
+        operatorId: auth.operatorId || auth.userId || "system",
+        reason: body.reason || ""
+      });
+      appendAuditLog({
+        merchantId,
+        action: "POLICY_PAUSE",
+        status: "SUCCESS",
+        auth,
+        details: {
+          policyId,
+          reason: body.reason || ""
+        }
+      });
+      sendJson(res, 200, {
+        merchantId,
+        policy
+      });
+      return true;
+    }
+
+    const resumeMatch = url.pathname.match(/^\/api\/policyos\/policies\/([^/]+)\/resume$/);
+    if (method === "POST" && resumeMatch) {
+      ensureRole(auth, ["OWNER"]);
+      const body = await readJsonBody(req);
+      const merchantId = auth.merchantId || body.merchantId;
+      if (
+        !enforceTenantPolicyForHttp({
+          tenantPolicyManager,
+          merchantId,
+          operation: "POLICY_RESUME",
+          res,
+          auth,
+          appendAuditLog
+        })
+      ) {
+        return true;
+      }
+      const policyId = decodeURIComponent(resumeMatch[1]);
+      const { policyOsService } = getServicesForMerchant(merchantId);
+      const policy = policyOsService.resumePolicy({
+        merchantId,
+        policyId,
+        operatorId: auth.operatorId || auth.userId || "system"
+      });
+      appendAuditLog({
+        merchantId,
+        action: "POLICY_RESUME",
+        status: "SUCCESS",
+        auth,
+        details: {
+          policyId
+        }
+      });
+      sendJson(res, 200, {
+        merchantId,
+        policy
+      });
+      return true;
+    }
+
     if (method === "POST" && url.pathname === "/api/policyos/decision/simulate") {
       ensureRole(auth, ["MANAGER", "OWNER"]);
       const body = await readJsonBody(req);
       const merchantId = auth.merchantId || body.merchantId;
+      const event = String(body.event || "").trim().toUpperCase();
+      if (!event) {
+        sendJson(res, 400, { error: "event is required" });
+        return true;
+      }
       if (
         !enforceTenantPolicyForHttp({
           tenantPolicyManager,
@@ -264,7 +366,7 @@ function createPolicyOsRoutesHandler({
       const result = await policyOsService.simulateDecision({
         merchantId,
         userId: body.userId,
-        event: body.event,
+        event,
         eventId: body.eventId || "",
         context: body.context || {},
         draftId: body.draftId || body.draft_id || ""
@@ -284,13 +386,19 @@ function createPolicyOsRoutesHandler({
       return true;
     }
 
-    if (
-      method === "POST" &&
-      (url.pathname === "/api/policyos/decision/execute" || url.pathname === "/api/policyos/decision/evaluate")
-    ) {
+    if (method === "POST" && url.pathname === "/api/policyos/decision/execute") {
       ensureRole(auth, ["MANAGER", "OWNER"]);
       const body = await readJsonBody(req);
       const merchantId = auth.merchantId || body.merchantId;
+      const event = String(body.event || "").trim().toUpperCase();
+      if (!isExecutionConfirmed(req, body)) {
+        sendJson(res, 400, { error: "execute confirmation is required" });
+        return true;
+      }
+      if (!event) {
+        sendJson(res, 400, { error: "event is required" });
+        return true;
+      }
       if (
         !enforceTenantPolicyForHttp({
           tenantPolicyManager,
@@ -307,7 +415,7 @@ function createPolicyOsRoutesHandler({
       const result = await policyOsService.executeDecision({
         merchantId,
         userId: body.userId,
-        event: body.event,
+        event,
         eventId: body.eventId || "",
         context: body.context || {}
       });

@@ -128,7 +128,7 @@ function registerDefaultPlugins({ pluginRegistry, db, ledgerService, now = () =>
     }
   });
 
-  pluginRegistry.register("segment", "legacy_condition_segment_v1", {
+  pluginRegistry.register("segment", "condition_segment_v1", {
     eval({ user, segment, ctx }) {
       const params = segment && segment.params && typeof segment.params === "object" ? segment.params : {};
       const conditions = Array.isArray(params.conditions)
@@ -137,7 +137,7 @@ function registerDefaultPlugins({ pluginRegistry, db, ledgerService, now = () =>
       if (conditions.length === 0) {
         return {
           matched: true,
-          reasonCodes: ["segment:legacy_conditions_empty"]
+          reasonCodes: ["segment:conditions_empty"]
         };
       }
       const logic = String(params.logic || "AND").trim().toUpperCase();
@@ -156,7 +156,7 @@ function registerDefaultPlugins({ pluginRegistry, db, ledgerService, now = () =>
       const matched = logic === "OR" ? items.some(Boolean) : items.every(Boolean);
       return {
         matched,
-        reasonCodes: matched ? ["segment:legacy_conditions_match"] : ["segment:legacy_conditions_mismatch"]
+        reasonCodes: matched ? ["segment:conditions_match"] : ["segment:conditions_mismatch"]
       };
     }
   });
@@ -184,10 +184,54 @@ function registerDefaultPlugins({ pluginRegistry, db, ledgerService, now = () =>
     }
   });
 
+  function resolveBudgetStateKey({ policy, constraint, pluginId }) {
+    const merchantId = String(
+      policy &&
+      policy.resource_scope &&
+      policy.resource_scope.merchant_id
+        ? policy.resource_scope.merchant_id
+        : ""
+    ).trim();
+    const scope = String(constraint && constraint.params && constraint.params.scope || "POLICY")
+      .trim()
+      .toUpperCase();
+    if (pluginId === "global_budget_guard_v1" || scope === "MERCHANT") {
+      const bucket = String(
+        constraint && constraint.params && constraint.params.bucket_id
+          ? constraint.params.bucket_id
+          : "default"
+      )
+        .trim()
+        .toLowerCase() || "default";
+      return `${merchantId}|global|${bucket}`;
+    }
+    return `${merchantId}|${policy.policy_id}`;
+  }
+
+  function resolveBudgetPacingLimit({ policy, constraint }) {
+    const fromConstraint = toNumber(
+      constraint &&
+      constraint.params &&
+      constraint.params.max_cost_per_minute,
+      Number.NaN
+    );
+    if (Number.isFinite(fromConstraint) && fromConstraint >= 0) {
+      return fromConstraint;
+    }
+    return toNumber(
+      policy.program && policy.program.pacing && policy.program.pacing.max_cost_per_minute,
+      Number.MAX_SAFE_INTEGER
+    );
+  }
+
   pluginRegistry.register("constraint", "budget_guard_v1", {
     check({ policy, constraint, estimate }) {
       const state = ensurePolicyOsState(db);
-      const key = `${policy.resource_scope.merchant_id}|${policy.policy_id}`;
+      const key = resolveBudgetStateKey({
+        policy,
+        constraint,
+        pluginId: "budget_guard_v1"
+      });
       const budgetState = state.resourceStates.budget[key] || {
         used: 0,
         cap: toNumber(constraint.params.cap, Number.MAX_SAFE_INTEGER),
@@ -196,10 +240,7 @@ function registerDefaultPlugins({ pluginRegistry, db, ledgerService, now = () =>
       };
       const cap = toNumber(constraint.params.cap, budgetState.cap);
       const cost = toNumber(estimate.cost, toNumber(constraint.params.cost_per_hit, 0));
-      const maxPerMinute = toNumber(
-        policy.program && policy.program.pacing && policy.program.pacing.max_cost_per_minute,
-        Number.MAX_SAFE_INTEGER
-      );
+      const maxPerMinute = resolveBudgetPacingLimit({ policy, constraint });
       const nowMs = now();
       const sameWindow = nowMs - toNumber(budgetState.minuteWindowStartMs, 0) < 60 * 1000;
       const minuteSpent = sameWindow ? toNumber(budgetState.minuteSpent, 0) : 0;
@@ -224,7 +265,98 @@ function registerDefaultPlugins({ pluginRegistry, db, ledgerService, now = () =>
     },
     reserve({ policy, constraint, estimate }) {
       const state = ensurePolicyOsState(db);
-      const key = `${policy.resource_scope.merchant_id}|${policy.policy_id}`;
+      const key = resolveBudgetStateKey({
+        policy,
+        constraint,
+        pluginId: "budget_guard_v1"
+      });
+      const current = state.resourceStates.budget[key] || {
+        used: 0,
+        cap: toNumber(constraint.params.cap, Number.MAX_SAFE_INTEGER),
+        minuteWindowStartMs: 0,
+        minuteSpent: 0
+      };
+      const nowMs = now();
+      const cost = toNumber(estimate.cost, toNumber(constraint.params.cost_per_hit, 0));
+      const sameWindow = nowMs - toNumber(current.minuteWindowStartMs, 0) < 60 * 1000;
+      const next = {
+        used: toNumber(current.used, 0) + cost,
+        cap: toNumber(constraint.params.cap, current.cap),
+        minuteWindowStartMs: sameWindow ? current.minuteWindowStartMs : nowMs,
+        minuteSpent: (sameWindow ? toNumber(current.minuteSpent, 0) : 0) + cost
+      };
+      state.resourceStates.budget[key] = next;
+      return {
+        ok: true,
+        reserved: {
+          type: "budget",
+          key,
+          amount: cost
+        }
+      };
+    },
+    release({ reserved }) {
+      const state = ensurePolicyOsState(db);
+      if (!reserved || reserved.type !== "budget") {
+        return { ok: true };
+      }
+      const current = state.resourceStates.budget[reserved.key];
+      if (!current) {
+        return { ok: true };
+      }
+      current.used = Math.max(0, toNumber(current.used, 0) - toNumber(reserved.amount, 0));
+      current.minuteSpent = Math.max(0, toNumber(current.minuteSpent, 0) - toNumber(reserved.amount, 0));
+      state.resourceStates.budget[reserved.key] = current;
+      return { ok: true };
+    }
+  });
+
+  pluginRegistry.register("constraint", "global_budget_guard_v1", {
+    check({ policy, constraint, estimate }) {
+      const state = ensurePolicyOsState(db);
+      const key = resolveBudgetStateKey({
+        policy,
+        constraint,
+        pluginId: "global_budget_guard_v1"
+      });
+      const budgetState = state.resourceStates.budget[key] || {
+        used: 0,
+        cap: toNumber(constraint.params.cap, Number.MAX_SAFE_INTEGER),
+        minuteWindowStartMs: 0,
+        minuteSpent: 0
+      };
+      const cap = toNumber(constraint.params.cap, budgetState.cap);
+      const cost = toNumber(estimate.cost, toNumber(constraint.params.cost_per_hit, 0));
+      const maxPerMinute = resolveBudgetPacingLimit({ policy, constraint });
+      const nowMs = now();
+      const sameWindow = nowMs - toNumber(budgetState.minuteWindowStartMs, 0) < 60 * 1000;
+      const minuteSpent = sameWindow ? toNumber(budgetState.minuteSpent, 0) : 0;
+      if (toNumber(budgetState.used, 0) + cost > cap) {
+        return {
+          ok: false,
+          reasonCodes: ["constraint:global_budget_cap_exceeded"],
+          riskFlags: ["GLOBAL_BUDGET_CAP_EXCEEDED"]
+        };
+      }
+      if (minuteSpent + cost > maxPerMinute) {
+        return {
+          ok: false,
+          reasonCodes: ["constraint:global_budget_pacing_exceeded"],
+          riskFlags: ["GLOBAL_BUDGET_PACING_EXCEEDED"]
+        };
+      }
+      return {
+        ok: true,
+        reasonCodes: ["constraint:global_budget_pass"]
+      };
+    },
+    reserve({ policy, constraint, estimate }) {
+      const state = ensurePolicyOsState(db);
+      const key = resolveBudgetStateKey({
+        policy,
+        constraint,
+        pluginId: "global_budget_guard_v1"
+      });
       const current = state.resourceStates.budget[key] || {
         used: 0,
         cap: toNumber(constraint.params.cap, Number.MAX_SAFE_INTEGER),

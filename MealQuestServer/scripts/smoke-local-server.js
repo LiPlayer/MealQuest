@@ -413,7 +413,7 @@ async function runSmoke(baseUrl, options = {}) {
     {
       merchantId: "m_store_001",
       sessionId: strategySession.data.sessionId,
-      content: "Please create a strategy proposal for high temperature campaign now."
+      content: "Please create a strategy proposal for high temperature policy now."
     },
     { Authorization: `Bearer ${ownerToken}` }
   );
@@ -456,7 +456,7 @@ async function runSmoke(baseUrl, options = {}) {
     assert.ok(publishPolicy.data.policyId, "published policy id should exist");
   }
 
-  console.log("[smoke] scenario H: supplier verify + fire sale");
+  console.log("[smoke] scenario H: supplier verify");
   const supplierVerifyPass = await postJson(
     baseUrl,
     "/api/supplier/verify-order",
@@ -484,19 +484,6 @@ async function runSmoke(baseUrl, options = {}) {
   );
   expectStatus(supplierVerifyFail, 200, "supplier verify fail");
   assert.equal(supplierVerifyFail.data.verified, false);
-
-  const fireSale = await postJson(
-    baseUrl,
-    "/api/merchant/fire-sale",
-    {
-      merchantId: "m_store_001",
-      targetSku: "sku_hot_soup",
-      ttlMinutes: 20
-    },
-    { Authorization: `Bearer ${ownerToken}` }
-  );
-  expectStatus(fireSale, 200, "fire sale create");
-  assert.ok(fireSale.data.campaignId, "fire sale campaign id should exist");
 
   console.log("[smoke] scenario I: alliance wallet share + sync");
   const bistroOwnerToken = await login(baseUrl, "OWNER", "m_bistro");

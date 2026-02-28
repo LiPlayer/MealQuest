@@ -112,3 +112,112 @@ test("merchant service links AI proposal simulate -> approve -> publish lifecycl
   assert.equal(activePolicies.length, 1);
   assert.equal(activePolicies[0].policy_id, published.policyId);
 });
+
+test("merchant service auto-simulates and ranks multiple proposal candidates", async () => {
+  const db = createInMemoryDb();
+  db.save = () => {};
+  seedMerchant(db, "m_policy_rank");
+  const policyOsService = createPolicyOsService(db);
+  const base = createPolicySpecFromTemplate({
+    merchantId: "m_policy_rank",
+    templateId: "acquisition_welcome_gift",
+    branchId: "DEFAULT"
+  });
+  const candidateA = {
+    ...base,
+    spec: {
+      ...base.spec,
+      name: "Candidate A",
+      policy_key: "ai.rank.a"
+    },
+    strategyMeta: {
+      confidence: 0.2
+    },
+    title: "Candidate A"
+  };
+  const candidateB = {
+    ...base,
+    spec: {
+      ...base.spec,
+      name: "Candidate B",
+      policy_key: "ai.rank.b"
+    },
+    strategyMeta: {
+      confidence: 0.9
+    },
+    title: "Candidate B"
+  };
+
+  const merchantService = createMerchantService(db, {
+    policyOsService,
+    aiStrategyService: {
+      async generateStrategyChatTurn() {
+        return {
+          status: "PROPOSAL_READY",
+          assistantMessage: "Two strategies drafted.",
+          proposals: [candidateA, candidateB]
+        };
+      }
+    }
+  });
+
+  const turn = await merchantService.sendStrategyChatMessage({
+    merchantId: "m_policy_rank",
+    operatorId: "staff_owner",
+    content: "Generate best strategy candidates."
+  });
+
+  assert.equal(turn.status, "PENDING_REVIEW");
+  assert.ok(Array.isArray(turn.pendingReviews));
+  assert.equal(turn.pendingReviews.length, 2);
+  assert.ok(turn.pendingReviews[0].evaluation);
+  assert.equal(turn.pendingReviews[0].evaluation.rank, 1);
+  assert.equal(turn.pendingReviews[0].evaluation.recommended, true);
+  assert.equal(turn.pendingReviews[0].title, "Candidate B");
+});
+
+test("merchant service requires simulation before approving proposal", async () => {
+  const db = createInMemoryDb();
+  db.save = () => {};
+  seedMerchant(db, "m_policy_no_sim");
+  const policyOsService = createPolicyOsService(db);
+  const { spec, template, branch } = createPolicySpecFromTemplate({
+    merchantId: "m_policy_no_sim",
+    templateId: "acquisition_welcome_gift",
+    branchId: "DEFAULT"
+  });
+  const merchantService = createMerchantService(db, {
+    policyOsService,
+    aiStrategyService: null
+  });
+
+  db.proposals.push({
+    id: "proposal_no_sim",
+    merchantId: "m_policy_no_sim",
+    status: "PENDING",
+    title: "Manual Proposal",
+    createdAt: new Date().toISOString(),
+    intent: "",
+    strategyMeta: {
+      templateId: template.templateId,
+      branchId: branch.branchId
+    },
+    suggestedPolicySpec: spec,
+    policyWorkflow: {
+      draftId: null,
+      policyId: null,
+      approvalId: null,
+      status: "DRAFT",
+      publishedAt: null
+    }
+  });
+
+  await assert.rejects(
+    merchantService.approveProposalPolicy({
+      merchantId: "m_policy_no_sim",
+      proposalId: "proposal_no_sim",
+      operatorId: "staff_owner"
+    }),
+    /simulated before approve/
+  );
+});

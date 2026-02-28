@@ -38,7 +38,7 @@ Backend-enforced constraints / 后端强制约束：
 
 1. No request, no decision / 无请求，无决策
 2. No approval token, no publish / 无审批令牌，不发布
-3. No approval token, no execute / 无审批令牌，不执行
+3. No explicit confirmation, no execute / 无明确确认，不执行
 
 Policy lifecycle / 策略生命周期：
 
@@ -64,6 +64,7 @@ Every decision should provide / 每个决策都应提供：
 2. Clawback on refund (bonus first, principal fallback) / 退款扣回（先扣奖金，本金兜底）
 3. Resource plugins support `check/reserve/release` / 资源插件支持“检查/预留/释放”
 4. TTL is a first-class operation / 生存时间 (TTL) 是头等操作
+5. Shared-budget plugin (`global_budget_guard_v1`) enables cross-user/time-window budget enforcement / 共享预算插件支持跨用户/跨时段窗口约束
 
 ## 8. How to Add New Strategy / 如何添加新策略
 

@@ -3,11 +3,11 @@ import {
   createInitialMerchantState,
   smartCashierVerify,
   toggleKillSwitch,
-  triggerCampaigns,
+  triggerPolicies,
 } from '../src/domain/merchantEngine';
 
 describe('merchantEngine', () => {
-  it('approves proposal and activates campaign', () => {
+  it('approves proposal and activates policy', () => {
     const initial = {
       ...createInitialMerchantState(),
       pendingProposals: [
@@ -15,7 +15,7 @@ describe('merchantEngine', () => {
           id: 'proposal_rainy',
           title: '暴雨急售策略',
           status: 'PENDING' as const,
-          campaignDraft: {
+          policyDraft: {
             id: 'campaign_rainy_hot_soup',
             name: '雨天热汤投放',
             status: 'ACTIVE' as const,
@@ -35,15 +35,15 @@ describe('merchantEngine', () => {
     };
     const next = approveProposal(initial, 'proposal_rainy');
 
-    expect(next.activeCampaigns.length).toBe(1);
-    expect(next.activeCampaigns[0].id).toBe('campaign_rainy_hot_soup');
+    expect(next.activePolicies.length).toBe(1);
+    expect(next.activePolicies[0].id).toBe('campaign_rainy_hot_soup');
     expect(next.pendingProposals[0].status).toBe('APPROVED');
   });
 
   it('blocks trigger when kill switch is enabled', () => {
-    const withCampaign = {
+    const withPolicy = {
       ...createInitialMerchantState(),
-      activeCampaigns: [
+      activePolicies: [
         {
           id: 'campaign_rainy_hot_soup',
           name: '雨天热汤投放',
@@ -61,8 +61,8 @@ describe('merchantEngine', () => {
         },
       ],
     };
-    const killed = toggleKillSwitch(withCampaign, true);
-    const result = triggerCampaigns(killed, 'WEATHER_CHANGE', {weather: 'RAIN'});
+    const killed = toggleKillSwitch(withPolicy, true);
+    const result = triggerPolicies(killed, 'WEATHER_CHANGE', {weather: 'RAIN'});
 
     expect(result.blockedByKillSwitch).toBe(true);
     expect(result.executedIds).toEqual([]);

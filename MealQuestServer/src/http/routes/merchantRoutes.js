@@ -96,7 +96,6 @@ function createMerchantRoutesHandler({
           sessionId: result.sessionId || null,
           proposalId,
           reviewStatus: result.status || null,
-          campaignId: result.campaignId || null,
           policyId: result.policyId || null,
           draftId: result.draftId || null,
         },

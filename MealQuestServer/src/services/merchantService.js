@@ -18,7 +18,7 @@ function createMerchantService(db, options = {}) {
   const MAX_MEMORY_FACTS_PER_CATEGORY = 8;
   const MAX_MEMORY_FACT_CHARS = 160;
   const MAX_APPROVED_STRATEGY_CONTEXT = 12;
-  const MAX_ACTIVE_CAMPAIGN_CONTEXT = 12;
+  const MAX_ACTIVE_POLICY_CONTEXT = 12;
   const MAX_EXECUTION_HISTORY_CONTEXT = 20;
   const MAX_EXECUTION_DETAIL_VALUE_LEN = 80;
   const MAX_TOTAL_PROPOSAL_CANDIDATES = 12;
@@ -254,7 +254,7 @@ function createMerchantService(db, options = {}) {
       branchId: "",
       status: "DRAFT",
       lastProposalId: null,
-      lastCampaignId: null,
+      lastPolicyId: null,
       updatedAt: null
     };
     bucket[templateId] = {
@@ -645,20 +645,24 @@ function createMerchantService(db, options = {}) {
     const policySpec = proposal.suggestedPolicySpec || {};
     const budget = summarizePolicyBudget(policySpec);
     const triggerEvent = getPrimaryTriggerEvent(policySpec);
+    const evaluation =
+      policyWorkflow.autoEvaluation && typeof policyWorkflow.autoEvaluation === "object"
+        ? policyWorkflow.autoEvaluation
+        : null;
     return {
       proposalId: proposal.id,
       status: proposal.status,
       title: proposal.title,
       templateId: meta.templateId || null,
       branchId: meta.branchId || null,
-      campaignId: policyWorkflow.policyId || null,
-      campaignName: policySpec.name || proposal.title || null,
+      policyId: policyWorkflow.policyId || null,
+      policyName: policySpec.name || proposal.title || null,
       triggerEvent,
       budget,
       policyDraftId: policyWorkflow.draftId || null,
-      policyId: policyWorkflow.policyId || null,
       policyKey: policySpec.policy_key || null,
-      createdAt: proposal.createdAt || null
+      createdAt: proposal.createdAt || null,
+      evaluation
     };
   }
 
@@ -679,10 +683,301 @@ function createMerchantService(db, options = {}) {
         Number.isFinite(Number(strategyMeta.confidence))
           ? Number(strategyMeta.confidence)
           : null,
-      campaignName: String(spec.name || "").trim() || null,
+      policyName: String(spec.name || "").trim() || null,
       priority: laneToPriority(spec.lane),
       triggerEvent: getPrimaryTriggerEvent(spec),
     };
+  }
+
+  function resolveSimulationUserId(merchantId, preferredUserId = "") {
+    const normalizedPreferred = String(preferredUserId || "").trim();
+    const userBucket =
+      db.merchantUsers && typeof db.merchantUsers === "object" && db.merchantUsers[merchantId]
+        ? db.merchantUsers[merchantId]
+        : {};
+    if (normalizedPreferred && userBucket[normalizedPreferred]) {
+      return normalizedPreferred;
+    }
+    const firstUserId = Object.keys(userBucket).find((id) => String(id || "").trim());
+    return firstUserId || "";
+  }
+
+  function midpoint(minValue, maxValue) {
+    const min = Number(minValue);
+    const max = Number(maxValue);
+    if (!Number.isFinite(min) || !Number.isFinite(max)) {
+      return 0;
+    }
+    return (min + max) / 2;
+  }
+
+  function buildAutoEvaluation({ proposal, simulation, salesSnapshot }) {
+    const safeSimulation = simulation && typeof simulation === "object" ? simulation : {};
+    const projectedFirst =
+      Array.isArray(safeSimulation.projected) && safeSimulation.projected[0]
+        ? safeSimulation.projected[0]
+        : {};
+    const explains = Array.isArray(safeSimulation.explains) ? safeSimulation.explains : [];
+    const utilityMid = explains.reduce((sum, item) => {
+      const expected = item && item.expected_range && typeof item.expected_range === "object"
+        ? item.expected_range
+        : null;
+      if (!expected) {
+        return sum;
+      }
+      return sum + midpoint(expected.min, expected.max);
+    }, 0);
+    const riskCount = explains.reduce((sum, item) => {
+      const flags = Array.isArray(item && item.risk_flags) ? item.risk_flags : [];
+      return sum + flags.length;
+    }, 0);
+    const rejectedCount = Array.isArray(safeSimulation.rejected) ? safeSimulation.rejected.length : 0;
+    const selectedCount = Array.isArray(safeSimulation.selected) ? safeSimulation.selected.length : 0;
+    const confidenceRaw = Number(
+      proposal &&
+      proposal.strategyMeta &&
+      Number.isFinite(Number(proposal.strategyMeta.confidence))
+        ? proposal.strategyMeta.confidence
+        : 0.5
+    );
+    const confidence = Math.max(0, Math.min(1, confidenceRaw));
+    const aov = Number(
+      salesSnapshot &&
+      salesSnapshot.totals &&
+      Number.isFinite(Number(salesSnapshot.totals.aov))
+        ? salesSnapshot.totals.aov
+        : 20
+    );
+    const estimatedCost = Number(projectedFirst.estimated_cost) || 0;
+    const expectedRevenue = roundMoney(Math.max(10, aov) * confidence);
+    const score = roundMoney(
+      utilityMid + expectedRevenue - estimatedCost - riskCount * 2 - rejectedCount + selectedCount
+    );
+    return {
+      score,
+      confidence,
+      expectedRevenue,
+      estimatedCost: roundMoney(estimatedCost),
+      selectedCount,
+      rejectedCount,
+      riskCount,
+      utilityMid: roundMoney(utilityMid),
+      simulatedAt: safeSimulation.created_at || new Date().toISOString(),
+      recommendable: selectedCount > 0 && rejectedCount === 0
+    };
+  }
+
+  function buildAiCandidateSimulationTool({
+    merchantId,
+    operatorId = "system",
+    sessionId = "",
+    userMessage = "",
+    salesSnapshot = null
+  }) {
+    if (!policyOsService || typeof policyOsService.simulateDecision !== "function") {
+      return null;
+    }
+    const simulationUserId = resolveSimulationUserId(merchantId, "");
+    if (!simulationUserId) {
+      return null;
+    }
+
+    return async function simulatePolicyCandidates({ proposals = [] } = {}) {
+      const safeProposals = Array.isArray(proposals) ? proposals : [];
+      const results = [];
+      for (let idx = 0; idx < safeProposals.length; idx += 1) {
+        const proposal = safeProposals[idx];
+        const spec = proposal && proposal.spec && typeof proposal.spec === "object" ? proposal.spec : null;
+        if (!spec) {
+          results.push({
+            proposalIndex: idx,
+            blocked: true,
+            error: "missing policy spec",
+            reason_codes: ["missing_policy_spec"],
+            risk_flags: ["INVALID_SPEC"],
+            expected_range: null,
+            selected_count: 0,
+            rejected_count: 1,
+            estimated_cost: 0,
+            score: -100
+          });
+          continue;
+        }
+        const event = getPrimaryTriggerEvent(spec) || "APP_OPEN";
+        try {
+          const simulation = await policyOsService.simulateDecision({
+            merchantId,
+            userId: simulationUserId,
+            event,
+            context: {
+              source: "AI_CHAT_PRE_SIMULATION",
+              operatorId,
+              sessionId,
+              userMessage: truncateText(userMessage, 160),
+              salesSnapshot
+            },
+            policySpec: spec
+          });
+          const explain =
+            Array.isArray(simulation && simulation.explains) && simulation.explains[0]
+              ? simulation.explains[0]
+              : {};
+          const projected =
+            Array.isArray(simulation && simulation.projected) && simulation.projected[0]
+              ? simulation.projected[0]
+              : {};
+          const reasonCodes = Array.isArray(explain.reason_codes) ? explain.reason_codes : [];
+          const riskFlags = Array.isArray(explain.risk_flags) ? explain.risk_flags : [];
+          const expectedRange =
+            explain && explain.expected_range && typeof explain.expected_range === "object"
+              ? explain.expected_range
+              : null;
+          const utilityMid = expectedRange ? midpoint(expectedRange.min, expectedRange.max) : 0;
+          const selectedCount = Array.isArray(simulation && simulation.selected)
+            ? simulation.selected.length
+            : 0;
+          const rejectedCount = Array.isArray(simulation && simulation.rejected)
+            ? simulation.rejected.length
+            : 0;
+          const estimatedCost = Number(projected.estimated_cost) || 0;
+          const score = roundMoney(
+            utilityMid - estimatedCost - riskFlags.length * 2 - rejectedCount + selectedCount
+          );
+          results.push({
+            proposalIndex: idx,
+            blocked: selectedCount === 0 || rejectedCount > 0,
+            decision_id: simulation && simulation.decision_id ? simulation.decision_id : null,
+            reason_codes: reasonCodes,
+            risk_flags: riskFlags,
+            expected_range: expectedRange,
+            selected_count: selectedCount,
+            rejected_count: rejectedCount,
+            estimated_cost: roundMoney(estimatedCost),
+            score
+          });
+        } catch (error) {
+          results.push({
+            proposalIndex: idx,
+            blocked: true,
+            error: error && error.message ? String(error.message) : "simulate failed",
+            reason_codes: ["simulate_failed"],
+            risk_flags: ["SIMULATION_ERROR"],
+            expected_range: null,
+            selected_count: 0,
+            rejected_count: 1,
+            estimated_cost: 0,
+            score: -100
+          });
+        }
+      }
+      return {
+        source: "POLICYOS_SIMULATE",
+        userId: simulationUserId,
+        results
+      };
+    };
+  }
+
+  async function autoEvaluateProposalsForReview({
+    merchantId,
+    operatorId,
+    pendingCreated
+  }) {
+    if (!Array.isArray(pendingCreated) || pendingCreated.length === 0) {
+      return pendingCreated || [];
+    }
+    if (!policyOsService || typeof policyOsService.simulateDecision !== "function") {
+      return pendingCreated;
+    }
+    const salesSnapshot = getSalesSnapshotContext(merchantId);
+    const simulationUserId = resolveSimulationUserId(merchantId);
+    const evaluated = [];
+
+    for (const item of pendingCreated) {
+      const proposal = item && item.proposal ? item.proposal : null;
+      if (!proposal) {
+        continue;
+      }
+      const resolvedEvent =
+        String(getPrimaryTriggerEvent(proposal.suggestedPolicySpec) || "APP_OPEN")
+          .trim()
+          .toUpperCase();
+      let simulation = null;
+      let evaluation = null;
+      let simulateError = "";
+      try {
+        const simulated = await simulateProposalPolicy({
+          merchantId,
+          proposalId: proposal.id,
+          operatorId: operatorId || "system",
+          userId: simulationUserId,
+          event: resolvedEvent,
+          eventId: `evt_auto_sim_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          context: {
+            source: "AUTO_RANK",
+            proposalId: proposal.id
+          }
+        });
+        simulation = simulated && simulated.simulation ? simulated.simulation : null;
+      } catch (error) {
+        simulateError = error && error.message ? String(error.message) : "simulate failed";
+      }
+      evaluation = buildAutoEvaluation({
+        proposal,
+        simulation: simulation || {},
+        salesSnapshot
+      });
+      if (simulateError) {
+        evaluation.score = -9999;
+        evaluation.recommendable = false;
+        evaluation.simulateError = simulateError;
+      }
+      proposal.policyWorkflow = {
+        ...(proposal.policyWorkflow || {}),
+        autoEvaluation: evaluation
+      };
+      evaluated.push({
+        ...item,
+        simulation,
+        evaluation
+      });
+    }
+
+    const sorted = [...evaluated].sort((left, right) => {
+      const leftScore = Number(left && left.evaluation ? left.evaluation.score : Number.NEGATIVE_INFINITY);
+      const rightScore = Number(right && right.evaluation ? right.evaluation.score : Number.NEGATIVE_INFINITY);
+      if (rightScore !== leftScore) {
+        return rightScore - leftScore;
+      }
+      const leftConfidence = Number(
+        left &&
+        left.proposal &&
+        left.proposal.strategyMeta &&
+        Number(left.proposal.strategyMeta.confidence)
+      ) || 0;
+      const rightConfidence = Number(
+        right &&
+        right.proposal &&
+        right.proposal.strategyMeta &&
+        Number(right.proposal.strategyMeta.confidence)
+      ) || 0;
+      return rightConfidence - leftConfidence;
+    });
+    for (let idx = 0; idx < sorted.length; idx += 1) {
+      const proposal = sorted[idx].proposal;
+      proposal.policyWorkflow = {
+        ...(proposal.policyWorkflow || {}),
+        autoEvaluation: {
+          ...(proposal.policyWorkflow && proposal.policyWorkflow.autoEvaluation
+            ? proposal.policyWorkflow.autoEvaluation
+            : {}),
+          rank: idx + 1,
+          recommended: idx === 0
+        }
+      };
+    }
+    db.save();
+    return sorted;
   }
 
   function normalizePendingProposalIds(session) {
@@ -779,7 +1074,7 @@ function createMerchantService(db, options = {}) {
         const compactDetails = {};
         for (const key of [
           "proposalId",
-          "campaignId",
+          "policyId",
           "templateId",
           "branchId",
           "reviewStatus",
@@ -813,12 +1108,7 @@ function createMerchantService(db, options = {}) {
       .slice(-MAX_APPROVED_STRATEGY_CONTEXT)
       .map((item) => ({
         proposalId: item.id,
-        campaignId:
-          (item.policyWorkflow && item.policyWorkflow.policyId) ||
-          null,
-        policyId:
-          (item.policyWorkflow && item.policyWorkflow.policyId) ||
-          null,
+        policyId: (item.policyWorkflow && item.policyWorkflow.policyId) || null,
         title: item.title,
         templateId: item.strategyMeta && item.strategyMeta.templateId,
         branchId: item.strategyMeta && item.strategyMeta.branchId,
@@ -826,11 +1116,11 @@ function createMerchantService(db, options = {}) {
       }));
   }
 
-  function getActiveCampaignContext(merchantId) {
+  function getActivePolicyContext(merchantId) {
     if (policyOsService && typeof policyOsService.listActivePolicies === "function") {
       const activePolicies = policyOsService.listActivePolicies({ merchantId });
       return (Array.isArray(activePolicies) ? activePolicies : [])
-        .slice(-MAX_ACTIVE_CAMPAIGN_CONTEXT)
+        .slice(-MAX_ACTIVE_POLICY_CONTEXT)
         .map((item) => ({
           id: item.policy_id,
           name: item.name,
@@ -904,7 +1194,7 @@ function createMerchantService(db, options = {}) {
       latestMessageId:
         sessionMessages.length > 0 ? sessionMessages[sessionMessages.length - 1].messageId : null,
       messageCount: sessionMessages.length,
-      activeCampaigns: getActiveCampaignContext(merchantId),
+      activePolicies: getActivePolicyContext(merchantId),
       approvedStrategies: getApprovedStrategyContext(merchantId)
     };
   }
@@ -1062,7 +1352,7 @@ function createMerchantService(db, options = {}) {
         proposal.status === "APPROVED" &&
         !(proposal.policyWorkflow && proposal.policyWorkflow.policyId)
     );
-    const activeStrategyCount = getActiveCampaignContext(merchantId).length;
+    const activeStrategyCount = getActivePolicyContext(merchantId).length;
 
     return {
       merchantId,
@@ -1088,7 +1378,7 @@ function createMerchantService(db, options = {}) {
             : null,
         approvedAt: item.approvedAt || null
       })),
-      activeCampaignCount: activeStrategyCount
+      activePolicyCount: activeStrategyCount
     };
   }
 
@@ -1210,6 +1500,23 @@ function createMerchantService(db, options = {}) {
     };
   }
 
+  function assertProposalSimulatedForApprove(proposal) {
+    const workflow =
+      proposal && proposal.policyWorkflow && typeof proposal.policyWorkflow === "object"
+        ? proposal.policyWorkflow
+        : {};
+    const simulation =
+      workflow && workflow.lastSimulation && typeof workflow.lastSimulation === "object"
+        ? workflow.lastSimulation
+        : null;
+    const simulatedAt = simulation ? Date.parse(String(simulation.simulatedAt || "")) : Number.NaN;
+    if (!simulation || !String(simulation.decisionId || "").trim() || !Number.isFinite(simulatedAt)) {
+      const error = new Error("proposal must be simulated before approve");
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+
   async function approveProposalPolicy({ merchantId, proposalId, operatorId }) {
     const freshResult = await runWithFreshState("approveProposalPolicy", {
       merchantId,
@@ -1228,6 +1535,7 @@ function createMerchantService(db, options = {}) {
     if (proposal.status !== "PENDING") {
       throw new Error("proposal already handled");
     }
+    assertProposalSimulatedForApprove(proposal);
     if (!policyOsService) {
       throw new Error("policy os service is not configured");
     }
@@ -1350,7 +1658,7 @@ function createMerchantService(db, options = {}) {
         branchId: proposal.strategyMeta.branchId,
         status: "ACTIVE",
         lastProposalId: proposal.id,
-        lastCampaignId: published.policy.policy_id
+        lastPolicyId: published.policy.policy_id
       });
     }
     db.save();
@@ -1435,7 +1743,7 @@ function createMerchantService(db, options = {}) {
     if (
       spec &&
       spec.segment &&
-      spec.segment.plugin === "legacy_condition_segment_v1" &&
+      spec.segment.plugin === "condition_segment_v1" &&
       spec.segment.params &&
       Array.isArray(spec.segment.params.conditions) &&
       spec.segment.params.conditions.length > 10
@@ -1642,6 +1950,24 @@ function createMerchantService(db, options = {}) {
     }
 
     const historyForModel = buildHistoryForModel(session);
+    const salesSnapshot = getSalesSnapshotContext(merchantId);
+    const aiInput = {
+      merchantId,
+      sessionId: session.sessionId,
+      userMessage: text,
+      history: historyForModel,
+      activePolicies: getActivePolicyContext(merchantId),
+      approvedStrategies: getApprovedStrategyContext(merchantId),
+      executionHistory: getMarketingExecutionContext(merchantId),
+      salesSnapshot,
+      simulatePolicyCandidates: buildAiCandidateSimulationTool({
+        merchantId,
+        operatorId,
+        sessionId: session.sessionId,
+        userMessage: text,
+        salesSnapshot
+      })
+    };
 
     // True streaming: text tokens arrive from the first LLM token and are broadcast via WS
     let aiTurn;
@@ -1650,16 +1976,7 @@ function createMerchantService(db, options = {}) {
       console.log(`[ai-strategy] [stream] START merchant=${merchantId} ws=${Boolean(wsHub)}`);
       try {
         let fullText = "";
-        const gen = aiStrategyService.streamStrategyChatTurn({
-          merchantId,
-          sessionId: session.sessionId,
-          userMessage: text,
-          history: historyForModel,
-          activeCampaigns: getActiveCampaignContext(merchantId),
-          approvedStrategies: getApprovedStrategyContext(merchantId),
-          executionHistory: getMarketingExecutionContext(merchantId),
-          salesSnapshot: getSalesSnapshotContext(merchantId)
-        });
+        const gen = aiStrategyService.streamStrategyChatTurn(aiInput);
 
         let isFirstToken = true;
         // Drain generator: yield = text token, done.value = parsed aiTurn
@@ -1702,16 +2019,7 @@ function createMerchantService(db, options = {}) {
     // Fallback: non-streaming if streaming not available or failed
     if (!aiTurn) {
       console.log(`[ai-strategy] [unary] FALLBACK merchant=${merchantId}`);
-      aiTurn = await aiStrategyService.generateStrategyChatTurn({
-        merchantId,
-        sessionId: session.sessionId,
-        userMessage: text,
-        history: historyForModel,
-        activeCampaigns: getActiveCampaignContext(merchantId),
-        approvedStrategies: getApprovedStrategyContext(merchantId),
-        executionHistory: getMarketingExecutionContext(merchantId),
-        salesSnapshot: getSalesSnapshotContext(merchantId)
-      });
+      aiTurn = await aiStrategyService.generateStrategyChatTurn(aiInput);
     }
 
     if (!aiTurn || aiTurn.status === "AI_UNAVAILABLE") {
@@ -1805,17 +2113,23 @@ function createMerchantService(db, options = {}) {
         };
       }
 
-      session.pendingProposalIds = pendingCreated.map((item) => item.proposal.id);
+      const rankedPendingCreated = await autoEvaluateProposalsForReview({
+        merchantId,
+        operatorId,
+        pendingCreated
+      });
+
+      session.pendingProposalIds = rankedPendingCreated.map((item) => item.proposal.id);
       session.pendingProposalId = session.pendingProposalIds[0] || null;
-      session.reviewTotalCandidates = pendingCreated.length;
+      session.reviewTotalCandidates = rankedPendingCreated.length;
       session.reviewProcessedCandidates = 0;
 
-      const proposalSummaries = pendingCreated.map((item) =>
+      const proposalSummaries = rankedPendingCreated.map((item) =>
         summarizeProposalForReview(item.proposal)
       ).filter(Boolean);
       const defaultMessage =
-        pendingCreated.length > 1
-          ? `I drafted ${pendingCreated.length} strategy proposals. Please review each before continuing.`
+        rankedPendingCreated.length > 1
+          ? `I drafted ${rankedPendingCreated.length} strategy proposals. I have ranked them by expected impact and risk.`
           : "Strategy proposal drafted. Please review now.";
       const assistantMessage = String(aiTurn.assistantMessage || defaultMessage);
       appendChatMessage(session, {
@@ -1940,7 +2254,6 @@ function createMerchantService(db, options = {}) {
       db.save();
       return {
         status: "APPROVED",
-        campaignId: null,
         policyId: null,
         draftId: confirm.draftId,
         approvalId: confirm.approvalId,

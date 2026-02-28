@@ -1,6 +1,6 @@
 export type TriggerEvent = string;
 
-export interface Campaign {
+export interface ActivePolicy {
   id: string;
   name: string;
   status?: 'ACTIVE' | 'PAUSED' | 'ARCHIVED';
@@ -22,7 +22,7 @@ export interface Proposal {
   status: 'PENDING' | 'APPROVED';
   templateId?: string;
   branchId?: string;
-  campaignDraft: Campaign;
+  policyDraft: ActivePolicy;
 }
 
 export interface ApprovedProposal {
@@ -41,7 +41,7 @@ export interface MerchantState {
   budgetUsed: number;
   pendingProposals: Proposal[];
   approvedPendingPublish: ApprovedProposal[];
-  activeCampaigns: Campaign[];
+  activePolicies: ActivePolicy[];
 }
 
 export interface CashierInput {
@@ -71,7 +71,7 @@ export const createInitialMerchantState = (): MerchantState => ({
   budgetUsed: 0,
   pendingProposals: [],
   approvedPendingPublish: [],
-  activeCampaigns: [],
+  activePolicies: [],
 });
 
 export const approveProposal = (
@@ -88,7 +88,7 @@ export const approveProposal = (
     pendingProposals: state.pendingProposals.map(item =>
       item.id === proposalId ? { ...item, status: 'APPROVED' } : item,
     ),
-    activeCampaigns: [...state.activeCampaigns, { ...proposal.campaignDraft }],
+    activePolicies: [...state.activePolicies, { ...proposal.policyDraft }],
   };
 };
 
@@ -100,7 +100,7 @@ export const toggleKillSwitch = (
   killSwitchEnabled: enabled,
 });
 
-export const triggerCampaigns = (
+export const triggerPolicies = (
   state: MerchantState,
   event: TriggerEvent,
   context: Record<string, string | boolean | number>,
@@ -116,29 +116,29 @@ export const triggerCampaigns = (
   let totalBudgetUsed = state.budgetUsed;
   const executedIds: string[] = [];
 
-  const updatedCampaigns = state.activeCampaigns.map(campaign => {
-    if (campaign.status && campaign.status !== 'ACTIVE') {
-      return campaign;
+  const updatedPolicies = state.activePolicies.map(policy => {
+    if (policy.status && policy.status !== 'ACTIVE') {
+      return policy;
     }
-    if (campaign.triggerEvent !== event) {
-      return campaign;
+    if (policy.triggerEvent !== event) {
+      return policy;
     }
-    const isMatch = context[campaign.condition.field] === campaign.condition.equals;
+    const isMatch = context[policy.condition.field] === policy.condition.equals;
     if (!isMatch) {
-      return campaign;
+      return policy;
     }
 
-    const nextBudget = campaign.budget.used + campaign.budget.costPerHit;
-    if (nextBudget > campaign.budget.cap) {
-      return campaign;
+    const nextBudget = policy.budget.used + policy.budget.costPerHit;
+    if (nextBudget > policy.budget.cap) {
+      return policy;
     }
 
-    executedIds.push(campaign.id);
-    totalBudgetUsed += campaign.budget.costPerHit;
+    executedIds.push(policy.id);
+    totalBudgetUsed += policy.budget.costPerHit;
     return {
-      ...campaign,
+      ...policy,
       budget: {
-        ...campaign.budget,
+        ...policy.budget,
         used: nextBudget,
       },
     };
@@ -148,7 +148,7 @@ export const triggerCampaigns = (
     nextState: {
       ...state,
       budgetUsed: totalBudgetUsed,
-      activeCampaigns: updatedCampaigns,
+      activePolicies: updatedPolicies,
     },
     executedIds,
     blockedByKillSwitch: false,

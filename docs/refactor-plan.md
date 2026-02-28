@@ -6,10 +6,10 @@ Source of truth: `docs/specs/mealquest-spec.md`
 
 Current marketing/ops execution chain in server:
 
-1. Policy decision entry: `MealQuestServer/src/http/routes/policyOsRoutes.js` (`POST /api/policyos/decision/evaluate`)
+1. Policy decision entry: `MealQuestServer/src/http/routes/policyOsRoutes.js` (`POST /api/policyos/decision/execute`)
 2. Decision runtime: `MealQuestServer/src/policyos/decisionService.js`
 3. Story protocol validation: `MealQuestServer/src/core/storyProtocol.js`
-4. Strategy proposal to campaign activation: `MealQuestServer/src/services/merchantService.js#confirmProposal`
+4. Strategy proposal to policy publish activation: `MealQuestServer/src/services/merchantService.js`
 5. Tenant controls and audit:
    - Tenant policy gate: `MealQuestServer/src/core/tenantPolicy.js`
    - Audit read/write: `MealQuestServer/src/store/tenantRepository.js` + `/api/audit/logs`
@@ -30,7 +30,7 @@ Key gaps for commercial generalized system:
 2. Engine core tightly coupled with strategy changes
 3. Missing plugin abstraction for trigger/constraint/action/scoring
 4. Missing policy lifecycle registry (`draft/submitted/approved/published/expired`)
-5. Missing approval token as hard backend execution guard
+5. Missing explicit backend execute confirmation guard
 6. Missing policy-level explainability (`reason_codes/risk_flags/expected_range`)
 7. Missing generalized reserve/release model for budget/inventory/frequency
 8. Missing unified Policy OS APIs and lifecycle tests
@@ -50,6 +50,8 @@ Implemented modules:
 9. `MealQuestServer/src/policyos/wsDispatcher.js`
 10. `MealQuestServer/src/policyos/policyOsService.js`
 11. Postgres persistence slot: `MealQuestServer/src/store/postgresDb.js` (`mq_policy_os`)
+12. Template catalog DSL: `MealQuestServer/src/policyos/templates/strategy-templates.v1.json` (loaded by `src/services/strategyLibrary.js`)
+13. Template gate script: `MealQuestServer/scripts/policyos-validate-templates.js` (`npm run policyos:validate-templates`)
 
 HTTP surface:
 
@@ -59,13 +61,13 @@ HTTP surface:
 4. `POST /api/policyos/drafts/:id/publish`
 5. `GET /api/policyos/drafts`
 6. `GET /api/policyos/policies`
-7. `POST /api/policyos/decision/evaluate`
+7. `POST /api/policyos/decision/execute`
 8. `GET /api/policyos/decisions/:id/explain`
 9. `GET /api/policyos/schemas`
 10. `GET /api/policyos/plugins`
 11. `POST /api/policyos/compliance/retention/run`
 
-Policy execution entry is unified at `/api/policyos/decision/evaluate`.
+Policy execution entry is unified at `/api/policyos/decision/execute`.
 
 ## 3) Migration Path (Phased, Safe Cutover)
 
@@ -75,7 +77,7 @@ Policy execution entry is unified at `/api/policyos/decision/evaluate`.
 2. Add policy lifecycle registry and immutable policy versions.
 3. Add plugin registry and default plugin set.
 4. Add decision pipeline with explain output.
-5. Add governance approval token verification on publish/execute.
+5. Add governance verification on publish and explicit execute confirmation guard.
 
 Verification:
 
@@ -87,7 +89,7 @@ Verification:
 
 1. Wire Policy OS service into app server service graph.
 2. Add Policy OS route handler.
-3. Use `/api/policyos/decision/evaluate` as the only decision execute entry.
+3. Use `/api/policyos/decision/execute` as the only decision execute entry.
 4. Keep audit and websocket notifications.
 
 Verification:
@@ -121,4 +123,6 @@ Recommended feature flags:
 3. Version/audit/explain:
    - all present in policy registry + decision explain + audit integration.
 4. Strong backend governance:
-   - publish and execute require valid approval token.
+   - publish requires valid approval proof; execute requires explicit backend confirmation.
+5. Template release gate:
+   - schema/plugin/guardrail checks must pass before server test/release pipeline.

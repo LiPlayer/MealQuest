@@ -32,14 +32,14 @@ Policy runtime workflow:
 1. `POST /api/policyos/decision/simulate` (dry-run)
 2. `POST /api/policyos/decision/execute` (real execution)
 
-`/api/policyos/decision/evaluate` is kept as execute alias.
+`/api/policyos/decision/execute` is the only execute entry.
 
 ## 4. Governance Model
 
 1. `JWT` handles identity/tenant/role.
 2. Draft approval persists `approvalId` server-side.
 3. Publish requires matching `approvalId` (`merchantId + draftId + ttl + unused`).
-4. Execute does not require per-call approval token; governance is enforced by published policy state and backend constraints.
+4. Execute requires explicit backend confirmation (`confirmed=true` or `x-execute-confirmed: true`), otherwise request is rejected.
 
 ## 5. Runtime Semantics
 
@@ -57,8 +57,52 @@ Policy runtime workflow:
 
 ## 6. Merchant UI Contract
 
-1. Pending proposal must run simulation before approve.
-2. Approved proposals move to "ready-to-publish" queue.
-3. Publish is explicit user action.
-4. No auto execute on approve.
+1. Multi-candidate proposals are auto-simulated and ranked server-side before review.
+2. Pending proposal must run simulation before approve (backend hard check).
+3. Approved proposals move to "ready-to-publish" queue.
+4. Publish is explicit user action.
+5. No auto execute on approve.
 
+## 7. SaaS Template Governance
+
+1. Merchants cannot edit template catalog.
+2. Template DSL is managed by platform engineering/ops only.
+3. Release pipeline blocks invalid templates (`npm run policyos:validate-templates`).
+
+## 8. Controlled Agent Loop (Draft -> Critic -> Revise)
+
+1. LLM first drafts proposal candidates from natural language.
+2. When candidate quality is weak (e.g. low confidence or multi-candidate ambiguity), a critic round is triggered.
+3. Critic returns structured issues, then revise rewrites candidates once (bounded max rounds).
+4. Revised output still must pass Policy OS validation/simulation/approval/publish.
+5. LLM has no direct execution authority.
+6. Illegal `policyPatch` fields are validated and rejected before proposal enters review; agent revise loop must fix violations.
+
+## 9. Current LangGraph Backbone (Implemented)
+
+Unary chat path (`generateStrategyChatTurn`) now runs explicit nodes:
+
+1. `prepare_input`
+2. `intent_parse`
+3. `build_prompt`
+4. `remote_decide`
+5. `parse_response`
+6. `candidate_generate`
+7. `patch_validate`
+8. `finalize_turn`
+9. `critic_gate`
+10. `critic_node`
+11. `revise_node` (bounded loop)
+12. `critic_finalize`
+13. `simulate_candidates` (Policy OS tool injection)
+14. `rank_candidates`
+15. `explain_pack`
+16. `approval_gate`
+17. `publish_policy`
+18. `publish_finalize`
+19. `post_publish_monitor`
+20. `memory_update`
+
+`generateStrategyChatTurn` now uses this graph as the single unary pipeline.
+
+Roadmap tracking: `docs/engineering/langgraph-agent-todo.md`

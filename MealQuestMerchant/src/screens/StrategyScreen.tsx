@@ -61,6 +61,7 @@ export default function StrategyScreen() {
         customerUserId,
         setCustomerUserId,
     } = useMerchant();
+    const pendingEvaluation = strategyChatPendingReview?.evaluation || null;
 
     const scrollViewRef = useRef<ScrollView>(null);
 
@@ -164,6 +165,28 @@ export default function StrategyScreen() {
                                         <Text style={styles.metaLabel}>序列: </Text>
                                         <Text style={styles.metaValue}>{currentReviewIndex} / {totalReviewCount}</Text>
                                     </View>
+                                    {pendingEvaluation && (
+                                        <View style={styles.evaluationPanel}>
+                                            <View style={styles.evaluationHeader}>
+                                                <Text style={styles.evaluationTitle}>Auto Evaluation</Text>
+                                                {pendingEvaluation.recommended ? (
+                                                    <Text style={styles.evaluationBadge}>RECOMMENDED</Text>
+                                                ) : null}
+                                            </View>
+                                            <Text style={styles.evaluationText}>
+                                                Rank #{pendingEvaluation.rank || '-'} | Score {pendingEvaluation.score.toFixed(2)}
+                                            </Text>
+                                            <Text style={styles.evaluationText}>
+                                                Est Revenue {pendingEvaluation.expectedRevenue.toFixed(2)} | Est Cost {pendingEvaluation.estimatedCost.toFixed(2)}
+                                            </Text>
+                                            <Text style={styles.evaluationText}>
+                                                Risk {pendingEvaluation.riskCount} | Rejected {pendingEvaluation.rejectedCount}
+                                            </Text>
+                                            {pendingEvaluation.simulateError ? (
+                                                <Text style={styles.evaluationError}>Simulate error: {pendingEvaluation.simulateError}</Text>
+                                            ) : null}
+                                        </View>
+                                    )}
 
                                     <View style={styles.executeInputWrap}>
                                         <Text style={styles.executeInputLabel}>User ID for simulation (optional)</Text>
@@ -441,6 +464,43 @@ const styles = StyleSheet.create({
         fontSize: 13,
         fontWeight: '700',
         color: '#1e293b',
+    },
+    evaluationPanel: {
+        backgroundColor: '#ecfeff',
+        borderWidth: 1,
+        borderColor: '#99f6e4',
+        borderRadius: 10,
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        gap: 2,
+    },
+    evaluationHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    evaluationTitle: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: '#134e4a',
+    },
+    evaluationBadge: {
+        fontSize: 10,
+        fontWeight: '800',
+        color: '#065f46',
+        backgroundColor: '#ccfbf1',
+        borderRadius: 6,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+    },
+    evaluationText: {
+        fontSize: 12,
+        color: '#0f766e',
+        lineHeight: 18,
+    },
+    evaluationError: {
+        fontSize: 12,
+        color: '#b91c1c',
     },
     executeInputWrap: {
         gap: 6,

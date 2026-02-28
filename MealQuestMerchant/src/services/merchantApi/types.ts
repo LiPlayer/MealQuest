@@ -21,7 +21,7 @@ export interface StrategyTemplate {
     branchId: string;
     status: string;
     lastProposalId: string | null;
-    lastCampaignId: string | null;
+    lastPolicyId: string | null;
     updatedAt: string | null;
   } | null;
 }
@@ -53,16 +53,30 @@ export interface StrategyChatPendingReview {
   title: string;
   templateId: string | null;
   branchId: string | null;
-  campaignId: string | null;
-  policyId?: string | null;
-  policyDraftId?: string | null;
-  policyKey?: string | null;
-  campaignName: string | null;
+  policyId: string | null;
+  policyDraftId: string | null;
+  policyKey: string | null;
+  policyName: string | null;
   triggerEvent: string | null;
   budget: {
     cap?: number;
     used?: number;
     costPerHit?: number;
+  } | null;
+  evaluation?: {
+    score: number;
+    confidence: number;
+    expectedRevenue: number;
+    estimatedCost: number;
+    selectedCount: number;
+    rejectedCount: number;
+    riskCount: number;
+    utilityMid: number;
+    simulatedAt: string;
+    recommendable: boolean;
+    rank?: number;
+    recommended?: boolean;
+    simulateError?: string;
   } | null;
   createdAt: string | null;
 }
@@ -99,7 +113,7 @@ export interface StrategyChatProposalCandidate {
   templateId: string | null;
   branchId: string | null;
   confidence?: number | null;
-  campaignName?: string | null;
+  policyName?: string | null;
   priority?: number | null;
   triggerEvent?: string | null;
 }
@@ -115,7 +129,7 @@ export interface StrategyChatStatePayload {
   deltaMessages?: StrategyChatMessage[];
   latestMessageId?: string | null;
   messageCount?: number;
-  activeCampaigns: Array<{
+  activePolicies: Array<{
     id: string;
     name: string;
     status: string;
@@ -124,8 +138,7 @@ export interface StrategyChatStatePayload {
   }>;
   approvedStrategies: Array<{
     proposalId: string;
-    campaignId: string;
-    policyId?: string | null;
+    policyId: string;
     title: string;
     templateId: string;
     branchId: string;
@@ -147,7 +160,6 @@ export interface StrategyChatTurnResult extends StrategyChatStatePayload {
 
 export interface StrategyChatReviewResult extends StrategyChatStatePayload {
   status: 'APPROVED' | 'REJECTED';
-  campaignId?: string;
   policyId?: string;
   draftId?: string;
   approvalId?: string;

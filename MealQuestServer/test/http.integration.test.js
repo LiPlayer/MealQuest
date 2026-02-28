@@ -92,34 +92,9 @@ function seedLegacyTestUsers(db) {
       branchId: "DEFAULT",
       status: "ACTIVE",
       lastProposalId: "proposal_rainy",
-      lastCampaignId: "campaign_rainy_hot_soup",
+      lastPolicyId: null,
       updatedAt: nowIso,
     };
-  }
-
-  if (!Array.isArray(db.campaigns)) {
-    db.campaigns = [];
-  }
-  if (!db.campaigns.find((item) => item && item.id === "campaign_welcome")) {
-    db.campaigns.push({
-      id: "campaign_welcome",
-      merchantId: "m_store_001",
-      name: "Welcome Campaign",
-      status: "ACTIVE",
-      priority: 20,
-      trigger: { event: "USER_ENTER_SHOP" },
-      conditions: [{ field: "isNewUser", op: "eq", value: true }],
-      budget: { used: 0, cap: 80, costPerHit: 8 },
-      action: {
-        type: "STORY_CARD",
-        story: {
-          templateId: "tpl_welcome",
-          narrative: "Welcome and claim your first voucher.",
-          assets: [{ kind: "voucher", id: "voucher_welcome_noodle" }],
-          triggers: ["tap_claim"],
-        },
-      },
-    });
   }
   if (!Array.isArray(db.proposals)) {
     db.proposals = [];
@@ -139,7 +114,7 @@ function seedLegacyTestUsers(db) {
           }
         ],
         segment: {
-          plugin: "legacy_condition_segment_v1",
+          plugin: "condition_segment_v1",
           params: {
             logic: "AND",
             conditions: [{ field: "weather", op: "eq", value: "RAIN" }]
@@ -376,7 +351,7 @@ async function createStrategyProposalThroughChat(
       data: {
         status: "PENDING",
         proposalId: turn.data.pendingReview.proposalId || null,
-        campaignId: turn.data.pendingReview.campaignId || null,
+        policyId: turn.data.pendingReview.policyId || null,
         templateId: turn.data.pendingReview.templateId || null,
         branchId: turn.data.pendingReview.branchId || null,
         sessionId: session.data.sessionId,

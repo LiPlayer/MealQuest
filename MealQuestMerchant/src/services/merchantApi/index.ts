@@ -58,7 +58,7 @@ export const MerchantApi = {
     );
     return toMerchantState({
       dashboard: state.dashboard,
-      campaigns: state.campaigns,
+      policies: state.policies,
       proposals: state.proposals,
     });
   },
@@ -219,6 +219,7 @@ export const MerchantApi = {
       userId?: string;
       context?: Record<string, unknown>;
       merchantId?: string;
+      confirmed?: boolean;
     },
   ) => {
     return requestJson<PolicyDecisionResult>(
@@ -231,6 +232,7 @@ export const MerchantApi = {
         eventId: payload.eventId,
         userId: payload.userId,
         context: payload.context || {},
+        confirmed: payload.confirmed !== false,
       },
     );
   },

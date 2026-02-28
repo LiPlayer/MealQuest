@@ -202,6 +202,55 @@ test("policy os end-to-end lifecycle works through HTTP", async () => {
     );
     assert.equal(publish.status, 200);
     assert.ok(publish.data.policy.policy_id);
+    const policyId = publish.data.policy.policy_id;
+
+    const paused = await postJson(
+      baseUrl,
+      `/api/policyos/policies/${encodeURIComponent(policyId)}/pause`,
+      {
+        merchantId: "m_policy_http",
+        reason: "manual operation test"
+      },
+      {
+        Authorization: `Bearer ${ownerToken}`
+      }
+    );
+    assert.equal(paused.status, 200);
+    assert.equal(paused.data.policy.status, "PAUSED");
+
+    const executeWhilePaused = await postJson(
+      baseUrl,
+      "/api/policyos/decision/execute",
+      {
+        merchantId: "m_policy_http",
+        userId: "u_policy_http",
+        confirmed: true,
+        event: "INVENTORY_ALERT",
+        eventId: "evt_http_paused_1",
+        context: {
+          inventoryBacklog: 12
+        }
+      },
+      {
+        Authorization: `Bearer ${managerToken}`
+      }
+    );
+    assert.equal(executeWhilePaused.status, 200);
+    assert.equal(Array.isArray(executeWhilePaused.data.executed), true);
+    assert.equal(executeWhilePaused.data.executed.length, 0);
+
+    const resumed = await postJson(
+      baseUrl,
+      `/api/policyos/policies/${encodeURIComponent(policyId)}/resume`,
+      {
+        merchantId: "m_policy_http"
+      },
+      {
+        Authorization: `Bearer ${ownerToken}`
+      }
+    );
+    assert.equal(resumed.status, 200);
+    assert.equal(resumed.data.policy.status, "PUBLISHED");
 
     const simulate = await postJson(
       baseUrl,
@@ -232,6 +281,7 @@ test("policy os end-to-end lifecycle works through HTTP", async () => {
       {
         merchantId: "m_policy_http",
         userId: "u_policy_http",
+        confirmed: true,
         event: "INVENTORY_ALERT",
         eventId: "evt_http_1",
         context: {

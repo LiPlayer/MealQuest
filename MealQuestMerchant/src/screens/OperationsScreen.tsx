@@ -35,15 +35,15 @@ export default function OperationsScreen() {
         <SafeAreaView style={{ flex: 1 }} edges={['top']}>
             <ScrollView contentContainerStyle={styles.container}>
                 <SectionCard title="活动管理">
-                    {merchantState.activeCampaigns.length === 0 ? (
+                    {merchantState.activePolicies.length === 0 ? (
                         <Text style={styles.mutedText}>暂无已生效活动</Text>
                     ) : (
-                        merchantState.activeCampaigns.map(item => {
+                        merchantState.activePolicies.map(item => {
                             const status = item.status || 'ACTIVE';
                             return (
-                                <View key={`campaign-${item.id}`} style={styles.campaignRow}>
-                                    <View style={styles.campaignInfo}>
-                                        <Text style={styles.campaignName}>{item.name}</Text>
+                                <View key={`policy-${item.id}`} style={styles.policyRow}>
+                                    <View style={styles.policyInfo}>
+                                        <Text style={styles.policyName}>{item.name}</Text>
                                         <View style={[styles.statusTag, status === 'ACTIVE' ? styles.statusTagActive : styles.statusTagPaused]}>
                                             <Text style={styles.statusTagText}>{status === 'ACTIVE' ? '投放中' : '已暂停'}</Text>
                                         </View>
@@ -173,7 +173,7 @@ const styles = StyleSheet.create({
         paddingBottom: 16,
         gap: 16,
     },
-    campaignRow: {
+    policyRow: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -183,11 +183,11 @@ const styles = StyleSheet.create({
         paddingBottom: 10,
         marginBottom: 4,
     },
-    campaignInfo: {
+    policyInfo: {
         flex: 1,
         gap: 6,
     },
-    campaignName: {
+    policyName: {
         fontSize: 15,
         fontWeight: '700',
         color: '#1e293b',

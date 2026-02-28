@@ -597,7 +597,7 @@ export function MerchantProvider({
         if (!remoteToken) { setLastAction('Connection not ready'); return; }
         if (!wsConnected || !realtimeClientRef.current) { setLastAction('Realtime channel disconnected'); return; }
         if (strategyChatPendingReviews.length > 0) { setLastAction('Please finish pending reviews first'); return; }
-        const activeCount = merchantState.activeCampaigns.filter(item => (item.status || 'ACTIVE') === 'ACTIVE').length;
+        const activeCount = merchantState.activePolicies.filter(item => (item.status || 'ACTIVE') === 'ACTIVE').length;
         const budgetUsage = Math.round((merchantState.budgetUsed / Math.max(merchantState.budgetCap, 1)) * 100);
         const proactiveIntent = [
             '主动巡检：请基于以下经营信号自动提案。',

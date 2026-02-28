@@ -7,7 +7,7 @@ This document describes the production-grade architecture used by `createAiStrat
 1. Workflow Orchestration (`src/services/aiStrategyService.js`)
    - LangGraph planner graph: `prepare_input -> remote_decide -> assemble_plan`
    - LangGraph chat graph: `prepare_input -> remote_decide -> finalize_turn`
-   - Business guardrails remain in merchant service (`proposal review`, `risk blocking`, `campaign lifecycle`).
+   - Business guardrails remain in merchant service (`proposal review`, `risk blocking`, `policy lifecycle`).
 
 2. Model Gateway (`src/services/aiStrategy/langchainModelGateway.js`)
    - Uses LangChain official `@langchain/openai` `ChatOpenAI` client against OpenAI-compatible endpoints.

@@ -24,7 +24,6 @@ function createDefaultState() {
     idempotencyRecords: {},
     ledger: [],
     auditLogs: [],
-    campaigns: [],
     proposals: [],
     policyOs: {
       templates: {},
@@ -58,32 +57,15 @@ function createIdGenerator(prefix, counters, counterName) {
   };
 }
 
-function migrateLegacyShape(state) {
+function normalizeShape(state) {
   const next = { ...(state || {}) };
 
   if (!next.merchantUsers || typeof next.merchantUsers !== "object") {
     next.merchantUsers = {};
   }
-  if (next.users && Object.keys(next.merchantUsers).length === 0) {
-    const fallbackMerchantId =
-      Object.keys(next.merchants || {})[0] || "m_legacy_default";
-    next.merchantUsers[fallbackMerchantId] = next.users;
-  }
 
   if (!next.paymentsByMerchant || typeof next.paymentsByMerchant !== "object") {
     next.paymentsByMerchant = {};
-  }
-  if (next.payments && Object.keys(next.paymentsByMerchant).length === 0) {
-    for (const [paymentTxnId, payment] of Object.entries(next.payments)) {
-      const merchantId =
-        payment && payment.merchantId
-          ? payment.merchantId
-          : Object.keys(next.merchants || {})[0] || "m_legacy_default";
-      if (!next.paymentsByMerchant[merchantId]) {
-        next.paymentsByMerchant[merchantId] = {};
-      }
-      next.paymentsByMerchant[merchantId][paymentTxnId] = payment;
-    }
   }
 
   if (!next.invoicesByMerchant || typeof next.invoicesByMerchant !== "object") {
@@ -171,7 +153,7 @@ function normalizeState(initialState = null) {
     return defaults;
   }
 
-  const migrated = migrateLegacyShape(initialState);
+  const migrated = normalizeShape(initialState);
   const normalized = {
     ...defaults,
     ...migrated,
@@ -249,14 +231,13 @@ function normalizeState(initialState = null) {
     auditLogs: Array.isArray(migrated.auditLogs)
       ? migrated.auditLogs
       : defaults.auditLogs,
-    campaigns: Array.isArray(migrated.campaigns) ? migrated.campaigns : defaults.campaigns,
     proposals: Array.isArray(migrated.proposals) ? migrated.proposals : defaults.proposals,
     policyOs: {
       ...defaults.policyOs,
       ...(migrated.policyOs || {})
     }
   };
-  // Drop removed social/treat fields when loading legacy snapshots.
+  // Drop removed obsolete fields from any stale local snapshot.
   delete normalized.groupTreatSessionsByMerchant;
   delete normalized.merchantDailySubsidyUsage;
   delete normalized.socialTransferLogs;
@@ -290,7 +271,6 @@ function createInMemoryDb(initialState = null) {
       idempotencyRecords: db.idempotencyRecords,
       ledger: db.ledger,
       auditLogs: db.auditLogs,
-      campaigns: db.campaigns,
       proposals: db.proposals,
       policyOs: db.policyOs
     }),

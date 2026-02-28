@@ -72,10 +72,6 @@ function resolveServerRuntimeEnv(env = process.env) {
   const onboardSecret = asString(env.MQ_ONBOARD_SECRET);
   const dbUrl = asString(env.MQ_DB_URL);
   const dbSchema = asString(env.MQ_DB_SCHEMA) || "public";
-  const dbStateTable =
-    asString(env.MQ_DB_LEGACY_SNAPSHOT_TABLE) ||
-    asString(env.MQ_DB_STATE_TABLE) ||
-    "mealquest_state_snapshots";
   const dbSnapshotKey = asString(env.MQ_DB_SNAPSHOT_KEY) || "main";
   const dbPoolMax = parsePositiveInt(env.MQ_DB_POOL_MAX, 5);
   const dbAutoCreate = parseBoolean(env.MQ_DB_AUTO_CREATE, true);
@@ -100,6 +96,10 @@ function resolveServerRuntimeEnv(env = process.env) {
   const aiTimeoutDefault = aiProvider === "bigmodel" ? 45000 : 15000;
   const aiTimeoutMs = parsePositiveInt(env.MQ_AI_TIMEOUT_MS, aiTimeoutDefault);
   const aiMaxRetries = parsePositiveInt(env.MQ_AI_MAX_RETRIES, 2);
+  const policyTemplateValidateOnBoot = parseBoolean(
+    env.MQ_POLICY_TEMPLATE_VALIDATE_ON_BOOT,
+    true
+  );
 
   const errors = [];
   if (isProduction && !jwtSecret) {
@@ -137,7 +137,6 @@ function resolveServerRuntimeEnv(env = process.env) {
     onboardSecret,
     dbUrl,
     dbSchema,
-    dbStateTable,
     dbSnapshotKey,
     dbPoolMax,
     dbAutoCreate,
@@ -162,7 +161,8 @@ function resolveServerRuntimeEnv(env = process.env) {
       apiKey: aiApiKey,
       timeoutMs: aiTimeoutMs,
       maxRetries: aiMaxRetries,
-    }
+    },
+    policyTemplateValidateOnBoot
   };
 }
 
