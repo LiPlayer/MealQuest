@@ -205,17 +205,17 @@ export default function StrategyScreen() {
                                     </View>
                                     {strategyChatEvaluation ? (
                                         <View style={styles.evaluationSummary}>
-                                            <Text style={styles.evaluationTitle}>Evaluation Summary</Text>
-                                            <Text style={styles.evaluationText}>
+                                            <Text style={styles.evaluationSummaryTitle}>Evaluation Summary</Text>
+                                            <Text style={styles.evaluationSummaryText}>
                                                 Selected {Array.isArray(strategyChatEvaluation.selected) ? strategyChatEvaluation.selected.length : 0},
                                                 Rejected {Array.isArray(strategyChatEvaluation.rejected) ? strategyChatEvaluation.rejected.length : 0},
-                                                Mode {String(strategyChatEvaluation.mode || 'SIMULATE')}
+                                                Mode {String(strategyChatEvaluation.mode || 'EVALUATE')}
                                             </Text>
                                         </View>
                                     ) : hasAutoEvaluation ? (
                                         <View style={styles.evaluationSummary}>
-                                            <Text style={styles.evaluationTitle}>Auto Evaluation Ready</Text>
-                                            <Text style={styles.evaluationText}>
+                                            <Text style={styles.evaluationSummaryTitle}>Auto Evaluation Ready</Text>
+                                            <Text style={styles.evaluationSummaryText}>
                                                 Selected {pendingEvaluation?.selectedCount || 0},
                                                 Rejected {pendingEvaluation?.rejectedCount || 0},
                                                 Score {(pendingEvaluation?.score || 0).toFixed(2)}
@@ -228,7 +228,7 @@ export default function StrategyScreen() {
                                     <View style={styles.actionRow}>
                                         <Pressable
                                             testID="ai-review-evaluate"
-                                            style={[styles.opButton, styles.simulateBtn]}
+                                            style={[styles.opButton, styles.evaluateBtn]}
                                             onPress={onEvaluatePendingStrategy}
                                         >
                                             <Loader2 size={18} color="#ffffff" />
@@ -534,7 +534,7 @@ const styles = StyleSheet.create({
         color: '#0f172a',
         backgroundColor: '#f8fafc',
     },
-    simulationSummary: {
+    evaluationSummary: {
         backgroundColor: '#eef2ff',
         borderWidth: 1,
         borderColor: '#c7d2fe',
@@ -543,17 +543,17 @@ const styles = StyleSheet.create({
         paddingVertical: 8,
         gap: 4,
     },
-    simulationTitle: {
+    evaluationSummaryTitle: {
         fontSize: 12,
         fontWeight: '700',
         color: '#3730a3',
     },
-    simulationText: {
+    evaluationSummaryText: {
         fontSize: 12,
         color: '#1e1b4b',
         lineHeight: 18,
     },
-    simulationHint: {
+    evaluationHint: {
         fontSize: 12,
         color: '#64748b',
         fontStyle: 'italic',
@@ -572,7 +572,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         gap: 6,
     },
-    simulateBtn: {
+    evaluateBtn: {
         backgroundColor: '#2563eb',
     },
     approveBtn: {

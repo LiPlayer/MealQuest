@@ -151,7 +151,7 @@ test("policy os supports condition segment and voucher action plugins", async ()
   );
 });
 
-test("policy os can simulate an ephemeral policySpec without creating draft", async () => {
+test("policy os can evaluate an ephemeral policySpec without creating draft", async () => {
   const db = createInMemoryDb();
   db.save = () => {};
   seed(db, "m_ai_ephemeral");
@@ -234,7 +234,7 @@ test("policy os can simulate an ephemeral policySpec without creating draft", as
     }
   };
 
-  const simulated = await policyOsService.evaluateDecision({
+  const evaluated = await policyOsService.evaluateDecision({
     merchantId: "m_ai_ephemeral",
     userId: "u_001",
     event: "APP_OPEN",
@@ -242,10 +242,10 @@ test("policy os can simulate an ephemeral policySpec without creating draft", as
     policySpec: spec
   });
 
-  assert.equal(simulated.mode, "SIMULATE");
-  assert.ok(Array.isArray(simulated.projected));
-  assert.ok(Array.isArray(simulated.explains));
-  assert.equal(simulated.explains.length, 1);
-  assert.match(String(simulated.explains[0].policy_id || ""), /^ephemeral:/);
+  assert.equal(evaluated.mode, "EVALUATE");
+  assert.ok(Array.isArray(evaluated.projected));
+  assert.ok(Array.isArray(evaluated.explains));
+  assert.equal(evaluated.explains.length, 1);
+  assert.match(String(evaluated.explains[0].policy_id || ""), /^ephemeral:/);
   assert.equal(db.merchantUsers.m_ai_ephemeral.u_001.vouchers.length, 0);
 });

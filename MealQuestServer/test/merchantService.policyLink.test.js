@@ -107,7 +107,7 @@ test("merchant service links AI proposal evaluate -> approve -> publish lifecycl
     event: triggerEvent
   });
   assert.ok(evaluated.evaluation);
-  assert.equal(evaluated.evaluation.mode, "SIMULATE");
+  assert.equal(evaluated.evaluation.mode, "EVALUATE");
   assert.equal(evaluated.reused, true);
   assert.equal(evaluateCalls, 1);
 

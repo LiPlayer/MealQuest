@@ -94,7 +94,7 @@ Unary chat path (`generateStrategyChatTurn`) now runs explicit nodes:
 10. `critic_node`
 11. `revise_node` (bounded loop)
 12. `critic_finalize`
-13. `simulate_candidates` (Policy OS tool injection)
+13. `evaluate_candidates` (Policy OS tool injection)
 14. `rank_candidates`
 15. `explain_pack`
 16. `approval_gate`

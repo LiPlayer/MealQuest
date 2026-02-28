@@ -23,11 +23,11 @@ function createMerchantService(db, options = {}) {
   const MAX_EXECUTION_DETAIL_VALUE_LEN = 80;
   const MAX_TOTAL_PROPOSAL_CANDIDATES = 12;
   const SALES_WINDOWS_DAYS = [7, 30];
-  const SIMULATION_CACHE_MAX_AGE_SEC = Math.max(
+  const EVALUATION_CACHE_MAX_AGE_SEC = Math.max(
     30,
-    Math.floor(Number(process.env.POLICY_SIMULATION_CACHE_MAX_AGE_SEC) || 900)
+    Math.floor(Number(process.env.POLICY_EVALUATION_CACHE_MAX_AGE_SEC) || 900)
   );
-  const SIMULATION_CACHE_MAX_AGE_MS = SIMULATION_CACHE_MAX_AGE_SEC * 1000;
+  const EVALUATION_CACHE_MAX_AGE_MS = EVALUATION_CACHE_MAX_AGE_SEC * 1000;
   const STRATEGY_CHAT_PROTOCOL = {
     name: "MQ_STRATEGY_CHAT",
     version: "2.0",
@@ -694,7 +694,7 @@ function createMerchantService(db, options = {}) {
     };
   }
 
-  function resolveSimulationUserId(merchantId, preferredUserId = "") {
+  function resolveEvaluationUserId(merchantId, preferredUserId = "") {
     const normalizedPreferred = String(preferredUserId || "").trim();
     const userBucket =
       db.merchantUsers && typeof db.merchantUsers === "object" && db.merchantUsers[merchantId]
@@ -716,13 +716,14 @@ function createMerchantService(db, options = {}) {
     return (min + max) / 2;
   }
 
-  function buildAutoEvaluation({ proposal, simulation, salesSnapshot }) {
-    const safeSimulation = simulation && typeof simulation === "object" ? simulation : {};
+  function buildAutoEvaluation({ proposal, evaluationResult, salesSnapshot }) {
+    const safeEvaluation =
+      evaluationResult && typeof evaluationResult === "object" ? evaluationResult : {};
     const projectedFirst =
-      Array.isArray(safeSimulation.projected) && safeSimulation.projected[0]
-        ? safeSimulation.projected[0]
+      Array.isArray(safeEvaluation.projected) && safeEvaluation.projected[0]
+        ? safeEvaluation.projected[0]
         : {};
-    const explains = Array.isArray(safeSimulation.explains) ? safeSimulation.explains : [];
+    const explains = Array.isArray(safeEvaluation.explains) ? safeEvaluation.explains : [];
     const utilityMid = explains.reduce((sum, item) => {
       const expected = item && item.expected_range && typeof item.expected_range === "object"
         ? item.expected_range
@@ -736,8 +737,8 @@ function createMerchantService(db, options = {}) {
       const flags = Array.isArray(item && item.risk_flags) ? item.risk_flags : [];
       return sum + flags.length;
     }, 0);
-    const rejectedCount = Array.isArray(safeSimulation.rejected) ? safeSimulation.rejected.length : 0;
-    const selectedCount = Array.isArray(safeSimulation.selected) ? safeSimulation.selected.length : 0;
+    const rejectedCount = Array.isArray(safeEvaluation.rejected) ? safeEvaluation.rejected.length : 0;
+    const selectedCount = Array.isArray(safeEvaluation.selected) ? safeEvaluation.selected.length : 0;
     const confidenceRaw = Number(
       proposal &&
       proposal.strategyMeta &&
@@ -767,12 +768,12 @@ function createMerchantService(db, options = {}) {
       rejectedCount,
       riskCount,
       utilityMid: roundMoney(utilityMid),
-      evaluatedAt: safeSimulation.created_at || new Date().toISOString(),
+      evaluatedAt: safeEvaluation.created_at || new Date().toISOString(),
       recommendable: selectedCount > 0 && rejectedCount === 0
     };
   }
 
-  function buildAiCandidateSimulationTool({
+  function buildAiCandidateEvaluationTool({
     merchantId,
     operatorId = "system",
     sessionId = "",
@@ -782,12 +783,12 @@ function createMerchantService(db, options = {}) {
     if (!policyOsService || typeof policyOsService.evaluateDecision !== "function") {
       return null;
     }
-    const simulationUserId = resolveSimulationUserId(merchantId, "");
-    if (!simulationUserId) {
+    const evaluationUserId = resolveEvaluationUserId(merchantId, "");
+    if (!evaluationUserId) {
       return null;
     }
 
-    return async function simulatePolicyCandidates({ proposals = [] } = {}) {
+    return async function evaluatePolicyCandidates({ proposals = [] } = {}) {
       const safeProposals = Array.isArray(proposals) ? proposals : [];
       const results = [];
       for (let idx = 0; idx < safeProposals.length; idx += 1) {
@@ -810,12 +811,12 @@ function createMerchantService(db, options = {}) {
         }
         const event = getPrimaryTriggerEvent(spec) || "APP_OPEN";
         try {
-          const simulation = await policyOsService.evaluateDecision({
+          const evaluationDecision = await policyOsService.evaluateDecision({
             merchantId,
-            userId: simulationUserId,
+            userId: evaluationUserId,
             event,
             context: {
-              source: "AI_CHAT_PRE_SIMULATION",
+              source: "AI_CHAT_PRE_EVALUATION",
               operatorId,
               sessionId,
               userMessage: truncateText(userMessage, 160),
@@ -824,12 +825,12 @@ function createMerchantService(db, options = {}) {
             policySpec: spec
           });
           const explain =
-            Array.isArray(simulation && simulation.explains) && simulation.explains[0]
-              ? simulation.explains[0]
+            Array.isArray(evaluationDecision && evaluationDecision.explains) && evaluationDecision.explains[0]
+              ? evaluationDecision.explains[0]
               : {};
           const projected =
-            Array.isArray(simulation && simulation.projected) && simulation.projected[0]
-              ? simulation.projected[0]
+            Array.isArray(evaluationDecision && evaluationDecision.projected) && evaluationDecision.projected[0]
+              ? evaluationDecision.projected[0]
               : {};
           const reasonCodes = Array.isArray(explain.reason_codes) ? explain.reason_codes : [];
           const riskFlags = Array.isArray(explain.risk_flags) ? explain.risk_flags : [];
@@ -838,11 +839,11 @@ function createMerchantService(db, options = {}) {
               ? explain.expected_range
               : null;
           const utilityMid = expectedRange ? midpoint(expectedRange.min, expectedRange.max) : 0;
-          const selectedCount = Array.isArray(simulation && simulation.selected)
-            ? simulation.selected.length
+          const selectedCount = Array.isArray(evaluationDecision && evaluationDecision.selected)
+            ? evaluationDecision.selected.length
             : 0;
-          const rejectedCount = Array.isArray(simulation && simulation.rejected)
-            ? simulation.rejected.length
+          const rejectedCount = Array.isArray(evaluationDecision && evaluationDecision.rejected)
+            ? evaluationDecision.rejected.length
             : 0;
           const estimatedCost = Number(projected.estimated_cost) || 0;
           const score = roundMoney(
@@ -851,7 +852,10 @@ function createMerchantService(db, options = {}) {
           results.push({
             proposalIndex: idx,
             blocked: selectedCount === 0 || rejectedCount > 0,
-            decision_id: simulation && simulation.decision_id ? simulation.decision_id : null,
+            decision_id:
+              evaluationDecision && evaluationDecision.decision_id
+                ? evaluationDecision.decision_id
+                : null,
             reason_codes: reasonCodes,
             risk_flags: riskFlags,
             expected_range: expectedRange,
@@ -864,9 +868,9 @@ function createMerchantService(db, options = {}) {
           results.push({
             proposalIndex: idx,
             blocked: true,
-            error: error && error.message ? String(error.message) : "simulate failed",
-            reason_codes: ["simulate_failed"],
-            risk_flags: ["SIMULATION_ERROR"],
+            error: error && error.message ? String(error.message) : "evaluate failed",
+            reason_codes: ["evaluate_failed"],
+            risk_flags: ["EVALUATION_ERROR"],
             expected_range: null,
             selected_count: 0,
             rejected_count: 1,
@@ -877,7 +881,7 @@ function createMerchantService(db, options = {}) {
       }
       return {
         source: "POLICYOS_EVALUATE",
-        userId: simulationUserId,
+        userId: evaluationUserId,
         results
       };
     };
@@ -895,7 +899,7 @@ function createMerchantService(db, options = {}) {
       return pendingCreated;
     }
     const salesSnapshot = getSalesSnapshotContext(merchantId);
-    const simulationUserId = resolveSimulationUserId(merchantId);
+    const evaluationUserId = resolveEvaluationUserId(merchantId);
     const evaluated = [];
 
     for (const item of pendingCreated) {
@@ -907,7 +911,7 @@ function createMerchantService(db, options = {}) {
         String(getPrimaryTriggerEvent(proposal.suggestedPolicySpec) || "APP_OPEN")
           .trim()
           .toUpperCase();
-      let simulation = null;
+      let evaluationResult = null;
       let evaluation = null;
       let evaluateError = "";
       try {
@@ -915,7 +919,7 @@ function createMerchantService(db, options = {}) {
           merchantId,
           proposalId: proposal.id,
           operatorId: operatorId || "system",
-          userId: simulationUserId,
+          userId: evaluationUserId,
           event: resolvedEvent,
           eventId: `evt_auto_eval_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
           context: {
@@ -923,14 +927,14 @@ function createMerchantService(db, options = {}) {
             proposalId: proposal.id
           }
         });
-        simulation =
+        evaluationResult =
           evaluatedResult && evaluatedResult.evaluation ? evaluatedResult.evaluation : null;
       } catch (error) {
         evaluateError = error && error.message ? String(error.message) : "evaluate failed";
       }
       evaluation = buildAutoEvaluation({
         proposal,
-        simulation: simulation || {},
+        evaluationResult: evaluationResult || {},
         salesSnapshot
       });
       if (evaluateError) {
@@ -944,7 +948,7 @@ function createMerchantService(db, options = {}) {
       };
       evaluated.push({
         ...item,
-        simulation,
+        evaluationResult,
         evaluation
       });
     }
@@ -1433,7 +1437,7 @@ function createMerchantService(db, options = {}) {
     return draftId;
   }
 
-  function buildSimulationCacheKey({ draftId, event, userId }) {
+  function buildEvaluationCacheKey({ draftId, event, userId }) {
     const safeDraftId = String(draftId || "").trim();
     const safeEvent = String(event || "").trim().toUpperCase();
     const safeUserId = String(userId || "").trim();
@@ -1445,28 +1449,28 @@ function createMerchantService(db, options = {}) {
     draftId,
     event,
     userId,
-    simulation,
+    evaluationResult,
     source = "MERCHANT_PROPOSAL_EVALUATE"
   }) {
     proposal.policyWorkflow = {
       ...(proposal.policyWorkflow || {}),
       draftId,
       lastEvaluation: {
-        decisionId: simulation.decision_id,
-        selected: Array.isArray(simulation.selected) ? simulation.selected.length : 0,
-        rejected: Array.isArray(simulation.rejected) ? simulation.rejected.length : 0,
-        evaluatedAt: simulation.created_at,
+        decisionId: evaluationResult.decision_id,
+        selected: Array.isArray(evaluationResult.selected) ? evaluationResult.selected.length : 0,
+        rejected: Array.isArray(evaluationResult.rejected) ? evaluationResult.rejected.length : 0,
+        evaluatedAt: evaluationResult.created_at,
         draftId,
         event,
         userId: String(userId || "").trim(),
         source: String(source || "MERCHANT_PROPOSAL_EVALUATE"),
-        cacheKey: buildSimulationCacheKey({
+        cacheKey: buildEvaluationCacheKey({
           draftId,
           event,
           userId
         })
       },
-      lastEvaluationResult: cloneJson(simulation)
+      lastEvaluationResult: cloneJson(evaluationResult)
     };
   }
 
@@ -1480,44 +1484,44 @@ function createMerchantService(db, options = {}) {
       proposal && proposal.policyWorkflow && typeof proposal.policyWorkflow === "object"
         ? proposal.policyWorkflow
         : {};
-    const simulationMeta =
+    const evaluationMeta =
       workflow.lastEvaluation && typeof workflow.lastEvaluation === "object"
         ? workflow.lastEvaluation
         : null;
-    const simulationResult =
+    const evaluationResult =
       workflow.lastEvaluationResult && typeof workflow.lastEvaluationResult === "object"
         ? workflow.lastEvaluationResult
         : null;
-    if (!simulationMeta || !simulationResult) {
+    if (!evaluationMeta || !evaluationResult) {
       return null;
     }
-    const expectedCacheKey = buildSimulationCacheKey({
+    const expectedCacheKey = buildEvaluationCacheKey({
       draftId,
       event,
       userId
     });
-    const cachedKey = String(simulationMeta.cacheKey || "").trim();
+    const cachedKey = String(evaluationMeta.cacheKey || "").trim();
     if (cachedKey && cachedKey !== expectedCacheKey) {
       return null;
     }
-    if (!cachedKey && String(simulationMeta.draftId || "").trim() !== String(draftId || "").trim()) {
+    if (!cachedKey && String(evaluationMeta.draftId || "").trim() !== String(draftId || "").trim()) {
       return null;
     }
-    const decisionId = String(simulationMeta.decisionId || "").trim();
-    const simulationDecisionId = String(simulationResult.decision_id || "").trim();
-    if (!decisionId || !simulationDecisionId || decisionId !== simulationDecisionId) {
+    const decisionId = String(evaluationMeta.decisionId || "").trim();
+    const evaluationDecisionId = String(evaluationResult.decision_id || "").trim();
+    if (!decisionId || !evaluationDecisionId || decisionId !== evaluationDecisionId) {
       return null;
     }
     const evaluatedAtMs = Date.parse(
-      String(simulationMeta.evaluatedAt || simulationResult.created_at || "")
+      String(evaluationMeta.evaluatedAt || evaluationResult.created_at || "")
     );
     if (!Number.isFinite(evaluatedAtMs)) {
       return null;
     }
-    if (Date.now() - evaluatedAtMs > SIMULATION_CACHE_MAX_AGE_MS) {
+    if (Date.now() - evaluatedAtMs > EVALUATION_CACHE_MAX_AGE_MS) {
       return null;
     }
-    return cloneJson(simulationResult);
+    return cloneJson(evaluationResult);
   }
 
   async function evaluateProposalPolicy({
@@ -1567,22 +1571,22 @@ function createMerchantService(db, options = {}) {
         .toUpperCase();
     const resolvedUserId = String(userId || "").trim();
     if (!forceRefresh) {
-      const cachedSimulation = readReusableEvaluationResult({
+      const cachedEvaluation = readReusableEvaluationResult({
         proposal,
         draftId,
         event: resolvedEvent,
         userId: resolvedUserId
       });
-      if (cachedSimulation) {
+      if (cachedEvaluation) {
         return {
           proposalId: proposal.id,
           draftId,
-          evaluation: cachedSimulation,
+          evaluation: cachedEvaluation,
           reused: true
         };
       }
     }
-    const simulation = await policyOsService.evaluateDecision({
+    const evaluationResult = await policyOsService.evaluateDecision({
       merchantId,
       userId: resolvedUserId,
       event: resolvedEvent,
@@ -1599,14 +1603,14 @@ function createMerchantService(db, options = {}) {
       draftId,
       event: resolvedEvent,
       userId: resolvedUserId,
-      simulation,
+      evaluationResult,
       source: context && context.source ? context.source : "MERCHANT_PROPOSAL_EVALUATE"
     });
     db.save();
     return {
       proposalId: proposal.id,
       draftId,
-      evaluation: simulation,
+      evaluation: evaluationResult,
       reused: false
     };
   }
@@ -1616,12 +1620,12 @@ function createMerchantService(db, options = {}) {
       proposal && proposal.policyWorkflow && typeof proposal.policyWorkflow === "object"
         ? proposal.policyWorkflow
         : {};
-    const simulation =
+    const evaluation =
       workflow && workflow.lastEvaluation && typeof workflow.lastEvaluation === "object"
         ? workflow.lastEvaluation
         : null;
-    const evaluatedAt = simulation ? Date.parse(String(simulation.evaluatedAt || "")) : Number.NaN;
-    if (!simulation || !String(simulation.decisionId || "").trim() || !Number.isFinite(evaluatedAt)) {
+    const evaluatedAt = evaluation ? Date.parse(String(evaluation.evaluatedAt || "")) : Number.NaN;
+    if (!evaluation || !String(evaluation.decisionId || "").trim() || !Number.isFinite(evaluatedAt)) {
       const error = new Error("proposal must be evaluated before approve");
       error.statusCode = 400;
       throw error;
@@ -2071,7 +2075,7 @@ function createMerchantService(db, options = {}) {
       approvedStrategies: getApprovedStrategyContext(merchantId),
       executionHistory: getMarketingExecutionContext(merchantId),
       salesSnapshot,
-      simulatePolicyCandidates: buildAiCandidateSimulationTool({
+      evaluatePolicyCandidates: buildAiCandidateEvaluationTool({
         merchantId,
         operatorId,
         sessionId: session.sessionId,

@@ -1,4 +1,4 @@
-const {
+﻿const {
   createPolicySpecFromTemplate,
   listStrategyTemplates,
   validatePolicyPatchForTemplate,
@@ -777,7 +777,7 @@ function normalizeExpectedRange(raw) {
   };
 }
 
-function normalizeSimulationPayload(raw, proposalCount) {
+function normalizeEvaluationPayload(raw, proposalCount) {
   const payload = isObjectLike(raw) ? raw : {};
   const source = asString(payload.source) || "UNKNOWN";
   const rawItems = Array.isArray(payload.results)
@@ -823,22 +823,22 @@ function normalizeSimulationPayload(raw, proposalCount) {
   };
 }
 
-function computeProposalRankScore({ proposal, simulation }) {
+function computeProposalRankScore({ proposal, evaluation }) {
   const confidence = toRankNumber(
     proposal && proposal.strategyMeta && proposal.strategyMeta.confidence,
     0
   );
-  const expectedRange = simulation && simulation.expectedRange ? simulation.expectedRange : null;
+  const expectedRange = evaluation && evaluation.expectedRange ? evaluation.expectedRange : null;
   const expectedMid = expectedRange ? (expectedRange.min + expectedRange.max) / 2 : 0;
   const riskPenalty =
-    Math.max(0, toRankNumber(simulation && simulation.riskFlags && simulation.riskFlags.length, 0)) * 2;
-  const rejectPenalty = Math.max(0, toRankNumber(simulation && simulation.rejectedCount, 0));
-  const selectedBoost = Math.max(0, toRankNumber(simulation && simulation.selectedCount, 0));
-  const estimatedCost = Math.max(0, toRankNumber(simulation && simulation.estimatedCost, 0));
-  const simScore = simulation ? toRankNumber(simulation.score, Number.NaN) : Number.NaN;
+    Math.max(0, toRankNumber(evaluation && evaluation.riskFlags && evaluation.riskFlags.length, 0)) * 2;
+  const rejectPenalty = Math.max(0, toRankNumber(evaluation && evaluation.rejectedCount, 0));
+  const selectedBoost = Math.max(0, toRankNumber(evaluation && evaluation.selectedCount, 0));
+  const estimatedCost = Math.max(0, toRankNumber(evaluation && evaluation.estimatedCost, 0));
+  const evalScore = evaluation ? toRankNumber(evaluation.score, Number.NaN) : Number.NaN;
   const baseScore =
-    Number.isFinite(simScore)
-      ? simScore
+    Number.isFinite(evalScore)
+      ? evalScore
       : expectedMid + confidence * 10 - riskPenalty - rejectPenalty + selectedBoost - estimatedCost;
   return {
     rankScore: Number(baseScore.toFixed(4)),
@@ -857,24 +857,24 @@ function buildExplainPackFromRanked({ ranked, source = "NONE" }) {
       templateId: asString(item && item.proposal && item.proposal.template && item.proposal.template.templateId),
       branchId: asString(item && item.proposal && item.proposal.branch && item.proposal.branch.branchId),
       rankScore: toRankNumber(item && item.rankScore, 0),
-      blocked: Boolean(item && item.simulation && item.simulation.blocked),
+      blocked: Boolean(item && item.evaluation && item.evaluation.blocked),
       reason_codes:
-        Array.isArray(item && item.simulation && item.simulation.reasonCodes)
-          ? item.simulation.reasonCodes
+        Array.isArray(item && item.evaluation && item.evaluation.reasonCodes)
+          ? item.evaluation.reasonCodes
           : [],
       risk_flags:
-        Array.isArray(item && item.simulation && item.simulation.riskFlags)
-          ? item.simulation.riskFlags
+        Array.isArray(item && item.evaluation && item.evaluation.riskFlags)
+          ? item.evaluation.riskFlags
           : [],
       expected_range:
-        item && item.simulation && item.simulation.expectedRange
-          ? item.simulation.expectedRange
+        item && item.evaluation && item.evaluation.expectedRange
+          ? item.evaluation.expectedRange
           : null,
-      selected_count: Math.max(0, Math.floor(toRankNumber(item && item.simulation && item.simulation.selectedCount, 0))),
-      rejected_count: Math.max(0, Math.floor(toRankNumber(item && item.simulation && item.simulation.rejectedCount, 0))),
-      estimated_cost: Math.max(0, toRankNumber(item && item.simulation && item.simulation.estimatedCost, 0)),
-      decision_id: asString(item && item.simulation && item.simulation.decisionId),
-      simulation_error: asString(item && item.simulation && item.simulation.error),
+      selected_count: Math.max(0, Math.floor(toRankNumber(item && item.evaluation && item.evaluation.selectedCount, 0))),
+      rejected_count: Math.max(0, Math.floor(toRankNumber(item && item.evaluation && item.evaluation.rejectedCount, 0))),
+      estimated_cost: Math.max(0, toRankNumber(item && item.evaluation && item.evaluation.estimatedCost, 0)),
+      decision_id: asString(item && item.evaluation && item.evaluation.decisionId),
+      evaluation_error: asString(item && item.evaluation && item.evaluation.error),
     }))
   };
 }
@@ -1395,7 +1395,7 @@ function createStrategyChatGraph({
     invalidCandidates: Annotation({ default: () => [] }),
     criticRound: Annotation({ default: () => 0 }),
     criticDecision: Annotation({ default: () => null }),
-    simulationPayload: Annotation({ default: () => ({ source: "NONE", userId: "", items: [] }) }),
+    evaluationPayload: Annotation({ default: () => ({ source: "NONE", userId: "", items: [] }) }),
     rankedCandidates: Annotation({ default: () => [] }),
     explainPack: Annotation({ default: () => null }),
     approvalDecision: Annotation({ default: () => null }),
@@ -1404,6 +1404,51 @@ function createStrategyChatGraph({
     memoryUpdateResult: Annotation({ default: () => null }),
     turn: Annotation({ default: () => null }),
   });
+
+  const formatGraphLogContext = (state) => {
+    const safeState = isObjectLike(state) ? state : {};
+    const input = isObjectLike(safeState.input) ? safeState.input : {};
+    const turn = isObjectLike(safeState.turn) ? safeState.turn : null;
+    const evaluationPayload = isObjectLike(safeState.evaluationPayload) ? safeState.evaluationPayload : null;
+    const proposals = Array.isArray(turn && turn.proposals) ? turn.proposals.length : 0;
+    const evaluationItems = Array.isArray(evaluationPayload && evaluationPayload.items)
+      ? evaluationPayload.items.length
+      : 0;
+    return [
+      `merchant=${asString(input.merchantId) || "-"}`,
+      `session=${asString(input.sessionId) || "-"}`,
+      `status=${asString(turn && turn.status) || "-"}`,
+      `proposals=${proposals}`,
+      `evaluations=${evaluationItems}`,
+      `critic_round=${Math.max(0, Math.floor(toFiniteNumber(safeState.criticRound, 0)))}`,
+    ].join(" ");
+  };
+
+  const withGraphNodeLog = (nodeName, handler) => async (state) => {
+    const startedAt = Date.now();
+    console.log(`[ai-strategy] [graph] enter node=${nodeName} ${formatGraphLogContext(state)}`);
+    try {
+      const result = await handler(state);
+      const mergedState =
+        isObjectLike(state) && isObjectLike(result)
+          ? { ...state, ...result }
+          : state;
+      console.log(
+        `[ai-strategy] [graph] exit node=${nodeName} elapsed_ms=${Date.now() - startedAt} ${formatGraphLogContext(mergedState)}`,
+      );
+      return result;
+    } catch (error) {
+      console.warn(
+        `[ai-strategy] [graph] error node=${nodeName} elapsed_ms=${Date.now() - startedAt} error=${summarizeError(error)} ${formatGraphLogContext(state)}`,
+      );
+      throw error;
+    }
+  };
+
+  const logGraphRoute = (nodeName, nextNode, state) => {
+    console.log(`[ai-strategy] [graph] route node=${nodeName} next=${nextNode} ${formatGraphLogContext(state)}`);
+    return nextNode;
+  };
 
   const prepareInput = (state) => ({
     input: isObjectLike(state.input) ? state.input : {},
@@ -1514,15 +1559,15 @@ function createStrategyChatGraph({
 
   const routeCriticGate = (state) => {
     if (!criticEnabled || criticMaxRounds <= 0) {
-      return "critic_finalize";
+      return logGraphRoute("critic_gate", "critic_finalize", state);
     }
     const turn = isObjectLike(state.turn) ? state.turn : null;
     if (!turn || turn.status !== "PROPOSAL_READY") {
-      return "critic_finalize";
+      return logGraphRoute("critic_gate", "critic_finalize", state);
     }
     const round = Math.max(0, Math.floor(toFiniteNumber(state.criticRound, 0)));
     if (round >= criticMaxRounds) {
-      return "critic_finalize";
+      return logGraphRoute("critic_gate", "critic_finalize", state);
     }
     const pendingValidationIssues = Array.isArray(turn.validationIssues) ? turn.validationIssues : [];
     const needQualityRevision = shouldRunCriticLoop({
@@ -1531,9 +1576,9 @@ function createStrategyChatGraph({
       minConfidence: criticMinConfidence
     });
     if (!needQualityRevision && pendingValidationIssues.length === 0) {
-      return "critic_finalize";
+      return logGraphRoute("critic_gate", "critic_finalize", state);
     }
-    return "critic_node";
+    return logGraphRoute("critic_gate", "critic_node", state);
   };
 
   const criticNode = async (state) => {
@@ -1581,13 +1626,13 @@ function createStrategyChatGraph({
   const routeAfterCritic = (state) => {
     const decision = isObjectLike(state.criticDecision) ? state.criticDecision : {};
     if (!decision.needRevision) {
-      return "critic_finalize";
+      return logGraphRoute("critic_node", "critic_finalize", state);
     }
     const round = Math.max(0, Math.floor(toFiniteNumber(state.criticRound, 0)));
     if (round >= criticMaxRounds) {
-      return "critic_finalize";
+      return logGraphRoute("critic_node", "critic_finalize", state);
     }
-    return "revise_node";
+    return logGraphRoute("critic_node", "revise_node", state);
   };
 
   const reviseNode = async (state) => {
@@ -1692,14 +1737,14 @@ function createStrategyChatGraph({
     return {};
   };
 
-  const simulateCandidates = async (state) => {
+  const evaluateCandidates = async (state) => {
     if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
       return {};
     }
     const turn = isObjectLike(state.turn) ? state.turn : {};
     if (turn.status !== "PROPOSAL_READY" || !Array.isArray(turn.proposals) || turn.proposals.length === 0) {
       return {
-        simulationPayload: {
+        evaluationPayload: {
           source: "NONE",
           userId: "",
           items: []
@@ -1707,12 +1752,12 @@ function createStrategyChatGraph({
       };
     }
     const input = isObjectLike(state.input) ? state.input : {};
-    const simulateTool = typeof input.simulatePolicyCandidates === "function"
-      ? input.simulatePolicyCandidates
+    const evaluateTool = typeof input.evaluatePolicyCandidates === "function"
+      ? input.evaluatePolicyCandidates
       : null;
-    if (!simulateTool) {
+    if (!evaluateTool) {
       return {
-        simulationPayload: {
+        evaluationPayload: {
           source: "UNAVAILABLE",
           userId: "",
           items: []
@@ -1720,7 +1765,7 @@ function createStrategyChatGraph({
       };
     }
     try {
-      const rawPayload = await simulateTool({
+      const rawPayload = await evaluateTool({
         proposals: turn.proposals,
         merchantId: input.merchantId,
         sessionId: input.sessionId,
@@ -1728,18 +1773,18 @@ function createStrategyChatGraph({
         intentFrame: state.intentFrame,
       });
       return {
-        simulationPayload: normalizeSimulationPayload(rawPayload, turn.proposals.length),
+        evaluationPayload: normalizeEvaluationPayload(rawPayload, turn.proposals.length),
       };
     } catch (error) {
       return {
-        simulationPayload: normalizeSimulationPayload({
+        evaluationPayload: normalizeEvaluationPayload({
           source: "TOOL_ERROR",
           results: turn.proposals.map((_, idx) => ({
             proposalIndex: idx,
             blocked: true,
             error: summarizeError(error),
-            reason_codes: ["simulate_tool_error"],
-            risk_flags: ["SIMULATION_ERROR"],
+            reason_codes: ["evaluate_tool_error"],
+            risk_flags: ["EVALUATION_ERROR"],
             selected_count: 0,
             rejected_count: 1,
             estimated_cost: 0,
@@ -1760,32 +1805,32 @@ function createStrategyChatGraph({
         rankedCandidates: []
       };
     }
-    const simulationItems = Array.isArray(state.simulationPayload && state.simulationPayload.items)
-      ? state.simulationPayload.items
+    const evaluationItems = Array.isArray(state.evaluationPayload && state.evaluationPayload.items)
+      ? state.evaluationPayload.items
       : [];
-    const hasSimulationData = simulationItems.length > 0;
-    const simulationByIndex = new Map();
-    for (const item of simulationItems) {
-      simulationByIndex.set(item.proposalIndex, item);
+    const hasEvaluationData = evaluationItems.length > 0;
+    const evaluationByIndex = new Map();
+    for (const item of evaluationItems) {
+      evaluationByIndex.set(item.proposalIndex, item);
     }
     const rankedBase = turn.proposals.map((proposal, idx) => {
-      const simulation = simulationByIndex.get(idx) || null;
+      const evaluation = evaluationByIndex.get(idx) || null;
       const scorePack = computeProposalRankScore({
         proposal,
-        simulation
+        evaluation
       });
       return {
         proposal,
-        simulation,
+        evaluation,
         rankScore: scorePack.rankScore,
         expectedMid: scorePack.expectedMid,
         confidence: scorePack.confidence
       };
     });
-    const ranked = hasSimulationData
+    const ranked = hasEvaluationData
       ? rankedBase.sort((left, right) => {
-      const leftBlocked = Boolean(left.simulation && left.simulation.blocked);
-      const rightBlocked = Boolean(right.simulation && right.simulation.blocked);
+      const leftBlocked = Boolean(left.evaluation && left.evaluation.blocked);
+      const rightBlocked = Boolean(right.evaluation && right.evaluation.blocked);
       if (leftBlocked !== rightBlocked) {
         return leftBlocked ? 1 : -1;
       }
@@ -1812,26 +1857,26 @@ function createStrategyChatGraph({
     if (ranked.length === 0) {
       return {};
     }
-    const source = asString(state.simulationPayload && state.simulationPayload.source) || "NONE";
+    const source = asString(state.evaluationPayload && state.evaluationPayload.source) || "NONE";
     const rankedProposals = ranked.map((item) => ({
       ...item.proposal,
       evaluation: {
         rank_score: item.rankScore,
         expected_mid: item.expectedMid,
         confidence: item.confidence,
-        blocked: Boolean(item.simulation && item.simulation.blocked),
-        reason_codes: item.simulation && Array.isArray(item.simulation.reasonCodes)
-          ? item.simulation.reasonCodes
+        blocked: Boolean(item.evaluation && item.evaluation.blocked),
+        reason_codes: item.evaluation && Array.isArray(item.evaluation.reasonCodes)
+          ? item.evaluation.reasonCodes
           : [],
-        risk_flags: item.simulation && Array.isArray(item.simulation.riskFlags)
-          ? item.simulation.riskFlags
+        risk_flags: item.evaluation && Array.isArray(item.evaluation.riskFlags)
+          ? item.evaluation.riskFlags
           : [],
-        expected_range: item.simulation && item.simulation.expectedRange ? item.simulation.expectedRange : null,
-        selected_count: item.simulation ? item.simulation.selectedCount : 0,
-        rejected_count: item.simulation ? item.simulation.rejectedCount : 0,
-        estimated_cost: item.simulation ? item.simulation.estimatedCost : 0,
-        decision_id: item.simulation ? item.simulation.decisionId : "",
-        simulation_error: item.simulation ? item.simulation.error : "",
+        expected_range: item.evaluation && item.evaluation.expectedRange ? item.evaluation.expectedRange : null,
+        selected_count: item.evaluation ? item.evaluation.selectedCount : 0,
+        rejected_count: item.evaluation ? item.evaluation.rejectedCount : 0,
+        estimated_cost: item.evaluation ? item.evaluation.estimatedCost : 0,
+        decision_id: item.evaluation ? item.evaluation.decisionId : "",
+        evaluation_error: item.evaluation ? item.evaluation.error : "",
       }
     }));
     const pack = buildExplainPackFromRanked({
@@ -1841,7 +1886,7 @@ function createStrategyChatGraph({
     const protocol = isObjectLike(turn.protocol) ? turn.protocol : {};
     const nextProtocol = {
       ...protocol,
-      simulation: {
+      evaluation: {
         source,
         count: pack.items.length
       },
@@ -1927,22 +1972,22 @@ function createStrategyChatGraph({
   const routeAfterApprovalGate = (state) => {
     const turn = isObjectLike(state.turn) ? state.turn : {};
     if (turn.status !== "PROPOSAL_READY" || !Array.isArray(turn.proposals) || turn.proposals.length === 0) {
-      return "publish_finalize";
+      return logGraphRoute("approval_gate", "publish_finalize", state);
     }
     const input = isObjectLike(state.input) ? state.input : {};
     const publishIntent = Boolean(input.publishIntent);
     if (!publishIntent) {
-      return "publish_finalize";
+      return logGraphRoute("approval_gate", "publish_finalize", state);
     }
     const approvalDecision = isObjectLike(state.approvalDecision) ? state.approvalDecision : {};
     if (!approvalDecision.approved) {
-      return "publish_finalize";
+      return logGraphRoute("approval_gate", "publish_finalize", state);
     }
     const publishFn = typeof input.publishPolicies === "function" ? input.publishPolicies : null;
     if (!publishFn) {
-      return "publish_finalize";
+      return logGraphRoute("approval_gate", "publish_finalize", state);
     }
-    return "publish_policy";
+    return logGraphRoute("approval_gate", "publish_policy", state);
   };
 
   const publishPolicy = async (state) => {
@@ -2131,26 +2176,26 @@ function createStrategyChatGraph({
   };
 
   return new StateGraph(ChatState)
-    .addNode("prepare_input", prepareInput)
-    .addNode("intent_parse", intentParse)
-    .addNode("build_prompt", buildPrompt)
-    .addNode("remote_decide", remoteDecide)
-    .addNode("parse_response", parseResponse)
-    .addNode("candidate_generate", candidateGenerate)
-    .addNode("patch_validate", patchValidate)
-    .addNode("finalize_turn", finalizeTurn)
-    .addNode("critic_gate", criticGate)
-    .addNode("critic_node", criticNode)
-    .addNode("revise_node", reviseNode)
-    .addNode("critic_finalize", criticFinalize)
-    .addNode("simulate_candidates", simulateCandidates)
-    .addNode("rank_candidates", rankCandidates)
-    .addNode("explain_pack", explainPack)
-    .addNode("approval_gate", approvalGate)
-    .addNode("publish_policy", publishPolicy)
-    .addNode("publish_finalize", publishFinalize)
-    .addNode("post_publish_monitor", postPublishMonitor)
-    .addNode("memory_update", memoryUpdate)
+    .addNode("prepare_input", withGraphNodeLog("prepare_input", prepareInput))
+    .addNode("intent_parse", withGraphNodeLog("intent_parse", intentParse))
+    .addNode("build_prompt", withGraphNodeLog("build_prompt", buildPrompt))
+    .addNode("remote_decide", withGraphNodeLog("remote_decide", remoteDecide))
+    .addNode("parse_response", withGraphNodeLog("parse_response", parseResponse))
+    .addNode("candidate_generate", withGraphNodeLog("candidate_generate", candidateGenerate))
+    .addNode("patch_validate", withGraphNodeLog("patch_validate", patchValidate))
+    .addNode("finalize_turn", withGraphNodeLog("finalize_turn", finalizeTurn))
+    .addNode("critic_gate", withGraphNodeLog("critic_gate", criticGate))
+    .addNode("critic_node", withGraphNodeLog("critic_node", criticNode))
+    .addNode("revise_node", withGraphNodeLog("revise_node", reviseNode))
+    .addNode("critic_finalize", withGraphNodeLog("critic_finalize", criticFinalize))
+    .addNode("evaluate_candidates", withGraphNodeLog("evaluate_candidates", evaluateCandidates))
+    .addNode("rank_candidates", withGraphNodeLog("rank_candidates", rankCandidates))
+    .addNode("explain_pack", withGraphNodeLog("explain_pack", explainPack))
+    .addNode("approval_gate", withGraphNodeLog("approval_gate", approvalGate))
+    .addNode("publish_policy", withGraphNodeLog("publish_policy", publishPolicy))
+    .addNode("publish_finalize", withGraphNodeLog("publish_finalize", publishFinalize))
+    .addNode("post_publish_monitor", withGraphNodeLog("post_publish_monitor", postPublishMonitor))
+    .addNode("memory_update", withGraphNodeLog("memory_update", memoryUpdate))
     .addEdge(START, "prepare_input")
     .addEdge("prepare_input", "intent_parse")
     .addEdge("intent_parse", "build_prompt")
@@ -2169,8 +2214,8 @@ function createStrategyChatGraph({
       critic_finalize: "critic_finalize",
     })
     .addEdge("revise_node", "critic_gate")
-    .addEdge("critic_finalize", "simulate_candidates")
-    .addEdge("simulate_candidates", "rank_candidates")
+    .addEdge("critic_finalize", "evaluate_candidates")
+    .addEdge("evaluate_candidates", "rank_candidates")
     .addEdge("rank_candidates", "explain_pack")
     .addEdge("explain_pack", "approval_gate")
     .addConditionalEdges("approval_gate", routeAfterApprovalGate, {
@@ -2471,41 +2516,41 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
     return currentTurn;
   }
 
-  async function maybeRunSimulationRankExplain({ input, turn }) {
+  async function maybeRunEvaluationRankExplain({ input, turn }) {
     if (!turn || turn.status !== "PROPOSAL_READY" || !Array.isArray(turn.proposals) || turn.proposals.length === 0) {
       return turn;
     }
-    const simulateTool = typeof input.simulatePolicyCandidates === "function"
-      ? input.simulatePolicyCandidates
+    const evaluateTool = typeof input.evaluatePolicyCandidates === "function"
+      ? input.evaluatePolicyCandidates
       : null;
     const intentFrame = inferIntentFrame({
       userMessage: input.userMessage,
       salesSnapshot: sanitizeSalesSnapshot(input.salesSnapshot),
     });
-    let simulationPayload = {
+    let evaluationPayload = {
       source: "UNAVAILABLE",
       userId: "",
       items: []
     };
-    if (simulateTool) {
+    if (evaluateTool) {
       try {
-        const rawPayload = await simulateTool({
+        const rawPayload = await evaluateTool({
           proposals: turn.proposals,
           merchantId: input.merchantId,
           sessionId: input.sessionId,
           userMessage: input.userMessage,
           intentFrame,
         });
-        simulationPayload = normalizeSimulationPayload(rawPayload, turn.proposals.length);
+        evaluationPayload = normalizeEvaluationPayload(rawPayload, turn.proposals.length);
       } catch (error) {
-        simulationPayload = normalizeSimulationPayload({
+        evaluationPayload = normalizeEvaluationPayload({
           source: "TOOL_ERROR",
           results: turn.proposals.map((_, idx) => ({
             proposalIndex: idx,
             blocked: true,
             error: summarizeError(error),
-            reason_codes: ["simulate_tool_error"],
-            risk_flags: ["SIMULATION_ERROR"],
+            reason_codes: ["evaluate_tool_error"],
+            risk_flags: ["EVALUATION_ERROR"],
             selected_count: 0,
             rejected_count: 1,
             estimated_cost: 0,
@@ -2514,26 +2559,26 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
         }, turn.proposals.length);
       }
     }
-    const simulationByIndex = new Map();
-    for (const item of simulationPayload.items) {
-      simulationByIndex.set(item.proposalIndex, item);
+    const evaluationByIndex = new Map();
+    for (const item of evaluationPayload.items) {
+      evaluationByIndex.set(item.proposalIndex, item);
     }
-    const hasSimulationData = simulationPayload.items.length > 0;
+    const hasEvaluationData = evaluationPayload.items.length > 0;
     const rankedBase = turn.proposals.map((proposal, idx) => {
-      const simulation = simulationByIndex.get(idx) || null;
-      const scorePack = computeProposalRankScore({ proposal, simulation });
+      const evaluation = evaluationByIndex.get(idx) || null;
+      const scorePack = computeProposalRankScore({ proposal, evaluation });
       return {
         proposal,
-        simulation,
+        evaluation,
         rankScore: scorePack.rankScore,
         expectedMid: scorePack.expectedMid,
         confidence: scorePack.confidence
       };
     });
-    const ranked = hasSimulationData
+    const ranked = hasEvaluationData
       ? rankedBase.sort((left, right) => {
-      const leftBlocked = Boolean(left.simulation && left.simulation.blocked);
-      const rightBlocked = Boolean(right.simulation && right.simulation.blocked);
+      const leftBlocked = Boolean(left.evaluation && left.evaluation.blocked);
+      const rightBlocked = Boolean(right.evaluation && right.evaluation.blocked);
       if (leftBlocked !== rightBlocked) {
         return leftBlocked ? 1 : -1;
       }
@@ -2549,24 +2594,24 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
         rank_score: item.rankScore,
         expected_mid: item.expectedMid,
         confidence: item.confidence,
-        blocked: Boolean(item.simulation && item.simulation.blocked),
-        reason_codes: item.simulation && Array.isArray(item.simulation.reasonCodes)
-          ? item.simulation.reasonCodes
+        blocked: Boolean(item.evaluation && item.evaluation.blocked),
+        reason_codes: item.evaluation && Array.isArray(item.evaluation.reasonCodes)
+          ? item.evaluation.reasonCodes
           : [],
-        risk_flags: item.simulation && Array.isArray(item.simulation.riskFlags)
-          ? item.simulation.riskFlags
+        risk_flags: item.evaluation && Array.isArray(item.evaluation.riskFlags)
+          ? item.evaluation.riskFlags
           : [],
-        expected_range: item.simulation && item.simulation.expectedRange ? item.simulation.expectedRange : null,
-        selected_count: item.simulation ? item.simulation.selectedCount : 0,
-        rejected_count: item.simulation ? item.simulation.rejectedCount : 0,
-        estimated_cost: item.simulation ? item.simulation.estimatedCost : 0,
-        decision_id: item.simulation ? item.simulation.decisionId : "",
-        simulation_error: item.simulation ? item.simulation.error : "",
+        expected_range: item.evaluation && item.evaluation.expectedRange ? item.evaluation.expectedRange : null,
+        selected_count: item.evaluation ? item.evaluation.selectedCount : 0,
+        rejected_count: item.evaluation ? item.evaluation.rejectedCount : 0,
+        estimated_cost: item.evaluation ? item.evaluation.estimatedCost : 0,
+        decision_id: item.evaluation ? item.evaluation.decisionId : "",
+        evaluation_error: item.evaluation ? item.evaluation.error : "",
       }
     }));
     const explainPack = buildExplainPackFromRanked({
       ranked,
-      source: simulationPayload.source
+      source: evaluationPayload.source
     });
     return {
       ...turn,
@@ -2575,8 +2620,8 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
       explainPack,
       protocol: {
         ...(isObjectLike(turn.protocol) ? turn.protocol : {}),
-        simulation: {
-          source: simulationPayload.source,
+        evaluation: {
+          source: evaluationPayload.source,
           count: explainPack.items.length
         },
         ranking: {
@@ -2907,7 +2952,7 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
       input,
       turn: parsedTurn
     });
-    const rankedTurn = await maybeRunSimulationRankExplain({
+    const rankedTurn = await maybeRunEvaluationRankExplain({
       input,
       turn: revisedTurn
     });
@@ -2955,3 +3000,4 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
 module.exports = {
   createAiStrategyService,
 };
+

@@ -252,7 +252,7 @@ test("policy os end-to-end lifecycle works through HTTP", async () => {
     assert.equal(resumed.status, 200);
     assert.equal(resumed.data.policy.status, "PUBLISHED");
 
-    const simulate = await postJson(
+    const evaluate = await postJson(
       baseUrl,
       "/api/policyos/decision/evaluate",
       {
@@ -268,12 +268,12 @@ test("policy os end-to-end lifecycle works through HTTP", async () => {
         Authorization: `Bearer ${managerToken}`
       }
     );
-    assert.equal(simulate.status, 200);
-    assert.equal(simulate.data.mode, "SIMULATE");
-    assert.equal(Array.isArray(simulate.data.executed), true);
-    assert.equal(simulate.data.executed.length, 0);
-    assert.equal(Array.isArray(simulate.data.selected), true);
-    assert.equal(simulate.data.selected.length, 1);
+    assert.equal(evaluate.status, 200);
+    assert.equal(evaluate.data.mode, "EVALUATE");
+    assert.equal(Array.isArray(evaluate.data.executed), true);
+    assert.equal(evaluate.data.executed.length, 0);
+    assert.equal(Array.isArray(evaluate.data.selected), true);
+    assert.equal(evaluate.data.selected.length, 1);
 
     const execute = await postJson(
       baseUrl,

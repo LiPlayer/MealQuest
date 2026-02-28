@@ -175,7 +175,7 @@ export interface PolicyDecisionResult {
   trace_id: string;
   created_at: string;
   elapsed_ms: number;
-  mode?: 'SIMULATE' | 'EXECUTE' | string;
+  mode?: 'EVALUATE' | 'EXECUTE' | string;
   selected?: string[];
   executed: string[];
   rejected: Array<{

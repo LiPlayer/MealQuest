@@ -174,7 +174,7 @@ function createDecisionService({
     policies = null
   }) {
     const decisionMode = String(mode || "EXECUTE").trim().toUpperCase();
-    const dryRun = decisionMode === "SIMULATE";
+    const dryRun = decisionMode === "EVALUATE";
     const startedAt = now();
     const activePolicies = Array.isArray(policies) ? policies : policyRegistry.listActivePolicies({ merchantId });
     const ctxBase = {
@@ -483,7 +483,7 @@ function createDecisionService({
       grants
     };
     policyRegistry.saveDecision(decision);
-    appendMetric(dryRun ? "simulations_total" : "decisions_total", 1);
+    appendMetric(dryRun ? "evaluations_total" : "decisions_total", 1);
     appendMetric("decisions_executed_total", executed.length);
     appendMetric("decisions_rejected_total", decision.rejected.length);
     appendMetric("decision_latency_ms_total", decision.elapsed_ms);

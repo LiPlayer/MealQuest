@@ -295,7 +295,7 @@ test("ai strategy provider: unary graph ranks proposals with evaluation tool and
       history: [],
       activePolicies: [],
       approvedStrategies: [],
-      simulatePolicyCandidates: async () => ({
+      evaluatePolicyCandidates: async () => ({
         source: "POLICYOS_EVALUATE",
         userId: "u_001",
         results: [
@@ -334,7 +334,7 @@ test("ai strategy provider: unary graph ranks proposals with evaluation tool and
     assert.ok(result.explainPack);
     assert.equal(result.explainPack.source, "POLICYOS_EVALUATE");
     assert.equal(result.explainPack.items[0].title, "Option High");
-    assert.equal(result.protocol.simulation.source, "POLICYOS_EVALUATE");
+    assert.equal(result.protocol.evaluation.source, "POLICYOS_EVALUATE");
     assert.equal(result.protocol.ranking.strategy, "VALUE_RISK_COST_V1");
   } finally {
     global.fetch = originalFetch;

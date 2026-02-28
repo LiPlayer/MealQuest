@@ -18,8 +18,8 @@ Status legend:
    Added explicit `critic_gate` + `critic_node` routing in unary graph state.
 5. `[x]` `Revise` node  
    Added bounded `revise_node` loop with graph conditional routing and round cap.
-6. `[x]` `Simulate` tool node  
-   Added `simulate_candidates` node with optional Policy OS simulation tool injection.
+6. `[x]` `Evaluate` tool node  
+   Added `evaluate_candidates` node with optional Policy OS evaluation tool injection.
 7. `[x]` `Rank` node  
    Added `rank_candidates` node using unified value/risk/cost ordering.
 8. `[x]` `ExplainPack` node  

@@ -147,7 +147,7 @@ function createPolicyOsService(db, { wsHub = null, metrics = null, now = () => D
         {
           ...validatedSpec,
           policy_id: `ephemeral:${validatedSpec.policy_key || "policy"}:${Math.floor(now())}`,
-          status: "SIMULATE_ONLY",
+          status: "EVALUATE_ONLY",
           source_draft_id: null,
           published_at: null,
           updated_at: nowIso,
@@ -168,7 +168,7 @@ function createPolicyOsService(db, { wsHub = null, metrics = null, now = () => D
         merchant
       },
       user,
-      mode: "SIMULATE",
+      mode: "EVALUATE",
       policies
     });
   }
