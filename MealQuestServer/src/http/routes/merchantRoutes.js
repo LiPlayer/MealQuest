@@ -384,20 +384,38 @@ function createMerchantRoutesHandler({
       ) {
         return true;
       }
-      const { campaignService } = getServicesForMerchant(body.merchantId);
-      const result = await campaignService.triggerEvent(body);
+      const approvalToken =
+        (req.headers && req.headers["x-approval-token"]) ||
+        body.approvalToken ||
+        body.approval_token ||
+        "";
+      const { policyOsService } = getServicesForMerchant(body.merchantId);
+      const result = await policyOsService.evaluateDecision({
+        merchantId: body.merchantId,
+        userId: body.userId,
+        event: body.event,
+        eventId: body.eventId || "",
+        context: body.context || {},
+        approvalToken
+      });
       appendAuditLog({
         merchantId: body.merchantId,
-        action: "TCA_TRIGGER",
-        status: result.blockedByKillSwitch ? "BLOCKED" : "SUCCESS",
+        action: "POLICY_EVALUATE",
+        status: result.executed.length > 0 ? "SUCCESS" : "BLOCKED",
         auth,
         details: {
           event: body.event,
+          decisionId: result.decision_id,
           executedCount: (result.executed || []).length,
-          blockedByKillSwitch: Boolean(result.blockedByKillSwitch),
+          rejectedCount: (result.rejected || []).length
         },
       });
-      wsHub.broadcast(body.merchantId, "TCA_TRIGGERED", result);
+      wsHub.broadcast(body.merchantId, "TCA_TRIGGERED", {
+        decisionId: result.decision_id,
+        executed: result.executed,
+        storyCards: result.storyCards,
+        grants: result.grants
+      });
       sendJson(res, 200, result);
       return true;
     }

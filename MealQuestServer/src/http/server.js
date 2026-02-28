@@ -18,6 +18,7 @@ const { createAllianceService } = require("../services/allianceService");
 const { createPaymentService } = require("../services/paymentService");
 const { createPrivacyService } = require("../services/privacyService");
 const { createSupplierService } = require("../services/supplierService");
+const { createPolicyOsService } = require("../policyos/policyOsService");
 const {
   createSocialAuthService
 } = require("../services/socialAuthService");
@@ -106,6 +107,12 @@ function createAppServer({
     });
   const aiStrategyService = createAiStrategyService(aiStrategyOptions);
   const wsHub = createWebSocketHub(); // wsHub needs to be defined before getServicesForDb
+  const metrics = {
+    startedAt: new Date().toISOString(),
+    requestsTotal: 0,
+    requestsByPath: {},
+    errorsTotal: 0
+  };
   const getServicesForDb = (scopedDb) => {
     let services = serviceCache.get(scopedDb);
     if (!services) {
@@ -116,7 +123,8 @@ function createAppServer({
         allianceService: createAllianceService(scopedDb),
         invoiceService: createInvoiceService(scopedDb),
         privacyService: createPrivacyService(scopedDb),
-        supplierService: createSupplierService(scopedDb)
+        supplierService: createSupplierService(scopedDb),
+        policyOsService: createPolicyOsService(scopedDb, { wsHub, metrics })
       };
       serviceCache.set(scopedDb, services);
     }
@@ -128,12 +136,6 @@ function createAppServer({
   };
   const services = getServicesForDb(actualDb);
   const allSockets = new Set();
-  const metrics = {
-    startedAt: new Date().toISOString(),
-    requestsTotal: 0,
-    requestsByPath: {},
-    errorsTotal: 0
-  };
   const appendAuditLog = ({ merchantId, action, status, auth, details }) => {
     tenantRepository.appendAuditLog({
       merchantId,

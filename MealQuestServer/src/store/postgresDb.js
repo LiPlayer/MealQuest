@@ -19,6 +19,7 @@ const TABLES = {
   tenantPolicies: "mq_tenant_policies",
   tenantMigrations: "mq_tenant_migrations",
   tenantRouteFiles: "mq_tenant_route_files",
+  policyOs: "mq_policy_os",
   idempotencyRecords: "mq_idempotency_records",
   ledgerEntries: "mq_ledger_entries",
   auditLogs: "mq_audit_logs",
@@ -350,6 +351,14 @@ async function ensureRelationalTables(pool, schema, { enforceRls = true } = {}) 
   `);
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS ${schemaSql}.${qIdent(TABLES.policyOs)} (
+      tenant_id TEXT PRIMARY KEY,
+      payload JSONB NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS ${schemaSql}.${qIdent(TABLES.idempotencyRecords)} (
       tenant_id TEXT NOT NULL,
       idem_key TEXT NOT NULL,
@@ -488,6 +497,28 @@ function createEmptyState() {
     tenantPolicies: {},
     tenantMigrations: {},
     tenantRouteFiles: {},
+    policyOs: {
+      templates: {},
+      drafts: {},
+      policies: {},
+      executionPlans: {},
+      decisions: {},
+      approvals: {},
+      publishedByMerchant: {},
+      resourceStates: {
+        budget: {},
+        inventory: {},
+        frequency: {},
+      },
+      dispatcher: {
+        sequenceByMerchant: {},
+        dedupe: {},
+      },
+      compliance: {
+        behaviorLogs: [],
+        deletionQueue: [],
+      },
+    },
     idempotencyRecords: {},
     ledger: [],
     auditLogs: [],
@@ -703,6 +734,14 @@ async function readRelationalStateWithClient(client, schema, tenantId) {
   );
   for (const row of tenantRoutes.rows) {
     state.tenantRouteFiles[row.merchant_id] = row.payload;
+  }
+
+  const policyOsRows = await client.query(
+    `SELECT payload FROM ${schemaSql}.${qIdent(TABLES.policyOs)} WHERE tenant_id = $1 LIMIT 1`,
+    [tenantId],
+  );
+  if (policyOsRows.rows[0] && policyOsRows.rows[0].payload) {
+    state.policyOs = policyOsRows.rows[0].payload;
   }
 
   const idempotencyRows = await client.query(
@@ -973,6 +1012,14 @@ async function replaceTenantState(client, schema, tenantId, rawState) {
       [tenantId, merchantId, toJsonb(payload)],
     );
   }
+
+  await insertRow(
+    client,
+    schema,
+    TABLES.policyOs,
+    ["tenant_id", "payload"],
+    [tenantId, toJsonb(normalizedState.policyOs || {})],
+  );
 
   for (const [idemKey, payload] of Object.entries(normalizedState.idempotencyRecords || {})) {
     await insertRow(

@@ -21,6 +21,12 @@ const TENANT_LIMIT_OPERATIONS = [
   "ALLIANCE_SYNC_USER",
   "CONTRACT_APPLY",
   "AUDIT_QUERY",
+  "POLICY_DRAFT_CREATE",
+  "POLICY_DRAFT_SUBMIT",
+  "POLICY_DRAFT_APPROVE",
+  "POLICY_PUBLISH",
+  "POLICY_EVALUATE",
+  "POLICY_ROLLBACK",
   "WS_CONNECT",
   "WS_STATUS_QUERY"
 ];
@@ -175,6 +181,24 @@ function resolveAuditAction(method, pathname) {
   }
   if (method === "POST" && /^\/api\/merchant\/proposals\/[^/]+\/confirm$/.test(pathname)) {
     return "PROPOSAL_CONFIRM";
+  }
+  if (method === "POST" && pathname === "/api/policyos/drafts") {
+    return "POLICY_DRAFT_CREATE";
+  }
+  if (method === "POST" && /^\/api\/policyos\/drafts\/[^/]+\/submit$/.test(pathname)) {
+    return "POLICY_DRAFT_SUBMIT";
+  }
+  if (method === "POST" && /^\/api\/policyos\/drafts\/[^/]+\/approve$/.test(pathname)) {
+    return "POLICY_DRAFT_APPROVE";
+  }
+  if (method === "POST" && /^\/api\/policyos\/drafts\/[^/]+\/publish$/.test(pathname)) {
+    return "POLICY_PUBLISH";
+  }
+  if (method === "POST" && pathname === "/api/policyos/decision/evaluate") {
+    return "POLICY_EVALUATE";
+  }
+  if (method === "POST" && /^\/api\/policyos\/policies\/[^/]+\/rollback$/.test(pathname)) {
+    return "POLICY_ROLLBACK";
   }
   return null;
 }
@@ -356,6 +380,16 @@ function buildMerchantSnapshotSummary(db, merchantId) {
       db.socialAuth.customerPhoneBindingsByMerchant &&
       db.socialAuth.customerPhoneBindingsByMerchant[merchantId]) ||
     {};
+  const policyOs = db.policyOs && typeof db.policyOs === "object" ? db.policyOs : {};
+  const policyDraftCount = Object.values(policyOs.drafts || {}).filter(
+    (item) => item && item.merchant_id === merchantId
+  ).length;
+  const policyCount = Object.values(policyOs.policies || {}).filter(
+    (item) => item && item.resource_scope && item.resource_scope.merchant_id === merchantId
+  ).length;
+  const decisionCount = Object.values(policyOs.decisions || {}).filter(
+    (item) => item && item.merchant_id === merchantId
+  ).length;
 
   const walletChecksum = JSON.stringify(
     Object.entries(users)
@@ -379,6 +413,9 @@ function buildMerchantSnapshotSummary(db, merchantId) {
     budgetUsed: merchant ? Number(merchant.budgetUsed || 0) : 0,
     customerAuthBindingCount: Object.keys(customerAuthBindings).length,
     customerPhoneBindingCount: Object.keys(customerPhoneBindings).length,
+    policyDraftCount,
+    policyCount,
+    decisionCount,
     walletChecksum
   };
 }
@@ -1008,6 +1045,88 @@ function copyMerchantSlice({ sourceDb, targetDb, merchantId }) {
       Number(sourceDb.idCounters.audit || 0)
     );
   }
+
+  const sourcePolicyOs =
+    sourceDb.policyOs && typeof sourceDb.policyOs === "object" ? sourceDb.policyOs : {};
+  if (!targetDb.policyOs || typeof targetDb.policyOs !== "object") {
+    targetDb.policyOs = {};
+  }
+  targetDb.policyOs.templates = targetDb.policyOs.templates || {};
+  targetDb.policyOs.drafts = targetDb.policyOs.drafts || {};
+  targetDb.policyOs.policies = targetDb.policyOs.policies || {};
+  targetDb.policyOs.executionPlans = targetDb.policyOs.executionPlans || {};
+  targetDb.policyOs.decisions = targetDb.policyOs.decisions || {};
+  targetDb.policyOs.approvals = targetDb.policyOs.approvals || {};
+  targetDb.policyOs.publishedByMerchant = targetDb.policyOs.publishedByMerchant || {};
+  targetDb.policyOs.resourceStates = targetDb.policyOs.resourceStates || {};
+  targetDb.policyOs.resourceStates.budget = targetDb.policyOs.resourceStates.budget || {};
+  targetDb.policyOs.resourceStates.inventory = targetDb.policyOs.resourceStates.inventory || {};
+  targetDb.policyOs.resourceStates.frequency = targetDb.policyOs.resourceStates.frequency || {};
+  targetDb.policyOs.dispatcher = targetDb.policyOs.dispatcher || {};
+  targetDb.policyOs.dispatcher.sequenceByMerchant = targetDb.policyOs.dispatcher.sequenceByMerchant || {};
+  targetDb.policyOs.dispatcher.dedupe = targetDb.policyOs.dispatcher.dedupe || {};
+  targetDb.policyOs.compliance = targetDb.policyOs.compliance || {};
+  targetDb.policyOs.compliance.behaviorLogs = targetDb.policyOs.compliance.behaviorLogs || [];
+  targetDb.policyOs.compliance.deletionQueue = targetDb.policyOs.compliance.deletionQueue || [];
+
+  for (const [draftId, draft] of Object.entries(sourcePolicyOs.drafts || {})) {
+    if (draft && draft.merchant_id === merchantId) {
+      targetDb.policyOs.drafts[draftId] = jsonClone(draft);
+    }
+  }
+  for (const [policyId, policy] of Object.entries(sourcePolicyOs.policies || {})) {
+    if (policy && policy.resource_scope && policy.resource_scope.merchant_id === merchantId) {
+      targetDb.policyOs.policies[policyId] = jsonClone(policy);
+    }
+  }
+  for (const [planId, plan] of Object.entries(sourcePolicyOs.executionPlans || {})) {
+    if (plan && plan.merchantId === merchantId) {
+      targetDb.policyOs.executionPlans[planId] = jsonClone(plan);
+    }
+  }
+  for (const [decisionId, decision] of Object.entries(sourcePolicyOs.decisions || {})) {
+    if (decision && decision.merchant_id === merchantId) {
+      targetDb.policyOs.decisions[decisionId] = jsonClone(decision);
+    }
+  }
+  for (const [approvalId, approval] of Object.entries(sourcePolicyOs.approvals || {})) {
+    if (approval && approval.merchant_id === merchantId) {
+      targetDb.policyOs.approvals[approvalId] = jsonClone(approval);
+    }
+  }
+  targetDb.policyOs.publishedByMerchant[merchantId] = jsonClone(
+    (sourcePolicyOs.publishedByMerchant && sourcePolicyOs.publishedByMerchant[merchantId]) || []
+  );
+  for (const [key, value] of Object.entries(
+    (sourcePolicyOs.resourceStates && sourcePolicyOs.resourceStates.budget) || {}
+  )) {
+    if (key.startsWith(`${merchantId}|`)) {
+      targetDb.policyOs.resourceStates.budget[key] = jsonClone(value);
+    }
+  }
+  for (const [key, value] of Object.entries(
+    (sourcePolicyOs.resourceStates && sourcePolicyOs.resourceStates.inventory) || {}
+  )) {
+    if (key.startsWith(`${merchantId}|`)) {
+      targetDb.policyOs.resourceStates.inventory[key] = jsonClone(value);
+    }
+  }
+  for (const [key, value] of Object.entries(
+    (sourcePolicyOs.resourceStates && sourcePolicyOs.resourceStates.frequency) || {}
+  )) {
+    if (key.startsWith(`${merchantId}|`)) {
+      targetDb.policyOs.resourceStates.frequency[key] = jsonClone(value);
+    }
+  }
+  targetDb.policyOs.compliance.behaviorLogs = [
+    ...targetDb.policyOs.compliance.behaviorLogs.filter((item) => item.merchantId !== merchantId),
+    ...jsonClone(
+      ((sourcePolicyOs.compliance && sourcePolicyOs.compliance.behaviorLogs) || []).filter(
+        (item) => item.merchantId === merchantId
+      )
+    )
+  ];
+
   targetDb.save();
 }
 

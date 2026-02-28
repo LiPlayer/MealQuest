@@ -25,7 +25,29 @@ function createDefaultState() {
     ledger: [],
     auditLogs: [],
     campaigns: [],
-    proposals: []
+    proposals: [],
+    policyOs: {
+      templates: {},
+      drafts: {},
+      policies: {},
+      executionPlans: {},
+      decisions: {},
+      approvals: {},
+      publishedByMerchant: {},
+      resourceStates: {
+        budget: {},
+        inventory: {},
+        frequency: {}
+      },
+      dispatcher: {
+        sequenceByMerchant: {},
+        dedupe: {}
+      },
+      compliance: {
+        behaviorLogs: [],
+        deletionQueue: []
+      }
+    }
   };
 }
 
@@ -112,6 +134,9 @@ function migrateLegacyShape(state) {
   }
   if (!next.idempotencyRecords || typeof next.idempotencyRecords !== "object") {
     next.idempotencyRecords = {};
+  }
+  if (!next.policyOs || typeof next.policyOs !== "object") {
+    next.policyOs = {};
   }
 
   return next;
@@ -225,7 +250,11 @@ function normalizeState(initialState = null) {
       ? migrated.auditLogs
       : defaults.auditLogs,
     campaigns: Array.isArray(migrated.campaigns) ? migrated.campaigns : defaults.campaigns,
-    proposals: Array.isArray(migrated.proposals) ? migrated.proposals : defaults.proposals
+    proposals: Array.isArray(migrated.proposals) ? migrated.proposals : defaults.proposals,
+    policyOs: {
+      ...defaults.policyOs,
+      ...(migrated.policyOs || {})
+    }
   };
   // Drop removed social/treat fields when loading legacy snapshots.
   delete normalized.groupTreatSessionsByMerchant;
@@ -262,7 +291,8 @@ function createInMemoryDb(initialState = null) {
       ledger: db.ledger,
       auditLogs: db.auditLogs,
       campaigns: db.campaigns,
-      proposals: db.proposals
+      proposals: db.proposals,
+      policyOs: db.policyOs
     }),
     getMerchantUser: (merchantId, userId) => {
       const users = db.merchantUsers[merchantId];

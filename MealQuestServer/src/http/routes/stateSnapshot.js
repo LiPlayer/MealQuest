@@ -14,6 +14,10 @@ async function buildStateSnapshot({
   const campaigns = await tenantRepository.listCampaigns(merchantId);
   const allianceConfig = await allianceService.getAllianceConfig({ merchantId });
   const dashboard = await merchantService.getDashboard({ merchantId });
+  const { policyOsService } = getServicesForDb(scopedDb);
+  const policyDrafts = policyOsService.listDrafts({ merchantId });
+  const policies = policyOsService.listPolicies({ merchantId, includeInactive: true });
+  const activePolicies = policyOsService.listActivePolicies({ merchantId });
 
   return {
     merchant,
@@ -24,6 +28,14 @@ async function buildStateSnapshot({
     strategyConfigs: await tenantRepository.listStrategyConfigs(merchantId),
     activities: buildCustomerActivities(campaigns),
     allianceConfig,
+    policyOs: {
+      draftCount: policyDrafts.length,
+      policyCount: policies.length,
+      activePolicyCount: activePolicies.length,
+      drafts: policyDrafts,
+      policies,
+      plugins: policyOsService.listPlugins()
+    }
   };
 }
 

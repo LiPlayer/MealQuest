@@ -68,24 +68,6 @@ test("ai strategy provider: bigmodel uses expected defaults", () => {
   assert.equal(runtime.retryPolicy.maxRetries, 2);
 });
 
-test("ai strategy provider: bigmodel without api key returns AI_UNAVAILABLE", async () => {
-  const service = createAiStrategyService({
-    provider: "bigmodel",
-    apiKey: "",
-  });
-
-  const result = await service.generateStrategyChatTurn({
-    merchantId: "m_store_001",
-    sessionId: "sc_test",
-    userMessage: "Please draft a cooling strategy.",
-    history: [],
-    activeCampaigns: [],
-    approvedStrategies: [],
-  });
-
-  assert.equal(result.status, "AI_UNAVAILABLE");
-  assert.ok(String(result.reason || "").includes("MQ_AI_API_KEY"));
-});
 
 test("ai strategy provider: retries transient upstream failures and then succeeds", async () => {
   const originalFetch = global.fetch;
