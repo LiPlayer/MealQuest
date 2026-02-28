@@ -187,14 +187,14 @@ test("policy os end-to-end lifecycle works through HTTP", async () => {
       }
     );
     assert.equal(approve.status, 200);
-    assert.ok(approve.data.approvalToken);
+    assert.ok(approve.data.approvalId);
 
     const publish = await postJson(
       baseUrl,
       `/api/policyos/drafts/${encodeURIComponent(createDraft.data.draft_id)}/publish`,
       {
         merchantId: "m_policy_http",
-        approvalToken: approve.data.approvalToken
+        approvalId: approve.data.approvalId
       },
       {
         Authorization: `Bearer ${ownerToken}`
@@ -203,9 +203,32 @@ test("policy os end-to-end lifecycle works through HTTP", async () => {
     assert.equal(publish.status, 200);
     assert.ok(publish.data.policy.policy_id);
 
-    const evaluate = await postJson(
+    const simulate = await postJson(
       baseUrl,
-      "/api/policyos/decision/evaluate",
+      "/api/policyos/decision/simulate",
+      {
+        merchantId: "m_policy_http",
+        userId: "u_policy_http",
+        event: "INVENTORY_ALERT",
+        eventId: "evt_http_sim_1",
+        context: {
+          inventoryBacklog: 12
+        }
+      },
+      {
+        Authorization: `Bearer ${managerToken}`
+      }
+    );
+    assert.equal(simulate.status, 200);
+    assert.equal(simulate.data.mode, "SIMULATE");
+    assert.equal(Array.isArray(simulate.data.executed), true);
+    assert.equal(simulate.data.executed.length, 0);
+    assert.equal(Array.isArray(simulate.data.selected), true);
+    assert.equal(simulate.data.selected.length, 1);
+
+    const execute = await postJson(
+      baseUrl,
+      "/api/policyos/decision/execute",
       {
         merchantId: "m_policy_http",
         userId: "u_policy_http",
@@ -216,24 +239,24 @@ test("policy os end-to-end lifecycle works through HTTP", async () => {
         }
       },
       {
-        Authorization: `Bearer ${managerToken}`,
-        "x-approval-token": approve.data.approvalToken
+        Authorization: `Bearer ${managerToken}`
       }
     );
-    assert.equal(evaluate.status, 200);
-    assert.equal(Array.isArray(evaluate.data.executed), true);
-    assert.equal(evaluate.data.executed.length, 1);
-    assert.ok(evaluate.data.decision_id);
+    assert.equal(execute.status, 200);
+    assert.equal(execute.data.mode, "EXECUTE");
+    assert.equal(Array.isArray(execute.data.executed), true);
+    assert.equal(execute.data.executed.length, 1);
+    assert.ok(execute.data.decision_id);
 
     const explain = await getJson(
       baseUrl,
-      `/api/policyos/decisions/${encodeURIComponent(evaluate.data.decision_id)}/explain?merchantId=m_policy_http`,
+      `/api/policyos/decisions/${encodeURIComponent(execute.data.decision_id)}/explain?merchantId=m_policy_http`,
       {
         Authorization: `Bearer ${ownerToken}`
       }
     );
     assert.equal(explain.status, 200);
-    assert.equal(explain.data.decision_id, evaluate.data.decision_id);
+    assert.equal(explain.data.decision_id, execute.data.decision_id);
 
     const state = await getJson(
       baseUrl,

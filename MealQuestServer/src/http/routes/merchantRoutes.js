@@ -72,7 +72,7 @@ function createMerchantRoutesHandler({
         !enforceTenantPolicyForHttp({
           tenantPolicyManager,
           merchantId,
-          operation: "PROPOSAL_CONFIRM",
+          operation: "POLICY_DRAFT_APPROVE",
           res,
           auth,
           appendAuditLog,
@@ -97,19 +97,27 @@ function createMerchantRoutesHandler({
           proposalId,
           reviewStatus: result.status || null,
           campaignId: result.campaignId || null,
+          policyId: result.policyId || null,
+          draftId: result.draftId || null,
         },
       });
-      wsHub.broadcast(merchantId, "STRATEGY_CHAT_REVIEWED", result);
+      const wsPayload = { ...result };
+      if (Object.prototype.hasOwnProperty.call(wsPayload, "approvalToken")) {
+        delete wsPayload.approvalToken;
+      }
+      wsHub.broadcast(merchantId, "STRATEGY_CHAT_REVIEWED", wsPayload);
       sendJson(res, 200, result);
       return true;
     }
 
-    const campaignStatusMatch = url.pathname.match(/^\/api\/merchant\/campaigns\/([^/]+)\/status$/);
-    if (method === "POST" && campaignStatusMatch) {
+    const strategyChatSimulateMatch = url.pathname.match(
+      /^\/api\/merchant\/strategy-chat\/proposals\/([^/]+)\/simulate$/
+    );
+    if (method === "POST" && strategyChatSimulateMatch) {
       ensureRole(auth, ["MANAGER", "OWNER"]);
       const body = await readJsonBody(req);
       const merchantId = auth.merchantId || body.merchantId;
-      const campaignId = campaignStatusMatch[1];
+      const proposalId = strategyChatSimulateMatch[1];
       if (!merchantId) {
         sendJson(res, 400, { error: "merchantId is required" });
         return true;
@@ -122,7 +130,7 @@ function createMerchantRoutesHandler({
         !enforceTenantPolicyForHttp({
           tenantPolicyManager,
           merchantId,
-          operation: "CAMPAIGN_STATUS_SET",
+          operation: "POLICY_SIMULATE",
           res,
           auth,
           appendAuditLog,
@@ -131,26 +139,83 @@ function createMerchantRoutesHandler({
         return true;
       }
       const { merchantService } = getServicesForMerchant(merchantId);
-      const result = await merchantService.setCampaignStatus({
+      const result = await merchantService.simulateProposalPolicy({
         merchantId,
-        campaignId,
-        status: body.status,
+        proposalId,
+        operatorId: auth.operatorId || "system",
+        userId: body.userId || "",
+        event: body.event || "",
+        eventId: body.eventId || "",
+        context: body.context || {},
       });
       appendAuditLog({
         merchantId,
-        action: "CAMPAIGN_STATUS_SET",
+        action: "STRATEGY_CHAT_SIMULATE",
         status: "SUCCESS",
         auth,
         details: {
-          campaignId,
-          status: result.status,
+          proposalId,
+          decisionId: result.simulation && result.simulation.decision_id ? result.simulation.decision_id : null,
+          selected: Array.isArray(result.simulation && result.simulation.selected)
+            ? result.simulation.selected.length
+            : 0,
+          rejected: Array.isArray(result.simulation && result.simulation.rejected)
+            ? result.simulation.rejected.length
+            : 0,
         },
       });
-      wsHub.broadcast(merchantId, "CAMPAIGN_STATUS_CHANGED", result);
       sendJson(res, 200, result);
       return true;
     }
 
+    const strategyChatPublishMatch = url.pathname.match(
+      /^\/api\/merchant\/strategy-chat\/proposals\/([^/]+)\/publish$/
+    );
+    if (method === "POST" && strategyChatPublishMatch) {
+      ensureRole(auth, ["OWNER"]);
+      const body = await readJsonBody(req);
+      const merchantId = auth.merchantId || body.merchantId;
+      const proposalId = strategyChatPublishMatch[1];
+      if (!merchantId) {
+        sendJson(res, 400, { error: "merchantId is required" });
+        return true;
+      }
+      if (auth.merchantId && auth.merchantId !== merchantId) {
+        sendJson(res, 403, { error: "merchant scope denied" });
+        return true;
+      }
+      if (
+        !enforceTenantPolicyForHttp({
+          tenantPolicyManager,
+          merchantId,
+          operation: "POLICY_PUBLISH",
+          res,
+          auth,
+          appendAuditLog,
+        })
+      ) {
+        return true;
+      }
+      const { merchantService } = getServicesForMerchant(merchantId);
+      const result = await merchantService.publishApprovedProposalPolicy({
+        merchantId,
+        proposalId,
+        operatorId: auth.operatorId || "system",
+      });
+      appendAuditLog({
+        merchantId,
+        action: "STRATEGY_CHAT_PUBLISH",
+        status: "SUCCESS",
+        auth,
+        details: {
+          proposalId,
+          policyId: result.policyId || null,
+          draftId: result.draftId || null,
+        },
+      });
+      sendJson(res, 200, result);
+      return true;
+    }
 
     if (method === "GET" && url.pathname === "/api/merchant/contract/status") {
       ensureRole(auth, ["OWNER", "MANAGER"]);
@@ -290,45 +355,6 @@ function createMerchantRoutesHandler({
           verified: result.verified,
         },
       });
-      sendJson(res, 200, result);
-      return true;
-    }
-
-    const proposalMatch = url.pathname.match(/^\/api\/merchant\/proposals\/([^/]+)\/confirm$/);
-    if (method === "POST" && proposalMatch) {
-      ensureRole(auth, ["OWNER"]);
-      const body = await readJsonBody(req);
-      const proposalId = proposalMatch[1];
-      const merchantId = auth.merchantId || body.merchantId;
-      if (
-        !enforceTenantPolicyForHttp({
-          tenantPolicyManager,
-          merchantId,
-          operation: "PROPOSAL_CONFIRM",
-          res,
-          auth,
-          appendAuditLog,
-        })
-      ) {
-        return true;
-      }
-      const { merchantService } = getServicesForMerchant(merchantId);
-      const result = await merchantService.confirmProposal({
-        merchantId,
-        proposalId,
-        operatorId: auth.operatorId || body.operatorId || "system",
-      });
-      appendAuditLog({
-        merchantId,
-        action: "PROPOSAL_CONFIRM",
-        status: "SUCCESS",
-        auth,
-        details: {
-          proposalId,
-          campaignId: result.campaignId,
-        },
-      });
-      wsHub.broadcast(merchantId, "PROPOSAL_CONFIRMED", result);
       sendJson(res, 200, result);
       return true;
     }

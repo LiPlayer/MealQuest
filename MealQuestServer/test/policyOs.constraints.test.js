@@ -125,7 +125,7 @@ test("policy constraints support reserve/release through decision flow", async (
     merchantId: "m_policy",
     draftId: draft.draft_id,
     operatorId: "owner",
-    approvalToken: approval.approvalToken
+    approvalId: approval.approvalId
   });
   assert.ok(published.policy.policy_id);
 
@@ -133,8 +133,7 @@ test("policy constraints support reserve/release through decision flow", async (
     merchantId: "m_policy",
     userId: "u_001",
     event: "APP_OPEN",
-    context: {},
-    approvalToken: approval.approvalToken
+    context: {}
   });
   assert.equal(first.executed.length, 1);
 
@@ -142,8 +141,7 @@ test("policy constraints support reserve/release through decision flow", async (
     merchantId: "m_policy",
     userId: "u_001",
     event: "APP_OPEN",
-    context: {},
-    approvalToken: approval.approvalToken
+    context: {}
   });
   assert.equal(second.executed.length, 0);
   assert.ok(second.rejected.length >= 1);

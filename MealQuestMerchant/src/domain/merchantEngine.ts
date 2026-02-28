@@ -25,6 +25,14 @@ export interface Proposal {
   campaignDraft: Campaign;
 }
 
+export interface ApprovedProposal {
+  id: string;
+  title: string;
+  draftId: string | null;
+  approvalId: string | null;
+  approvedAt: string | null;
+}
+
 export interface MerchantState {
   merchantId: string;
   merchantName: string;
@@ -32,6 +40,7 @@ export interface MerchantState {
   budgetCap: number;
   budgetUsed: number;
   pendingProposals: Proposal[];
+  approvedPendingPublish: ApprovedProposal[];
   activeCampaigns: Campaign[];
 }
 
@@ -61,6 +70,7 @@ export const createInitialMerchantState = (): MerchantState => ({
   budgetCap: 0,
   budgetUsed: 0,
   pendingProposals: [],
+  approvedPendingPublish: [],
   activeCampaigns: [],
 });
 

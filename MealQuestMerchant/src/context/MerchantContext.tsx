@@ -12,6 +12,7 @@ import {
 } from '../services/realtimeEventViewModel';
 import {
     AllianceConfig,
+    PolicyDecisionResult,
     StrategyChatMessage,
     StrategyChatPendingReview,
     StrategyChatReviewProgress,
@@ -30,16 +31,22 @@ export type AuditActionFilter =
     | 'PAYMENT_VERIFY'
     | 'PAYMENT_REFUND'
     | 'PRIVACY_CANCEL'
-    | 'PROPOSAL_CONFIRM'
     | 'STRATEGY_CHAT_SESSION_CREATE'
     | 'STRATEGY_CHAT_MESSAGE'
     | 'STRATEGY_CHAT_REVIEW'
-    | 'CAMPAIGN_STATUS_SET'
+    | 'STRATEGY_CHAT_SIMULATE'
+    | 'STRATEGY_CHAT_PUBLISH'
+    | 'POLICY_DRAFT_CREATE'
+    | 'POLICY_DRAFT_SUBMIT'
+    | 'POLICY_DRAFT_APPROVE'
+    | 'POLICY_PUBLISH'
+    | 'POLICY_SIMULATE'
+    | 'POLICY_EXECUTE'
     | 'SUPPLIER_VERIFY'
     | 'ALLIANCE_CONFIG_SET'
     | 'ALLIANCE_SYNC_USER'
     | 'KILL_SWITCH_SET'
-    | 'POLICY_EVALUATE';
+    ;
 export type AuditStatusFilter = 'ALL' | 'SUCCESS' | 'DENIED' | 'BLOCKED' | 'FAILED';
 export type AuditTimeRange = '24H' | '7D' | 'ALL';
 
@@ -101,6 +108,7 @@ interface MerchantContextType {
     aiIntentSubmitting: boolean;
     strategyChatMessages: StrategyChatMessageWithStatus[];
     strategyChatPendingReview: StrategyChatPendingReview | null;
+    strategyChatSimulation: PolicyDecisionResult | null;
     pendingReviewCount: number;
     totalReviewCount: number;
     currentReviewIndex: number;
@@ -110,10 +118,12 @@ interface MerchantContextType {
 
     // Handlers
     onCopyEventDetail: (detail: string) => Promise<void>;
+    onTriggerProactiveScan: () => Promise<void>;
     onCreateIntentProposal: () => Promise<void>;
     onRetryMessage: (messageId: string) => Promise<void>;
+    onSimulatePendingStrategy: () => Promise<void>;
     onReviewPendingStrategy: (decision: 'APPROVE' | 'REJECT') => Promise<void>;
-    onSetCampaignStatus: (campaignId: string, status: 'ACTIVE' | 'PAUSED' | 'ARCHIVED') => Promise<void>;
+    onPublishApprovedProposal: (proposalId: string) => Promise<void>;
     onToggleAllianceWalletShared: () => Promise<void>;
     onSyncAllianceUser: () => Promise<void>;
     onToggleKillSwitch: () => Promise<void>;
@@ -173,6 +183,7 @@ export function MerchantProvider({
     const [strategyChatPendingReview, setStrategyChatPendingReview] = useState<StrategyChatPendingReview | null>(null);
     const [strategyChatPendingReviews, setStrategyChatPendingReviews] = useState<StrategyChatPendingReview[]>([]);
     const [strategyChatReviewProgress, setStrategyChatReviewProgress] = useState<StrategyChatReviewProgress | null>(null);
+    const [strategyChatSimulation, setStrategyChatSimulation] = useState<PolicyDecisionResult | null>(null);
 
     const [contractStatus, setContractStatus] = useState<'LOADING' | 'NOT_SUBMITTED' | 'SUBMITTED'>('LOADING');
     const [wsConnected, setWsConnected] = useState(false);
@@ -238,6 +249,7 @@ export function MerchantProvider({
         setStrategyChatPendingReviews(pendingReviews);
         setStrategyChatPendingReview(snapshot.pendingReview || pendingReviews[0] || null);
         setStrategyChatReviewProgress(snapshot.reviewProgress || null);
+        setStrategyChatSimulation(null);
     };
 
     const applyStrategyChatDelta = (delta: StrategyChatDelta) => {
@@ -248,6 +260,7 @@ export function MerchantProvider({
         if (pendingReviews.length > 0 || delta.pendingReview !== undefined) {
             setStrategyChatPendingReviews(pendingReviews);
             setStrategyChatPendingReview(delta.pendingReview || pendingReviews[0] || null);
+            setStrategyChatSimulation(null);
         }
         if (delta.reviewProgress !== undefined) setStrategyChatReviewProgress(delta.reviewProgress || null);
 
@@ -429,6 +442,7 @@ export function MerchantProvider({
         setStrategyChatPendingReview(null);
         setStrategyChatPendingReviews([]);
         setStrategyChatReviewProgress(null);
+        setStrategyChatSimulation(null);
 
         // Static session initialization (local only, no HTTP)
         const merchantId = MerchantApi.getMerchantId();
@@ -547,26 +561,131 @@ export function MerchantProvider({
         }
     };
 
-    const onReviewPendingStrategy = async (decision: 'APPROVE' | 'REJECT') => {
-        if (!remoteToken || !strategyChatPendingReview?.proposalId) { setLastAction('暂无待审核策略'); return; }
+    const onSimulatePendingStrategy = async () => {
+        if (!remoteToken || !strategyChatPendingReview?.proposalId) {
+            setLastAction('No pending proposal to simulate');
+            return;
+        }
+        const currentPending = strategyChatPendingReview;
+        const chosenEvent = String(currentPending.triggerEvent || 'APP_OPEN').trim().toUpperCase() || 'APP_OPEN';
+        const chosenUserId = customerUserId.trim();
         try {
+            const result = await MerchantApi.simulateStrategyChatProposal(remoteToken, {
+                proposalId: currentPending.proposalId,
+                event: chosenEvent,
+                eventId: `evt_sim_${Date.now()}`,
+                userId: chosenUserId || undefined,
+                context: {
+                    source: 'MERCHANT_REVIEW_SIMULATE',
+                    proposalId: currentPending.proposalId,
+                },
+            });
+            const simulation = result.simulation;
+            setStrategyChatSimulation(simulation);
+            const selected = Array.isArray(simulation.selected) ? simulation.selected.length : 0;
+            const rejected = Array.isArray(simulation.rejected) ? simulation.rejected.length : 0;
+            setLastAction(
+                `Simulation ready: selected ${selected}, rejected ${rejected}${chosenUserId ? `, user ${chosenUserId}` : ''}`,
+            );
+            await refreshAuditLogs();
+        } catch (error: any) {
+            setLastAction(`Simulation failed: ${error?.message || 'unknown error'}`);
+        }
+    };
+
+    const onTriggerProactiveScan = async () => {
+        if (!remoteToken) { setLastAction('Connection not ready'); return; }
+        if (!wsConnected || !realtimeClientRef.current) { setLastAction('Realtime channel disconnected'); return; }
+        if (strategyChatPendingReviews.length > 0) { setLastAction('Please finish pending reviews first'); return; }
+        const activeCount = merchantState.activeCampaigns.filter(item => (item.status || 'ACTIVE') === 'ACTIVE').length;
+        const budgetUsage = Math.round((merchantState.budgetUsed / Math.max(merchantState.budgetCap, 1)) * 100);
+        const proactiveIntent = [
+            '主动巡检：请基于以下经营信号自动提案。',
+            `预算使用率=${budgetUsage}%`,
+            `进行中活动=${activeCount}`,
+            `熔断状态=${merchantState.killSwitchEnabled ? 'ON' : 'OFF'}`,
+            '如果无需提案请明确说明原因；如需提案请输出可审核策略。',
+        ].join('；');
+
+        const optimisticUserMsgId = `opt_user_${Date.now()}`;
+        const optimisticAiMsgId = `opt_ai_${Date.now()}`;
+        setStrategyChatMessages(prev => [
+            ...prev,
+            {
+                messageId: optimisticUserMsgId,
+                role: 'USER',
+                type: 'TEXT',
+                text: proactiveIntent,
+                isStreaming: false,
+                deliveryStatus: 'sending'
+            } as any,
+            {
+                messageId: optimisticAiMsgId,
+                role: 'ASSISTANT',
+                type: 'TEXT',
+                text: '',
+                isStreaming: true
+            } as any,
+        ]);
+        try {
+            await ensureStrategyChatSession();
+            realtimeClientRef.current.send({
+                type: 'STRATEGY_CHAT_SEND_MESSAGE',
+                merchantId: MerchantApi.getMerchantId(),
+                payload: { content: proactiveIntent },
+                timestamp: new Date().toISOString()
+            });
+            setLastAction('AI proactive scan triggered');
+        } catch (error: any) {
+            setStrategyChatMessages(prev => prev.map(m => m.messageId === optimisticUserMsgId ? { ...m, deliveryStatus: 'failed' } : m));
+            setLastAction(`AI proactive scan failed: ${error?.message || 'failed'}`);
+        }
+    };
+
+    const onReviewPendingStrategy = async (decision: 'APPROVE' | 'REJECT') => {
+        if (!remoteToken || !strategyChatPendingReview?.proposalId) { setLastAction('No pending proposal to review'); return; }
+        if (decision === 'APPROVE' && !strategyChatSimulation) {
+            setLastAction('Please run simulation before approve');
+            return;
+        }
+        try {
+            const currentPending = strategyChatPendingReview;
             const result = await MerchantApi.reviewStrategyChatProposal(remoteToken, {
-                proposalId: strategyChatPendingReview.proposalId,
+                proposalId: currentPending.proposalId,
                 decision,
             });
             applyStrategyChatDelta(result);
+            if (decision === 'APPROVE' && result.status === 'APPROVED') {
+                setStrategyChatSimulation(null);
+                setLastAction('Proposal approved. Publish it to activate.');
+            } else if (result.status === 'REJECTED') {
+                setStrategyChatSimulation(null);
+                setLastAction('Proposal rejected');
+            }
             await refreshRemoteState({ force: true });
             await refreshAuditLogs();
-            setLastAction(result.status === 'APPROVED' ? '策略已确认并生效' : '策略已拒绝');
-        } catch { setLastAction('策略审核失败，请稍后重试'); }
+        } catch {
+            setLastAction('Proposal review failed, please retry');
+        }
     };
 
-    const onSetCampaignStatus = async (campaignId: string, status: 'ACTIVE' | 'PAUSED' | 'ARCHIVED') => {
+    const onPublishApprovedProposal = async (proposalId: string) => {
         if (!remoteToken) return;
-        const response = await MerchantApi.setCampaignStatus(remoteToken, { campaignId, status });
-        await refreshRemoteState({ force: true });
-        await refreshAuditLogs();
-        setLastAction(`活动状态已更新：${response.campaignId} -> ${response.status}`);
+        const target = String(proposalId || '').trim();
+        if (!target) {
+            setLastAction('Proposal ID is required');
+            return;
+        }
+        try {
+            const result = await MerchantApi.publishStrategyChatProposal(remoteToken, {
+                proposalId: target,
+            });
+            await refreshRemoteState({ force: true });
+            await refreshAuditLogs();
+            setLastAction(`Policy published: ${result.policyId}`);
+        } catch (error: any) {
+            setLastAction(`Publish failed: ${error?.message || 'unknown error'}`);
+        }
     };
 
     const onToggleAllianceWalletShared = async () => {
@@ -618,11 +737,11 @@ export function MerchantProvider({
         auditActionFilter, setAuditActionFilter, auditStatusFilter, setAuditStatusFilter,
         auditTimeRange, setAuditTimeRange, allianceConfig, allianceStores, customerUserId, setCustomerUserId,
         qrStoreId, setQrStoreId, qrScene, setQrScene, qrPayload, aiIntentDraft, setAiIntentDraft,
-        aiIntentSubmitting, strategyChatMessages, strategyChatPendingReview,
+        aiIntentSubmitting, strategyChatMessages, strategyChatPendingReview, strategyChatSimulation,
         pendingReviewCount, totalReviewCount, currentReviewIndex, contractStatus, setContractStatus,
         wsConnected,
-        onCopyEventDetail, onCreateIntentProposal, onRetryMessage, onReviewPendingStrategy,
-        onSetCampaignStatus, onToggleAllianceWalletShared, onSyncAllianceUser, onToggleKillSwitch,
+        onCopyEventDetail, onTriggerProactiveScan, onCreateIntentProposal, onRetryMessage, onSimulatePendingStrategy, onReviewPendingStrategy, onPublishApprovedProposal,
+        onToggleAllianceWalletShared, onSyncAllianceUser, onToggleKillSwitch,
         onGenerateMerchantQr, refreshAuditLogs, refreshRemoteState,
     };
 

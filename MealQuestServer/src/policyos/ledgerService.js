@@ -128,6 +128,36 @@ function createPolicyLedgerService(db) {
     return result;
   }
 
+  function record({
+    merchantId,
+    userId = "",
+    type = "POLICYOS_EVENT",
+    idempotencyKey = "",
+    entries = [],
+    metadata = {}
+  }) {
+    const idemKey = String(idempotencyKey || "").trim();
+    if (idemKey) {
+      const existing = resolveIdempotency(idemKey);
+      if (existing) {
+        return existing;
+      }
+    }
+    const txn = createLedgerEntry({
+      merchantId,
+      userId: String(userId || ""),
+      type,
+      idempotencyKey: idemKey,
+      entries: Array.isArray(entries) ? entries : [],
+      metadata: metadata && typeof metadata === "object" ? metadata : {}
+    });
+    if (idemKey) {
+      persistIdempotency(idemKey, txn);
+    }
+    db.save();
+    return txn;
+  }
+
   function clawbackRefund({
     merchantId,
     user,
@@ -217,6 +247,7 @@ function createPolicyLedgerService(db) {
 
   return {
     grant,
+    record,
     clawbackRefund,
     reconcileMerchant
   };

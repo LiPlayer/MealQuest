@@ -446,23 +446,14 @@ async function runSmoke(baseUrl, options = {}) {
     expectStatus(strategyReview, 200, "strategy chat proposal review approve");
     assert.equal(strategyReview.data.status, "APPROVED");
 
-    const pauseCampaign = await postJson(
+    const publishPolicy = await postJson(
       baseUrl,
-      `/api/merchant/campaigns/${encodeURIComponent(strategyReview.data.campaignId)}/status`,
-      { merchantId: "m_store_001", status: "PAUSED" },
+      `/api/merchant/strategy-chat/proposals/${encodeURIComponent(strategyTurn.data.pendingReview.proposalId)}/publish`,
+      { merchantId: "m_store_001" },
       { Authorization: `Bearer ${ownerToken}` }
     );
-    expectStatus(pauseCampaign, 200, "campaign pause");
-    assert.equal(pauseCampaign.data.status, "PAUSED");
-
-    const resumeCampaign = await postJson(
-      baseUrl,
-      `/api/merchant/campaigns/${encodeURIComponent(strategyReview.data.campaignId)}/status`,
-      { merchantId: "m_store_001", status: "ACTIVE" },
-      { Authorization: `Bearer ${ownerToken}` }
-    );
-    expectStatus(resumeCampaign, 200, "campaign resume");
-    assert.equal(resumeCampaign.data.status, "ACTIVE");
+    expectStatus(publishPolicy, 200, "strategy chat proposal publish");
+    assert.ok(publishPolicy.data.policyId, "published policy id should exist");
   }
 
   console.log("[smoke] scenario H: supplier verify + fire sale");

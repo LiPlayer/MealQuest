@@ -4,12 +4,14 @@ import { getBaseUrl, getMerchantId, isConfigured, setMerchantId } from './runtim
 import {
   AllianceConfig,
   AuditLogPage,
-  CampaignStatusResult,
   MerchantCatalogResult,
   MerchantContractStatusResult,
   MerchantOnboardResult,
   MerchantPhoneCodeResult,
   MerchantPhoneLoginResult,
+  PolicyDecisionResult,
+  StrategyChatPublishResult,
+  StrategyChatSimulationResult,
   StrategyChatMessagePage,
   StrategyChatReviewResult,
   StrategyChatSessionResult,
@@ -68,6 +70,86 @@ export const MerchantApi = {
     });
   },
 
+  createStrategyChatSession: async (
+    token: string,
+    payload: { merchantId?: string } = {},
+  ) => {
+    return requestJson<StrategyChatSessionResult>(
+      'POST',
+      '/api/merchant/strategy-chat/sessions',
+      token,
+      {
+        merchantId: payload.merchantId || getMerchantId(),
+      },
+    );
+  },
+
+  sendStrategyChatMessage: async (
+    token: string,
+    payload: {
+      content: string;
+      sessionId?: string;
+      merchantId?: string;
+    },
+  ) => {
+    return requestJson<StrategyChatTurnResult>(
+      'POST',
+      '/api/merchant/strategy-chat/messages',
+      token,
+      {
+        merchantId: payload.merchantId || getMerchantId(),
+        sessionId: payload.sessionId,
+        content: payload.content,
+      },
+    );
+  },
+
+  getStrategyChatSession: async (
+    token: string,
+    payload: {
+      sessionId?: string;
+      deltaFrom?: number;
+      merchantId?: string;
+    } = {},
+  ) => {
+    const query = new URLSearchParams();
+    query.set('merchantId', payload.merchantId || getMerchantId());
+    if (payload.sessionId) {
+      query.set('sessionId', payload.sessionId);
+    }
+    if (Number.isFinite(Number(payload.deltaFrom))) {
+      query.set('deltaFrom', String(Math.max(0, Math.floor(Number(payload.deltaFrom)))));
+    }
+    return requestJson<StrategyChatSessionResult>(
+      'GET',
+      `/api/merchant/strategy-chat/session?${query.toString()}`,
+      token,
+    );
+  },
+
+  listStrategyChatMessages: async (
+    token: string,
+    payload: {
+      sessionId: string;
+      limit?: number;
+      cursor?: string | null;
+      merchantId?: string;
+    },
+  ) => {
+    const query = new URLSearchParams();
+    query.set('merchantId', payload.merchantId || getMerchantId());
+    query.set('sessionId', payload.sessionId);
+    query.set('limit', String(payload.limit || 20));
+    if (payload.cursor) {
+      query.set('cursor', payload.cursor);
+    }
+    return requestJson<StrategyChatMessagePage>(
+      'GET',
+      `/api/merchant/strategy-chat/messages?${query.toString()}`,
+      token,
+    );
+  },
+
   reviewStrategyChatProposal: async (
     token: string,
     payload: {
@@ -87,25 +169,97 @@ export const MerchantApi = {
     );
   },
 
-  setCampaignStatus: async (
+  simulateStrategyChatProposal: async (
     token: string,
     payload: {
-      campaignId: string;
-      status: 'ACTIVE' | 'PAUSED' | 'ARCHIVED';
+      proposalId: string;
+      event?: string;
+      eventId?: string;
+      userId?: string;
+      context?: Record<string, unknown>;
       merchantId?: string;
     },
   ) => {
-    return requestJson<CampaignStatusResult>(
+    return requestJson<StrategyChatSimulationResult>(
       'POST',
-      `/api/merchant/campaigns/${encodeURIComponent(payload.campaignId)}/status`,
+      `/api/merchant/strategy-chat/proposals/${encodeURIComponent(payload.proposalId)}/simulate`,
       token,
       {
         merchantId: payload.merchantId || getMerchantId(),
-        status: payload.status,
+        event: payload.event,
+        eventId: payload.eventId,
+        userId: payload.userId,
+        context: payload.context || {},
       },
     );
   },
 
+  publishStrategyChatProposal: async (
+    token: string,
+    payload: {
+      proposalId: string;
+      merchantId?: string;
+    },
+  ) => {
+    return requestJson<StrategyChatPublishResult>(
+      'POST',
+      `/api/merchant/strategy-chat/proposals/${encodeURIComponent(payload.proposalId)}/publish`,
+      token,
+      {
+        merchantId: payload.merchantId || getMerchantId(),
+      },
+    );
+  },
+
+  executePolicyDecision: async (
+    token: string,
+    payload: {
+      event: string;
+      eventId?: string;
+      userId?: string;
+      context?: Record<string, unknown>;
+      merchantId?: string;
+    },
+  ) => {
+    return requestJson<PolicyDecisionResult>(
+      'POST',
+      '/api/policyos/decision/execute',
+      token,
+      {
+        merchantId: payload.merchantId || getMerchantId(),
+        event: payload.event,
+        eventId: payload.eventId,
+        userId: payload.userId,
+        context: payload.context || {},
+      },
+    );
+  },
+
+  simulatePolicyDecision: async (
+    token: string,
+    payload: {
+      event: string;
+      eventId?: string;
+      userId?: string;
+      draftId?: string;
+      context?: Record<string, unknown>;
+      merchantId?: string;
+    },
+  ) => {
+    return requestJson<PolicyDecisionResult>(
+      'POST',
+      '/api/policyos/decision/simulate',
+      token,
+      {
+        merchantId: payload.merchantId || getMerchantId(),
+        event: payload.event,
+        eventId: payload.eventId,
+        userId: payload.userId,
+        draftId: payload.draftId,
+        context: payload.context || {},
+      },
+    );
+  },
 
   getAllianceConfig: async (token: string, merchantId = getMerchantId()) => {
     return requestJson<AllianceConfig>(

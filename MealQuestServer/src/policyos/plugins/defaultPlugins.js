@@ -9,6 +9,83 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function asString(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function getByPath(target, field) {
+  if (!target || typeof target !== "object") {
+    return undefined;
+  }
+  const segments = String(field || "")
+    .split(".")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (segments.length === 0) {
+    return undefined;
+  }
+  let cursor = target;
+  for (const segment of segments) {
+    if (!cursor || typeof cursor !== "object") {
+      return undefined;
+    }
+    cursor = cursor[segment];
+  }
+  return cursor;
+}
+
+function resolveConditionField({ ctx, user, field }) {
+  const normalized = asString(field);
+  if (!normalized) {
+    return undefined;
+  }
+  const directContext = getByPath(ctx, normalized);
+  if (directContext !== undefined) {
+    return directContext;
+  }
+  const directUser = getByPath(user, normalized);
+  if (directUser !== undefined) {
+    return directUser;
+  }
+  const userScoped = getByPath(user, `wallet.${normalized}`);
+  if (userScoped !== undefined) {
+    return userScoped;
+  }
+  return undefined;
+}
+
+function evaluateCondition({ actual, op, expected }) {
+  const normalizedOp = asString(op).toLowerCase() || "eq";
+  if (normalizedOp === "neq") {
+    return actual !== expected;
+  }
+  if (normalizedOp === "gte") {
+    return toNumber(actual, Number.NEGATIVE_INFINITY) >= toNumber(expected, Number.POSITIVE_INFINITY);
+  }
+  if (normalizedOp === "gt") {
+    return toNumber(actual, Number.NEGATIVE_INFINITY) > toNumber(expected, Number.POSITIVE_INFINITY);
+  }
+  if (normalizedOp === "lte") {
+    return toNumber(actual, Number.POSITIVE_INFINITY) <= toNumber(expected, Number.NEGATIVE_INFINITY);
+  }
+  if (normalizedOp === "lt") {
+    return toNumber(actual, Number.POSITIVE_INFINITY) < toNumber(expected, Number.NEGATIVE_INFINITY);
+  }
+  if (normalizedOp === "includes") {
+    if (Array.isArray(actual)) {
+      return actual.includes(expected);
+    }
+    return String(actual || "").includes(String(expected || ""));
+  }
+  if (normalizedOp === "in") {
+    return Array.isArray(expected) ? expected.includes(actual) : false;
+  }
+  if (normalizedOp === "nin") {
+    return Array.isArray(expected) ? !expected.includes(actual) : true;
+  }
+  return actual === expected;
+}
+
 function registerDefaultPlugins({ pluginRegistry, db, ledgerService, now = () => Date.now() }) {
   if (!pluginRegistry) {
     throw new Error("pluginRegistry is required");
@@ -47,6 +124,39 @@ function registerDefaultPlugins({ pluginRegistry, db, ledgerService, now = () =>
       return {
         matched,
         reasonCodes: matched ? ["segment:tag_match"] : ["segment:tag_mismatch"]
+      };
+    }
+  });
+
+  pluginRegistry.register("segment", "legacy_condition_segment_v1", {
+    eval({ user, segment, ctx }) {
+      const params = segment && segment.params && typeof segment.params === "object" ? segment.params : {};
+      const conditions = Array.isArray(params.conditions)
+        ? params.conditions.filter((item) => item && typeof item === "object")
+        : [];
+      if (conditions.length === 0) {
+        return {
+          matched: true,
+          reasonCodes: ["segment:legacy_conditions_empty"]
+        };
+      }
+      const logic = String(params.logic || "AND").trim().toUpperCase();
+      const items = conditions.map((condition) => {
+        const actual = resolveConditionField({
+          ctx,
+          user,
+          field: condition.field
+        });
+        return evaluateCondition({
+          actual,
+          op: condition.op,
+          expected: condition.value
+        });
+      });
+      const matched = logic === "OR" ? items.some(Boolean) : items.every(Boolean);
+      return {
+        matched,
+        reasonCodes: matched ? ["segment:legacy_conditions_match"] : ["segment:legacy_conditions_mismatch"]
       };
     }
   });
@@ -367,6 +477,162 @@ function registerDefaultPlugins({ pluginRegistry, db, ledgerService, now = () =>
           }
         ],
         reasonCodes: ["action:wallet_grant_applied"]
+      };
+    }
+  });
+
+  pluginRegistry.register("action", "voucher_grant_v1", {
+    estimateCost({ action }) {
+      const voucher = action && action.params && action.params.voucher && typeof action.params.voucher === "object"
+        ? action.params.voucher
+        : {};
+      const fallbackCost = toNumber(voucher.value, 0);
+      const resolvedCost = Math.max(0, toNumber(action.params && action.params.cost, fallbackCost));
+      return {
+        cost: resolvedCost,
+        budgetCost: resolvedCost
+      };
+    },
+    execute({ ctx, action, traceId }) {
+      const user = ctx.user;
+      if (!user) {
+        return {
+          success: false,
+          reasonCodes: ["action:voucher_grant_missing_user"]
+        };
+      }
+      const params = action && action.params && typeof action.params === "object" ? action.params : {};
+      const voucher = params.voucher && typeof params.voucher === "object" ? params.voucher : {};
+      const expiresInSec = Math.max(60, Math.floor(toNumber(params.expires_in_sec, 7 * 24 * 60 * 60)));
+      const nowMs = now();
+      const voucherId =
+        asString(voucher.id) ||
+        `voucher_${String(ctx.policyId || "policy").replace(/[^a-zA-Z0-9_]/g, "_")}_${String(
+          ctx.eventId || "event"
+        ).replace(/[^a-zA-Z0-9_]/g, "_")}`;
+      const amount = Math.max(0, toNumber(params.cost, voucher.value));
+      if (!Array.isArray(user.vouchers)) {
+        user.vouchers = [];
+      }
+      const existed = user.vouchers.find((item) => item && item.id === voucherId);
+      if (!existed) {
+        user.vouchers.push({
+          id: voucherId,
+          type: asString(voucher.type) || "NO_THRESHOLD_VOUCHER",
+          name: asString(voucher.name) || "Policy Voucher",
+          value: Math.max(0, toNumber(voucher.value, 0)),
+          minSpend: Math.max(0, toNumber(voucher.minSpend, 0)),
+          discountRate: toNumber(voucher.discountRate, 0),
+          status: "ACTIVE",
+          expiresAt: new Date(nowMs + expiresInSec * 1000).toISOString()
+        });
+      }
+      const ledger = ledgerService.record({
+        merchantId: ctx.merchantId,
+        userId: user.uid,
+        type: "POLICYOS_ASSET_GRANT",
+        idempotencyKey: `${ctx.merchantId}|${ctx.eventId}|${ctx.policyId}|${action.plugin}|${voucherId}`,
+        entries: [
+          {
+            account: "marketing_expense",
+            direction: "DEBIT",
+            amount
+          },
+          {
+            account: "user_asset:voucher",
+            direction: "CREDIT",
+            amount
+          }
+        ],
+        metadata: {
+          traceId,
+          policyId: ctx.policyId,
+          voucherId,
+          source: "policyos"
+        }
+      });
+      return {
+        success: true,
+        ledgerTxnId: ledger.txnId,
+        vouchers: [
+          {
+            id: voucherId
+          }
+        ],
+        reasonCodes: ["action:voucher_grant_applied"]
+      };
+    }
+  });
+
+  pluginRegistry.register("action", "fragment_grant_v1", {
+    estimateCost({ action }) {
+      const amount = Math.max(0, toNumber(action && action.params && action.params.amount, 0));
+      const resolvedCost = Math.max(0, toNumber(action && action.params && action.params.cost, amount));
+      return {
+        cost: resolvedCost,
+        budgetCost: resolvedCost
+      };
+    },
+    execute({ ctx, action, traceId }) {
+      const user = ctx.user;
+      if (!user) {
+        return {
+          success: false,
+          reasonCodes: ["action:fragment_grant_missing_user"]
+        };
+      }
+      const params = action && action.params && typeof action.params === "object" ? action.params : {};
+      const fragmentType = asString(params.type) || "general";
+      const amount = Math.max(0, Math.floor(toNumber(params.amount, 0)));
+      if (amount <= 0) {
+        return {
+          success: false,
+          reasonCodes: ["action:fragment_grant_invalid_amount"]
+        };
+      }
+      const cost = Math.max(0, toNumber(params.cost, amount));
+      if (!user.fragments || typeof user.fragments !== "object") {
+        user.fragments = {};
+      }
+      user.fragments[fragmentType] = Math.max(
+        0,
+        Math.floor(toNumber(user.fragments[fragmentType], 0)) + amount
+      );
+      const ledger = ledgerService.record({
+        merchantId: ctx.merchantId,
+        userId: user.uid,
+        type: "POLICYOS_ASSET_GRANT",
+        idempotencyKey: `${ctx.merchantId}|${ctx.eventId}|${ctx.policyId}|${action.plugin}|${fragmentType}|${amount}`,
+        entries: [
+          {
+            account: "marketing_expense",
+            direction: "DEBIT",
+            amount: cost
+          },
+          {
+            account: `user_asset:fragment:${fragmentType}`,
+            direction: "CREDIT",
+            amount: cost
+          }
+        ],
+        metadata: {
+          traceId,
+          policyId: ctx.policyId,
+          fragmentType,
+          amount,
+          source: "policyos"
+        }
+      });
+      return {
+        success: true,
+        ledgerTxnId: ledger.txnId,
+        fragments: [
+          {
+            type: fragmentType,
+            amount
+          }
+        ],
+        reasonCodes: ["action:fragment_grant_applied"]
       };
     }
   });

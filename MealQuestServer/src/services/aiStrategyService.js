@@ -1,5 +1,5 @@
 const {
-  createCampaignFromTemplate,
+  createPolicySpecFromTemplate,
   listStrategyTemplates,
 } = require("./strategyLibrary");
 const { Annotation, StateGraph, START, END } = require("@langchain/langgraph");
@@ -149,30 +149,36 @@ function normalizeAiDecision({
     aiBranchId: decision.branchId,
     templates: resolvedTemplates,
   });
-  const mergedOverrides = mergePatch(decision.campaignPatch || {}, input.overrides || {});
-  const { campaign, template, branch } = createCampaignFromTemplate({
+  const mergedOverrides = mergePatch(
+    decision.policyPatch || decision.spec || {},
+    input.overrides || {}
+  );
+  const { spec, template, branch } = createPolicySpecFromTemplate({
     merchantId: input.merchantId,
     templateId: resolved.templateId,
     branchId: resolved.branchId,
-    overrides: mergedOverrides,
+    policyPatch: mergedOverrides,
   });
   const aiConfidence = Number(decision.confidence);
   const confidence = Number.isFinite(aiConfidence)
     ? Math.max(0, Math.min(1, aiConfidence))
     : null;
   const strategyMeta = {
-    ...campaign.strategyMeta,
+    templateId: template.templateId,
+    templateName: template.name,
+    branchId: branch.branchId,
+    branchName: branch.name,
+    category: template.category,
     source: "AI_MODEL",
     provider: provider.toUpperCase(),
     model: asString(model) || "unknown",
     rationale: asString(decision.rationale),
     confidence,
   };
-  campaign.strategyMeta = strategyMeta;
 
   return {
-    title: asString(decision.title) || `${template.name} - ${branch.name} - AI`,
-    campaign,
+    title: asString(decision.title) || spec.name || `${template.name} - ${branch.name} - AI`,
+    spec,
     template,
     branch,
     strategyMeta,
@@ -459,6 +465,7 @@ function buildChatPromptPayload({
     ? approvedStrategies.slice(0, 12).map((item) => ({
       proposalId: asString(item.proposalId),
       campaignId: asString(item.campaignId),
+      policyId: asString(item.policyId),
       title: truncateText(item.title || "", 120),
       templateId: asString(item.templateId),
       branchId: asString(item.branchId),
@@ -483,14 +490,20 @@ function buildChatPromptPayload({
     title: "string",
     rationale: "string",
     confidence: "number 0-1",
-    campaignPatch: {
+    policyPatch: {
       name: "string",
-      priority: "number",
-      trigger: { event: "string" },
-      conditions: [{ field: "string", op: "eq|neq|gte|lte|includes", value: "any" }],
-      budget: { cap: "number", used: "number", costPerHit: "number" },
-      ttlHours: "number",
-      action: { type: "GRANT_SILVER|GRANT_BONUS|GRANT_PRINCIPAL|GRANT_FRAGMENT|GRANT_VOUCHER|STORY_CARD|COMPOSITE" },
+      lane: "EMERGENCY|GUARDED|NORMAL|BACKGROUND",
+      triggers: [{ event: "string" }],
+      segment: {
+        plugin: "legacy_condition_segment_v1|tag_segment_v1|all_users_v1",
+        params: { conditions: [{ field: "string", op: "eq|neq|gte|lte|includes", value: "any" }] }
+      },
+      program: {
+        ttl_sec: "number",
+        pacing: { max_cost_per_minute: "number" }
+      },
+      actions: [{ plugin: "voucher_grant_v1|wallet_grant_v1|story_inject_v1|fragment_grant_v1", params: "object" }],
+      constraints: [{ plugin: "kill_switch_v1|budget_guard_v1|inventory_lock_v1|frequency_cap_v1|anti_fraud_hook_v1", params: "object" }]
     },
   };
 

@@ -25,12 +25,7 @@ const EVENT_META: Record<
     label: '发生退款',
     severity: 'warn',
     isAnomaly: true,
-  },
-  PROPOSAL_CONFIRMED: {
-    label: '策略确认',
-    severity: 'info',
-    isAnomaly: false,
-  },
+  },
   KILL_SWITCH_CHANGED: {
     label: '熔断变更',
     severity: 'warn',
@@ -45,12 +40,7 @@ const EVENT_META: Record<
     label: '活动状态变更',
     severity: 'warn',
     isAnomaly: true,
-  },
-  FIRE_SALE_CREATED: {
-    label: '紧急急售上线',
-    severity: 'warn',
-    isAnomaly: true,
-  },
+  },
   SYSTEM_WS_CONNECTED: {
     label: '实时连接',
     severity: 'info',

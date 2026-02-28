@@ -115,14 +115,19 @@ function createAppServer({
   const getServicesForDb = (scopedDb) => {
     let services = serviceCache.get(scopedDb);
     if (!services) {
+      const policyOsService = createPolicyOsService(scopedDb, { wsHub, metrics });
       services = {
         paymentService: createPaymentService(scopedDb, { paymentProvider }),
-        merchantService: createMerchantService(scopedDb, { aiStrategyService, wsHub }),
+        merchantService: createMerchantService(scopedDb, {
+          aiStrategyService,
+          policyOsService,
+          wsHub
+        }),
         allianceService: createAllianceService(scopedDb),
         invoiceService: createInvoiceService(scopedDb),
         privacyService: createPrivacyService(scopedDb),
         supplierService: createSupplierService(scopedDb),
-        policyOsService: createPolicyOsService(scopedDb, { wsHub, metrics })
+        policyOsService
       };
       serviceCache.set(scopedDb, services);
     }

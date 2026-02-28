@@ -137,12 +137,10 @@
 2. 服务端广播事件类型：
    - `PAYMENT_VERIFIED`
    - `PAYMENT_REFUNDED`
-   - `PROPOSAL_CONFIRMED`
    - `KILL_SWITCH_CHANGED`
    - `POLICYOS_DECISION`
    - `STRATEGY_CHAT_MESSAGE`
    - `CAMPAIGN_STATUS_CHANGED`
-   - `FIRE_SALE_CREATED`
 
 ## 5.2 支付与退款
 
@@ -162,17 +160,18 @@
 
 ## 5.3 策略与风控
 
-1. `POST /api/merchant/proposals/:id/confirm`
-2. `POST /api/merchant/kill-switch`
-3. `POST /api/policyos/decision/evaluate`
-4. `GET /api/merchant/tenant-policy?merchantId=`（仅 `OWNER`）
-5. `POST /api/merchant/tenant-policy`（仅 `OWNER`，可更新写冻结/实时开关/配额）
-6. `GET /api/merchant/migration/status?merchantId=`（仅 `OWNER`）
-7. `POST /api/merchant/migration/step`（仅 `OWNER`，执行冻结/解冻/编排标记）
-8. `POST /api/merchant/migration/cutover`（仅 `OWNER`，自动冻结->切库->恢复写入）
-9. `POST /api/merchant/strategy-chat/messages`（`MANAGER/OWNER`，按模板与分支生成待确认提案）
-10. `POST /api/merchant/campaigns/:id/status`（`MANAGER/OWNER`，策略启停/归档）
-11. `POST /api/merchant/fire-sale`（`MANAGER/OWNER`，创建 `Priority:999` 手动急售策略）
+1. `POST /api/merchant/strategy-chat/proposals/:id/review`
+2. `POST /api/merchant/strategy-chat/proposals/:id/simulate`
+3. `POST /api/merchant/strategy-chat/proposals/:id/publish`
+4. `POST /api/policyos/decision/simulate`
+5. `POST /api/policyos/decision/execute`
+6. `POST /api/merchant/kill-switch`
+7. `GET /api/merchant/tenant-policy?merchantId=`（仅 `OWNER`）
+7. `POST /api/merchant/tenant-policy`（仅 `OWNER`，可更新写冻结/实时开关/配额）
+8. `GET /api/merchant/migration/status?merchantId=`（仅 `OWNER`）
+9. `POST /api/merchant/migration/step`（仅 `OWNER`，执行冻结/解冻/编排标记）
+10. `POST /api/merchant/migration/cutover`（仅 `OWNER`，自动冻结->切库->恢复写入）
+11. `WS: STRATEGY_CHAT_SEND_MESSAGE`（`MANAGER/OWNER`，按模板与分支生成待确认提案）
 12. `POST /api/supplier/verify-order`（`CLERK+`，核验异业联盟订单真伪与门槛）
 13. `POST /api/merchant/alliance-config`（`OWNER`，配置多店连锁互通规则）
 14. `POST /api/merchant/alliance/sync-user`（`MANAGER/OWNER`，执行跨店用户资产同步）
@@ -219,9 +218,9 @@
 1. 报价
 2. 支付
 3. 退款
-4. 提案确认
+4. 提案审核（approve/reject）
 5. 天气触发策略执行
-6. RBAC：`CLERK` 禁止提案确认，`MANAGER` 可退款
+6. RBAC：`CLERK` 禁止提案审核，`MANAGER` 可退款
 7. WebSocket：支付事件推送与在线连接数状态（含跨商户 scope 拒绝）
 8. 持久化：重启后状态可恢复
 9. 多租户隔离：同 `userId` 在不同商户域数据互不影响，跨商户退款拒绝

@@ -12,11 +12,16 @@ import { Activity, History, Filter, ChevronDown, ChevronUp, Copy, AlertCircle } 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const AUDIT_ACTION_OPTIONS = [
-    { value: 'ALL', label: '全部动作' },
-    { value: 'PAYMENT_VERIFY', label: '支付' },
-    { value: 'PAYMENT_REFUND', label: '退款' },
-    { value: 'STRATEGY_PROPOSAL', label: '策略' },
-    { value: 'KILL_SWITCH', label: '熔断' },
+    { value: 'ALL', label: 'All actions' },
+    { value: 'PAYMENT_VERIFY', label: 'Payment verify' },
+    { value: 'PAYMENT_REFUND', label: 'Payment refund' },
+    { value: 'STRATEGY_CHAT_SIMULATE', label: 'Strategy simulate' },
+    { value: 'STRATEGY_CHAT_REVIEW', label: 'Strategy review' },
+    { value: 'STRATEGY_CHAT_PUBLISH', label: 'Strategy publish' },
+    { value: 'POLICY_PUBLISH', label: 'Policy publish' },
+    { value: 'POLICY_SIMULATE', label: 'Policy simulate' },
+    { value: 'POLICY_EXECUTE', label: 'Policy execute' },
+    { value: 'KILL_SWITCH_SET', label: 'Kill switch' },
 ] as const;
 
 const AUDIT_STATUS_OPTIONS = [

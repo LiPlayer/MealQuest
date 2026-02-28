@@ -10,11 +10,9 @@ const TENANT_LIMIT_OPERATIONS = [
   "PAYMENT_VERIFY",
   "PAYMENT_REFUND",
   "INVOICE_ISSUE",
-  "PROPOSAL_CONFIRM",
   "KILL_SWITCH_SET",
   "PRIVACY_CANCEL",
   "STRATEGY_CHAT_WRITE",
-  "CAMPAIGN_STATUS_SET",
   "SUPPLIER_VERIFY",
   "ALLIANCE_CONFIG_SET",
   "ALLIANCE_SYNC_USER",
@@ -24,7 +22,8 @@ const TENANT_LIMIT_OPERATIONS = [
   "POLICY_DRAFT_SUBMIT",
   "POLICY_DRAFT_APPROVE",
   "POLICY_PUBLISH",
-  "POLICY_EVALUATE",
+  "POLICY_SIMULATE",
+  "POLICY_EXECUTE",
   "WS_CONNECT",
   "WS_STATUS_QUERY"
 ];
@@ -138,17 +137,14 @@ function resolveAuditAction(method, pathname) {
   if (method === "POST" && pathname === "/api/merchant/kill-switch") {
     return "KILL_SWITCH_SET";
   }
-  if (method === "POST" && pathname === "/api/merchant/strategy-chat/sessions") {
-    return "STRATEGY_CHAT_SESSION_CREATE";
-  }
-  if (method === "POST" && pathname === "/api/merchant/strategy-chat/messages") {
-    return "STRATEGY_CHAT_MESSAGE";
-  }
   if (method === "POST" && /^\/api\/merchant\/strategy-chat\/proposals\/[^/]+\/review$/.test(pathname)) {
     return "STRATEGY_CHAT_REVIEW";
   }
-  if (method === "POST" && /^\/api\/merchant\/campaigns\/[^/]+\/status$/.test(pathname)) {
-    return "CAMPAIGN_STATUS_SET";
+  if (method === "POST" && /^\/api\/merchant\/strategy-chat\/proposals\/[^/]+\/simulate$/.test(pathname)) {
+    return "STRATEGY_CHAT_SIMULATE";
+  }
+  if (method === "POST" && /^\/api\/merchant\/strategy-chat\/proposals\/[^/]+\/publish$/.test(pathname)) {
+    return "STRATEGY_CHAT_PUBLISH";
   }
   if (method === "POST" && pathname === "/api/supplier/verify-order") {
     return "SUPPLIER_VERIFY";
@@ -171,9 +167,6 @@ function resolveAuditAction(method, pathname) {
   if (method === "POST" && pathname === "/api/merchant/migration/cutover") {
     return "MIGRATION_CUTOVER";
   }
-  if (method === "POST" && /^\/api\/merchant\/proposals\/[^/]+\/confirm$/.test(pathname)) {
-    return "PROPOSAL_CONFIRM";
-  }
   if (method === "POST" && pathname === "/api/policyos/drafts") {
     return "POLICY_DRAFT_CREATE";
   }
@@ -186,8 +179,14 @@ function resolveAuditAction(method, pathname) {
   if (method === "POST" && /^\/api\/policyos\/drafts\/[^/]+\/publish$/.test(pathname)) {
     return "POLICY_PUBLISH";
   }
-  if (method === "POST" && pathname === "/api/policyos/decision/evaluate") {
-    return "POLICY_EVALUATE";
+  if (method === "POST" && pathname === "/api/policyos/decision/simulate") {
+    return "POLICY_SIMULATE";
+  }
+  if (
+    method === "POST" &&
+    (pathname === "/api/policyos/decision/execute" || pathname === "/api/policyos/decision/evaluate")
+  ) {
+    return "POLICY_EXECUTE";
   }
   return null;
 }
@@ -335,7 +334,14 @@ function buildMerchantSnapshotSummary(db, merchantId) {
   const users = (db.merchantUsers && db.merchantUsers[merchantId]) || {};
   const payments = (db.paymentsByMerchant && db.paymentsByMerchant[merchantId]) || {};
   const invoices = (db.invoicesByMerchant && db.invoicesByMerchant[merchantId]) || {};
-  const campaigns = (db.campaigns || []).filter((item) => item.merchantId === merchantId);
+  const policyOs = db.policyOs && typeof db.policyOs === "object" ? db.policyOs : {};
+  const activePolicies = Object.values(policyOs.policies || {}).filter(
+    (item) =>
+      item &&
+      item.resource_scope &&
+      item.resource_scope.merchant_id === merchantId &&
+      item.status === "PUBLISHED"
+  );
   const proposals = (db.proposals || []).filter((item) => item.merchantId === merchantId);
   const strategyConfigs =
     (db.strategyConfigs &&
@@ -365,7 +371,6 @@ function buildMerchantSnapshotSummary(db, merchantId) {
       db.socialAuth.customerPhoneBindingsByMerchant &&
       db.socialAuth.customerPhoneBindingsByMerchant[merchantId]) ||
     {};
-  const policyOs = db.policyOs && typeof db.policyOs === "object" ? db.policyOs : {};
   const policyDraftCount = Object.values(policyOs.drafts || {}).filter(
     (item) => item && item.merchant_id === merchantId
   ).length;
@@ -387,7 +392,7 @@ function buildMerchantSnapshotSummary(db, merchantId) {
     usersCount: Object.keys(users).length,
     paymentsCount: Object.keys(payments).length,
     invoicesCount: Object.keys(invoices).length,
-    campaignsCount: campaigns.length,
+    campaignsCount: activePolicies.length,
     proposalsCount: proposals.length,
     strategyConfigCount: strategyConfigs.length,
     strategyChatSessionsCount,

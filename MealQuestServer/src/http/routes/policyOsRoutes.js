@@ -10,6 +10,15 @@ function createPolicyOsRoutesHandler({
   getServicesForMerchant,
   appendAuditLog
 }) {
+  function readApprovalId(req, body = {}) {
+    return (
+      (req.headers && req.headers["x-approval-id"]) ||
+      body.approvalId ||
+      body.approval_id ||
+      ""
+    );
+  }
+
   function readApprovalToken(req, body = {}) {
     return (
       (req.headers && req.headers["x-approval-token"]) ||
@@ -62,7 +71,7 @@ function createPolicyOsRoutesHandler({
         !enforceTenantPolicyForHttp({
           tenantPolicyManager,
           merchantId,
-          operation: "PROPOSAL_CONFIRM",
+          operation: "POLICY_DRAFT_CREATE",
           res,
           auth,
           appendAuditLog
@@ -116,7 +125,7 @@ function createPolicyOsRoutesHandler({
         !enforceTenantPolicyForHttp({
           tenantPolicyManager,
           merchantId,
-          operation: "PROPOSAL_CONFIRM",
+          operation: "POLICY_DRAFT_SUBMIT",
           res,
           auth,
           appendAuditLog
@@ -153,7 +162,7 @@ function createPolicyOsRoutesHandler({
         !enforceTenantPolicyForHttp({
           tenantPolicyManager,
           merchantId,
-          operation: "PROPOSAL_CONFIRM",
+          operation: "POLICY_DRAFT_APPROVE",
           res,
           auth,
           appendAuditLog
@@ -192,7 +201,7 @@ function createPolicyOsRoutesHandler({
         !enforceTenantPolicyForHttp({
           tenantPolicyManager,
           merchantId,
-          operation: "PROPOSAL_CONFIRM",
+          operation: "POLICY_PUBLISH",
           res,
           auth,
           appendAuditLog
@@ -206,6 +215,7 @@ function createPolicyOsRoutesHandler({
         merchantId,
         draftId,
         operatorId: auth.operatorId || auth.userId || "system",
+        approvalId: readApprovalId(req, body),
         approvalToken
       });
       appendAuditLog({
@@ -234,7 +244,7 @@ function createPolicyOsRoutesHandler({
       return true;
     }
 
-    if (method === "POST" && url.pathname === "/api/policyos/decision/evaluate") {
+    if (method === "POST" && url.pathname === "/api/policyos/decision/simulate") {
       ensureRole(auth, ["MANAGER", "OWNER"]);
       const body = await readJsonBody(req);
       const merchantId = auth.merchantId || body.merchantId;
@@ -242,7 +252,7 @@ function createPolicyOsRoutesHandler({
         !enforceTenantPolicyForHttp({
           tenantPolicyManager,
           merchantId,
-          operation: "POLICY_EVALUATE",
+          operation: "POLICY_SIMULATE",
           res,
           auth,
           appendAuditLog
@@ -251,17 +261,59 @@ function createPolicyOsRoutesHandler({
         return true;
       }
       const { policyOsService } = getServicesForMerchant(merchantId);
-      const result = await policyOsService.evaluateDecision({
+      const result = await policyOsService.simulateDecision({
         merchantId,
         userId: body.userId,
         event: body.event,
         eventId: body.eventId || "",
         context: body.context || {},
-        approvalToken: readApprovalToken(req, body)
+        draftId: body.draftId || body.draft_id || ""
       });
       appendAuditLog({
         merchantId,
-        action: "POLICY_EVALUATE",
+        action: "POLICY_SIMULATE",
+        status: "SUCCESS",
+        auth,
+        details: {
+          decisionId: result.decision_id,
+          selected: Array.isArray(result.selected) ? result.selected.length : 0,
+          rejected: Array.isArray(result.rejected) ? result.rejected.length : 0
+        }
+      });
+      sendJson(res, 200, result);
+      return true;
+    }
+
+    if (
+      method === "POST" &&
+      (url.pathname === "/api/policyos/decision/execute" || url.pathname === "/api/policyos/decision/evaluate")
+    ) {
+      ensureRole(auth, ["MANAGER", "OWNER"]);
+      const body = await readJsonBody(req);
+      const merchantId = auth.merchantId || body.merchantId;
+      if (
+        !enforceTenantPolicyForHttp({
+          tenantPolicyManager,
+          merchantId,
+          operation: "POLICY_EXECUTE",
+          res,
+          auth,
+          appendAuditLog
+        })
+      ) {
+        return true;
+      }
+      const { policyOsService } = getServicesForMerchant(merchantId);
+      const result = await policyOsService.executeDecision({
+        merchantId,
+        userId: body.userId,
+        event: body.event,
+        eventId: body.eventId || "",
+        context: body.context || {}
+      });
+      appendAuditLog({
+        merchantId,
+        action: "POLICY_EXECUTE",
         status: "SUCCESS",
         auth,
         details: {

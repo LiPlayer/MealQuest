@@ -1,4 +1,4 @@
-const test = require("node:test");
+﻿const test = require("node:test");
 const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
 const http = require("node:http");
@@ -6,6 +6,7 @@ const http = require("node:http");
 const { createAppServer: createAppServerInternal } = require("../src/http/server");
 const { issueToken } = require("../src/core/auth");
 const { createInMemoryDb } = require("../src/store/inMemoryDb");
+const { createPolicySpecFromTemplate } = require("../src/services/strategyLibrary");
 
 const TEST_JWT_SECRET = process.env.MQ_JWT_SECRET || "mealquest-dev-secret";
 const activeApps = new Set();
@@ -85,10 +86,10 @@ function seedLegacyTestUsers(db) {
     updatedAt: nowIso,
   });
 
-  if (!strategyConfigs.activation_contextual_drop) {
-    strategyConfigs.activation_contextual_drop = {
-      templateId: "activation_contextual_drop",
-      branchId: "COMFORT",
+  if (!strategyConfigs.acquisition_welcome_gift) {
+    strategyConfigs.acquisition_welcome_gift = {
+      templateId: "acquisition_welcome_gift",
+      branchId: "DEFAULT",
       status: "ACTIVE",
       lastProposalId: "proposal_rainy",
       lastCampaignId: "campaign_rainy_hot_soup",
@@ -124,32 +125,77 @@ function seedLegacyTestUsers(db) {
     db.proposals = [];
   }
   if (!db.proposals.find((item) => item && item.id === "proposal_rainy")) {
+    const { spec: rainySpec } = createPolicySpecFromTemplate({
+      merchantId: "m_store_001",
+      templateId: "acquisition_welcome_gift",
+      branchId: "DEFAULT",
+      policyPatch: {
+        name: "Rainy Day Promotion",
+        triggers: [
+          {
+            plugin: "event_trigger_v1",
+            event: "WEATHER_CHANGE",
+            params: {}
+          }
+        ],
+        segment: {
+          plugin: "legacy_condition_segment_v1",
+          params: {
+            logic: "AND",
+            conditions: [{ field: "weather", op: "eq", value: "RAIN" }]
+          }
+        },
+        constraints: [
+          {
+            plugin: "kill_switch_v1",
+            params: {}
+          },
+          {
+            plugin: "budget_guard_v1",
+            params: {
+              cap: 60,
+              cost_per_hit: 12
+            }
+          },
+          {
+            plugin: "frequency_cap_v1",
+            params: {
+              daily: 1,
+              window_sec: 24 * 60 * 60
+            }
+          },
+          {
+            plugin: "anti_fraud_hook_v1",
+            params: {
+              max_risk_score: 0.75
+            }
+          }
+        ]
+      }
+    });
     db.proposals.push({
       id: "proposal_rainy",
       merchantId: "m_store_001",
       status: "PENDING",
       title: "Rainy Day Promotion",
       createdAt: nowIso,
-      suggestedCampaign: {
-        id: "campaign_rainy_hot_soup",
-        merchantId: "m_store_001",
-        name: "Rainy Hot Soup Campaign",
-        status: "ACTIVE",
-        priority: 90,
-        trigger: { event: "WEATHER_CHANGE" },
-        conditions: [{ field: "weather", op: "eq", value: "RAIN" }],
-        budget: { used: 0, cap: 60, costPerHit: 12 },
-        action: {
-          type: "STORY_CARD",
-          story: {
-            templateId: "tpl_rain",
-            narrative: "A warm soup for rainy days.",
-            assets: [{ kind: "voucher", id: "voucher_hot_soup" }],
-            triggers: ["tap_pay"],
-          },
-        },
-        ttlUntil: new Date(now.getTime() + 4 * 60 * 60 * 1000).toISOString(),
+      strategyMeta: {
+        templateId: "acquisition_welcome_gift",
+        templateName: "New User Welcome Gift",
+        category: "ACQUISITION",
+        phase: "P1",
+        branchId: "DEFAULT",
+        branchName: "Standard Welcome",
+        source: "FIXTURE"
       },
+      suggestedPolicySpec: rainySpec,
+      policyWorkflow: {
+        draftId: null,
+        policyId: null,
+        approvalId: null,
+        status: "DRAFT",
+        publishedAt: null
+      }
     });
   }
 
@@ -521,11 +567,8 @@ function pickAiDecision(payload) {
     intent.includes("temperature") ||
     intent.includes("weather");
 
-  const templateId =
-    requestedTemplate || (isCoolingIntent ? "activation_contextual_drop" : "activation_member_day");
-  const branchId =
-    requestedBranch ||
-    (templateId === "activation_contextual_drop" ? "COOLING" : "ASSET_BOOM");
+  const templateId = requestedTemplate || "acquisition_welcome_gift";
+  const branchId = requestedBranch || (isCoolingIntent ? "CHANNEL" : "DEFAULT");
 
   return {
     templateId,
@@ -533,14 +576,21 @@ function pickAiDecision(payload) {
     title: "AI Strategy Proposal",
     rationale: "Mock AI response for integration testing.",
     confidence: 0.86,
-    campaignPatch: {
+    policyPatch: {
       name: "AI Strategy Draft",
-      priority: 82,
-      budget: {
-        cap: 180,
-        used: 0,
-        costPerHit: 9,
-      },
+      lane: "GUARDED",
+      constraints: [
+        { plugin: "kill_switch_v1", params: {} },
+        {
+          plugin: "budget_guard_v1",
+          params: {
+            cap: 180,
+            cost_per_hit: 9,
+          },
+        },
+        { plugin: "frequency_cap_v1", params: { daily: 1, window_sec: 86400 } },
+        { plugin: "anti_fraud_hook_v1", params: { max_risk_score: 0.75 } },
+      ],
     },
   };
 }
@@ -571,26 +621,33 @@ function pickAiChatDecision(payload) {
     };
   }
 
-  const proposalBranch = approvedCount > 0 ? "COMFORT" : "COOLING";
+  const proposalBranch = approvedCount > 0 ? "CHANNEL" : "DEFAULT";
   const proposalTitle = approvedCount > 0 ? "Second Wave Strategy" : "First Wave Strategy";
 
   return {
     mode: "PROPOSAL",
     assistantMessage: "I drafted a strategy proposal card. Please approve or reject now.",
     proposal: {
-      templateId: "activation_contextual_drop",
+      templateId: "acquisition_welcome_gift",
       branchId: proposalBranch,
       title: proposalTitle,
       rationale: "Mock chat strategy proposal.",
       confidence: 0.81,
-      campaignPatch: {
+      policyPatch: {
         name: proposalTitle,
-        priority: wantsExtreme ? 999 : approvedCount > 0 ? 84 : 82,
-        budget: {
-          cap: wantsExtreme ? 9999 : approvedCount > 0 ? 140 : 120,
-          used: 0,
-          costPerHit: wantsExtreme ? 500 : 10,
-        },
+        lane: wantsExtreme ? "EMERGENCY" : approvedCount > 0 ? "GUARDED" : "NORMAL",
+        constraints: [
+          { plugin: "kill_switch_v1", params: {} },
+          {
+            plugin: "budget_guard_v1",
+            params: {
+              cap: wantsExtreme ? 9999 : approvedCount > 0 ? 140 : 120,
+              cost_per_hit: wantsExtreme ? 500 : 10,
+            },
+          },
+          { plugin: "frequency_cap_v1", params: { daily: 1, window_sec: 86400 } },
+          { plugin: "anti_fraud_hook_v1", params: { max_risk_score: 0.75 } },
+        ],
       },
     },
   };
@@ -760,8 +817,8 @@ test("rbac: clerk cannot confirm proposal, manager can refund", async () => {
 
     const confirmByClerk = await postJson(
       baseUrl,
-      "/api/merchant/proposals/proposal_rainy/confirm",
-      { merchantId: "m_store_001" },
+      "/api/merchant/strategy-chat/proposals/proposal_rainy/review",
+      { merchantId: "m_store_001", decision: "APPROVE" },
       { Authorization: `Bearer ${clerkToken}` }
     );
     assert.equal(confirmByClerk.status, 403);
@@ -1658,8 +1715,8 @@ test("audit log records success and denied high-risk operations", async () => {
 
     const deniedConfirm = await postJson(
       baseUrl,
-      "/api/merchant/proposals/proposal_rainy/confirm",
-      { merchantId: "m_store_001" },
+      "/api/merchant/strategy-chat/proposals/proposal_rainy/review",
+      { merchantId: "m_store_001", decision: "APPROVE" },
       { Authorization: `Bearer ${clerkToken}` }
     );
     assert.equal(deniedConfirm.status, 403);
@@ -1674,7 +1731,7 @@ test("audit log records success and denied high-risk operations", async () => {
 
     const logs = app.db.auditLogs.filter((item) => item.merchantId === "m_store_001");
     assert.ok(logs.some((item) => item.action === "PAYMENT_VERIFY" && item.status === "SUCCESS"));
-    assert.ok(logs.some((item) => item.action === "PROPOSAL_CONFIRM" && item.status === "DENIED"));
+    assert.ok(logs.some((item) => item.action === "STRATEGY_CHAT_REVIEW" && item.status === "DENIED"));
     assert.ok(logs.some((item) => item.action === "KILL_SWITCH_SET" && item.status === "SUCCESS"));
   } finally {
     await app.stop();
@@ -1702,8 +1759,8 @@ test("audit log endpoint supports pagination and denies customer access", async 
     );
     await postJson(
       baseUrl,
-      "/api/merchant/proposals/proposal_rainy/confirm",
-      { merchantId: "m_store_001" },
+      "/api/merchant/strategy-chat/proposals/proposal_rainy/review",
+      { merchantId: "m_store_001", decision: "APPROVE" },
       { Authorization: `Bearer ${clerkToken}` }
     );
     await postJson(

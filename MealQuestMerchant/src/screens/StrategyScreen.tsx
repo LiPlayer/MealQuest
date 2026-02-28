@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect } from 'react';
 import {
     KeyboardAvoidingView,
     Platform,
@@ -13,7 +13,6 @@ import { useMerchant } from '../context/MerchantContext';
 import { SectionCard } from '../components/SectionCard';
 import { MessageSquare, Send, Check, X, Info, AlertCircle, Loader2 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { StrategyChatMessage } from '../services/merchantApi/types';
 
 const RichText = ({ text, style, isStreaming }: { text: string; style?: object; isStreaming?: boolean }) => {
     if (!text && !isStreaming) return null;
@@ -43,17 +42,24 @@ const RichText = ({ text, style, isStreaming }: { text: string; style?: object; 
 
 export default function StrategyScreen() {
     const {
+        merchantState,
         aiIntentDraft,
         setAiIntentDraft,
         aiIntentSubmitting,
+        onTriggerProactiveScan,
         onCreateIntentProposal,
         onRetryMessage,
         strategyChatMessages,
         strategyChatPendingReview,
+        strategyChatSimulation,
+        onSimulatePendingStrategy,
         onReviewPendingStrategy,
+        onPublishApprovedProposal,
         totalReviewCount,
         currentReviewIndex,
         pendingReviewCount,
+        customerUserId,
+        setCustomerUserId,
     } = useMerchant();
 
     const scrollViewRef = useRef<ScrollView>(null);
@@ -90,6 +96,9 @@ export default function StrategyScreen() {
                                 描述营销目标，AI 为您实时生成策略
                             </Text>
                         </View>
+                        <Pressable testID="ai-proactive-scan" style={styles.proactiveBtn} onPress={onTriggerProactiveScan}>
+                            <Text style={styles.proactiveBtnText}>主动巡检</Text>
+                        </Pressable>
                     </View>
                 </View>
 
@@ -156,14 +165,46 @@ export default function StrategyScreen() {
                                         <Text style={styles.metaValue}>{currentReviewIndex} / {totalReviewCount}</Text>
                                     </View>
 
+                                    <View style={styles.executeInputWrap}>
+                                        <Text style={styles.executeInputLabel}>User ID for simulation (optional)</Text>
+                                        <TextInput
+                                            testID="strategy-review-user-id-input"
+                                            value={customerUserId}
+                                            onChangeText={setCustomerUserId}
+                                            placeholder="u_xxx"
+                                            style={styles.executeInput}
+                                        />
+                                    </View>
+                                    {strategyChatSimulation ? (
+                                        <View style={styles.simulationSummary}>
+                                            <Text style={styles.simulationTitle}>Simulation Summary</Text>
+                                            <Text style={styles.simulationText}>
+                                                Selected {Array.isArray(strategyChatSimulation.selected) ? strategyChatSimulation.selected.length : 0},
+                                                Rejected {Array.isArray(strategyChatSimulation.rejected) ? strategyChatSimulation.rejected.length : 0},
+                                                Mode {String(strategyChatSimulation.mode || 'SIMULATE')}
+                                            </Text>
+                                        </View>
+                                    ) : (
+                                        <Text style={styles.simulationHint}>Run simulation before approve.</Text>
+                                    )}
+
                                     <View style={styles.actionRow}>
                                         <Pressable
+                                            testID="ai-review-simulate"
+                                            style={[styles.opButton, styles.simulateBtn]}
+                                            onPress={onSimulatePendingStrategy}
+                                        >
+                                            <Loader2 size={18} color="#ffffff" />
+                                            <Text style={styles.opButtonText}>Simulate</Text>
+                                        </Pressable>
+                                        <Pressable
                                             testID="ai-review-approve"
-                                            style={[styles.opButton, styles.approveBtn]}
+                                            style={[styles.opButton, styles.approveBtn, !strategyChatSimulation && styles.disabledOpButton]}
                                             onPress={() => onReviewPendingStrategy('APPROVE')}
+                                            disabled={!strategyChatSimulation}
                                         >
                                             <Check size={18} color="#ffffff" />
-                                            <Text style={styles.opButtonText}>确认执行</Text>
+                                            <Text style={styles.opButtonText}>Approve</Text>
                                         </Pressable>
                                         <Pressable
                                             testID="ai-review-reject"
@@ -171,10 +212,32 @@ export default function StrategyScreen() {
                                             onPress={() => onReviewPendingStrategy('REJECT')}
                                         >
                                             <X size={18} color="#ffffff" />
-                                            <Text style={styles.opButtonText}>拒绝</Text>
+                                            <Text style={styles.opButtonText}>Reject</Text>
                                         </Pressable>
                                     </View>
                                 </View>
+                            </SectionCard>
+                        </View>
+                    )}
+
+                    {merchantState.approvedPendingPublish.length > 0 && (
+                        <View style={styles.proposalContainer}>
+                            <SectionCard title="Approved - Ready to Publish">
+                                {merchantState.approvedPendingPublish.map(item => (
+                                    <View key={item.id} style={styles.approvedRow}>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.proposalTitle}>{item.title}</Text>
+                                            <Text style={styles.approvedMeta}>Proposal: {item.id}</Text>
+                                        </View>
+                                        <Pressable
+                                            testID={`ai-publish-${item.id}`}
+                                            style={[styles.opButton, styles.publishBtn]}
+                                            onPress={() => onPublishApprovedProposal(item.id)}
+                                        >
+                                            <Text style={styles.opButtonText}>Publish</Text>
+                                        </Pressable>
+                                    </View>
+                                ))}
                             </SectionCard>
                         </View>
                     )}
@@ -235,6 +298,17 @@ const styles = StyleSheet.create({
     },
     headerText: {
         flex: 1,
+    },
+    proactiveBtn: {
+        backgroundColor: '#0f766e',
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 10,
+    },
+    proactiveBtnText: {
+        color: '#ffffff',
+        fontSize: 12,
+        fontWeight: '700',
     },
     headerTitle: {
         fontSize: 16,
@@ -368,6 +442,48 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         color: '#1e293b',
     },
+    executeInputWrap: {
+        gap: 6,
+    },
+    executeInputLabel: {
+        fontSize: 12,
+        color: '#64748b',
+        fontWeight: '600',
+    },
+    executeInput: {
+        borderWidth: 1,
+        borderColor: '#e2e8f0',
+        borderRadius: 10,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        fontSize: 13,
+        color: '#0f172a',
+        backgroundColor: '#f8fafc',
+    },
+    simulationSummary: {
+        backgroundColor: '#eef2ff',
+        borderWidth: 1,
+        borderColor: '#c7d2fe',
+        borderRadius: 10,
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        gap: 4,
+    },
+    simulationTitle: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: '#3730a3',
+    },
+    simulationText: {
+        fontSize: 12,
+        color: '#1e1b4b',
+        lineHeight: 18,
+    },
+    simulationHint: {
+        fontSize: 12,
+        color: '#64748b',
+        fontStyle: 'italic',
+    },
     actionRow: {
         flexDirection: 'row',
         gap: 12,
@@ -382,16 +498,40 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         gap: 6,
     },
+    simulateBtn: {
+        backgroundColor: '#2563eb',
+    },
     approveBtn: {
         backgroundColor: '#059669',
     },
     rejectBtn: {
         backgroundColor: '#ef4444',
     },
+    publishBtn: {
+        backgroundColor: '#7c3aed',
+        flex: 0,
+        paddingHorizontal: 14,
+    },
+    disabledOpButton: {
+        opacity: 0.45,
+    },
     opButtonText: {
         color: '#ffffff',
         fontWeight: '700',
         fontSize: 13,
+    },
+    approvedRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        paddingVertical: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: '#e2e8f0',
+    },
+    approvedMeta: {
+        marginTop: 2,
+        fontSize: 12,
+        color: '#64748b',
     },
     inputArea: {
         backgroundColor: 'transparent',

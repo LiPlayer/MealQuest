@@ -1,9 +1,6 @@
-const {
-  findTemplate
-} = require("./strategyLibrary");
-
 function createMerchantService(db, options = {}) {
   const aiStrategyService = options.aiStrategyService;
+  const policyOsService = options.policyOsService;
   const wsHub = options.wsHub;
   console.log(`[merchant-service] Initializing: wsHub=${Boolean(wsHub)}`);
   const fromFreshState = Boolean(options.__fromFreshState);
@@ -47,6 +44,7 @@ function createMerchantService(db, options = {}) {
     return db.runWithFreshState(async (workingDb) => {
       const scopedService = createMerchantService(workingDb, {
         aiStrategyService,
+        policyOsService,
         wsHub,
         __fromFreshState: true
       });
@@ -61,6 +59,7 @@ function createMerchantService(db, options = {}) {
     return db.runWithFreshRead(async (workingDb) => {
       const scopedService = createMerchantService(workingDb, {
         aiStrategyService,
+        policyOsService,
         wsHub,
         __fromFreshState: true
       });
@@ -75,6 +74,56 @@ function createMerchantService(db, options = {}) {
 
   function roundMoney(value) {
     return Math.round(toFiniteNumber(value) * 100) / 100;
+  }
+
+  function laneToPriority(lane) {
+    const normalized = String(lane || "").trim().toUpperCase();
+    if (normalized === "EMERGENCY") {
+      return 100;
+    }
+    if (normalized === "GUARDED") {
+      return 85;
+    }
+    if (normalized === "NORMAL") {
+      return 60;
+    }
+    return 40;
+  }
+
+  function getPrimaryTriggerEvent(spec) {
+    if (!spec || !Array.isArray(spec.triggers) || spec.triggers.length === 0) {
+      return null;
+    }
+    const first = spec.triggers[0] || {};
+    const event = String(first.event || (first.params && first.params.event) || "")
+      .trim()
+      .toUpperCase();
+    return event || null;
+  }
+
+  function getBudgetConstraint(spec) {
+    const constraints = Array.isArray(spec && spec.constraints) ? spec.constraints : [];
+    return (
+      constraints.find(
+        (item) =>
+          item &&
+          item.plugin === "budget_guard_v1" &&
+          item.params &&
+          typeof item.params === "object"
+      ) || null
+    );
+  }
+
+  function summarizePolicyBudget(spec) {
+    const budgetConstraint = getBudgetConstraint(spec);
+    if (!budgetConstraint) {
+      return null;
+    }
+    const params = budgetConstraint.params || {};
+    return {
+      cap: Number(params.cap) || 0,
+      costPerHit: Number(params.cost_per_hit) || 0
+    };
   }
 
   function createSalesAggregate() {
@@ -592,17 +641,23 @@ function createMerchantService(db, options = {}) {
       return null;
     }
     const meta = proposal.strategyMeta || {};
-    const campaign = proposal.suggestedCampaign || {};
+    const policyWorkflow = proposal.policyWorkflow || {};
+    const policySpec = proposal.suggestedPolicySpec || {};
+    const budget = summarizePolicyBudget(policySpec);
+    const triggerEvent = getPrimaryTriggerEvent(policySpec);
     return {
       proposalId: proposal.id,
       status: proposal.status,
       title: proposal.title,
       templateId: meta.templateId || null,
       branchId: meta.branchId || null,
-      campaignId: campaign.id || null,
-      campaignName: campaign.name || null,
-      triggerEvent: campaign.trigger && campaign.trigger.event ? campaign.trigger.event : null,
-      budget: campaign.budget || null,
+      campaignId: policyWorkflow.policyId || null,
+      campaignName: policySpec.name || proposal.title || null,
+      triggerEvent,
+      budget,
+      policyDraftId: policyWorkflow.draftId || null,
+      policyId: policyWorkflow.policyId || null,
+      policyKey: policySpec.policy_key || null,
       createdAt: proposal.createdAt || null
     };
   }
@@ -611,13 +666,10 @@ function createMerchantService(db, options = {}) {
     if (!candidate || typeof candidate !== "object") {
       return null;
     }
+    const spec = candidate.spec && typeof candidate.spec === "object" ? candidate.spec : {};
     const strategyMeta =
       candidate.strategyMeta && typeof candidate.strategyMeta === "object"
         ? candidate.strategyMeta
-        : {};
-    const campaign =
-      candidate.campaign && typeof candidate.campaign === "object"
-        ? candidate.campaign
         : {};
     return {
       title: String(candidate.title || "").trim(),
@@ -627,16 +679,9 @@ function createMerchantService(db, options = {}) {
         Number.isFinite(Number(strategyMeta.confidence))
           ? Number(strategyMeta.confidence)
           : null,
-      campaignName: campaign.name || null,
-      priority: Number.isFinite(Number(campaign.priority))
-        ? Number(campaign.priority)
-        : null,
-      triggerEvent:
-        campaign.trigger &&
-          typeof campaign.trigger === "object" &&
-          campaign.trigger.event
-          ? campaign.trigger.event
-          : null,
+      campaignName: String(spec.name || "").trim() || null,
+      priority: laneToPriority(spec.lane),
+      triggerEvent: getPrimaryTriggerEvent(spec),
     };
   }
 
@@ -712,10 +757,14 @@ function createMerchantService(db, options = {}) {
       return [];
     }
     const allowedActions = new Set([
-      "PROPOSAL_CONFIRM",
       "STRATEGY_CHAT_REVIEW",
       "STRATEGY_CHAT_MESSAGE",
-      "CAMPAIGN_STATUS_SET"
+      "POLICY_DRAFT_CREATE",
+      "POLICY_DRAFT_SUBMIT",
+      "POLICY_DRAFT_APPROVE",
+      "POLICY_PUBLISH",
+      "POLICY_SIMULATE",
+      "POLICY_EXECUTE"
     ]);
     return db.auditLogs
       .filter(
@@ -764,7 +813,12 @@ function createMerchantService(db, options = {}) {
       .slice(-MAX_APPROVED_STRATEGY_CONTEXT)
       .map((item) => ({
         proposalId: item.id,
-        campaignId: item.suggestedCampaign && item.suggestedCampaign.id,
+        campaignId:
+          (item.policyWorkflow && item.policyWorkflow.policyId) ||
+          null,
+        policyId:
+          (item.policyWorkflow && item.policyWorkflow.policyId) ||
+          null,
         title: item.title,
         templateId: item.strategyMeta && item.strategyMeta.templateId,
         branchId: item.strategyMeta && item.strategyMeta.branchId,
@@ -773,16 +827,22 @@ function createMerchantService(db, options = {}) {
   }
 
   function getActiveCampaignContext(merchantId) {
-    return db.campaigns
-      .filter((item) => item.merchantId === merchantId && item.status === "ACTIVE")
-      .slice(-MAX_ACTIVE_CAMPAIGN_CONTEXT)
-      .map((item) => ({
-        id: item.id,
-        name: item.name,
-        status: item.status,
-        trigger: item.trigger || null,
-        priority: item.priority || 0
-      }));
+    if (policyOsService && typeof policyOsService.listActivePolicies === "function") {
+      const activePolicies = policyOsService.listActivePolicies({ merchantId });
+      return (Array.isArray(activePolicies) ? activePolicies : [])
+        .slice(-MAX_ACTIVE_CAMPAIGN_CONTEXT)
+        .map((item) => ({
+          id: item.policy_id,
+          name: item.name,
+          status: item.status,
+          trigger:
+            Array.isArray(item.triggers) && item.triggers[0] && item.triggers[0].event
+              ? { event: item.triggers[0].event }
+              : null,
+          priority: laneToPriority(item.lane)
+        }));
+    }
+    return [];
   }
 
   function resolveStrategyChatSession({ merchantId, sessionId, autoCreate = true, operatorId = "system" }) {
@@ -877,9 +937,16 @@ function createMerchantService(db, options = {}) {
     if (!merchant) {
       throw new Error("merchant not found");
     }
+    if (!policyOsService || typeof policyOsService.createDraft !== "function") {
+      return {
+        status: "BLOCKED",
+        reasons: ["policy os service is not configured"],
+        blocked: [{ title: "candidate", reasons: ["policy os service is not configured"] }]
+      };
+    }
 
-    const { campaign, template, branch, strategyMeta } = aiResult || {};
-    if (!campaign || !template || !branch) {
+    const { spec, template, branch, strategyMeta } = aiResult || {};
+    if (!spec || !template || !branch) {
       return {
         status: "BLOCKED",
         reasons: ["invalid candidate payload"],
@@ -887,7 +954,7 @@ function createMerchantService(db, options = {}) {
       };
     }
 
-    const risk = evaluateCampaignRisk({ campaign, merchant });
+    const risk = evaluatePolicySpecRisk({ spec, merchant });
     if (risk.blocked) {
       return {
         status: "BLOCKED",
@@ -895,10 +962,31 @@ function createMerchantService(db, options = {}) {
         blocked: [{ title: aiResult.title || `${template.name} - ${branch.name}`, reasons: risk.reasons }]
       };
     }
+    const policySpec = JSON.parse(JSON.stringify(spec));
 
     const proposalId = `proposal_${template.templateId}_${Date.now()}_${Math.random()
       .toString(36)
       .slice(2, 6)}`;
+    let draft = null;
+    try {
+      draft = policyOsService.createDraft({
+        merchantId,
+        operatorId: operatorId || "system",
+        spec: policySpec,
+        templateId: template.templateId
+      });
+    } catch (error) {
+      return {
+        status: "BLOCKED",
+        reasons: [error && error.message ? error.message : "failed to create policy draft"],
+        blocked: [
+          {
+            title: aiResult.title || `${template.name} - ${branch.name}`,
+            reasons: [error && error.message ? error.message : "failed to create policy draft"]
+          }
+        ]
+      };
+    }
     const proposal = {
       id: proposalId,
       merchantId,
@@ -923,7 +1011,14 @@ function createMerchantService(db, options = {}) {
         sourceChannel: source,
         sourceSessionId: sourceSessionId || null
       },
-      suggestedCampaign: campaign
+      suggestedPolicySpec: policySpec,
+      policyWorkflow: {
+        draftId: draft.draft_id,
+        policyId: null,
+        approvalId: null,
+        status: "DRAFT",
+        publishedAt: null
+      }
     };
 
     db.proposals.push(proposal);
@@ -941,7 +1036,8 @@ function createMerchantService(db, options = {}) {
         title: proposal.title,
         templateId: template.templateId,
         branchId: branch.branchId,
-        campaignId: campaign.id
+        draftId: draft.draft_id,
+        policyKey: policySpec.policy_key || null
       }
     };
   }
@@ -960,6 +1056,13 @@ function createMerchantService(db, options = {}) {
     const pendingProposals = db.proposals.filter(
       (proposal) => proposal.merchantId === merchantId && proposal.status === "PENDING"
     );
+    const approvedProposals = db.proposals.filter(
+      (proposal) =>
+        proposal.merchantId === merchantId &&
+        proposal.status === "APPROVED" &&
+        !(proposal.policyWorkflow && proposal.policyWorkflow.policyId)
+    );
+    const activeStrategyCount = getActiveCampaignContext(merchantId).length;
 
     return {
       merchantId,
@@ -972,14 +1075,143 @@ function createMerchantService(db, options = {}) {
         title: item.title,
         createdAt: item.createdAt
       })),
-      activeCampaignCount: db.campaigns.filter(
-        (campaign) => campaign.merchantId === merchantId && campaign.status === "ACTIVE"
-      ).length
+      approvedPendingPublish: approvedProposals.map((item) => ({
+        id: item.id,
+        title: item.title,
+        draftId:
+          item.policyWorkflow && item.policyWorkflow.draftId
+            ? item.policyWorkflow.draftId
+            : null,
+        approvalId:
+          item.policyWorkflow && item.policyWorkflow.approvalId
+            ? item.policyWorkflow.approvalId
+            : null,
+        approvedAt: item.approvedAt || null
+      })),
+      activeCampaignCount: activeStrategyCount
     };
   }
 
-  async function confirmProposal({ merchantId, proposalId, operatorId }) {
-    const freshResult = await runWithFreshState("confirmProposal", {
+  function getPolicyDraft({ merchantId, draftId }) {
+    if (!policyOsService || !draftId) {
+      return null;
+    }
+    if (typeof policyOsService.getDraft === "function") {
+      return policyOsService.getDraft({ merchantId, draftId }) || null;
+    }
+    if (typeof policyOsService.listDrafts === "function") {
+      const drafts = policyOsService.listDrafts({ merchantId });
+      return drafts.find((item) => item && item.draft_id === draftId) || null;
+    }
+    return null;
+  }
+
+  function ensurePolicyDraftForProposal({ merchantId, proposal, operatorId }) {
+    let draftId =
+      proposal.policyWorkflow && proposal.policyWorkflow.draftId
+        ? String(proposal.policyWorkflow.draftId)
+        : "";
+    if (!draftId && proposal.suggestedPolicySpec) {
+      const templateId =
+        proposal.strategyMeta && proposal.strategyMeta.templateId
+          ? proposal.strategyMeta.templateId
+          : "";
+      const createdDraft = policyOsService.createDraft({
+        merchantId,
+        operatorId,
+        spec: proposal.suggestedPolicySpec,
+        templateId
+      });
+      proposal.policyWorkflow = {
+        draftId: createdDraft.draft_id,
+        policyId: null,
+        approvalId: null,
+        status: "DRAFT",
+        publishedAt: null
+      };
+      draftId = createdDraft.draft_id;
+    }
+    if (!draftId) {
+      throw new Error("policy draft is missing");
+    }
+    return draftId;
+  }
+
+  async function simulateProposalPolicy({
+    merchantId,
+    proposalId,
+    operatorId,
+    userId = "",
+    event = "",
+    eventId = "",
+    context = {}
+  }) {
+    const freshResult = await runWithFreshState("simulateProposalPolicy", {
+      merchantId,
+      proposalId,
+      operatorId,
+      userId,
+      event,
+      eventId,
+      context
+    });
+    if (freshResult !== FRESH_NOT_USED) {
+      return freshResult;
+    }
+    const proposal = db.proposals.find(
+      (item) => item.id === proposalId && item.merchantId === merchantId
+    );
+    if (!proposal) {
+      throw new Error("proposal not found");
+    }
+    if (!["PENDING", "APPROVED"].includes(String(proposal.status || "").toUpperCase())) {
+      throw new Error("proposal status does not allow simulate");
+    }
+    if (!policyOsService || typeof policyOsService.simulateDecision !== "function") {
+      throw new Error("policy os service is not configured");
+    }
+    const draftId = ensurePolicyDraftForProposal({
+      merchantId,
+      proposal,
+      operatorId
+    });
+    const resolvedEvent =
+      String(event || "").trim().toUpperCase() ||
+      String(getPrimaryTriggerEvent(proposal.suggestedPolicySpec) || "APP_OPEN")
+        .trim()
+        .toUpperCase();
+    const simulation = await policyOsService.simulateDecision({
+      merchantId,
+      userId,
+      event: resolvedEvent,
+      eventId: eventId || `evt_sim_${Date.now()}`,
+      context: {
+        ...(context || {}),
+        source: "MERCHANT_PROPOSAL_SIMULATE",
+        proposalId
+      },
+      draftId
+    });
+    proposal.policyWorkflow = {
+      ...(proposal.policyWorkflow || {}),
+      draftId,
+      lastSimulation: {
+        decisionId: simulation.decision_id,
+        selected: Array.isArray(simulation.selected) ? simulation.selected.length : 0,
+        rejected: Array.isArray(simulation.rejected) ? simulation.rejected.length : 0,
+        simulatedAt: simulation.created_at
+      }
+    };
+    db.save();
+    return {
+      proposalId: proposal.id,
+      draftId,
+      simulation
+    };
+  }
+
+  async function approveProposalPolicy({ merchantId, proposalId, operatorId }) {
+    const freshResult = await runWithFreshState("approveProposalPolicy", {
       merchantId,
       proposalId,
       operatorId
@@ -987,41 +1219,152 @@ function createMerchantService(db, options = {}) {
     if (freshResult !== FRESH_NOT_USED) {
       return freshResult;
     }
-
     const proposal = db.proposals.find(
       (item) => item.id === proposalId && item.merchantId === merchantId
     );
-
     if (!proposal) {
       throw new Error("proposal not found");
     }
     if (proposal.status !== "PENDING") {
       throw new Error("proposal already handled");
     }
+    if (!policyOsService) {
+      throw new Error("policy os service is not configured");
+    }
+    const draftId = ensurePolicyDraftForProposal({
+      merchantId,
+      proposal,
+      operatorId
+    });
+    let draft = getPolicyDraft({ merchantId, draftId });
+    if (!draft) {
+      throw new Error("policy draft not found");
+    }
+    if (draft.status === "DRAFT" || draft.status === "REJECTED") {
+      draft = policyOsService.submitDraft({
+        merchantId,
+        draftId,
+        operatorId
+      });
+    }
+    let approvalId = "";
+    if (draft.status === "SUBMITTED") {
+      const approval = policyOsService.approveDraft({
+        merchantId,
+        draftId,
+        operatorId,
+        approvalLevel: "OWNER"
+      });
+      approvalId = approval.approvalId;
+      draft = approval.draft;
+    } else if (draft.status === "APPROVED") {
+      approvalId = draft.approval_id || "";
+    } else if (draft.status === "PUBLISHED") {
+      throw new Error("policy already published");
+    } else {
+      throw new Error(`draft cannot be approved from status ${draft.status}`);
+    }
+    if (!approvalId) {
+      throw new Error("approval id is missing");
+    }
 
     proposal.status = "APPROVED";
     proposal.approvedBy = operatorId;
     proposal.approvedAt = new Date().toISOString();
-    db.campaigns.push({
-      ...proposal.suggestedCampaign,
-      status: proposal.suggestedCampaign.status || "ACTIVE"
+    proposal.policyWorkflow = {
+      ...(proposal.policyWorkflow || {}),
+      draftId,
+      policyId: null,
+      approvalId,
+      status: "APPROVED",
+      publishedAt: null
+    };
+    if (proposal.strategyMeta && proposal.strategyMeta.templateId) {
+      setStrategyConfig(merchantId, proposal.strategyMeta.templateId, {
+        branchId: proposal.strategyMeta.branchId,
+        status: "APPROVED",
+        lastProposalId: proposal.id
+      });
+    }
+    db.save();
+    return {
+      proposalId: proposal.id,
+      status: proposal.status,
+      draftId,
+      approvalId
+    };
+  }
+
+  async function publishApprovedProposalPolicy({ merchantId, proposalId, operatorId }) {
+    const freshResult = await runWithFreshState("publishApprovedProposalPolicy", {
+      merchantId,
+      proposalId,
+      operatorId
     });
+    if (freshResult !== FRESH_NOT_USED) {
+      return freshResult;
+    }
+    const proposal = db.proposals.find(
+      (item) => item.id === proposalId && item.merchantId === merchantId
+    );
+    if (!proposal) {
+      throw new Error("proposal not found");
+    }
+    if (proposal.status !== "APPROVED") {
+      throw new Error("proposal is not approved");
+    }
+    if (!policyOsService || typeof policyOsService.publishDraft !== "function") {
+      throw new Error("policy os service is not configured");
+    }
+    const draftId =
+      proposal.policyWorkflow && proposal.policyWorkflow.draftId
+        ? String(proposal.policyWorkflow.draftId)
+        : "";
+    const approvalId =
+      proposal.policyWorkflow && proposal.policyWorkflow.approvalId
+        ? String(proposal.policyWorkflow.approvalId)
+        : "";
+    if (!draftId) {
+      throw new Error("policy draft is missing");
+    }
+    if (!approvalId) {
+      throw new Error("approval id is missing");
+    }
+    const published = policyOsService.publishDraft({
+      merchantId,
+      draftId,
+      operatorId,
+      approvalId
+    });
+    proposal.policyWorkflow = {
+      ...(proposal.policyWorkflow || {}),
+      draftId,
+      policyId: published.policy.policy_id,
+      approvalId,
+      status: "PUBLISHED",
+      publishedAt: published.policy.published_at || new Date().toISOString()
+    };
 
     if (proposal.strategyMeta && proposal.strategyMeta.templateId) {
       setStrategyConfig(merchantId, proposal.strategyMeta.templateId, {
         branchId: proposal.strategyMeta.branchId,
         status: "ACTIVE",
         lastProposalId: proposal.id,
-        lastCampaignId: proposal.suggestedCampaign.id
+        lastCampaignId: published.policy.policy_id
       });
     }
     db.save();
-
     return {
       proposalId: proposal.id,
       status: proposal.status,
-      campaignId: proposal.suggestedCampaign.id
+      policyId: published.policy.policy_id,
+      draftId,
+      approvalId
     };
+  }
+
+  async function publishProposalPolicy(payload) {
+    return publishApprovedProposalPolicy(payload);
   }
 
   async function setKillSwitch({ merchantId, enabled }) {
@@ -1042,16 +1385,17 @@ function createMerchantService(db, options = {}) {
     };
   }
 
-  function evaluateCampaignRisk({ campaign, merchant }) {
+  function evaluatePolicySpecRisk({ spec, merchant }) {
     const reasons = [];
-    const budget = (campaign && campaign.budget) || {};
-    const action = (campaign && campaign.action) || {};
-    const cap = Number(budget.cap) || 0;
-    const costPerHit = Number(budget.costPerHit) || 0;
-    const priority = Number(campaign && campaign.priority);
+    const budget = summarizePolicyBudget(spec);
+    const cap = Number(budget && budget.cap) || 0;
+    const costPerHit = Number(budget && budget.costPerHit) || 0;
     const maxCap = Math.max((Number(merchant.budgetCap) || 0) * 1.5, 300);
 
-    if (!campaign || !campaign.trigger || !campaign.trigger.event) {
+    if (!spec || typeof spec !== "object") {
+      reasons.push("invalid policy spec");
+    }
+    if (!getPrimaryTriggerEvent(spec)) {
       reasons.push("missing trigger event");
     }
     if (!Number.isFinite(cap) || cap <= 0) {
@@ -1059,33 +1403,43 @@ function createMerchantService(db, options = {}) {
     } else if (cap > maxCap) {
       reasons.push(`budget cap exceeds guardrail (${cap} > ${Math.round(maxCap)})`);
     }
-    if (!Number.isFinite(costPerHit) || costPerHit <= 0) {
+    if (!Number.isFinite(costPerHit) || costPerHit < 0) {
       reasons.push("invalid cost per hit");
     } else if (costPerHit > Math.max(60, cap * 0.6)) {
       reasons.push("cost per hit exceeds guardrail");
     }
-    if (!Number.isFinite(priority) || priority < 40 || priority > 999) {
-      console.warn(`[risk] priority out of safe range: ${priority} (must be 40-999)`);
-      reasons.push("priority out of safe range");
+    const ttlSec = Number(
+      spec && spec.program && Number.isFinite(Number(spec.program.ttl_sec))
+        ? spec.program.ttl_sec
+        : 0
+    );
+    if (!Number.isFinite(ttlSec) || ttlSec <= 0) {
+      reasons.push("invalid ttl");
+    } else if (ttlSec > 72 * 60 * 60) {
+      reasons.push("ttl exceeds 72h guardrail");
     }
-    if (campaign && campaign.ttlUntil) {
-      const ttlTs = Date.parse(campaign.ttlUntil);
-      const nowTs = Date.now();
-      if (!Number.isFinite(ttlTs)) {
-        reasons.push("invalid ttl");
-      } else if (ttlTs > nowTs + 72 * 60 * 60 * 1000) {
-        reasons.push("ttl exceeds 72h guardrail");
+    const actions = Array.isArray(spec && spec.actions) ? spec.actions : [];
+    for (const action of actions) {
+      if (!action || action.plugin !== "voucher_grant_v1") {
+        continue;
+      }
+      const voucherValue =
+        action.params && action.params.voucher
+          ? Number(action.params.voucher.value)
+          : 0;
+      if (Number.isFinite(voucherValue) && voucherValue > 100) {
+        reasons.push("voucher value exceeds guardrail");
+        break;
       }
     }
     if (
-      action.type === "GRANT_VOUCHER" &&
-      action.voucher &&
-      Number.isFinite(Number(action.voucher.value)) &&
-      Number(action.voucher.value) > 100
+      spec &&
+      spec.segment &&
+      spec.segment.plugin === "legacy_condition_segment_v1" &&
+      spec.segment.params &&
+      Array.isArray(spec.segment.params.conditions) &&
+      spec.segment.params.conditions.length > 10
     ) {
-      reasons.push("voucher value exceeds guardrail");
-    }
-    if (Array.isArray(campaign.conditions) && campaign.conditions.length > 10) {
       reasons.push("too many conditions");
     }
 
@@ -1566,7 +1920,7 @@ function createMerchantService(db, options = {}) {
       });
 
     if (normalizedDecision === "APPROVE") {
-      const confirm = await confirmProposal({
+      const confirm = await approveProposalPolicy({
         merchantId,
         proposalId: targetProposalId,
         operatorId
@@ -1580,13 +1934,17 @@ function createMerchantService(db, options = {}) {
       appendChatMessage(session, {
         role: "SYSTEM",
         type: "PROPOSAL_REVIEW",
-        text: `Proposal approved and activated: ${proposal.title}`,
+        text: `Proposal approved. Ready for publish: ${proposal.title}`,
         proposalId: targetProposalId
       });
       db.save();
       return {
         status: "APPROVED",
-        campaignId: confirm.campaignId,
+        campaignId: null,
+        policyId: null,
+        draftId: confirm.draftId,
+        approvalId: confirm.approvalId,
+        publishReady: true,
         ...buildReviewResponse()
       };
     }
@@ -1601,6 +1959,10 @@ function createMerchantService(db, options = {}) {
         lastProposalId: proposal.id
       });
     }
+    proposal.policyWorkflow = {
+      ...(proposal.policyWorkflow || {}),
+      status: "REJECTED"
+    };
     session.pendingProposalIds = pendingProposalIds.filter((id) => id !== targetProposalId);
     session.pendingProposalId = session.pendingProposalIds[0] || null;
     session.reviewProcessedCandidates = Math.max(
@@ -1620,53 +1982,18 @@ function createMerchantService(db, options = {}) {
     };
   }
 
-  async function setCampaignStatus({ merchantId, campaignId, status }) {
-    const freshResult = await runWithFreshState("setCampaignStatus", {
-      merchantId,
-      campaignId,
-      status
-    });
-    if (freshResult !== FRESH_NOT_USED) {
-      return freshResult;
-    }
-
-    const merchant = db.merchants[merchantId];
-    if (!merchant) {
-      throw new Error("merchant not found");
-    }
-    const normalizedStatus = String(status || "ACTIVE").trim().toUpperCase();
-    if (!["ACTIVE", "PAUSED", "ARCHIVED"].includes(normalizedStatus)) {
-      throw new Error("unsupported campaign status");
-    }
-
-    const campaign = db.campaigns.find(
-      (item) => item.merchantId === merchantId && item.id === campaignId
-    );
-    if (!campaign) {
-      throw new Error("campaign not found");
-    }
-    campaign.status = normalizedStatus;
-    campaign.updatedAt = new Date().toISOString();
-    db.save();
-    return {
-      merchantId,
-      campaignId: campaign.id,
-      status: campaign.status
-    };
-  }
-
-
   return {
     getDashboard,
-    confirmProposal,
+    publishProposalPolicy,
+    approveProposalPolicy,
+    publishApprovedProposalPolicy,
+    simulateProposalPolicy,
     setKillSwitch,
     createStrategyChatSession,
     getStrategyChatSession,
     listStrategyChatMessages,
     sendStrategyChatMessage,
-    reviewStrategyChatProposal,
-    setCampaignStatus,
-    findTemplate
+    reviewStrategyChatProposal
   };
 }
 

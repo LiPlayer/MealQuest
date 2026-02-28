@@ -16,7 +16,6 @@ function createDecisionService({
   policyRegistry,
   pluginRegistry,
   executionAdapter,
-  approvalTokenService,
   now = () => Date.now(),
   metrics = null
 }) {
@@ -28,9 +27,6 @@ function createDecisionService({
   }
   if (!executionAdapter) {
     throw new Error("executionAdapter is required");
-  }
-  if (!approvalTokenService) {
-    throw new Error("approvalTokenService is required");
   }
 
   function nowIso() {
@@ -173,15 +169,14 @@ function createDecisionService({
     eventId = "",
     context = {},
     user = null,
-    approvalToken = "",
-    traceId = randomUUID()
+    traceId = randomUUID(),
+    mode = "EXECUTE",
+    policies = null
   }) {
+    const decisionMode = String(mode || "EXECUTE").trim().toUpperCase();
+    const dryRun = decisionMode === "SIMULATE";
     const startedAt = now();
-    approvalTokenService.verifyToken(approvalToken, {
-      expectedMerchantId: merchantId,
-      expectedScope: "execute"
-    });
-    const activePolicies = policyRegistry.listActivePolicies({ merchantId });
+    const activePolicies = Array.isArray(policies) ? policies : policyRegistry.listActivePolicies({ merchantId });
     const ctxBase = {
       merchantId,
       event,
@@ -347,11 +342,37 @@ function createDecisionService({
     const sorted = sortCandidates(candidates);
     const allocation = allocateCandidates(sorted);
     const executed = [];
+    const selected = [];
     const storyCards = [];
     const grants = [];
     const explains = [];
+    const projected = [];
 
     for (const candidate of allocation.winners) {
+      const plan = executionAdapter.compile({
+        policy: candidate.policy,
+        traceId
+      });
+      const explain = executionAdapter.explain({
+        policy: candidate.policy,
+        scoreResult: candidate.scoreResult,
+        constraintResult: candidate.constraintResult
+      });
+      explains.push({
+        policy_id: candidate.policy.policy_id,
+        ...explain
+      });
+      projected.push({
+        policy_id: candidate.policy.policy_id,
+        estimated_cost: toNumber(candidate.estimate.cost, 0),
+        estimated_budget_cost: toNumber(candidate.estimate.budgetCost, 0),
+        actions: (plan.commands || []).map((item) => item.plugin)
+      });
+      if (dryRun) {
+        selected.push(candidate.policy.policy_id);
+        continue;
+      }
+
       const reserved = [];
       let reserveFailed = false;
       for (const constraint of candidate.policy.constraints || []) {
@@ -397,15 +418,6 @@ function createDecisionService({
         continue;
       }
 
-      const plan = executionAdapter.compile({
-        policy: candidate.policy,
-        traceId
-      });
-      const explain = executionAdapter.explain({
-        policy: candidate.policy,
-        scoreResult: candidate.scoreResult,
-        constraintResult: candidate.constraintResult
-      });
       const runtimeResult = await executionAdapter.execute({
         ctx: {
           ...ctxBase,
@@ -444,10 +456,6 @@ function createDecisionService({
       }
 
       executed.push(candidate.policy.policy_id);
-      explains.push({
-        policy_id: candidate.policy.policy_id,
-        ...explain
-      });
     }
 
     const decision = {
@@ -457,8 +465,10 @@ function createDecisionService({
       event,
       event_id: ctxBase.eventId,
       trace_id: traceId,
+      mode: decisionMode,
       created_at: nowIso(),
       elapsed_ms: Math.max(0, now() - startedAt),
+      selected,
       executed,
       rejected: [
         ...allocation.skipped.map((item) => ({
@@ -468,11 +478,12 @@ function createDecisionService({
         ...rejections
       ],
       explains,
+      projected,
       storyCards,
       grants
     };
     policyRegistry.saveDecision(decision);
-    appendMetric("decisions_total", 1);
+    appendMetric(dryRun ? "simulations_total" : "decisions_total", 1);
     appendMetric("decisions_executed_total", executed.length);
     appendMetric("decisions_rejected_total", decision.rejected.length);
     appendMetric("decision_latency_ms_total", decision.elapsed_ms);
@@ -484,7 +495,9 @@ function createDecisionService({
         trace_id: traceId,
         merchant_id: merchantId,
         decision_id: decision.decision_id,
+        mode: decisionMode,
         event,
+        selected: selected.length,
         executed: executed.length,
         rejected: decision.rejected.length,
         elapsed_ms: decision.elapsed_ms
@@ -503,6 +516,8 @@ function createDecisionService({
       trace_id: decision.trace_id,
       merchant_id: decision.merchant_id,
       event: decision.event,
+      mode: decision.mode || "EXECUTE",
+      selected: decision.selected || [],
       executed: decision.executed,
       rejected: decision.rejected,
       explains: decision.explains,

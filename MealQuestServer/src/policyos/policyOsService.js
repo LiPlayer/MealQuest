@@ -37,7 +37,6 @@ function createPolicyOsService(db, { wsHub = null, metrics = null, now = () => D
     policyRegistry,
     pluginRegistry,
     executionAdapter,
-    approvalTokenService,
     now,
     metrics
   });
@@ -69,12 +68,11 @@ function createPolicyOsService(db, { wsHub = null, metrics = null, now = () => D
     };
   }
 
-  async function evaluateDecision({
+  async function executeDecision({
     merchantId,
     userId = "",
     event,
     context = {},
-    approvalToken,
     eventId = ""
   }) {
     const { merchant, user } = resolveMerchantAndUser(merchantId, userId);
@@ -87,7 +85,7 @@ function createPolicyOsService(db, { wsHub = null, metrics = null, now = () => D
         merchant
       },
       user,
-      approvalToken
+      mode: "EXECUTE"
     });
     await wsDispatcher.dispatch({
       merchantId,
@@ -100,6 +98,51 @@ function createPolicyOsService(db, { wsHub = null, metrics = null, now = () => D
       messageId: decision.decision_id
     });
     return decision;
+  }
+
+  async function simulateDecision({
+    merchantId,
+    userId = "",
+    event,
+    context = {},
+    eventId = "",
+    draftId = ""
+  }) {
+    const { merchant, user } = resolveMerchantAndUser(merchantId, userId);
+    let policies = null;
+    const safeDraftId = String(draftId || "").trim();
+    if (safeDraftId) {
+      const draft = policyRegistry.getDraft({
+        merchantId,
+        draftId: safeDraftId
+      });
+      if (!draft) {
+        throw new Error("draft not found");
+      }
+      policies = [
+        {
+          ...draft.spec,
+          policy_id: `draft:${draft.draft_id}`,
+          status: draft.status,
+          source_draft_id: draft.draft_id,
+          published_at: null,
+          updated_at: draft.updated_at || new Date(now()).toISOString(),
+          expires_at: new Date(now() + Number(draft.spec.program.ttl_sec || 3600) * 1000).toISOString()
+        }
+      ];
+    }
+    return decisionService.evaluateEvent({
+      merchantId,
+      event,
+      eventId,
+      context: {
+        ...context,
+        merchant
+      },
+      user,
+      mode: "SIMULATE",
+      policies
+    });
   }
 
   function appendBehaviorLog({ merchantId, userId = "", category, payload }) {
@@ -169,10 +212,13 @@ function createPolicyOsService(db, { wsHub = null, metrics = null, now = () => D
     submitDraft: policyRegistry.submitDraft,
     approveDraft: policyRegistry.approveDraft,
     publishDraft: policyRegistry.publishDraft,
+    getDraft: policyRegistry.getDraft,
     listDrafts: policyRegistry.listDrafts,
     listPolicies: policyRegistry.listPolicies,
     listActivePolicies: policyRegistry.listActivePolicies,
-    evaluateDecision,
+    executeDecision,
+    simulateDecision,
+    evaluateDecision: executeDecision,
     getDecisionExplain: decisionService.getDecisionExplain,
     appendBehaviorLog,
     runRetentionJobs,

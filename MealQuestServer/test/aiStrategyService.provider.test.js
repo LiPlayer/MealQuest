@@ -1,4 +1,4 @@
-const test = require("node:test");
+﻿const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { createAiStrategyService } = require("../src/services/aiStrategyService");
@@ -93,12 +93,12 @@ test("ai strategy provider: retries transient upstream failures and then succeed
                   assistantMessage: "Recovered after retries.",
                   proposals: [
                     {
-                      templateId: "activation_contextual_drop",
-                      branchId: "COOLING",
+                      templateId: "acquisition_welcome_gift",
+                      branchId: "DEFAULT",
                       title: "Recovered Strategy",
                       rationale: "retry path works",
                       confidence: 0.79,
-                      campaignPatch: {
+                      policyPatch: {
                         name: "Recovered Strategy",
                       },
                     },
@@ -161,22 +161,22 @@ test("ai strategy provider: strategy chat supports multiple proposal candidates"
                   assistantMessage: "Drafted multiple options.",
                   proposals: [
                     {
-                      templateId: "activation_contextual_drop",
-                      branchId: "COOLING",
+                      templateId: "acquisition_welcome_gift",
+                      branchId: "DEFAULT",
                       title: "Option A",
                       rationale: "for hot weather",
                       confidence: 0.75,
-                      campaignPatch: {
+                      policyPatch: {
                         name: "Option A",
                       },
                     },
                     {
-                      templateId: "activation_contextual_drop",
-                      branchId: "COMFORT",
+                      templateId: "acquisition_welcome_gift",
+                      branchId: "CHANNEL",
                       title: "Option B",
                       rationale: "for fallback users",
                       confidence: 0.7,
-                      campaignPatch: {
+                      policyPatch: {
                         name: "Option B",
                       },
                     },
@@ -217,7 +217,7 @@ test("ai strategy provider: strategy chat supports multiple proposal candidates"
     assert.equal(result.status, "PROPOSAL_READY");
     assert.ok(Array.isArray(result.proposals));
     assert.equal(result.proposals.length, 2);
-    assert.equal(result.proposal.branch.branchId, "COOLING");
+    assert.equal(result.proposal.branch.branchId, "DEFAULT");
   } finally {
     global.fetch = originalFetch;
   }
@@ -382,14 +382,14 @@ test("ai strategy provider: prompt history keeps MEMORY prefixes while trimming"
       {
         role: "SYSTEM",
         type: "MEMORY_FACTS",
-        text: "Goals: 提升复购 | Constraints: 预算上限 500",
+        text: "Goals: æå‡å¤è´­ | Constraints: é¢„ç®—ä¸Šé™ 500",
         proposalId: "",
         createdAt: "2026-02-25T00:00:00.000Z",
       },
       {
         role: "SYSTEM",
         type: "MEMORY_SUMMARY",
-        text: "长期总结：老板偏好低打扰策略，避免高折扣。",
+        text: "é•¿æœŸæ€»ç»“ï¼šè€æ¿åå¥½ä½Žæ‰“æ‰°ç­–ç•¥ï¼Œé¿å…é«˜æŠ˜æ‰£ã€‚",
         proposalId: "",
         createdAt: "2026-02-25T00:00:01.000Z",
       },
@@ -407,7 +407,7 @@ test("ai strategy provider: prompt history keeps MEMORY prefixes while trimming"
     const result = await service.generateStrategyChatTurn({
       merchantId: "m_store_001",
       sessionId: "sc_history_memory",
-      userMessage: "继续优化策略。",
+      userMessage: "ç»§ç»­ä¼˜åŒ–ç­–ç•¥ã€‚",
       history,
       activeCampaigns: [],
       approvedStrategies: [],

@@ -168,7 +168,8 @@ GET  /api/merchant/strategy-chat/session?merchantId=<id>
 POST /api/merchant/strategy-chat/sessions
 POST /api/merchant/strategy-chat/messages
 POST /api/merchant/strategy-chat/proposals/:id/review
-POST /api/merchant/campaigns/:id/status
+POST /api/merchant/strategy-chat/proposals/:id/simulate
+POST /api/merchant/strategy-chat/proposals/:id/publish
 POST /api/merchant/fire-sale
 ```
 

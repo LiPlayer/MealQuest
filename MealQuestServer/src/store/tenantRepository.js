@@ -168,10 +168,6 @@ function createTenantRepository({ tenantRouter }) {
         const bucket = db.merchantUsers && db.merchantUsers[merchantId];
         return bucket ? bucket[userId] || null : null;
       }),
-    listCampaigns: async (merchantId) =>
-      withFreshRead(merchantId, async (db) =>
-        ((db && db.campaigns) || []).filter((item) => item.merchantId === merchantId)
-      ),
     listProposals: async (merchantId) =>
       withFreshRead(merchantId, async (db) =>
         ((db && db.proposals) || []).filter((item) => item.merchantId === merchantId)

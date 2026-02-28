@@ -54,6 +54,9 @@ export interface StrategyChatPendingReview {
   templateId: string | null;
   branchId: string | null;
   campaignId: string | null;
+  policyId?: string | null;
+  policyDraftId?: string | null;
+  policyKey?: string | null;
   campaignName: string | null;
   triggerEvent: string | null;
   budget: {
@@ -122,6 +125,7 @@ export interface StrategyChatStatePayload {
   approvedStrategies: Array<{
     proposalId: string;
     campaignId: string;
+    policyId?: string | null;
     title: string;
     templateId: string;
     branchId: string;
@@ -144,6 +148,48 @@ export interface StrategyChatTurnResult extends StrategyChatStatePayload {
 export interface StrategyChatReviewResult extends StrategyChatStatePayload {
   status: 'APPROVED' | 'REJECTED';
   campaignId?: string;
+  policyId?: string;
+  draftId?: string;
+  approvalId?: string;
+  publishReady?: boolean;
+}
+
+export interface PolicyDecisionResult {
+  decision_id: string;
+  merchant_id: string;
+  user_id: string | null;
+  event: string;
+  event_id: string;
+  trace_id: string;
+  created_at: string;
+  elapsed_ms: number;
+  mode?: 'SIMULATE' | 'EXECUTE' | string;
+  selected?: string[];
+  executed: string[];
+  rejected: Array<{
+    policyId: string;
+    reason: string;
+  }>;
+  projected?: Array<{
+    policy_id: string;
+    estimated_cost: number;
+    estimated_budget_cost: number;
+    actions: string[];
+  }>;
+}
+
+export interface StrategyChatSimulationResult {
+  proposalId: string;
+  draftId: string;
+  simulation: PolicyDecisionResult;
+}
+
+export interface StrategyChatPublishResult {
+  proposalId: string;
+  status: string;
+  policyId: string;
+  draftId: string;
+  approvalId: string;
 }
 
 export interface StrategyChatMessagePage {
@@ -157,13 +203,6 @@ export interface StrategyChatMessagePage {
   };
   latestMessageId: string | null;
 }
-
-export interface CampaignStatusResult {
-  merchantId: string;
-  campaignId: string;
-  status: 'ACTIVE' | 'PAUSED' | 'ARCHIVED';
-}
-
 
 export interface AllianceConfig {
   merchantId: string;

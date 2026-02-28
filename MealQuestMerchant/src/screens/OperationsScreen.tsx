@@ -10,13 +10,12 @@ import {
 import QRCode from 'react-native-qrcode-svg';
 import { useMerchant } from '../context/MerchantContext';
 import { SectionCard } from '../components/SectionCard';
-import { Play, Pause, Archive, Users, QrCode, Clipboard } from 'lucide-react-native';
+import { Users, QrCode, Clipboard } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function OperationsScreen() {
     const {
         merchantState,
-        onSetCampaignStatus,
         allianceConfig,
         allianceStores,
         customerUserId,
@@ -50,25 +49,6 @@ export default function OperationsScreen() {
                                         </View>
                                     </View>
 
-                                    <View style={styles.campaignActions}>
-                                        <Pressable
-                                            testID={`campaign-toggle-${item.id}`}
-                                            style={styles.circleBtn}
-                                            onPress={() =>
-                                                onSetCampaignStatus(
-                                                    item.id,
-                                                    status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE',
-                                                )
-                                            }>
-                                            {status === 'ACTIVE' ? <Pause size={16} color="#64748b" /> : <Play size={16} color="#059669" />}
-                                        </Pressable>
-                                        <Pressable
-                                            testID={`campaign-archive-${item.id}`}
-                                            style={styles.circleBtn}
-                                            onPress={() => onSetCampaignStatus(item.id, 'ARCHIVED')}>
-                                            <Archive size={16} color="#94a3b8" />
-                                        </Pressable>
-                                    </View>
                                 </View>
                             );
                         })
@@ -228,20 +208,6 @@ const styles = StyleSheet.create({
         fontSize: 10,
         fontWeight: '700',
         color: '#115e59',
-    },
-    campaignActions: {
-        flexDirection: 'row',
-        gap: 10,
-    },
-    circleBtn: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        backgroundColor: '#f8fafc',
-        borderWidth: 1,
-        borderColor: '#e2e8f0',
-        alignItems: 'center',
-        justifyContent: 'center',
     },
     allianceView: {
         gap: 14,

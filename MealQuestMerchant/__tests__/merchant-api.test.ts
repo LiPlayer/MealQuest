@@ -99,30 +99,6 @@ describe('merchantApi audit logs', () => {
     expect(payload.content).toContain('lunch acquisition');
   });
 
-  it('updates campaign status', async () => {
-    const fetchMock = global.fetch as jest.Mock;
-    fetchMock.mockResolvedValue(
-      okResponse({
-        merchantId: 'm_store_001',
-        campaignId: 'campaign_1',
-        status: 'PAUSED',
-      }),
-    );
-
-    const {MerchantApi} = require('../src/services/merchantApi');
-    await MerchantApi.setCampaignStatus('token_fixture', {
-      merchantId: 'm_store_001',
-      campaignId: 'campaign_1',
-      status: 'PAUSED',
-    });
-
-    const [url, options] = fetchMock.mock.calls[0];
-    expect(url).toContain('/api/merchant/campaigns/campaign_1/status');
-    expect(options.method).toBe('POST');
-    const payload = JSON.parse(options.body);
-    expect(payload.status).toBe('PAUSED');
-  });
-
   it('updates alliance config', async () => {
     const fetchMock = global.fetch as jest.Mock;
     fetchMock.mockResolvedValue(
