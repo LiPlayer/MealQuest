@@ -5,12 +5,12 @@ const {
   createPolicySpecFromTemplate,
   validatePolicyPatchForTemplate,
   validateStrategyTemplates
-} = require("../src/services/strategyLibrary");
+} = require("../src/services/strategyTemplateCatalog");
 const { createSchemaRegistry } = require("../src/policyos/schemaRegistry");
 const { createInMemoryDb } = require("../src/store/inMemoryDb");
 const { createPolicyOsService } = require("../src/policyos/policyOsService");
 
-test("strategy library builds valid policy spec from template", () => {
+test("strategy template catalog builds valid policy spec from template", () => {
   const { spec, template, branch } = createPolicySpecFromTemplate({
     merchantId: "m_policy_tpl",
     templateId: "acquisition_welcome_gift",
@@ -26,7 +26,7 @@ test("strategy library builds valid policy spec from template", () => {
   assert.ok(validated.constraints.some((item) => item.plugin === "budget_guard_v1"));
 });
 
-test("strategy library allows policy patch overrides", () => {
+test("strategy template catalog allows policy patch overrides", () => {
   const { spec } = createPolicySpecFromTemplate({
     merchantId: "m_policy_tpl",
     templateId: "acquisition_welcome_gift",
@@ -48,7 +48,7 @@ test("strategy library allows policy patch overrides", () => {
   assert.equal(budgetConstraint.params.cost_per_hit, 12);
 });
 
-test("strategy library only applies whitelisted patch fields", () => {
+test("strategy template catalog only applies whitelisted patch fields", () => {
   const { spec } = createPolicySpecFromTemplate({
     merchantId: "m_policy_tpl",
     templateId: "acquisition_welcome_gift",
@@ -89,7 +89,7 @@ test("strategy library only applies whitelisted patch fields", () => {
   assert.equal(budgetConstraint.params.cost_per_hit, 9);
 });
 
-test("strategy library template catalog passes strict validation with known plugins", () => {
+test("strategy template catalog passes strict validation with known plugins", () => {
   const db = createInMemoryDb();
   db.save = () => {};
   const policyOsService = createPolicyOsService(db);
@@ -101,7 +101,7 @@ test("strategy library template catalog passes strict validation with known plug
   assert.ok(report.branchCount >= 1);
 });
 
-test("strategy library detects illegal patch fields by template", () => {
+test("strategy template catalog detects illegal patch fields by template", () => {
   const report = validatePolicyPatchForTemplate({
     templateId: "acquisition_welcome_gift",
     branchId: "DEFAULT",

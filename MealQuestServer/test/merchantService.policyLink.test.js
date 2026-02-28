@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const { createInMemoryDb } = require("../src/store/inMemoryDb");
 const { createMerchantService } = require("../src/services/merchantService");
 const { createPolicyOsService } = require("../src/policyos/policyOsService");
-const { createPolicySpecFromTemplate } = require("../src/services/strategyLibrary");
+const { createPolicySpecFromTemplate } = require("../src/services/strategyTemplateCatalog");
 
 function seedMerchant(db, merchantId = "m_policy_link") {
   db.merchants[merchantId] = {

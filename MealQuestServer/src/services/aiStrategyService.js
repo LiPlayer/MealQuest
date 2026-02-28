@@ -2,7 +2,7 @@ const {
   createPolicySpecFromTemplate,
   listStrategyTemplates,
   validatePolicyPatchForTemplate,
-} = require("./strategyLibrary");
+} = require("./strategyTemplateCatalog");
 const { Annotation, StateGraph, START, END } = require("@langchain/langgraph");
 const { createLangChainModelGateway } = require("./aiStrategy/langchainModelGateway");
 

@@ -50,7 +50,7 @@ Implemented modules:
 9. `MealQuestServer/src/policyos/wsDispatcher.js`
 10. `MealQuestServer/src/policyos/policyOsService.js`
 11. Postgres persistence slot: `MealQuestServer/src/store/postgresDb.js` (`mq_policy_os`)
-12. Template catalog DSL: `MealQuestServer/src/policyos/templates/strategy-templates.v1.json` (loaded by `src/services/strategyLibrary.js`)
+12. Template catalog DSL: `MealQuestServer/src/policyos/templates/strategy-templates.v1.json` (loaded by `src/services/strategyTemplateCatalog.js`)
 13. Template gate script: `MealQuestServer/scripts/policyos-validate-templates.js` (`npm run policyos:validate-templates`)
 
 HTTP surface:
