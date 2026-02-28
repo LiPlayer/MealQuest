@@ -109,14 +109,14 @@ function createMerchantRoutesHandler({
       return true;
     }
 
-    const strategyChatSimulateMatch = url.pathname.match(
-      /^\/api\/merchant\/strategy-chat\/proposals\/([^/]+)\/simulate$/
+    const strategyChatEvaluateMatch = url.pathname.match(
+      /^\/api\/merchant\/strategy-chat\/proposals\/([^/]+)\/evaluate$/
     );
-    if (method === "POST" && strategyChatSimulateMatch) {
+    if (method === "POST" && strategyChatEvaluateMatch) {
       ensureRole(auth, ["MANAGER", "OWNER"]);
       const body = await readJsonBody(req);
       const merchantId = auth.merchantId || body.merchantId;
-      const proposalId = strategyChatSimulateMatch[1];
+      const proposalId = strategyChatEvaluateMatch[1];
       if (!merchantId) {
         sendJson(res, 400, { error: "merchantId is required" });
         return true;
@@ -129,7 +129,7 @@ function createMerchantRoutesHandler({
         !enforceTenantPolicyForHttp({
           tenantPolicyManager,
           merchantId,
-          operation: "POLICY_SIMULATE",
+          operation: "POLICY_EVALUATE",
           res,
           auth,
           appendAuditLog,
@@ -138,7 +138,7 @@ function createMerchantRoutesHandler({
         return true;
       }
       const { merchantService } = getServicesForMerchant(merchantId);
-      const result = await merchantService.simulateProposalPolicy({
+      const result = await merchantService.evaluateProposalPolicy({
         merchantId,
         proposalId,
         operatorId: auth.operatorId || "system",
@@ -146,21 +146,23 @@ function createMerchantRoutesHandler({
         event: body.event || "",
         eventId: body.eventId || "",
         context: body.context || {},
+        forceRefresh: Boolean(body.forceRefresh),
       });
       appendAuditLog({
         merchantId,
-        action: "STRATEGY_CHAT_SIMULATE",
+        action: "STRATEGY_CHAT_EVALUATE",
         status: "SUCCESS",
         auth,
         details: {
           proposalId,
-          decisionId: result.simulation && result.simulation.decision_id ? result.simulation.decision_id : null,
-          selected: Array.isArray(result.simulation && result.simulation.selected)
-            ? result.simulation.selected.length
+          decisionId: result.evaluation && result.evaluation.decision_id ? result.evaluation.decision_id : null,
+          selected: Array.isArray(result.evaluation && result.evaluation.selected)
+            ? result.evaluation.selected.length
             : 0,
-          rejected: Array.isArray(result.simulation && result.simulation.rejected)
-            ? result.simulation.rejected.length
+          rejected: Array.isArray(result.evaluation && result.evaluation.rejected)
+            ? result.evaluation.rejected.length
             : 0,
+          reused: Boolean(result.reused),
         },
       });
       sendJson(res, 200, result);

@@ -15,11 +15,11 @@ const AUDIT_ACTION_OPTIONS = [
     { value: 'ALL', label: 'All actions' },
     { value: 'PAYMENT_VERIFY', label: 'Payment verify' },
     { value: 'PAYMENT_REFUND', label: 'Payment refund' },
-    { value: 'STRATEGY_CHAT_SIMULATE', label: 'Strategy simulate' },
+    { value: 'STRATEGY_CHAT_EVALUATE', label: 'Strategy evaluate' },
     { value: 'STRATEGY_CHAT_REVIEW', label: 'Strategy review' },
     { value: 'STRATEGY_CHAT_PUBLISH', label: 'Strategy publish' },
     { value: 'POLICY_PUBLISH', label: 'Policy publish' },
-    { value: 'POLICY_SIMULATE', label: 'Policy simulate' },
+    { value: 'POLICY_EVALUATE', label: 'Policy evaluate' },
     { value: 'POLICY_EXECUTE', label: 'Policy execute' },
     { value: 'KILL_SWITCH_SET', label: 'Kill switch' },
 ] as const;

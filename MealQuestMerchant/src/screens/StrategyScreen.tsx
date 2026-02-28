@@ -51,8 +51,9 @@ export default function StrategyScreen() {
         onRetryMessage,
         strategyChatMessages,
         strategyChatPendingReview,
-        strategyChatSimulation,
-        onSimulatePendingStrategy,
+        strategyChatEvaluation,
+        strategyChatEvaluationReady,
+        onEvaluatePendingStrategy,
         onReviewPendingStrategy,
         onPublishApprovedProposal,
         totalReviewCount,
@@ -62,6 +63,10 @@ export default function StrategyScreen() {
         setCustomerUserId,
     } = useMerchant();
     const pendingEvaluation = strategyChatPendingReview?.evaluation || null;
+    const hasAutoEvaluation = Boolean(
+        pendingEvaluation?.evaluatedAt &&
+        !pendingEvaluation?.evaluateError,
+    );
 
     const scrollViewRef = useRef<ScrollView>(null);
 
@@ -182,14 +187,14 @@ export default function StrategyScreen() {
                                             <Text style={styles.evaluationText}>
                                                 Risk {pendingEvaluation.riskCount} | Rejected {pendingEvaluation.rejectedCount}
                                             </Text>
-                                            {pendingEvaluation.simulateError ? (
-                                                <Text style={styles.evaluationError}>Simulate error: {pendingEvaluation.simulateError}</Text>
+                                            {pendingEvaluation.evaluateError ? (
+                                                <Text style={styles.evaluationError}>Evaluate error: {pendingEvaluation.evaluateError}</Text>
                                             ) : null}
                                         </View>
                                     )}
 
                                     <View style={styles.executeInputWrap}>
-                                        <Text style={styles.executeInputLabel}>User ID for simulation (optional)</Text>
+                                        <Text style={styles.executeInputLabel}>User ID for evaluation (optional)</Text>
                                         <TextInput
                                             testID="strategy-review-user-id-input"
                                             value={customerUserId}
@@ -198,33 +203,42 @@ export default function StrategyScreen() {
                                             style={styles.executeInput}
                                         />
                                     </View>
-                                    {strategyChatSimulation ? (
+                                    {strategyChatEvaluation ? (
                                         <View style={styles.simulationSummary}>
-                                            <Text style={styles.simulationTitle}>Simulation Summary</Text>
+                                            <Text style={styles.simulationTitle}>Evaluation Summary</Text>
                                             <Text style={styles.simulationText}>
-                                                Selected {Array.isArray(strategyChatSimulation.selected) ? strategyChatSimulation.selected.length : 0},
-                                                Rejected {Array.isArray(strategyChatSimulation.rejected) ? strategyChatSimulation.rejected.length : 0},
-                                                Mode {String(strategyChatSimulation.mode || 'SIMULATE')}
+                                                Selected {Array.isArray(strategyChatEvaluation.selected) ? strategyChatEvaluation.selected.length : 0},
+                                                Rejected {Array.isArray(strategyChatEvaluation.rejected) ? strategyChatEvaluation.rejected.length : 0},
+                                                Mode {String(strategyChatEvaluation.mode || 'SIMULATE')}
+                                            </Text>
+                                        </View>
+                                    ) : hasAutoEvaluation ? (
+                                        <View style={styles.simulationSummary}>
+                                            <Text style={styles.simulationTitle}>Auto Evaluation Ready</Text>
+                                            <Text style={styles.simulationText}>
+                                                Selected {pendingEvaluation?.selectedCount || 0},
+                                                Rejected {pendingEvaluation?.rejectedCount || 0},
+                                                Score {(pendingEvaluation?.score || 0).toFixed(2)}
                                             </Text>
                                         </View>
                                     ) : (
-                                        <Text style={styles.simulationHint}>Run simulation before approve.</Text>
+                                        <Text style={styles.simulationHint}>Evaluation is required before approve.</Text>
                                     )}
 
                                     <View style={styles.actionRow}>
                                         <Pressable
-                                            testID="ai-review-simulate"
+                                            testID="ai-review-evaluate"
                                             style={[styles.opButton, styles.simulateBtn]}
-                                            onPress={onSimulatePendingStrategy}
+                                            onPress={onEvaluatePendingStrategy}
                                         >
                                             <Loader2 size={18} color="#ffffff" />
-                                            <Text style={styles.opButtonText}>Simulate</Text>
+                                            <Text style={styles.opButtonText}>{strategyChatEvaluationReady ? 'Re-Evaluate' : 'Evaluate'}</Text>
                                         </Pressable>
                                         <Pressable
                                             testID="ai-review-approve"
-                                            style={[styles.opButton, styles.approveBtn, !strategyChatSimulation && styles.disabledOpButton]}
+                                            style={[styles.opButton, styles.approveBtn, !strategyChatEvaluationReady && styles.disabledOpButton]}
                                             onPress={() => onReviewPendingStrategy('APPROVE')}
-                                            disabled={!strategyChatSimulation}
+                                            disabled={!strategyChatEvaluationReady}
                                         >
                                             <Check size={18} color="#ffffff" />
                                             <Text style={styles.opButtonText}>Approve</Text>

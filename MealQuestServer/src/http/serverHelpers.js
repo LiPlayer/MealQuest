@@ -24,7 +24,7 @@ const TENANT_LIMIT_OPERATIONS = [
   "POLICY_PUBLISH",
   "POLICY_PAUSE",
   "POLICY_RESUME",
-  "POLICY_SIMULATE",
+  "POLICY_EVALUATE",
   "POLICY_EXECUTE",
   "WS_CONNECT",
   "WS_STATUS_QUERY"
@@ -142,8 +142,8 @@ function resolveAuditAction(method, pathname) {
   if (method === "POST" && /^\/api\/merchant\/strategy-chat\/proposals\/[^/]+\/review$/.test(pathname)) {
     return "STRATEGY_CHAT_REVIEW";
   }
-  if (method === "POST" && /^\/api\/merchant\/strategy-chat\/proposals\/[^/]+\/simulate$/.test(pathname)) {
-    return "STRATEGY_CHAT_SIMULATE";
+  if (method === "POST" && /^\/api\/merchant\/strategy-chat\/proposals\/[^/]+\/evaluate$/.test(pathname)) {
+    return "STRATEGY_CHAT_EVALUATE";
   }
   if (method === "POST" && /^\/api\/merchant\/strategy-chat\/proposals\/[^/]+\/publish$/.test(pathname)) {
     return "STRATEGY_CHAT_PUBLISH";
@@ -187,8 +187,8 @@ function resolveAuditAction(method, pathname) {
   if (method === "POST" && /^\/api\/policyos\/policies\/[^/]+\/resume$/.test(pathname)) {
     return "POLICY_RESUME";
   }
-  if (method === "POST" && pathname === "/api/policyos/decision/simulate") {
-    return "POLICY_SIMULATE";
+  if (method === "POST" && pathname === "/api/policyos/decision/evaluate") {
+    return "POLICY_EVALUATE";
   }
   if (
     method === "POST" &&

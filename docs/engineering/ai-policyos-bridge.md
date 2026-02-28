@@ -5,7 +5,7 @@
 All AI proposals must pass the same Policy OS lifecycle:
 
 1. `DRAFT` (created from AI candidate)
-2. `SIMULATE` (no side effects)
+2. `EVALUATE` (no side effects)
 3. `APPROVE` (owner approval)
 4. `PUBLISH` (becomes active policy)
 5. `EXECUTE` (runtime event-driven execution)
@@ -23,13 +23,13 @@ Both entrances converge into the same lifecycle above.
 
 Merchant proposal workflow:
 
-1. `POST /api/merchant/strategy-chat/proposals/:id/simulate`
+1. `POST /api/merchant/strategy-chat/proposals/:id/evaluate`
 2. `POST /api/merchant/strategy-chat/proposals/:id/review`
 3. `POST /api/merchant/strategy-chat/proposals/:id/publish`
 
 Policy runtime workflow:
 
-1. `POST /api/policyos/decision/simulate` (dry-run)
+1. `POST /api/policyos/decision/evaluate` (dry-run)
 2. `POST /api/policyos/decision/execute` (real execution)
 
 `/api/policyos/decision/execute` is the only execute entry.
@@ -43,7 +43,7 @@ Policy runtime workflow:
 
 ## 5. Runtime Semantics
 
-`simulate`:
+`evaluate`:
 
 1. runs trigger/segment/constraint/score/allocation
 2. returns selected/rejected/reason/risk/projection
@@ -57,8 +57,8 @@ Policy runtime workflow:
 
 ## 6. Merchant UI Contract
 
-1. Multi-candidate proposals are auto-simulated and ranked server-side before review.
-2. Pending proposal must run simulation before approve (backend hard check).
+1. Multi-candidate proposals are auto-evaluated and ranked server-side before review.
+2. Pending proposal must run evaluate before approve (backend hard check).
 3. Approved proposals move to "ready-to-publish" queue.
 4. Publish is explicit user action.
 5. No auto execute on approve.
@@ -74,7 +74,7 @@ Policy runtime workflow:
 1. LLM first drafts proposal candidates from natural language.
 2. When candidate quality is weak (e.g. low confidence or multi-candidate ambiguity), a critic round is triggered.
 3. Critic returns structured issues, then revise rewrites candidates once (bounded max rounds).
-4. Revised output still must pass Policy OS validation/simulation/approval/publish.
+4. Revised output still must pass Policy OS validation/evaluate/approval/publish.
 5. LLM has no direct execution authority.
 6. Illegal `policyPatch` fields are validated and rejected before proposal enters review; agent revise loop must fix violations.
 

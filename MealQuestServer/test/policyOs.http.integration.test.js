@@ -254,7 +254,7 @@ test("policy os end-to-end lifecycle works through HTTP", async () => {
 
     const simulate = await postJson(
       baseUrl,
-      "/api/policyos/decision/simulate",
+      "/api/policyos/decision/evaluate",
       {
         merchantId: "m_policy_http",
         userId: "u_policy_http",

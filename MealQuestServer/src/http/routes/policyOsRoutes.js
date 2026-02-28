@@ -341,7 +341,7 @@ function createPolicyOsRoutesHandler({
       return true;
     }
 
-    if (method === "POST" && url.pathname === "/api/policyos/decision/simulate") {
+    if (method === "POST" && url.pathname === "/api/policyos/decision/evaluate") {
       ensureRole(auth, ["MANAGER", "OWNER"]);
       const body = await readJsonBody(req);
       const merchantId = auth.merchantId || body.merchantId;
@@ -354,7 +354,7 @@ function createPolicyOsRoutesHandler({
         !enforceTenantPolicyForHttp({
           tenantPolicyManager,
           merchantId,
-          operation: "POLICY_SIMULATE",
+          operation: "POLICY_EVALUATE",
           res,
           auth,
           appendAuditLog
@@ -373,7 +373,7 @@ function createPolicyOsRoutesHandler({
       });
       appendAuditLog({
         merchantId,
-        action: "POLICY_SIMULATE",
+        action: "POLICY_EVALUATE",
         status: "SUCCESS",
         auth,
         details: {

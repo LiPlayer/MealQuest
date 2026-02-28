@@ -72,11 +72,11 @@ export interface StrategyChatPendingReview {
     rejectedCount: number;
     riskCount: number;
     utilityMid: number;
-    simulatedAt: string;
+    evaluatedAt: string;
     recommendable: boolean;
     rank?: number;
     recommended?: boolean;
-    simulateError?: string;
+    evaluateError?: string;
   } | null;
   createdAt: string | null;
 }
@@ -190,10 +190,11 @@ export interface PolicyDecisionResult {
   }>;
 }
 
-export interface StrategyChatSimulationResult {
+export interface StrategyChatEvaluationResult {
   proposalId: string;
   draftId: string;
-  simulation: PolicyDecisionResult;
+  evaluation: PolicyDecisionResult;
+  reused?: boolean;
 }
 
 export interface StrategyChatPublishResult {

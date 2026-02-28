@@ -37,16 +37,25 @@ function seedMerchant(db, merchantId = "m_policy_link") {
   };
 }
 
-test("merchant service links AI proposal simulate -> approve -> publish lifecycle", async () => {
+test("merchant service links AI proposal evaluate -> approve -> publish lifecycle", async () => {
   const db = createInMemoryDb();
   db.save = () => {};
   seedMerchant(db);
   const policyOsService = createPolicyOsService(db);
+  const rawSimulateDecision = policyOsService.simulateDecision.bind(policyOsService);
+  let simulateCalls = 0;
+  policyOsService.simulateDecision = async (...args) => {
+    simulateCalls += 1;
+    return rawSimulateDecision(...args);
+  };
   const { spec, template, branch } = createPolicySpecFromTemplate({
     merchantId: "m_policy_link",
     templateId: "acquisition_welcome_gift",
     branchId: "DEFAULT"
   });
+  const triggerEvent = String((spec.triggers && spec.triggers[0] && spec.triggers[0].event) || "APP_OPEN")
+    .trim()
+    .toUpperCase();
   const merchantService = createMerchantService(db, {
     policyOsService,
     aiStrategyService: {
@@ -78,6 +87,7 @@ test("merchant service links AI proposal simulate -> approve -> publish lifecycl
   assert.equal(turn.status, "PENDING_REVIEW");
   assert.ok(turn.pendingReview);
   assert.ok(turn.pendingReview.policyDraftId);
+  assert.equal(simulateCalls, 1);
 
   const reviewed = await merchantService.reviewStrategyChatProposal({
     merchantId: "m_policy_link",
@@ -89,15 +99,17 @@ test("merchant service links AI proposal simulate -> approve -> publish lifecycl
   assert.ok(reviewed.draftId);
   assert.ok(reviewed.approvalId);
 
-  const simulated = await merchantService.simulateProposalPolicy({
+  const evaluated = await merchantService.evaluateProposalPolicy({
     merchantId: "m_policy_link",
     proposalId: turn.pendingReview.proposalId,
     operatorId: "staff_owner",
     userId: "u_001",
-    event: "APP_OPEN"
+    event: triggerEvent
   });
-  assert.ok(simulated.simulation);
-  assert.equal(simulated.simulation.mode, "SIMULATE");
+  assert.ok(evaluated.evaluation);
+  assert.equal(evaluated.evaluation.mode, "SIMULATE");
+  assert.equal(evaluated.reused, true);
+  assert.equal(simulateCalls, 1);
 
   const published = await merchantService.publishApprovedProposalPolicy({
     merchantId: "m_policy_link",
@@ -176,7 +188,7 @@ test("merchant service auto-simulates and ranks multiple proposal candidates", a
   assert.equal(turn.pendingReviews[0].title, "Candidate B");
 });
 
-test("merchant service requires simulation before approving proposal", async () => {
+test("merchant service requires evaluation before approving proposal", async () => {
   const db = createInMemoryDb();
   db.save = () => {};
   seedMerchant(db, "m_policy_no_sim");
@@ -218,6 +230,78 @@ test("merchant service requires simulation before approving proposal", async () 
       proposalId: "proposal_no_sim",
       operatorId: "staff_owner"
     }),
-    /simulated before approve/
+    /evaluated before approve/
   );
+});
+
+test("merchant service supports force refresh evaluation after cached auto evaluation", async () => {
+  const db = createInMemoryDb();
+  db.save = () => {};
+  seedMerchant(db, "m_policy_force_refresh");
+  const policyOsService = createPolicyOsService(db);
+  const rawSimulateDecision = policyOsService.simulateDecision.bind(policyOsService);
+  let simulateCalls = 0;
+  policyOsService.simulateDecision = async (...args) => {
+    simulateCalls += 1;
+    return rawSimulateDecision(...args);
+  };
+  const { spec, template, branch } = createPolicySpecFromTemplate({
+    merchantId: "m_policy_force_refresh",
+    templateId: "acquisition_welcome_gift",
+    branchId: "DEFAULT"
+  });
+  const triggerEvent = String((spec.triggers && spec.triggers[0] && spec.triggers[0].event) || "APP_OPEN")
+    .trim()
+    .toUpperCase();
+  const merchantService = createMerchantService(db, {
+    policyOsService,
+    aiStrategyService: {
+      async generateStrategyChatTurn() {
+        return {
+          status: "PROPOSAL_READY",
+          assistantMessage: "Strategy drafted.",
+          proposals: [
+            {
+              title: "Policy Force Refresh Candidate",
+              spec,
+              template,
+              branch,
+              strategyMeta: {
+                confidence: 0.75
+              }
+            }
+          ]
+        };
+      }
+    }
+  });
+
+  const turn = await merchantService.sendStrategyChatMessage({
+    merchantId: "m_policy_force_refresh",
+    operatorId: "staff_owner",
+    content: "Please create strategy proposal now."
+  });
+  assert.equal(turn.status, "PENDING_REVIEW");
+  assert.equal(simulateCalls, 1);
+
+  const reused = await merchantService.evaluateProposalPolicy({
+    merchantId: "m_policy_force_refresh",
+    proposalId: turn.pendingReview.proposalId,
+    operatorId: "staff_owner",
+    userId: "u_001",
+    event: triggerEvent
+  });
+  assert.equal(reused.reused, true);
+  assert.equal(simulateCalls, 1);
+
+  const refreshed = await merchantService.evaluateProposalPolicy({
+    merchantId: "m_policy_force_refresh",
+    proposalId: turn.pendingReview.proposalId,
+    operatorId: "staff_owner",
+    userId: "u_001",
+    event: triggerEvent,
+    forceRefresh: true
+  });
+  assert.equal(refreshed.reused, false);
+  assert.equal(simulateCalls, 2);
 });

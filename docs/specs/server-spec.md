@@ -161,9 +161,9 @@
 ## 5.3 策略与风控
 
 1. `POST /api/merchant/strategy-chat/proposals/:id/review`
-2. `POST /api/merchant/strategy-chat/proposals/:id/simulate`
+2. `POST /api/merchant/strategy-chat/proposals/:id/evaluate`
 3. `POST /api/merchant/strategy-chat/proposals/:id/publish`
-4. `POST /api/policyos/decision/simulate`
+4. `POST /api/policyos/decision/evaluate`
 5. `POST /api/policyos/decision/execute`
 6. `POST /api/merchant/kill-switch`
 7. `GET /api/merchant/tenant-policy?merchantId=`（仅 `OWNER`）

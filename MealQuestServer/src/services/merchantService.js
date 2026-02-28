@@ -23,6 +23,11 @@ function createMerchantService(db, options = {}) {
   const MAX_EXECUTION_DETAIL_VALUE_LEN = 80;
   const MAX_TOTAL_PROPOSAL_CANDIDATES = 12;
   const SALES_WINDOWS_DAYS = [7, 30];
+  const SIMULATION_CACHE_MAX_AGE_SEC = Math.max(
+    30,
+    Math.floor(Number(process.env.POLICY_SIMULATION_CACHE_MAX_AGE_SEC) || 900)
+  );
+  const SIMULATION_CACHE_MAX_AGE_MS = SIMULATION_CACHE_MAX_AGE_SEC * 1000;
   const STRATEGY_CHAT_PROTOCOL = {
     name: "MQ_STRATEGY_CHAT",
     version: "2.0",
@@ -762,7 +767,7 @@ function createMerchantService(db, options = {}) {
       rejectedCount,
       riskCount,
       utilityMid: roundMoney(utilityMid),
-      simulatedAt: safeSimulation.created_at || new Date().toISOString(),
+      evaluatedAt: safeSimulation.created_at || new Date().toISOString(),
       recommendable: selectedCount > 0 && rejectedCount === 0
     };
   }
@@ -904,33 +909,34 @@ function createMerchantService(db, options = {}) {
           .toUpperCase();
       let simulation = null;
       let evaluation = null;
-      let simulateError = "";
+      let evaluateError = "";
       try {
-        const simulated = await simulateProposalPolicy({
+        const evaluatedResult = await evaluateProposalPolicy({
           merchantId,
           proposalId: proposal.id,
           operatorId: operatorId || "system",
           userId: simulationUserId,
           event: resolvedEvent,
-          eventId: `evt_auto_sim_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          eventId: `evt_auto_eval_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
           context: {
             source: "AUTO_RANK",
             proposalId: proposal.id
           }
         });
-        simulation = simulated && simulated.simulation ? simulated.simulation : null;
+        simulation =
+          evaluatedResult && evaluatedResult.evaluation ? evaluatedResult.evaluation : null;
       } catch (error) {
-        simulateError = error && error.message ? String(error.message) : "simulate failed";
+        evaluateError = error && error.message ? String(error.message) : "evaluate failed";
       }
       evaluation = buildAutoEvaluation({
         proposal,
         simulation: simulation || {},
         salesSnapshot
       });
-      if (simulateError) {
+      if (evaluateError) {
         evaluation.score = -9999;
         evaluation.recommendable = false;
-        evaluation.simulateError = simulateError;
+        evaluation.evaluateError = evaluateError;
       }
       proposal.policyWorkflow = {
         ...(proposal.policyWorkflow || {}),
@@ -1058,7 +1064,7 @@ function createMerchantService(db, options = {}) {
       "POLICY_DRAFT_SUBMIT",
       "POLICY_DRAFT_APPROVE",
       "POLICY_PUBLISH",
-      "POLICY_SIMULATE",
+      "POLICY_EVALUATE",
       "POLICY_EXECUTE"
     ]);
     return db.auditLogs
@@ -1427,23 +1433,112 @@ function createMerchantService(db, options = {}) {
     return draftId;
   }
 
-  async function simulateProposalPolicy({
+  function buildSimulationCacheKey({ draftId, event, userId }) {
+    const safeDraftId = String(draftId || "").trim();
+    const safeEvent = String(event || "").trim().toUpperCase();
+    const safeUserId = String(userId || "").trim();
+    return `${safeDraftId}|${safeEvent}|${safeUserId}`;
+  }
+
+  function applyEvaluationResultToProposal({
+    proposal,
+    draftId,
+    event,
+    userId,
+    simulation,
+    source = "MERCHANT_PROPOSAL_EVALUATE"
+  }) {
+    proposal.policyWorkflow = {
+      ...(proposal.policyWorkflow || {}),
+      draftId,
+      lastEvaluation: {
+        decisionId: simulation.decision_id,
+        selected: Array.isArray(simulation.selected) ? simulation.selected.length : 0,
+        rejected: Array.isArray(simulation.rejected) ? simulation.rejected.length : 0,
+        evaluatedAt: simulation.created_at,
+        draftId,
+        event,
+        userId: String(userId || "").trim(),
+        source: String(source || "MERCHANT_PROPOSAL_EVALUATE"),
+        cacheKey: buildSimulationCacheKey({
+          draftId,
+          event,
+          userId
+        })
+      },
+      lastEvaluationResult: cloneJson(simulation)
+    };
+  }
+
+  function readReusableEvaluationResult({
+    proposal,
+    draftId,
+    event,
+    userId
+  }) {
+    const workflow =
+      proposal && proposal.policyWorkflow && typeof proposal.policyWorkflow === "object"
+        ? proposal.policyWorkflow
+        : {};
+    const simulationMeta =
+      workflow.lastEvaluation && typeof workflow.lastEvaluation === "object"
+        ? workflow.lastEvaluation
+        : null;
+    const simulationResult =
+      workflow.lastEvaluationResult && typeof workflow.lastEvaluationResult === "object"
+        ? workflow.lastEvaluationResult
+        : null;
+    if (!simulationMeta || !simulationResult) {
+      return null;
+    }
+    const expectedCacheKey = buildSimulationCacheKey({
+      draftId,
+      event,
+      userId
+    });
+    const cachedKey = String(simulationMeta.cacheKey || "").trim();
+    if (cachedKey && cachedKey !== expectedCacheKey) {
+      return null;
+    }
+    if (!cachedKey && String(simulationMeta.draftId || "").trim() !== String(draftId || "").trim()) {
+      return null;
+    }
+    const decisionId = String(simulationMeta.decisionId || "").trim();
+    const simulationDecisionId = String(simulationResult.decision_id || "").trim();
+    if (!decisionId || !simulationDecisionId || decisionId !== simulationDecisionId) {
+      return null;
+    }
+    const evaluatedAtMs = Date.parse(
+      String(simulationMeta.evaluatedAt || simulationResult.created_at || "")
+    );
+    if (!Number.isFinite(evaluatedAtMs)) {
+      return null;
+    }
+    if (Date.now() - evaluatedAtMs > SIMULATION_CACHE_MAX_AGE_MS) {
+      return null;
+    }
+    return cloneJson(simulationResult);
+  }
+
+  async function evaluateProposalPolicy({
     merchantId,
     proposalId,
     operatorId,
     userId = "",
     event = "",
     eventId = "",
-    context = {}
+    context = {},
+    forceRefresh = false
   }) {
-    const freshResult = await runWithFreshState("simulateProposalPolicy", {
+    const freshResult = await runWithFreshState("evaluateProposalPolicy", {
       merchantId,
       proposalId,
       operatorId,
       userId,
       event,
       eventId,
-      context
+      context,
+      forceRefresh
     });
     if (freshResult !== FRESH_NOT_USED) {
       return freshResult;
@@ -1455,7 +1550,7 @@ function createMerchantService(db, options = {}) {
       throw new Error("proposal not found");
     }
     if (!["PENDING", "APPROVED"].includes(String(proposal.status || "").toUpperCase())) {
-      throw new Error("proposal status does not allow simulate");
+      throw new Error("proposal status does not allow evaluate");
     }
     if (!policyOsService || typeof policyOsService.simulateDecision !== "function") {
       throw new Error("policy os service is not configured");
@@ -1470,48 +1565,64 @@ function createMerchantService(db, options = {}) {
       String(getPrimaryTriggerEvent(proposal.suggestedPolicySpec) || "APP_OPEN")
         .trim()
         .toUpperCase();
+    const resolvedUserId = String(userId || "").trim();
+    if (!forceRefresh) {
+      const cachedSimulation = readReusableEvaluationResult({
+        proposal,
+        draftId,
+        event: resolvedEvent,
+        userId: resolvedUserId
+      });
+      if (cachedSimulation) {
+        return {
+          proposalId: proposal.id,
+          draftId,
+          evaluation: cachedSimulation,
+          reused: true
+        };
+      }
+    }
     const simulation = await policyOsService.simulateDecision({
       merchantId,
-      userId,
+      userId: resolvedUserId,
       event: resolvedEvent,
-      eventId: eventId || `evt_sim_${Date.now()}`,
+      eventId: eventId || `evt_eval_${Date.now()}`,
       context: {
         ...(context || {}),
-        source: "MERCHANT_PROPOSAL_SIMULATE",
+        source: "MERCHANT_PROPOSAL_EVALUATE",
         proposalId
       },
       draftId
     });
-    proposal.policyWorkflow = {
-      ...(proposal.policyWorkflow || {}),
+    applyEvaluationResultToProposal({
+      proposal,
       draftId,
-      lastSimulation: {
-        decisionId: simulation.decision_id,
-        selected: Array.isArray(simulation.selected) ? simulation.selected.length : 0,
-        rejected: Array.isArray(simulation.rejected) ? simulation.rejected.length : 0,
-        simulatedAt: simulation.created_at
-      }
-    };
+      event: resolvedEvent,
+      userId: resolvedUserId,
+      simulation,
+      source: context && context.source ? context.source : "MERCHANT_PROPOSAL_EVALUATE"
+    });
     db.save();
     return {
       proposalId: proposal.id,
       draftId,
-      simulation
+      evaluation: simulation,
+      reused: false
     };
   }
 
-  function assertProposalSimulatedForApprove(proposal) {
+  function assertProposalEvaluatedForApprove(proposal) {
     const workflow =
       proposal && proposal.policyWorkflow && typeof proposal.policyWorkflow === "object"
         ? proposal.policyWorkflow
         : {};
     const simulation =
-      workflow && workflow.lastSimulation && typeof workflow.lastSimulation === "object"
-        ? workflow.lastSimulation
+      workflow && workflow.lastEvaluation && typeof workflow.lastEvaluation === "object"
+        ? workflow.lastEvaluation
         : null;
-    const simulatedAt = simulation ? Date.parse(String(simulation.simulatedAt || "")) : Number.NaN;
-    if (!simulation || !String(simulation.decisionId || "").trim() || !Number.isFinite(simulatedAt)) {
-      const error = new Error("proposal must be simulated before approve");
+    const evaluatedAt = simulation ? Date.parse(String(simulation.evaluatedAt || "")) : Number.NaN;
+    if (!simulation || !String(simulation.decisionId || "").trim() || !Number.isFinite(evaluatedAt)) {
+      const error = new Error("proposal must be evaluated before approve");
       error.statusCode = 400;
       throw error;
     }
@@ -1535,7 +1646,7 @@ function createMerchantService(db, options = {}) {
     if (proposal.status !== "PENDING") {
       throw new Error("proposal already handled");
     }
-    assertProposalSimulatedForApprove(proposal);
+    assertProposalEvaluatedForApprove(proposal);
     if (!policyOsService) {
       throw new Error("policy os service is not configured");
     }
@@ -2300,7 +2411,7 @@ function createMerchantService(db, options = {}) {
     publishProposalPolicy,
     approveProposalPolicy,
     publishApprovedProposalPolicy,
-    simulateProposalPolicy,
+    evaluateProposalPolicy,
     setKillSwitch,
     createStrategyChatSession,
     getStrategyChatSession,

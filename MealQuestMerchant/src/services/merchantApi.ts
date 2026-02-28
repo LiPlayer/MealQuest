@@ -14,7 +14,7 @@ export type {
   StrategyChatMessage,
   StrategyChatMessagePage,
   StrategyChatPendingReview,
-  StrategyChatSimulationResult,
+  StrategyChatEvaluationResult,
   StrategyChatReviewProgress,
   StrategyChatReviewResult,
   StrategyChatSessionResult,

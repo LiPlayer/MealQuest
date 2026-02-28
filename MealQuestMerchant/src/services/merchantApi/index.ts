@@ -11,7 +11,7 @@ import {
   MerchantPhoneLoginResult,
   PolicyDecisionResult,
   StrategyChatPublishResult,
-  StrategyChatSimulationResult,
+  StrategyChatEvaluationResult,
   StrategyChatMessagePage,
   StrategyChatReviewResult,
   StrategyChatSessionResult,
@@ -169,7 +169,7 @@ export const MerchantApi = {
     );
   },
 
-  simulateStrategyChatProposal: async (
+  evaluateStrategyChatProposal: async (
     token: string,
     payload: {
       proposalId: string;
@@ -177,12 +177,13 @@ export const MerchantApi = {
       eventId?: string;
       userId?: string;
       context?: Record<string, unknown>;
+      forceRefresh?: boolean;
       merchantId?: string;
     },
   ) => {
-    return requestJson<StrategyChatSimulationResult>(
+    return requestJson<StrategyChatEvaluationResult>(
       'POST',
-      `/api/merchant/strategy-chat/proposals/${encodeURIComponent(payload.proposalId)}/simulate`,
+      `/api/merchant/strategy-chat/proposals/${encodeURIComponent(payload.proposalId)}/evaluate`,
       token,
       {
         merchantId: payload.merchantId || getMerchantId(),
@@ -190,6 +191,7 @@ export const MerchantApi = {
         eventId: payload.eventId,
         userId: payload.userId,
         context: payload.context || {},
+        forceRefresh: payload.forceRefresh === true,
       },
     );
   },
@@ -237,7 +239,7 @@ export const MerchantApi = {
     );
   },
 
-  simulatePolicyDecision: async (
+  evaluatePolicyDecision: async (
     token: string,
     payload: {
       event: string;
@@ -250,7 +252,7 @@ export const MerchantApi = {
   ) => {
     return requestJson<PolicyDecisionResult>(
       'POST',
-      '/api/policyos/decision/simulate',
+      '/api/policyos/decision/evaluate',
       token,
       {
         merchantId: payload.merchantId || getMerchantId(),

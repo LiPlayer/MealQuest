@@ -34,13 +34,13 @@ export type AuditActionFilter =
     | 'STRATEGY_CHAT_SESSION_CREATE'
     | 'STRATEGY_CHAT_MESSAGE'
     | 'STRATEGY_CHAT_REVIEW'
-    | 'STRATEGY_CHAT_SIMULATE'
+    | 'STRATEGY_CHAT_EVALUATE'
     | 'STRATEGY_CHAT_PUBLISH'
     | 'POLICY_DRAFT_CREATE'
     | 'POLICY_DRAFT_SUBMIT'
     | 'POLICY_DRAFT_APPROVE'
     | 'POLICY_PUBLISH'
-    | 'POLICY_SIMULATE'
+    | 'POLICY_EVALUATE'
     | 'POLICY_EXECUTE'
     | 'SUPPLIER_VERIFY'
     | 'ALLIANCE_CONFIG_SET'
@@ -108,7 +108,8 @@ interface MerchantContextType {
     aiIntentSubmitting: boolean;
     strategyChatMessages: StrategyChatMessageWithStatus[];
     strategyChatPendingReview: StrategyChatPendingReview | null;
-    strategyChatSimulation: PolicyDecisionResult | null;
+    strategyChatEvaluation: PolicyDecisionResult | null;
+    strategyChatEvaluationReady: boolean;
     pendingReviewCount: number;
     totalReviewCount: number;
     currentReviewIndex: number;
@@ -121,7 +122,7 @@ interface MerchantContextType {
     onTriggerProactiveScan: () => Promise<void>;
     onCreateIntentProposal: () => Promise<void>;
     onRetryMessage: (messageId: string) => Promise<void>;
-    onSimulatePendingStrategy: () => Promise<void>;
+    onEvaluatePendingStrategy: () => Promise<void>;
     onReviewPendingStrategy: (decision: 'APPROVE' | 'REJECT') => Promise<void>;
     onPublishApprovedProposal: (proposalId: string) => Promise<void>;
     onToggleAllianceWalletShared: () => Promise<void>;
@@ -183,7 +184,7 @@ export function MerchantProvider({
     const [strategyChatPendingReview, setStrategyChatPendingReview] = useState<StrategyChatPendingReview | null>(null);
     const [strategyChatPendingReviews, setStrategyChatPendingReviews] = useState<StrategyChatPendingReview[]>([]);
     const [strategyChatReviewProgress, setStrategyChatReviewProgress] = useState<StrategyChatReviewProgress | null>(null);
-    const [strategyChatSimulation, setStrategyChatSimulation] = useState<PolicyDecisionResult | null>(null);
+    const [strategyChatEvaluation, setStrategyChatEvaluation] = useState<PolicyDecisionResult | null>(null);
 
     const [contractStatus, setContractStatus] = useState<'LOADING' | 'NOT_SUBMITTED' | 'SUBMITTED'>('LOADING');
     const [wsConnected, setWsConnected] = useState(false);
@@ -193,6 +194,11 @@ export function MerchantProvider({
     const totalReviewCount = Math.max(pendingReviewCount, Number(strategyChatReviewProgress?.totalCandidates || 0));
     const reviewedReviewCount = Math.max(0, Number(strategyChatReviewProgress?.reviewedCandidates || 0));
     const currentReviewIndex = pendingReviewCount > 0 ? Math.min(totalReviewCount, reviewedReviewCount + 1) : 0;
+    const autoEvaluationReady = Boolean(
+        strategyChatPendingReview?.evaluation?.evaluatedAt &&
+        !strategyChatPendingReview?.evaluation?.evaluateError,
+    );
+    const strategyChatEvaluationReady = Boolean(strategyChatEvaluation) || autoEvaluationReady;
 
     const visibleRealtimeEvents = useMemo(
         () => (showOnlyAnomaly ? realtimeEvents.filter(item => item.isAnomaly) : realtimeEvents),
@@ -249,7 +255,7 @@ export function MerchantProvider({
         setStrategyChatPendingReviews(pendingReviews);
         setStrategyChatPendingReview(snapshot.pendingReview || pendingReviews[0] || null);
         setStrategyChatReviewProgress(snapshot.reviewProgress || null);
-        setStrategyChatSimulation(null);
+        setStrategyChatEvaluation(null);
     };
 
     const applyStrategyChatDelta = (delta: StrategyChatDelta) => {
@@ -260,7 +266,7 @@ export function MerchantProvider({
         if (pendingReviews.length > 0 || delta.pendingReview !== undefined) {
             setStrategyChatPendingReviews(pendingReviews);
             setStrategyChatPendingReview(delta.pendingReview || pendingReviews[0] || null);
-            setStrategyChatSimulation(null);
+            setStrategyChatEvaluation(null);
         }
         if (delta.reviewProgress !== undefined) setStrategyChatReviewProgress(delta.reviewProgress || null);
 
@@ -442,7 +448,7 @@ export function MerchantProvider({
         setStrategyChatPendingReview(null);
         setStrategyChatPendingReviews([]);
         setStrategyChatReviewProgress(null);
-        setStrategyChatSimulation(null);
+        setStrategyChatEvaluation(null);
 
         // Static session initialization (local only, no HTTP)
         const merchantId = MerchantApi.getMerchantId();
@@ -561,35 +567,35 @@ export function MerchantProvider({
         }
     };
 
-    const onSimulatePendingStrategy = async () => {
+    const onEvaluatePendingStrategy = async () => {
         if (!remoteToken || !strategyChatPendingReview?.proposalId) {
-            setLastAction('No pending proposal to simulate');
+            setLastAction('No pending proposal to evaluate');
             return;
         }
         const currentPending = strategyChatPendingReview;
         const chosenEvent = String(currentPending.triggerEvent || 'APP_OPEN').trim().toUpperCase() || 'APP_OPEN';
         const chosenUserId = customerUserId.trim();
         try {
-            const result = await MerchantApi.simulateStrategyChatProposal(remoteToken, {
+            const result = await MerchantApi.evaluateStrategyChatProposal(remoteToken, {
                 proposalId: currentPending.proposalId,
                 event: chosenEvent,
-                eventId: `evt_sim_${Date.now()}`,
+                eventId: `evt_eval_${Date.now()}`,
                 userId: chosenUserId || undefined,
                 context: {
                     source: 'MERCHANT_REVIEW_SIMULATE',
                     proposalId: currentPending.proposalId,
                 },
             });
-            const simulation = result.simulation;
-            setStrategyChatSimulation(simulation);
-            const selected = Array.isArray(simulation.selected) ? simulation.selected.length : 0;
-            const rejected = Array.isArray(simulation.rejected) ? simulation.rejected.length : 0;
+            const evaluation = result.evaluation;
+            setStrategyChatEvaluation(evaluation);
+            const selected = Array.isArray(evaluation.selected) ? evaluation.selected.length : 0;
+            const rejected = Array.isArray(evaluation.rejected) ? evaluation.rejected.length : 0;
             setLastAction(
-                `Simulation ready: selected ${selected}, rejected ${rejected}${chosenUserId ? `, user ${chosenUserId}` : ''}`,
+                `${result.reused ? 'Evaluation reused' : 'Evaluation ready'}: selected ${selected}, rejected ${rejected}${chosenUserId ? `, user ${chosenUserId}` : ''}`,
             );
             await refreshAuditLogs();
         } catch (error: any) {
-            setLastAction(`Simulation failed: ${error?.message || 'unknown error'}`);
+            setLastAction(`Evaluation failed: ${error?.message || 'unknown error'}`);
         }
     };
 
@@ -644,8 +650,8 @@ export function MerchantProvider({
 
     const onReviewPendingStrategy = async (decision: 'APPROVE' | 'REJECT') => {
         if (!remoteToken || !strategyChatPendingReview?.proposalId) { setLastAction('No pending proposal to review'); return; }
-        if (decision === 'APPROVE' && !strategyChatSimulation) {
-            setLastAction('Please run simulation before approve');
+        if (decision === 'APPROVE' && !strategyChatEvaluationReady) {
+            setLastAction('Evaluation is required before approve');
             return;
         }
         try {
@@ -656,10 +662,10 @@ export function MerchantProvider({
             });
             applyStrategyChatDelta(result);
             if (decision === 'APPROVE' && result.status === 'APPROVED') {
-                setStrategyChatSimulation(null);
+                setStrategyChatEvaluation(null);
                 setLastAction('Proposal approved. Publish it to activate.');
             } else if (result.status === 'REJECTED') {
-                setStrategyChatSimulation(null);
+                setStrategyChatEvaluation(null);
                 setLastAction('Proposal rejected');
             }
             await refreshRemoteState({ force: true });
@@ -737,10 +743,10 @@ export function MerchantProvider({
         auditActionFilter, setAuditActionFilter, auditStatusFilter, setAuditStatusFilter,
         auditTimeRange, setAuditTimeRange, allianceConfig, allianceStores, customerUserId, setCustomerUserId,
         qrStoreId, setQrStoreId, qrScene, setQrScene, qrPayload, aiIntentDraft, setAiIntentDraft,
-        aiIntentSubmitting, strategyChatMessages, strategyChatPendingReview, strategyChatSimulation,
+        aiIntentSubmitting, strategyChatMessages, strategyChatPendingReview, strategyChatEvaluation, strategyChatEvaluationReady,
         pendingReviewCount, totalReviewCount, currentReviewIndex, contractStatus, setContractStatus,
         wsConnected,
-        onCopyEventDetail, onTriggerProactiveScan, onCreateIntentProposal, onRetryMessage, onSimulatePendingStrategy, onReviewPendingStrategy, onPublishApprovedProposal,
+        onCopyEventDetail, onTriggerProactiveScan, onCreateIntentProposal, onRetryMessage, onEvaluatePendingStrategy, onReviewPendingStrategy, onPublishApprovedProposal,
         onToggleAllianceWalletShared, onSyncAllianceUser, onToggleKillSwitch,
         onGenerateMerchantQr, refreshAuditLogs, refreshRemoteState,
     };
