@@ -1,4 +1,4 @@
-# MealQuest 场景推演与反推验证（2026-02-21）
+﻿# MealQuest 场景推演与反推验证（2026-02-21）
 
 > 基准文档：`mealquest-spec.md`
 > 验证目标：从“用户/商户”双角色推演，反查文档与代码是否形成闭环。
@@ -96,18 +96,18 @@
 ## 2.2 场景 M2：店长触发熔断后阻断营销
 
 1. 店长开启 `kill switch`。
-2. 后续 TCA 触发返回阻断。
+2. 后续 Policy OS 触发返回阻断。
 3. 实时事件流收到熔断状态变更。
 
 反推：
 1. 文档：`merchant-spec.md` 2.4、4.2。
 2. 代码：
    - `MealQuestMerchant/App.tsx`
-   - `MealQuestServer/src/core/tcaEngine.js`
+   - `MealQuestServer/src/core/policyDecisionEngine.js`
    - `MealQuestServer/src/http/server.js`
 3. 测试：
    - `MealQuestMerchant/__tests__/merchant-engine.test.ts`
-   - `MealQuestServer/test/tcaEngine.test.js`
+   - `MealQuestServer/test/policyDecisionEngine.test.js`
    - `MealQuestServer/test/http.integration.test.js`
 
 结论：满足。
@@ -349,18 +349,18 @@
 
 结论：满足。
 
-## 3.14 场景 S14：自动回滚回流共享库
+## 3.14 场景 S14：自动切换共享库
 
-1. 商户已切专库后，执行 `migration/rollback` 应回流共享库。
-2. 回滚后迁移状态应为 `ROLLBACK` 且 `dedicatedDbAttached=false`。
-3. 回滚后新支付应落共享库，不再写入专库。
+1. 商户切换流程仅保留 `migration/cutover`。
+2. 切换后迁移状态应为 `CUTOVER` 且 `dedicatedDbAttached=true`。
+3. 切换后新支付应落专库。
 
 反推：
 1. 文档：`server-spec.md` 5.3、7.2、10。
 2. 代码：
    - `MealQuestServer/src/http/server.js`
    - `MealQuestServer/src/core/tenantRouter.js`
-3. 测试：`MealQuestServer/test/http.integration.test.js`（migration rollback 用例）。
+3. 测试：`MealQuestServer/test/http.integration.test.js`（migration cutover 用例）。
 
 结论：满足。
 
@@ -542,5 +542,6 @@
 ## 5. 仍待深水区（不影响当前闭环）
 
 1. 真实支付网关接入与回调签名验真。
-2. 多租户物理分库的生产化编排（当前已具备自动 cutover/rollback 基础能力，下一步补跨库一致性校验事务化与幂等补偿）。
+2. 多租户物理分库的生产化编排（当前已具备自动 cutover 基础能力，下一步补跨库一致性校验事务化与幂等补偿）。
 3. 线上级链路压测与故障演练（WebSocket 高并发、磁盘异常、网络抖动）。
+

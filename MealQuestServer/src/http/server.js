@@ -10,7 +10,6 @@ loadServerEnv();
 const { createTenantPolicyManager } = require("../core/tenantPolicy");
 const { createTenantRouter } = require("../core/tenantRouter");
 const { createWebSocketHub } = require("../core/websocketHub");
-const { createCampaignService } = require("../services/campaignService");
 const { createInvoiceService } = require("../services/invoiceService");
 const { createMerchantService } = require("../services/merchantService");
 const { createAiStrategyService } = require("../services/aiStrategyService");
@@ -118,7 +117,6 @@ function createAppServer({
     if (!services) {
       services = {
         paymentService: createPaymentService(scopedDb, { paymentProvider }),
-        campaignService: createCampaignService(scopedDb),
         merchantService: createMerchantService(scopedDb, { aiStrategyService, wsHub }),
         allianceService: createAllianceService(scopedDb),
         invoiceService: createInvoiceService(scopedDb),

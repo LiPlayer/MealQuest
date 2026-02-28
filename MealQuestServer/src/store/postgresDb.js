@@ -553,7 +553,7 @@ async function runInTenantTransaction(pool, tenantId, runner) {
     await client.query("COMMIT");
     return result;
   } catch (error) {
-    await client.query("ROLLBACK");
+    await client.query("ABORT");
     throw error;
   } finally {
     client.release();

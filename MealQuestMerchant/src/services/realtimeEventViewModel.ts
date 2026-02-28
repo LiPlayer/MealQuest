@@ -36,7 +36,7 @@ const EVENT_META: Record<
     severity: 'warn',
     isAnomaly: true,
   },
-  TCA_TRIGGERED: {
+  POLICYOS_DECISION: {
     label: '策略触发',
     severity: 'info',
     isAnomaly: false,

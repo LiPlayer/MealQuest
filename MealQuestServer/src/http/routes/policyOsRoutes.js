@@ -234,44 +234,6 @@ function createPolicyOsRoutesHandler({
       return true;
     }
 
-    const rollbackMatch = url.pathname.match(/^\/api\/policyos\/policies\/([^/]+)\/rollback$/);
-    if (method === "POST" && rollbackMatch) {
-      ensureRole(auth, ["OWNER"]);
-      const body = await readJsonBody(req);
-      const merchantId = auth.merchantId || body.merchantId;
-      const policyId = decodeURIComponent(rollbackMatch[1]);
-      if (
-        !enforceTenantPolicyForHttp({
-          tenantPolicyManager,
-          merchantId,
-          operation: "CAMPAIGN_STATUS_SET",
-          res,
-          auth,
-          appendAuditLog
-        })
-      ) {
-        return true;
-      }
-      const { policyOsService } = getServicesForMerchant(merchantId);
-      const result = policyOsService.rollbackPolicy({
-        merchantId,
-        policyId,
-        operatorId: auth.operatorId || auth.userId || "system",
-        reason: body.reason || ""
-      });
-      appendAuditLog({
-        merchantId,
-        action: "POLICY_ROLLBACK",
-        status: "SUCCESS",
-        auth,
-        details: {
-          policyId
-        }
-      });
-      sendJson(res, 200, result);
-      return true;
-    }
-
     if (method === "POST" && url.pathname === "/api/policyos/decision/evaluate") {
       ensureRole(auth, ["MANAGER", "OWNER"]);
       const body = await readJsonBody(req);
@@ -280,7 +242,7 @@ function createPolicyOsRoutesHandler({
         !enforceTenantPolicyForHttp({
           tenantPolicyManager,
           merchantId,
-          operation: "TCA_TRIGGER",
+          operation: "POLICY_EVALUATE",
           res,
           auth,
           appendAuditLog

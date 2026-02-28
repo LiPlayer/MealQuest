@@ -368,58 +368,6 @@ function createMerchantRoutesHandler({
       return true;
     }
 
-    if (method === "POST" && url.pathname === "/api/tca/trigger") {
-      ensureRole(auth, ["MANAGER", "OWNER"]);
-      const body = await readJsonBody(req);
-      body.merchantId = auth.merchantId || body.merchantId;
-      if (
-        !enforceTenantPolicyForHttp({
-          tenantPolicyManager,
-          merchantId: body.merchantId,
-          operation: "TCA_TRIGGER",
-          res,
-          auth,
-          appendAuditLog,
-        })
-      ) {
-        return true;
-      }
-      const approvalToken =
-        (req.headers && req.headers["x-approval-token"]) ||
-        body.approvalToken ||
-        body.approval_token ||
-        "";
-      const { policyOsService } = getServicesForMerchant(body.merchantId);
-      const result = await policyOsService.evaluateDecision({
-        merchantId: body.merchantId,
-        userId: body.userId,
-        event: body.event,
-        eventId: body.eventId || "",
-        context: body.context || {},
-        approvalToken
-      });
-      appendAuditLog({
-        merchantId: body.merchantId,
-        action: "POLICY_EVALUATE",
-        status: result.executed.length > 0 ? "SUCCESS" : "BLOCKED",
-        auth,
-        details: {
-          event: body.event,
-          decisionId: result.decision_id,
-          executedCount: (result.executed || []).length,
-          rejectedCount: (result.rejected || []).length
-        },
-      });
-      wsHub.broadcast(body.merchantId, "TCA_TRIGGERED", {
-        decisionId: result.decision_id,
-        executed: result.executed,
-        storyCards: result.storyCards,
-        grants: result.grants
-      });
-      sendJson(res, 200, result);
-      return true;
-    }
-
     return false;
   };
 }

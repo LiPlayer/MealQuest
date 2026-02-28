@@ -36,7 +36,7 @@ Current automated coverage:
 - `C` proposal + trigger + kill switch
 - `D` audit query
 - `E` tenant policy freeze + rate limit
-- `F` migration step + cutover + rollback
+- `F` migration step + cutover
 - `G` strategy library + proposal + campaign status
 - `H` supplier verify + fire sale
 - `I` alliance config + wallet share + cross-store sync

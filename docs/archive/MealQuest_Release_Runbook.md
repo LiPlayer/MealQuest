@@ -105,7 +105,7 @@ TARO_APP_DEFAULT_STORE_ID=m_my_first_store
    - RBAC;
    - Multi-tenant isolation;
    - Tenant policy freezing and rate limiting;
-   - Automatic database switching and rollback;
+   - Automatic database switching;
    - Standard marketing policy library (template query / branch proposal / execution confirmation / activity toggle);
    - Supplier verification and cross-industry alliance order validation;
    - Emergency Flash Sale `Priority:999 + TTL`;

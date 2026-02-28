@@ -225,7 +225,7 @@ async function runSmoke(baseUrl, options = {}) {
   assert.equal(wsMessage.type, "PAYMENT_VERIFIED");
   ws.close();
 
-  console.log("[smoke] scenario C: proposal + trigger + kill switch");
+  console.log("[smoke] scenario C: proposal + kill switch");
   const dashboard = await getJson(baseUrl, "/api/merchant/dashboard?merchantId=m_store_001", {
     Authorization: `Bearer ${ownerToken}`
   });
@@ -251,19 +251,6 @@ async function runSmoke(baseUrl, options = {}) {
   );
   expectStatus(killSwitchOff, 200, "kill switch off");
 
-  const trigger = await postJson(
-    baseUrl,
-    "/api/tca/trigger",
-    {
-      merchantId: "m_store_001",
-      userId: "u_demo",
-      event: "WEATHER_CHANGE",
-      context: { weather: "RAIN" }
-    },
-    { Authorization: `Bearer ${ownerToken}` }
-  );
-  expectStatus(trigger, 200, "trigger campaign");
-
   const killSwitchOn = await postJson(
     baseUrl,
     "/api/merchant/kill-switch",
@@ -271,19 +258,6 @@ async function runSmoke(baseUrl, options = {}) {
     { Authorization: `Bearer ${ownerToken}` }
   );
   expectStatus(killSwitchOn, 200, "kill switch on");
-  const blockedTrigger = await postJson(
-    baseUrl,
-    "/api/tca/trigger",
-    {
-      merchantId: "m_store_001",
-      userId: "u_demo",
-      event: "WEATHER_CHANGE",
-      context: { weather: "RAIN" }
-    },
-    { Authorization: `Bearer ${ownerToken}` }
-  );
-  expectStatus(blockedTrigger, 200, "trigger blocked by kill switch");
-  assert.equal(blockedTrigger.data.blockedByKillSwitch, true);
   await postJson(
     baseUrl,
     "/api/merchant/kill-switch",
@@ -384,7 +358,7 @@ async function runSmoke(baseUrl, options = {}) {
     { Authorization: `Bearer ${ownerToken}` }
   );
 
-  console.log("[smoke] scenario F: migration step + cutover + rollback");
+  console.log("[smoke] scenario F: migration step + cutover");
   const stepFreeze = await postJson(
     baseUrl,
     "/api/merchant/migration/step",
@@ -419,24 +393,6 @@ async function runSmoke(baseUrl, options = {}) {
   );
   expectStatus(statusAfterCutover, 200, "migration status after cutover");
   assert.equal(statusAfterCutover.data.dedicatedDbAttached, true);
-
-  const rollback = await postJson(
-    baseUrl,
-    "/api/merchant/migration/rollback",
-    { merchantId: "m_store_001", note: "smoke rollback" },
-    { Authorization: `Bearer ${ownerToken}` }
-  );
-  expectStatus(rollback, 200, "migration rollback");
-  assert.equal(rollback.data.dedicatedDbAttached, false);
-  assert.equal(rollback.data.migration.phase, "ROLLBACK");
-
-  const statusAfterRollback = await getJson(
-    baseUrl,
-    "/api/merchant/migration/status?merchantId=m_store_001",
-    { Authorization: `Bearer ${ownerToken}` }
-  );
-  expectStatus(statusAfterRollback, 200, "migration status after rollback");
-  assert.equal(statusAfterRollback.data.dedicatedDbAttached, false);
 
   console.log("[smoke] scenario G: strategy chat proposal + review + status");
 

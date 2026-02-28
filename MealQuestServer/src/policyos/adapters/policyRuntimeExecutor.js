@@ -1,11 +1,11 @@
-function createTcaExecutionAdapter({ pluginRegistry }) {
+function createPolicyRuntimeExecutor({ pluginRegistry }) {
   if (!pluginRegistry) {
     throw new Error("pluginRegistry is required");
   }
 
   function compile({ policy, traceId }) {
     return {
-      runtime: "TCA_ADAPTER_V1",
+      runtime: "POLICY_RUNTIME_V1",
       traceId,
       commands: (policy.actions || []).map((action, index) => ({
         id: `${policy.policy_id}:action:${index + 1}`,
@@ -18,7 +18,7 @@ function createTcaExecutionAdapter({ pluginRegistry }) {
 
   function explain({ policy, scoreResult, constraintResult }) {
     return {
-      runtime: "TCA_ADAPTER_V1",
+      runtime: "POLICY_RUNTIME_V1",
       policyId: policy.policy_id,
       reason_codes: [
         ...(constraintResult && constraintResult.reasonCodes ? constraintResult.reasonCodes : []),
@@ -67,5 +67,5 @@ function createTcaExecutionAdapter({ pluginRegistry }) {
 }
 
 module.exports = {
-  createTcaExecutionAdapter
+  createPolicyRuntimeExecutor
 };

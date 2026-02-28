@@ -7,14 +7,14 @@ Minimal runnable backend implementation for MealQuest.
 - Smart payment deduction (expiring coupon -> wallet balance -> change -> external payment)
 - Payment verification with idempotency protection
 - Refund clawback (consume gifted balance first, then principal)
-- TCA engine (Trigger / Condition / Action)
+- Policy OS decision engine (policy/trigger/constraint/scoring/action plugins)
 - AI-driven merchant strategy proposal and approval workflow
 - LangGraph-based strategy planning orchestration
 - Emergency fire-sale override (`Priority:999 + TTL`)
 - Supplier order verification API
 - Alliance configuration (store clusters, shared wallet, cross-store sync)
 - JWT auth with role scope (`CUSTOMER`, `CLERK`, `MANAGER`, `OWNER`)
-- WebSocket realtime events (payment, refund, strategy, fuse, TCA)
+- WebSocket realtime events (payment, refund, strategy, fuse, policy decision)
 - PostgreSQL relational persistence (multi-table)
 - Strong shared-db isolation with PostgreSQL RLS (`tenant_id`)
 - High-risk audit logs
@@ -69,7 +69,7 @@ Notes:
 1. Runtime state model is still in-memory first.
 2. `save()` persists runtime state into relational tables under `MQ_DB_SCHEMA`.
 3. On first run, if relational rows do not exist for `MQ_DB_SNAPSHOT_KEY`, server tries one-time import from the legacy snapshot table.
-4. Migration cutover and rollback keep working with tenant snapshot keys.
+4. Migration cutover keeps working with tenant snapshot keys.
 5. Shared-db tables are persisted by `tenant_id`, with transaction-scoped `app.tenant_id` context.
 6. PostgreSQL RLS is enabled by default (`MQ_DB_ENFORCE_RLS=true`) and can be disabled only for troubleshooting.
 7. Idempotency records are persisted in PostgreSQL (`mq_idempotency_records`) and scoped by `tenant_id`.
@@ -157,7 +157,6 @@ Migration orchestration (owner only):
 GET  /api/merchant/migration/status?merchantId=<id>
 POST /api/merchant/migration/step
 POST /api/merchant/migration/cutover
-POST /api/merchant/migration/rollback
 ```
 
 ## Business APIs

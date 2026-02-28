@@ -54,7 +54,7 @@ npm run android
 
 ## Integration Notes
 
-1. Cockpit mode calls backend APIs for strategy approval, fuse, and TCA operations.
+1. Cockpit mode calls backend APIs for strategy approval, fuse, and Policy OS operations.
 2. Merchant login is exchanged by `/api/auth/merchant/phone-login`.
 3. Realtime events come from `/ws`.
 4. Audit timeline is fetched from `/api/audit/logs` with filters and pagination.

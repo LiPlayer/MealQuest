@@ -4,7 +4,6 @@ export type {
   AuditLogItem,
   AuditLogPage,
   CampaignStatusResult,
-  FireSaleResult,
   MerchantCatalogItem,
   MerchantCatalogResult,
   MerchantContractStatusResult,
@@ -20,5 +19,4 @@ export type {
   StrategyChatTurnResult,
   StrategyTemplate,
   StrategyTemplateBranch,
-  TriggerRainEventResult,
 } from './merchantApi/types';

@@ -3,7 +3,7 @@ const { createPolicyRegistry } = require("./policyRegistry");
 const { createPluginRegistry } = require("./pluginRegistry");
 const { createPolicyLedgerService } = require("./ledgerService");
 const { createDecisionService } = require("./decisionService");
-const { createTcaExecutionAdapter } = require("./adapters/tcaExecutionAdapter");
+const { createPolicyRuntimeExecutor } = require("./adapters/policyRuntimeExecutor");
 const { createApprovalTokenService } = require("./approvalTokenService");
 const { registerDefaultPlugins } = require("./plugins/defaultPlugins");
 const { createWsDispatcher } = require("./wsDispatcher");
@@ -30,7 +30,7 @@ function createPolicyOsService(db, { wsHub = null, metrics = null, now = () => D
     ledgerService,
     now
   });
-  const executionAdapter = createTcaExecutionAdapter({
+  const executionAdapter = createPolicyRuntimeExecutor({
     pluginRegistry
   });
   const decisionService = createDecisionService({
@@ -169,7 +169,6 @@ function createPolicyOsService(db, { wsHub = null, metrics = null, now = () => D
     submitDraft: policyRegistry.submitDraft,
     approveDraft: policyRegistry.approveDraft,
     publishDraft: policyRegistry.publishDraft,
-    rollbackPolicy: policyRegistry.rollbackPolicy,
     listDrafts: policyRegistry.listDrafts,
     listPolicies: policyRegistry.listPolicies,
     listActivePolicies: policyRegistry.listActivePolicies,

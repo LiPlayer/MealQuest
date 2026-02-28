@@ -7,7 +7,7 @@ Last updated: 2026-02-25
 - `MealQuest_PreLaunch_Checklist.md`
 - `MealQuest_Full_Lifecycle_Handbook.md`
 
-目标：统一“启动、联调、发布、回滚、放行标准”。
+目标：统一“启动、联调、发布、放行标准”。
 
 ## 1. 环境准备
 
@@ -75,13 +75,13 @@ npm run test:smoke
 - Smoke 通过。
 - 关键页面可用，无阻塞 bug。
 
-## 5. 回滚策略
+## 5. 应急恢复策略
 
 出现阻塞级问题时：
 1. 停止增量变更发布。
-2. 回滚到最近一次 `npm run verify` 全绿版本。
+2. 恢复到最近一次 `npm run verify` 全绿版本。
 3. 优先恢复支付、鉴权、租户隔离能力。
-4. 回滚后重新跑 `verify + smoke`。
+4. 恢复后重新跑 `verify + smoke`。
 
 ## 6. 历史详细版本
 

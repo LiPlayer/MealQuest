@@ -206,28 +206,6 @@ function createPolicyRegistry({
     };
   }
 
-  function rollbackPolicy({ merchantId, policyId, operatorId, reason = "" }) {
-    const state = ensureState();
-    const policy = state.policies[policyId];
-    if (!policy || !policy.resource_scope || policy.resource_scope.merchant_id !== merchantId) {
-      throw new Error("policy not found");
-    }
-    if (!["PUBLISHED", "EXPIRED"].includes(policy.status)) {
-      throw new Error("policy cannot be rolled back");
-    }
-    policy.status = "ROLLED_BACK";
-    policy.rolled_back_by = operatorId || "system";
-    policy.rolled_back_at = nowIso();
-    policy.rollback_reason = String(reason || "");
-    policy.updated_at = nowIso();
-    const published = Array.isArray(state.publishedByMerchant[merchantId])
-      ? state.publishedByMerchant[merchantId]
-      : [];
-    state.publishedByMerchant[merchantId] = published.filter((item) => item !== policyId);
-    db.save();
-    return clone(policy);
-  }
-
   function expirePolicies({ merchantId }) {
     const state = ensureState();
     const nowMs = now();
@@ -291,7 +269,6 @@ function createPolicyRegistry({
     submitDraft,
     approveDraft,
     publishDraft,
-    rollbackPolicy,
     listDrafts,
     listPolicies,
     listActivePolicies,

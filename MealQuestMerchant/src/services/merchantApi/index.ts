@@ -14,7 +14,6 @@ import {
   StrategyChatReviewResult,
   StrategyChatSessionResult,
   StrategyChatTurnResult,
-  TriggerRainEventResult,
 } from './types';
 
 export const MerchantApi = {
@@ -68,30 +67,6 @@ export const MerchantApi = {
       enabled,
     });
   },
-
-  triggerRainEvent: async (
-    token: string,
-    userId: string,
-    merchantId = getMerchantId(),
-  ): Promise<TriggerRainEventResult> => {
-    return MerchantApi.triggerEvent(token, 'WEATHER_CHANGE', { weather: 'RAIN' }, userId, merchantId);
-  },
-
-  triggerEvent: async (
-    token: string,
-    event: string,
-    context: Record<string, string | boolean | number>,
-    userId: string,
-    merchantId = getMerchantId(),
-  ): Promise<TriggerRainEventResult> => {
-    return requestJson<TriggerRainEventResult>('POST', '/api/tca/trigger', token, {
-      merchantId,
-      userId,
-      event,
-      context,
-    });
-  },
-
 
   reviewStrategyChatProposal: async (
     token: string,

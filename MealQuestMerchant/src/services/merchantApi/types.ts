@@ -47,11 +47,6 @@ export interface AuditLogPage {
   };
 }
 
-export interface TriggerRainEventResult {
-  blockedByKillSwitch: boolean;
-  executed?: string[];
-}
-
 export interface StrategyChatPendingReview {
   proposalId: string;
   status: string;

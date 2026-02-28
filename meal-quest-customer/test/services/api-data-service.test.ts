@@ -75,7 +75,7 @@ describe('ApiDataService activities mapping', () => {
                         icon: '*',
                         color: 'bg-cyan-50',
                         textColor: 'text-cyan-600',
-                        tag: 'TCA'
+                        tag: 'POLICY'
                     }
                 ]
             }

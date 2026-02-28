@@ -235,20 +235,6 @@ test("policy os end-to-end lifecycle works through HTTP", async () => {
     assert.equal(explain.status, 200);
     assert.equal(explain.data.decision_id, evaluate.data.decision_id);
 
-    const rollback = await postJson(
-      baseUrl,
-      `/api/policyos/policies/${encodeURIComponent(publish.data.policy.policy_id)}/rollback`,
-      {
-        merchantId: "m_policy_http",
-        reason: "manual rollback"
-      },
-      {
-        Authorization: `Bearer ${ownerToken}`
-      }
-    );
-    assert.equal(rollback.status, 200);
-    assert.equal(rollback.data.status, "ROLLED_BACK");
-
     const state = await getJson(
       baseUrl,
       "/api/state?merchantId=m_policy_http&userId=u_policy_http",

@@ -39,7 +39,7 @@ export type AuditActionFilter =
     | 'ALLIANCE_CONFIG_SET'
     | 'ALLIANCE_SYNC_USER'
     | 'KILL_SWITCH_SET'
-    | 'TCA_TRIGGER';
+    | 'POLICY_EVALUATE';
 export type AuditStatusFilter = 'ALL' | 'SUCCESS' | 'DENIED' | 'BLOCKED' | 'FAILED';
 export type AuditTimeRange = '24H' | '7D' | 'ALL';
 

@@ -5,7 +5,6 @@ const {
   buildTenantPolicyPatch,
   applyMigrationStep,
   cutoverMerchantToDedicatedDb,
-  rollbackMerchantToSharedDb,
 } = require("../serverHelpers");
 
 function createTenantRoutesHandler({
@@ -234,13 +233,6 @@ function createTenantRoutesHandler({
             actualDb: rootDb,
             tenantPolicyManager,
             merchantId,
-            step: "MARK_ROLLBACK",
-            note: `cutover failed: ${error.message}`,
-          });
-          applyMigrationStep({
-            actualDb: rootDb,
-            tenantPolicyManager,
-            merchantId,
             step: "UNFREEZE_WRITE",
             note: "restore write traffic after cutover failure",
           });
@@ -266,87 +258,6 @@ function createTenantRoutesHandler({
       sendJson(res, 200, {
         merchantId,
         ...cutoverResult,
-        ...finalState,
-      });
-      return true;
-    }
-
-    if (method === "POST" && url.pathname === "/api/merchant/migration/rollback") {
-      ensureRole(auth, ["OWNER"]);
-      const body = await readJsonBody(req);
-      const merchantId = auth.merchantId || body.merchantId;
-      if (!merchantId) {
-        sendJson(res, 400, { error: "merchantId is required" });
-        return true;
-      }
-      if (auth.merchantId && auth.merchantId !== merchantId) {
-        sendJson(res, 403, { error: "merchant scope denied" });
-        return true;
-      }
-      if (!(await tenantRepository.getMerchant(merchantId))) {
-        sendJson(res, 404, { error: "merchant not found" });
-        return true;
-      }
-
-      const { rollbackResult, finalState } = await runWithRootFreshState(async (rootDb) => {
-        let rollbackOutput = null;
-        let finalOutput = null;
-        try {
-          applyMigrationStep({
-            actualDb: rootDb,
-            tenantPolicyManager,
-            merchantId,
-            step: "FREEZE_WRITE",
-            note: body.note || "freeze before rollback",
-          });
-          rollbackOutput = await rollbackMerchantToSharedDb({
-            actualDb: rootDb,
-            tenantRouter,
-            merchantId,
-          });
-          applyMigrationStep({
-            actualDb: rootDb,
-            tenantPolicyManager,
-            merchantId,
-            step: "MARK_ROLLBACK",
-            note: "rollback completed",
-          });
-          finalOutput = applyMigrationStep({
-            actualDb: rootDb,
-            tenantPolicyManager,
-            merchantId,
-            step: "UNFREEZE_WRITE",
-            note: "restore write traffic after rollback",
-          });
-        } catch (error) {
-          applyMigrationStep({
-            actualDb: rootDb,
-            tenantPolicyManager,
-            merchantId,
-            step: "UNFREEZE_WRITE",
-            note: "restore write traffic after rollback failure",
-          });
-          throw error;
-        }
-        return {
-          rollbackResult: rollbackOutput,
-          finalState: finalOutput,
-        };
-      });
-
-      appendAuditLog({
-        merchantId,
-        action: "MIGRATION_ROLLBACK",
-        status: "SUCCESS",
-        auth,
-        details: {
-          phase: finalState.migration.phase,
-        },
-      });
-
-      sendJson(res, 200, {
-        merchantId,
-        ...rollbackResult,
         ...finalState,
       });
       return true;

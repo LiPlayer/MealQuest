@@ -1,7 +1,7 @@
-# 餐餐有戏 - 服务端技术架构规范 (Master-Aligned V2.0)
+﻿# 餐餐有戏 - 服务端技术架构规范 (Master-Aligned V2.0)
 
 > 依据：`mealquest-spec.md`（唯一标准）
-> 目标：构建可运行的核心后端闭环，承载资产账本、支付核销、退款回溯、TCA 执行与策略确认。
+> 目标：构建可运行的核心后端闭环，承载资产账本、支付核销、退款回溯、Policy OS 执行与策略确认。
 
 ---
 
@@ -80,7 +80,7 @@
 2. 若赠送金不足，转为回收本金。
 3. 保证结果可解释：`fromBonus / fromPrincipal`。
 
-## 4.3 TCA 执行 `runTcaEngine`
+## 4.3 Policy OS 执行 `runpolicyDecisionEngine`
 
 执行前置：
 1. 熔断关闭。
@@ -128,7 +128,7 @@
 6. 角色约束：
    - `CUSTOMER`：可支付报价/支付执行/读取自身状态。
    - `CLERK`：可看驾驶舱、可执行收银，不可确认提案/熔断。
-   - `MANAGER`：可退款、可触发 TCA，不可熔断与最终提案确认。
+   - `MANAGER`：可退款、可触发 Policy OS，不可熔断与最终提案确认。
    - `OWNER`：拥有全部经营控制权限。
 
 ## 5.1.2 实时通道
@@ -139,7 +139,7 @@
    - `PAYMENT_REFUNDED`
    - `PROPOSAL_CONFIRMED`
    - `KILL_SWITCH_CHANGED`
-   - `TCA_TRIGGERED`
+   - `POLICYOS_DECISION`
    - `STRATEGY_CHAT_MESSAGE`
    - `CAMPAIGN_STATUS_CHANGED`
    - `FIRE_SALE_CREATED`
@@ -164,20 +164,19 @@
 
 1. `POST /api/merchant/proposals/:id/confirm`
 2. `POST /api/merchant/kill-switch`
-3. `POST /api/tca/trigger`
+3. `POST /api/policyos/decision/evaluate`
 4. `GET /api/merchant/tenant-policy?merchantId=`（仅 `OWNER`）
 5. `POST /api/merchant/tenant-policy`（仅 `OWNER`，可更新写冻结/实时开关/配额）
 6. `GET /api/merchant/migration/status?merchantId=`（仅 `OWNER`）
 7. `POST /api/merchant/migration/step`（仅 `OWNER`，执行冻结/解冻/编排标记）
 8. `POST /api/merchant/migration/cutover`（仅 `OWNER`，自动冻结->切库->恢复写入）
-9. `POST /api/merchant/migration/rollback`（仅 `OWNER`，自动冻结->回流共享库->恢复写入）
-10. `POST /api/merchant/strategy-chat/messages`（`MANAGER/OWNER`，按模板与分支生成待确认提案）
-11. `POST /api/merchant/campaigns/:id/status`（`MANAGER/OWNER`，策略启停/归档）
-12. `POST /api/merchant/fire-sale`（`MANAGER/OWNER`，创建 `Priority:999` 手动急售策略）
-13. `POST /api/supplier/verify-order`（`CLERK+`，核验异业联盟订单真伪与门槛）
-14. `POST /api/merchant/alliance-config`（`OWNER`，配置多店连锁互通规则）
-15. `POST /api/merchant/alliance/sync-user`（`MANAGER/OWNER`，执行跨店用户资产同步）
-16. 社交相关接口（`/api/social/*`）当前版本已移除，不纳入服务端契约。
+9. `POST /api/merchant/strategy-chat/messages`（`MANAGER/OWNER`，按模板与分支生成待确认提案）
+10. `POST /api/merchant/campaigns/:id/status`（`MANAGER/OWNER`，策略启停/归档）
+11. `POST /api/merchant/fire-sale`（`MANAGER/OWNER`，创建 `Priority:999` 手动急售策略）
+12. `POST /api/supplier/verify-order`（`CLERK+`，核验异业联盟订单真伪与门槛）
+13. `POST /api/merchant/alliance-config`（`OWNER`，配置多店连锁互通规则）
+14. `POST /api/merchant/alliance/sync-user`（`MANAGER/OWNER`，执行跨店用户资产同步）
+15. 社交相关接口（`/api/social/*`）当前版本已移除，不纳入服务端契约。
 
 ---
 
@@ -212,7 +211,7 @@
 
 1. `smartCheckout.test.js`：抵扣顺序与外部支付。
 2. `clawback.test.js`：赠送金优先回收与本金兜底。
-3. `tcaEngine.test.js`：预算判定与熔断阻断。
+3. `policyDecisionEngine.test.js`：预算判定与熔断阻断。
 
 ## 7.2 集成测试
 
@@ -235,18 +234,17 @@
 16. 租户策略持久化：重启后策略仍保持生效
 17. 迁移编排：冻结/解冻步骤可在线执行并驱动租户策略联动
 18. 自动切库：`migration/cutover` 执行后写流量进入专库且重启可恢复
-19. 自动回滚：`migration/rollback` 后商户路由回共享库并恢复写流量
-20. 外部支付回调：签名非法拒绝，合法回调可完成异步结算
-21. 发票助手：未结算订单拒绝开票，已结算订单可成功开票
-22. 隐私合规：Owner 可导出与匿名化删除，非 Owner 拒绝
-23. 指标接口：`/metrics` 可读并输出请求/错误计数
-24. 策略库：可查询模板库并按模板+分支生成提案，确认后进入活动策略
-25. 策略启停：`campaign status` 改变可立即影响 TCA 执行结果
-26. 紧急急售：可创建 `Priority:999 + TTL` 人工接管策略并触发执行
-27. 供应商核验：联盟订单核验成功/失败均可返回并落审计
-28. 多店连锁：可配置跨店共享钱包并在支付链路生效
-29. 顾客自助注销：注销后账号不可再次登录，交易记录匿名保留
-30. 顾客账务中心：顾客可查询本人流水与发票，跨用户/跨商户查询拒绝
+19. 外部支付回调：签名非法拒绝，合法回调可完成异步结算
+20. 发票助手：未结算订单拒绝开票，已结算订单可成功开票
+21. 隐私合规：Owner 可导出与匿名化删除，非 Owner 拒绝
+22. 指标接口：`/metrics` 可读并输出请求/错误计数
+23. 策略库：可查询模板库并按模板+分支生成提案，确认后进入活动策略
+24. 策略启停：`campaign status` 改变可立即影响 Policy OS 执行结果
+25. 紧急急售：可创建 `Priority:999 + TTL` 人工接管策略并触发执行
+26. 供应商核验：联盟订单核验成功/失败均可返回并落审计
+27. 多店连锁：可配置跨店共享钱包并在支付链路生效
+28. 顾客自助注销：注销后账号不可再次登录，交易记录匿名保留
+29. 顾客账务中心：顾客可查询本人流水与发票，跨用户/跨商户查询拒绝
 
 ---
 
@@ -258,7 +256,7 @@
 | S-02 | 智能收银闭环 | 报价与核销可解释 | `quote/verify` 测试 |
 | S-03 | Clawback 风控 | 退款回溯赠送金优先 | `clawback` 测试 |
 | S-04 | 无确认不执行 | 提案确认后才激活策略 | API 集成测试 |
-| S-05 | Kill Switch | 熔断后策略触发阻断 | `tcaEngine` + API 测试 |
+| S-05 | Kill Switch | 熔断后策略触发阻断 | `policyDecisionEngine` + API 测试 |
 | S-06 | Story Protocol | 下发前强校验 | `storyProtocol` 逻辑断言 |
 
 ---
@@ -294,7 +292,7 @@
 已完成：
 1. 智能抵扣内核。
 2. 退款回溯内核。
-3. TCA + Story 校验。
+3. Policy OS + Story 校验。
 4. 提案确认与熔断。
 5. HTTP API 与端到端集成测试。
 6. JWT 鉴权接入。
@@ -303,7 +301,7 @@
 9. 细颗粒角色权限控制（Customer/Clerk/Manager/Owner）。
 10. 共享库强隔离：用户与支付数据按商户分桶，关键路径校验租户边界。
 11. 租户路由层（`TenantRouter`）：支持热点商户挂载独立数据源。
-12. 审计日志（`auditLogs`）：支付、退款、提案确认、熔断、TCA 触发均可追溯。
+12. 审计日志（`auditLogs`）：支付、退款、提案确认、熔断、Policy OS 触发均可追溯。
 13. 审计日志查询接口（`/api/audit/logs`）：支持按商户、时间窗、动作、结果分页查询。
 14. 在线状态接口（`/api/ws/status`）：已启用商户 scope 强校验，跨商户查询返回 `merchant scope denied`。
 15. 租户策略管理（`tenantPolicy`）：支持商户写冻结、实时通道开关、按操作限流（配额治理基础能力）。
@@ -311,12 +309,11 @@
 17. 租户策略持久化：`tenantPolicies` 纳入快照，重启后自动恢复。
 18. 迁移编排 API（`/api/merchant/migration/*`）：支持 Owner 查询状态并执行冻结/解冻步骤。
 19. 自动切库能力：`/api/merchant/migration/cutover` 可在线切换商户到专库并持久化路由。
-20. 自动回滚能力：`/api/merchant/migration/rollback` 可在线回流共享库并清理专库路由绑定。
-21. 外部支付回调链路：`/api/payment/callback` 已接入 HMAC 验签与异步入账。
-22. 发票助手：`/api/invoice/*` 已支持开票与查询。
-23. 隐私合规接口：`/api/privacy/*` 已支持导出与匿名化删除。
-24. 指标接口：`/metrics` 已可供 Prometheus 抓取。
-25. 顾客账务查询接口：`/api/payment/ledger` 与顾客可读 `/api/invoice/list` 已上线并完成 scope 防护。
+20. 外部支付回调链路：`/api/payment/callback` 已接入 HMAC 验签与异步入账。
+21. 发票助手：`/api/invoice/*` 已支持开票与查询。
+22. 隐私合规接口：`/api/privacy/*` 已支持导出与匿名化删除。
+23. 指标接口：`/metrics` 已可供 Prometheus 抓取。
+24. 顾客账务查询接口：`/api/payment/ledger` 与顾客可读 `/api/invoice/list` 已上线并完成 scope 防护。
 
 后续（保持总规范一致）：
 1. 内存仓储替换为持久化数据库。
@@ -330,7 +327,7 @@
 阶段 A：共享库强隔离（当前）
 1. 数据按商户分桶（`merchantUsers/paymentsByMerchant`），所有读写强制校验 `merchantId` scope。
 2. 适用：商户数量增长但热点不明显，优先降低系统复杂度与运维成本。
-3. 配额治理：通过 `tenantPolicy` 对商户启用写冻结与按操作限流（`PAYMENT_VERIFY/REFUND/TCA...`）。
+3. 配额治理：通过 `tenantPolicy` 对商户启用写冻结与按操作限流（`PAYMENT_VERIFY/REFUND/Policy OS...`）。
 
 阶段 B：热点商户物理分库（下一步）
 1. 保持统一 API 与租户路由层，仅将热点商户迁移到专属数据源。
@@ -342,3 +339,4 @@
 1. 绝大多数商户在早期是长尾负载，全量分库会带来过高运维与数据治理成本。
 2. 共享库阶段更利于快速迭代业务规则与审计模型，降低架构冻结风险。
 3. 热点优先分库可在收益最大处优先消除瓶颈，投入产出比更高。
+

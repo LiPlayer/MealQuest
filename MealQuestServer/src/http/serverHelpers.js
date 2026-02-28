@@ -12,7 +12,6 @@ const TENANT_LIMIT_OPERATIONS = [
   "INVOICE_ISSUE",
   "PROPOSAL_CONFIRM",
   "KILL_SWITCH_SET",
-  "TCA_TRIGGER",
   "PRIVACY_CANCEL",
   "STRATEGY_CHAT_WRITE",
   "CAMPAIGN_STATUS_SET",
@@ -26,7 +25,6 @@ const TENANT_LIMIT_OPERATIONS = [
   "POLICY_DRAFT_APPROVE",
   "POLICY_PUBLISH",
   "POLICY_EVALUATE",
-  "POLICY_ROLLBACK",
   "WS_CONNECT",
   "WS_STATUS_QUERY"
 ];
@@ -140,9 +138,6 @@ function resolveAuditAction(method, pathname) {
   if (method === "POST" && pathname === "/api/merchant/kill-switch") {
     return "KILL_SWITCH_SET";
   }
-  if (method === "POST" && pathname === "/api/tca/trigger") {
-    return "TCA_TRIGGER";
-  }
   if (method === "POST" && pathname === "/api/merchant/strategy-chat/sessions") {
     return "STRATEGY_CHAT_SESSION_CREATE";
   }
@@ -176,9 +171,6 @@ function resolveAuditAction(method, pathname) {
   if (method === "POST" && pathname === "/api/merchant/migration/cutover") {
     return "MIGRATION_CUTOVER";
   }
-  if (method === "POST" && pathname === "/api/merchant/migration/rollback") {
-    return "MIGRATION_ROLLBACK";
-  }
   if (method === "POST" && /^\/api\/merchant\/proposals\/[^/]+\/confirm$/.test(pathname)) {
     return "PROPOSAL_CONFIRM";
   }
@@ -196,9 +188,6 @@ function resolveAuditAction(method, pathname) {
   }
   if (method === "POST" && pathname === "/api/policyos/decision/evaluate") {
     return "POLICY_EVALUATE";
-  }
-  if (method === "POST" && /^\/api\/policyos\/policies\/[^/]+\/rollback$/.test(pathname)) {
-    return "POLICY_ROLLBACK";
   }
   return null;
 }
@@ -294,8 +283,7 @@ const MIGRATION_STEPS = new Set([
   "DISABLE_WS",
   "ENABLE_WS",
   "MARK_VERIFYING",
-  "MARK_CUTOVER",
-  "MARK_ROLLBACK"
+  "MARK_CUTOVER"
 ]);
 
 function resolveMigrationPhase(previousPhase, step) {
@@ -303,7 +291,7 @@ function resolveMigrationPhase(previousPhase, step) {
     return "FROZEN";
   }
   if (step === "UNFREEZE_WRITE") {
-    if (previousPhase === "CUTOVER" || previousPhase === "ROLLBACK") {
+    if (previousPhase === "CUTOVER") {
       return previousPhase;
     }
     return "RUNNING";
@@ -313,9 +301,6 @@ function resolveMigrationPhase(previousPhase, step) {
   }
   if (step === "MARK_CUTOVER") {
     return "CUTOVER";
-  }
-  if (step === "MARK_ROLLBACK") {
-    return "ROLLBACK";
   }
   return previousPhase || "IDLE";
 }
@@ -1204,51 +1189,6 @@ async function cutoverMerchantToDedicatedDb({
   };
 }
 
-async function rollbackMerchantToSharedDb({
-  actualDb,
-  tenantRouter,
-  merchantId
-}) {
-  if (!merchantId) {
-    throw new Error("merchantId is required");
-  }
-  if (!tenantRouter.hasDbOverride(merchantId)) {
-    throw new Error("merchant has no dedicated route");
-  }
-
-  const dedicatedDb = tenantRouter.getDbForMerchant(merchantId);
-  const dedicatedSummary = buildMerchantSnapshotSummary(dedicatedDb, merchantId);
-
-  copyMerchantSlice({
-    sourceDb: dedicatedDb,
-    targetDb: actualDb,
-    merchantId
-  });
-  const sharedSummary = buildMerchantSnapshotSummary(actualDb, merchantId);
-  if (!isSnapshotSummaryEqual(dedicatedSummary, sharedSummary)) {
-    throw new Error("rollback snapshot verify failed");
-  }
-
-  let dedicatedDbFilePath = null;
-  if (actualDb.tenantRouteFiles && actualDb.tenantRouteFiles[merchantId]) {
-    dedicatedDbFilePath = actualDb.tenantRouteFiles[merchantId];
-    delete actualDb.tenantRouteFiles[merchantId];
-  }
-  tenantRouter.clearDbForMerchant(merchantId);
-  actualDb.save();
-  dedicatedDb.save();
-  if (typeof dedicatedDb.close === "function") {
-    await dedicatedDb.close();
-  }
-
-  return {
-    dedicatedDbAttached: false,
-    dedicatedDbFilePath,
-    dedicatedSummary,
-    sharedSummary
-  };
-}
-
 function enforceTenantPolicyForHttp({
   tenantPolicyManager,
   merchantId,
@@ -1376,7 +1316,6 @@ module.exports = {
   listMerchantIdsByOwnerPhone,
   copyMerchantSlice,
   cutoverMerchantToDedicatedDb,
-  rollbackMerchantToSharedDb,
   enforceTenantPolicyForHttp,
   applyMigrationStep,
 };
