@@ -1,80 +1,39 @@
-﻿const {
+const {
   createPolicySpecFromTemplate,
   listStrategyTemplates,
   validatePolicyPatchForTemplate,
-} = require("./strategyTemplateCatalog");
-const { createLangChainModelGateway } = require("./aiStrategy/langchainModelGateway");
-
-const DEFAULT_REMOTE_PROVIDER = "deepseek";
-const REMOTE_PROVIDERS = new Set(["deepseek", "openai"]);
-const OPENAI_BASE_URL = "https://api.openai.com/v1";
-const OPENAI_DEFAULT_MODEL = "gpt-4o-mini";
-const OPENAI_DEFAULT_TIMEOUT_MS = 30000;
-const DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1";
-const DEEPSEEK_DEFAULT_MODEL = "deepseek-chat";
-const DEEPSEEK_DEFAULT_TIMEOUT_MS = 30000;
-const DEFAULT_MAX_RETRIES = 2;
-const MAX_PROPOSAL_CANDIDATES = 12;
-const MAX_HISTORY_ITEMS_FOR_PROMPT = 48;
-const MAX_HISTORY_TOKENS_FOR_PROMPT = 2600;
-const MAX_HISTORY_TEXT_CHARS = 640;
-const MAX_MEMORY_PREFIX_HISTORY_ITEMS = 2;
-const DEFAULT_CRITIC_ENABLED = true;
-const DEFAULT_CRITIC_MAX_ROUNDS = 1;
-const DEFAULT_CRITIC_MIN_PROPOSALS = 2;
-const DEFAULT_CRITIC_MIN_CONFIDENCE = 0.72;
-const CRITIC_OUTPUT_JSON_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  required: ["needRevision", "summary", "issues", "focus"],
-  properties: {
-    needRevision: { type: "boolean" },
-    summary: { type: "string" },
-    issues: {
-      type: "array",
-      items: { type: "string" },
-      maxItems: 8
-    },
-    focus: {
-      type: "array",
-      items: { type: "string" },
-      maxItems: 6
-    }
-  }
-};
-const REVISE_OUTPUT_JSON_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  required: ["assistantMessage", "proposals"],
-  properties: {
-    assistantMessage: { type: "string" },
-    proposals: {
-      type: "array",
-      minItems: 1,
-      maxItems: MAX_PROPOSAL_CANDIDATES,
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: [
-          "templateId",
-          "branchId",
-          "title",
-          "rationale",
-          "confidence",
-          "policyPatch"
-        ],
-        properties: {
-          templateId: { type: "string" },
-          branchId: { type: "string" },
-          title: { type: "string" },
-          rationale: { type: "string" },
-          confidence: { type: "number" },
-          policyPatch: { type: "object" }
-        }
-      }
-    }
-  }
-};
+} = require("./templateCatalog");
+const { createLangChainModelGateway } = require("./langchainModelGateway");
+const { createDecisionPipelineGraph } = require("./stateGraph");
+const {
+  CRITIC_OUTPUT_ZOD_SCHEMA,
+  REVISE_OUTPUT_ZOD_SCHEMA,
+  TURN_DECISION_OUTPUT_ZOD_SCHEMA,
+} = require("./schemas");
+const {
+  buildChatPromptPayload,
+  buildDecisionMessages,
+  buildCriticMessages,
+  buildReviseMessages,
+} = require("./prompts");
+const {
+  DEFAULT_REMOTE_PROVIDER,
+  REMOTE_PROVIDERS,
+  PROVIDER_DEFAULT_BASE_URL,
+  PROVIDER_DEFAULT_MODEL,
+  PROVIDER_DEFAULT_TIMEOUT_MS,
+  PROVIDER_API_KEY_ENV,
+  DEFAULT_MAX_RETRIES,
+  MAX_PROPOSAL_CANDIDATES,
+  DEFAULT_CRITIC_ENABLED,
+  DEFAULT_CRITIC_MAX_ROUNDS,
+  DEFAULT_CRITIC_MIN_PROPOSALS,
+  DEFAULT_CRITIC_MIN_CONFIDENCE,
+  PROTOCOL_NAME,
+  PROTOCOL_VERSION,
+  STRUCTURED_SCHEMA_VERSION,
+  DECISION_SOURCE_FORMAT_MESSAGES,
+} = require("./constants");
 
 function asString(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -113,9 +72,9 @@ function printRawBlock(enabled, label, payload) {
     return;
   }
   const text = toRawLogText(payload);
-  console.log(`[ai-strategy] [raw] ${label}_BEGIN`);
+  console.log(`[strategy-agent] [raw] ${label}_BEGIN`);
   console.log(text);
-  console.log(`[ai-strategy] [raw] ${label}_END`);
+  console.log(`[strategy-agent] [raw] ${label}_END`);
 }
 
 function buildStructuredOutputOptions(name, schema) {
@@ -145,6 +104,14 @@ function normalizeProvider(value) {
     return normalized;
   }
   return DEFAULT_REMOTE_PROVIDER;
+}
+
+function resolveProviderApiKey(provider, env = process.env) {
+  const keyName = PROVIDER_API_KEY_ENV[provider];
+  if (!keyName) {
+    return "";
+  }
+  return asString(env[keyName]);
 }
 
 function deepClone(value) {
@@ -291,13 +258,6 @@ function summarizeError(error) {
   return raw.replace(/\s+/g, " ").slice(0, 180);
 }
 
-function createAiUnavailableResult(reason) {
-  return {
-    status: "AI_UNAVAILABLE",
-    reason: asString(reason) || "AI model is unavailable",
-  };
-}
-
 function truncateText(value, maxLen = 240) {
   const text = asString(value);
   if (!text) {
@@ -307,74 +267,6 @@ function truncateText(value, maxLen = 240) {
     return text;
   }
   return `${text.slice(0, maxLen)}...`;
-}
-
-function estimateTokenCount(value) {
-  const text = asString(value);
-  if (!text) {
-    return 0;
-  }
-  return Math.ceil(text.length / 4) + 4;
-}
-
-function estimateHistoryItemTokens(item) {
-  if (!isObjectLike(item)) {
-    return 0;
-  }
-  return (
-    estimateTokenCount(item.role) +
-    estimateTokenCount(item.type) +
-    estimateTokenCount(item.text) +
-    8
-  );
-}
-
-function sanitizeHistoryForPrompt(history) {
-  const normalized = Array.isArray(history)
-    ? history.map((item) => ({
-      role: asString(item && item.role ? item.role : "ASSISTANT").toUpperCase(),
-      type: asString(item && item.type ? item.type : "TEXT").toUpperCase(),
-      text: truncateText(item && item.text ? item.text : "", MAX_HISTORY_TEXT_CHARS),
-      proposalId: asString(item && item.proposalId ? item.proposalId : ""),
-      createdAt: asString(item && item.createdAt ? item.createdAt : ""),
-    }))
-    : [];
-  if (normalized.length === 0) {
-    return [];
-  }
-
-  const memoryPrefix = [];
-  const stream = [];
-  for (const item of normalized) {
-    const isMemoryPrefix =
-      item.role === "SYSTEM" && (item.type === "MEMORY_SUMMARY" || item.type === "MEMORY_FACTS");
-    if (isMemoryPrefix) {
-      memoryPrefix.push(item);
-      continue;
-    }
-    stream.push(item);
-  }
-
-  const pinnedMemory = memoryPrefix.slice(-MAX_MEMORY_PREFIX_HISTORY_ITEMS);
-  const pinnedTokens = pinnedMemory.reduce((sum, item) => sum + estimateHistoryItemTokens(item), 0);
-  const tokenBudget = Math.max(600, MAX_HISTORY_TOKENS_FOR_PROMPT - pinnedTokens);
-  const selected = [];
-  let usedTokens = 0;
-  for (let idx = stream.length - 1; idx >= 0; idx -= 1) {
-    const item = stream[idx];
-    const tokenCost = Math.max(1, estimateHistoryItemTokens(item));
-    if (
-      selected.length > 0 &&
-      (usedTokens + tokenCost > tokenBudget ||
-        selected.length + pinnedMemory.length >= MAX_HISTORY_ITEMS_FOR_PROMPT)
-    ) {
-      break;
-    }
-    selected.push(item);
-    usedTokens += tokenCost;
-  }
-  selected.reverse();
-  return [...pinnedMemory, ...selected].slice(-MAX_HISTORY_ITEMS_FOR_PROMPT);
 }
 
 function toFiniteNumber(value, fallback = 0) {
@@ -451,33 +343,33 @@ function inferIntentFrame({
   const containsChinese = (patterns) => patterns.some((item) => text.includes(item));
 
   let primaryGoal = "GENERAL";
-  if (matchAny(["acquisition", "new user", "onboard"]) || containsChinese(["拉新", "新客", "获客"])) {
+  if (matchAny(["acquisition", "new user", "onboard"]) || containsChinese(["??", "??", "??"])) {
     primaryGoal = "ACQUISITION";
-  } else if (matchAny(["retention", "wake up", "reactivate", "winback"]) || containsChinese(["复购", "召回", "唤醒", "沉默"])) {
+  } else if (matchAny(["retention", "wake up", "reactivate", "winback"]) || containsChinese(["??", "??", "??", "??"])) {
     primaryGoal = "RETENTION";
-  } else if (matchAny(["clear stock", "inventory", "sell-through"]) || containsChinese(["清库存", "库存", "滞销"])) {
+  } else if (matchAny(["clear stock", "inventory", "sell-through"]) || containsChinese(["???", "??", "??"])) {
     primaryGoal = "CLEAR_STOCK";
-  } else if (matchAny(["aov", "average order", "basket"]) || containsChinese(["客单", "客单价", "连带"])) {
+  } else if (matchAny(["aov", "average order", "basket"]) || containsChinese(["??", "???", "??"])) {
     primaryGoal = "AOV";
   }
 
   let urgency = "LOW";
-  if (matchAny(["urgent", "asap", "immediately", "right now"]) || containsChinese(["紧急", "马上", "立刻", "立即"])) {
+  if (matchAny(["urgent", "asap", "immediately", "right now"]) || containsChinese(["??", "??", "??", "??"])) {
     urgency = "HIGH";
-  } else if (matchAny(["today", "tonight", "this week"]) || containsChinese(["今天", "今晚", "本周"])) {
+  } else if (matchAny(["today", "tonight", "this week"]) || containsChinese(["??", "??", "??"])) {
     urgency = "MEDIUM";
   }
 
   let riskPreference = "BALANCED";
-  if (matchAny(["aggressive", "extreme", "max growth"]) || containsChinese(["激进", "冲量", "放量"])) {
+  if (matchAny(["aggressive", "extreme", "max growth"]) || containsChinese(["??", "??", "??"])) {
     riskPreference = "AGGRESSIVE";
-  } else if (matchAny(["conservative", "safe", "low risk"]) || containsChinese(["保守", "稳健", "低风险"])) {
+  } else if (matchAny(["conservative", "safe", "low risk"]) || containsChinese(["??", "??", "???"])) {
     riskPreference = "CONSERVATIVE";
   }
 
   const budgetPatterns = [
     /budget\s*[:=]?\s*(\d+(?:\.\d+)?)/i,
-    /预算\s*[:：]?\s*(\d+(?:\.\d+)?)/,
+    /(?:rmb|cny|¥)\s*[:=]?\s*(\d+(?:\.\d+)?)/i,
   ];
   let budgetHint = null;
   for (const pattern of budgetPatterns) {
@@ -492,17 +384,17 @@ function inferIntentFrame({
   }
 
   let timeWindowHint = "";
-  if (matchAny(["today", "tonight"]) || containsChinese(["今天", "今晚"])) {
+  if (matchAny(["today", "tonight"]) || containsChinese(["??", "??"])) {
     timeWindowHint = "TODAY";
-  } else if (matchAny(["this week", "weekend"]) || containsChinese(["本周", "周末"])) {
+  } else if (matchAny(["this week", "weekend"]) || containsChinese(["??", "??"])) {
     timeWindowHint = "THIS_WEEK";
-  } else if (matchAny(["this month"]) || containsChinese(["本月"])) {
+  } else if (matchAny(["this month"]) || containsChinese(["??"])) {
     timeWindowHint = "THIS_MONTH";
   }
 
   const requiresProposal =
     matchAny(["create", "generate", "draft", "proposal", "publish strategy"]) ||
-    containsChinese(["生成", "创建", "提案", "策略", "上活动", "发布策略"]);
+    containsChinese(["??", "??", "??", "??", "???", "????"]);
 
   return {
     primaryGoal,
@@ -513,62 +405,6 @@ function inferIntentFrame({
     requiresProposal,
     salesSnapshotAvailable: Boolean(salesSnapshot),
   };
-}
-
-function sanitizeExecutionHistory(input) {
-  if (!Array.isArray(input)) {
-    return [];
-  }
-  return input.slice(-20).map((item) => {
-    const details = isObjectLike(item && item.details) ? item.details : {};
-    const compactDetails = {};
-    for (const [key, value] of Object.entries(details)) {
-      if (value === undefined || value === null) {
-        continue;
-      }
-      if (typeof value === "number" || typeof value === "boolean") {
-        compactDetails[key] = value;
-        continue;
-      }
-      compactDetails[key] = truncateText(value, 120);
-    }
-    return {
-      timestamp: asString(item && item.timestamp),
-      action: asString(item && item.action).toUpperCase(),
-      status: asString(item && item.status).toUpperCase(),
-      details: compactDetails,
-    };
-  });
-}
-
-const PROTOCOL_NAME = "MQ_STRATEGY_CHAT";
-const PROTOCOL_VERSION = "2.0";
-const STRUCTURED_SCHEMA_VERSION = "2026-02-27";
-const DECISION_ENVELOPE_START_MARKERS = [
-  "\n{\"schemaVersion\"",
-  "{\"schemaVersion\"",
-];
-const DECISION_ENVELOPE_MAX_MARKER_LEN = DECISION_ENVELOPE_START_MARKERS.reduce(
-  (max, marker) => Math.max(max, marker.length),
-  0
-);
-
-function findDecisionEnvelopeStart(text, fromIndex = 0) {
-  const source = asString(text);
-  if (!source) {
-    return -1;
-  }
-  const start = Math.max(0, Math.floor(Number(fromIndex) || 0));
-  let first = -1;
-  for (const marker of DECISION_ENVELOPE_START_MARKERS) {
-    const idx = source.indexOf(marker, start);
-    if (idx >= 0) {
-      if (first < 0 || idx < first) {
-        first = idx;
-      }
-    }
-  }
-  return first;
 }
 
 function coerceProposalCandidates(decision) {
@@ -621,36 +457,6 @@ function normalizeCandidatesFromRaw({ rawCandidates, input, provider, model }) {
     normalizedCandidates,
     invalidCandidates
   };
-}
-
-function summarizeProposalsForCritic(proposals) {
-  const safeItems = Array.isArray(proposals) ? proposals : [];
-  return safeItems.slice(0, MAX_PROPOSAL_CANDIDATES).map((item, idx) => {
-    const spec = isObjectLike(item && item.spec) ? item.spec : {};
-    const constraints = Array.isArray(spec.constraints) ? spec.constraints : [];
-    const budget = constraints.find((entry) =>
-      entry && (entry.plugin === "budget_guard_v1" || entry.plugin === "global_budget_guard_v1")
-    );
-    return {
-      rank: idx + 1,
-      title: asString(item && item.title),
-      templateId: asString(item && item.template && item.template.templateId),
-      branchId: asString(item && item.branch && item.branch.branchId),
-      confidence: toFiniteNumber(item && item.strategyMeta && item.strategyMeta.confidence, 0),
-      triggerEvent: asString(spec && spec.triggers && spec.triggers[0] && spec.triggers[0].event).toUpperCase(),
-      lane: asString(spec && spec.lane).toUpperCase(),
-      ttlSec: Math.max(0, Math.floor(toFiniteNumber(spec && spec.program && spec.program.ttl_sec, 0))),
-      budgetCap: Math.max(
-        0,
-        Math.floor(toFiniteNumber(budget && budget.params && budget.params.cap, 0))
-      ),
-      costPerHit: Math.max(
-        0,
-        Math.floor(toFiniteNumber(budget && budget.params && budget.params.cost_per_hit, 0))
-      ),
-      rationale: truncateText(item && item.strategyMeta && item.strategyMeta.rationale, 180)
-    };
-  });
 }
 
 function normalizeCriticDecision(raw) {
@@ -708,46 +514,17 @@ function shouldRunCriticLoop({
   );
 }
 
-function parseAssistantDecisionEnvelope(rawText) {
-  const text = asString(rawText);
-  const envelopeStartIdx = findDecisionEnvelopeStart(text);
-  if (envelopeStartIdx < 0) {
-    return {
-      assistantMessage: text,
-      sourceFormat: "text_only",
-      schemaVersion: STRUCTURED_SCHEMA_VERSION,
-      decision: {},
-      forceProposal: false,
-      rawCandidates: [],
-      parseError: false,
-    };
-  }
-  const assistantPrefix = text.slice(0, envelopeStartIdx).trim();
-  const decisionText = text.slice(envelopeStartIdx).trim();
-  try {
-    const parsed = parseJsonStrict(decisionText);
-    const decision = isObjectLike(parsed) ? parsed : {};
-    const mode = asString(decision.mode).toUpperCase();
-    return {
-      assistantMessage: asString(decision.assistantMessage) || assistantPrefix,
-      sourceFormat: "text_plus_json",
-      schemaVersion: asString(decision.schemaVersion) || STRUCTURED_SCHEMA_VERSION,
-      decision,
-      forceProposal: mode === "PROPOSAL",
-      rawCandidates: coerceProposalCandidates(decision),
-      parseError: false,
-    };
-  } catch {
-    return {
-      assistantMessage: assistantPrefix || text,
-      sourceFormat: "invalid_json",
-      schemaVersion: STRUCTURED_SCHEMA_VERSION,
-      decision: {},
-      forceProposal: false,
-      rawCandidates: [],
-      parseError: true,
-    };
-  }
+function normalizeTurnDecisionFromStructuredResponse(rawDecision, assistantFallback = "") {
+  const decision = isObjectLike(rawDecision) ? rawDecision : {};
+  const mode = asString(decision.mode).toUpperCase();
+  return {
+    assistantMessage: asString(decision.assistantMessage) || asString(assistantFallback),
+    sourceFormat: DECISION_SOURCE_FORMAT_MESSAGES,
+    schemaVersion: STRUCTURED_SCHEMA_VERSION,
+    forceProposal: mode === "PROPOSAL",
+    rawCandidates: coerceProposalCandidates(decision),
+    parseError: false,
+  };
 }
 
 function buildTurnFromCandidateEvaluation({
@@ -1345,51 +1122,29 @@ function attachMemoryUpdateToTurn({ turn, memoryUpdate }) {
   };
 }
 
-function buildEmptyLlmMessages() {
-  return [
-    { role: "system", content: "" },
-    { role: "user", content: "" },
-  ];
-}
-
-function buildChatPromptPayload({
-  merchantId,
-  sessionId,
-  userMessage,
-  history = [],
-  activePolicies = [],
-  approvedStrategies = [],
-  executionHistory = [],
-  salesSnapshot = null,
-  intentFrame = null,
-}) {
-  return {
-    messages: buildEmptyLlmMessages(),
-  };
-}
-
-function createAiStrategyService(options = {}) {
+function createStrategyAgentService(options = {}) {
   const provider = normalizeProvider(
     options.provider || process.env.MQ_AI_PROVIDER || DEFAULT_REMOTE_PROVIDER,
   );
   const model = asString(
     options.model ||
-    process.env.MQ_AI_MODEL ||
-    (provider === "openai" ? OPENAI_DEFAULT_MODEL : DEEPSEEK_DEFAULT_MODEL),
+    PROVIDER_DEFAULT_MODEL[provider] ||
+    PROVIDER_DEFAULT_MODEL[DEFAULT_REMOTE_PROVIDER],
   );
   const baseUrl = asString(
     options.baseUrl ||
-    process.env.MQ_AI_BASE_URL ||
-    (provider === "openai" ? OPENAI_BASE_URL : DEEPSEEK_BASE_URL),
+    PROVIDER_DEFAULT_BASE_URL[provider] ||
+    PROVIDER_DEFAULT_BASE_URL[DEFAULT_REMOTE_PROVIDER],
   );
-  const apiKey = asString(options.apiKey || process.env.MQ_AI_API_KEY);
+  const envApiKey = resolveProviderApiKey(provider, process.env);
+  const apiKey = asString(options.apiKey || envApiKey);
   const timeoutMs = Number(
     options.timeoutMs ||
-    process.env.MQ_AI_TIMEOUT_MS ||
-    (provider === "openai" ? OPENAI_DEFAULT_TIMEOUT_MS : DEEPSEEK_DEFAULT_TIMEOUT_MS),
+    PROVIDER_DEFAULT_TIMEOUT_MS[provider] ||
+    PROVIDER_DEFAULT_TIMEOUT_MS[DEFAULT_REMOTE_PROVIDER],
   );
   const maxRetries = toPositiveInt(
-    options.maxRetries || process.env.MQ_AI_MAX_RETRIES,
+    options.maxRetries,
     DEFAULT_MAX_RETRIES,
   );
   const modelGateway = createLangChainModelGateway({
@@ -1404,7 +1159,7 @@ function createAiStrategyService(options = {}) {
   const rawDebugEnabled =
     options.rawDebugEnabled !== undefined
       ? Boolean(options.rawDebugEnabled)
-      : parseBooleanLike(process.env.MQ_AI_DEBUG_RAW, true);
+      : parseBooleanLike(process.env.MQ_AI_DEBUG_RAW, false);
   const criticEnabled = options.criticEnabled !== undefined
     ? Boolean(options.criticEnabled)
     : DEFAULT_CRITIC_ENABLED;
@@ -1440,14 +1195,6 @@ function createAiStrategyService(options = {}) {
       )
     )
   );
-  function buildCriticMessages({ input, turn, round }) {
-    return buildEmptyLlmMessages();
-  }
-
-function buildReviseMessages({ input, turn, criticDecision, round, validationIssues = [] }) {
-    return buildEmptyLlmMessages();
-  }
-
   function attachCriticProtocol(protocol, metadata) {
     const safeProtocol = isObjectLike(protocol) ? protocol : {};
     return {
@@ -1491,15 +1238,17 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
       } else {
         try {
           const criticMessages = buildCriticMessages({
-            input,
-            turn: currentTurn,
-            round
+            merchantId: input && input.merchantId,
+            sessionId: input && input.sessionId,
+            round: Math.max(0, Math.floor(toFiniteNumber(round, 0))),
+            userMessage: input && input.userMessage,
+            proposals: Array.isArray(currentTurn && currentTurn.proposals) ? currentTurn.proposals : [],
           });
           printRawBlock(rawDebugEnabled, "CRITIC_INPUT_MESSAGES", criticMessages);
           const criticCall = await modelGateway.invokeChatWithRaw(criticMessages, {
             ...buildStructuredOutputOptions(
               "mq_strategy_critic_decision",
-              CRITIC_OUTPUT_JSON_SCHEMA
+              CRITIC_OUTPUT_ZOD_SCHEMA
             )
           });
           printRawBlock(rawDebugEnabled, "CRITIC_OUTPUT_RAW", criticCall.rawText || "");
@@ -1515,17 +1264,19 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
 
       try {
         const reviseMessages = buildReviseMessages({
-          input,
-          turn: currentTurn,
+          merchantId: input && input.merchantId,
+          sessionId: input && input.sessionId,
+          round: Math.max(0, Math.floor(toFiniteNumber(round, 0))),
+          userMessage: input && input.userMessage,
+          proposals: Array.isArray(currentTurn && currentTurn.proposals) ? currentTurn.proposals : [],
           criticDecision,
-          round,
           validationIssues: pendingValidationIssues
         });
         printRawBlock(rawDebugEnabled, "REVISE_INPUT_MESSAGES", reviseMessages);
         const reviseCall = await modelGateway.invokeChatWithRaw(reviseMessages, {
           ...buildStructuredOutputOptions(
             "mq_strategy_revise_output",
-            REVISE_OUTPUT_JSON_SCHEMA
+            REVISE_OUTPUT_ZOD_SCHEMA
           )
         });
         printRawBlock(rawDebugEnabled, "REVISE_OUTPUT_RAW", reviseCall.rawText || "");
@@ -1908,65 +1659,90 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
     });
   }
 
-  // Parses dual-channel response:
-  // plain-text assistant message + optional trailing JSON decision envelope.
-  function parseTwoPartResponse(rawText, input) {
-    const parsed = parseAssistantDecisionEnvelope(rawText);
-    const { normalizedCandidates, invalidCandidates } = normalizeCandidatesFromRaw({
-      rawCandidates: parsed.rawCandidates,
-      input,
-      provider,
-      model,
+  const decisionPipelineGraph = createDecisionPipelineGraph({
+    criticRevise: async (state) =>
+      maybeRunCriticReviseLoop({ input: state.input, turn: state.turn }),
+    rankEvaluate: async (state) =>
+      maybeRunEvaluationRankExplain({ input: state.input, turn: state.turn }),
+    approvalPublish: async (state) =>
+      maybeRunApprovalPublish({ input: state.input, turn: state.turn }),
+    postPublish: async (state) =>
+      maybeRunPostPublishMonitorAndMemory({ input: state.input, turn: state.turn }),
+  });
+
+  async function resolveTurnFromStructuredMessages({ input, assistantMessage }) {
+    const templateCatalog = listStrategyTemplates().map((item) => ({
+      templateId: item.templateId,
+      branches: Array.isArray(item.branches)
+        ? item.branches.map((branch) => branch.branchId)
+        : [],
+      defaultBranchId: item.defaultBranchId
+    }));
+    const decisionMessages = buildDecisionMessages({
+      userMessage: input && input.userMessage,
+      assistantMessage,
+      templateCatalog,
+      schemaVersion: STRUCTURED_SCHEMA_VERSION,
     });
-    return buildTurnFromCandidateEvaluation({
-      assistantMessage: parsed.assistantMessage,
-      sourceFormat: parsed.sourceFormat,
-      schemaVersion: parsed.schemaVersion,
-      forceProposal: parsed.forceProposal,
-      parseError: parsed.parseError,
-      normalizedCandidates,
-      invalidCandidates,
-    });
+    printRawBlock(rawDebugEnabled, "DECISION_INPUT_MESSAGES", decisionMessages);
+    try {
+      const decisionCall = await modelGateway.invokeChatWithRaw(decisionMessages, {
+        ...buildStructuredOutputOptions(
+          "mq_strategy_turn_decision",
+          TURN_DECISION_OUTPUT_ZOD_SCHEMA
+        )
+      });
+      printRawBlock(rawDebugEnabled, "DECISION_OUTPUT_RAW", decisionCall.rawText || "");
+      const parsed = normalizeTurnDecisionFromStructuredResponse(
+        decisionCall.parsed,
+        assistantMessage
+      );
+      const { normalizedCandidates, invalidCandidates } = normalizeCandidatesFromRaw({
+        rawCandidates: parsed.rawCandidates,
+        input,
+        provider,
+        model,
+      });
+      return buildTurnFromCandidateEvaluation({
+        assistantMessage: parsed.assistantMessage,
+        sourceFormat: parsed.sourceFormat,
+        schemaVersion: parsed.schemaVersion,
+        forceProposal: parsed.forceProposal,
+        parseError: false,
+        normalizedCandidates,
+        invalidCandidates,
+      });
+    } catch (error) {
+      return {
+        status: "CHAT_REPLY",
+        assistantMessage:
+          asString(assistantMessage) ||
+          "Please tell me your goal, budget, and expected time window.",
+        protocol: {
+          name: PROTOCOL_NAME,
+          version: PROTOCOL_VERSION,
+          constrained: true,
+          sourceFormat: "structured_decision_failed",
+          schemaVersion: STRUCTURED_SCHEMA_VERSION,
+          error: summarizeError(error),
+        },
+      };
+    }
   }
 
-  // True streaming: yields plain text tokens from the first chunk,
-  // then returns the parsed turn decision at the end (no second LLM call).
+  // Streaming delivers assistant text tokens in real time.
+  // Structured decision (chat/proposal) is resolved in a second strict-schema call.
   async function* streamStrategyChatTurn(input) {
-    if ((provider === "openai" || provider === "deepseek") && !apiKey) {
-      throw new Error("MQ_AI_API_KEY is required for provider=openai/deepseek");
+    if (REMOTE_PROVIDERS.has(provider) && !apiKey) {
+      const keyName = PROVIDER_API_KEY_ENV[provider] || "API_KEY";
+      throw new Error(`${keyName} is required for provider=${provider}`);
     }
     const prompt = buildChatPromptPayload({
-      merchantId: input.merchantId,
-      sessionId: input.sessionId,
       userMessage: input.userMessage,
-      history: input.history,
-      activePolicies: input.activePolicies,
-      approvedStrategies: input.approvedStrategies,
-      executionHistory: input.executionHistory,
-      salesSnapshot: input.salesSnapshot,
     });
     printRawBlock(rawDebugEnabled, "STREAM_INPUT_MESSAGES", prompt.messages);
 
     let rawBuffer = "";
-    let yieldedLen = 0;
-    let sentinelDetected = false;
-    const SENTINELS = DECISION_ENVELOPE_START_MARKERS;
-    let sentinelScanFrom = 0;
-
-    const computeSafeFlushLen = (text) => {
-      let holdBack = 0;
-      for (const sentinel of SENTINELS) {
-        const maxPrefix = Math.min(sentinel.length - 1, text.length);
-        for (let i = maxPrefix; i > 0; i -= 1) {
-          if (text.endsWith(sentinel.slice(0, i))) {
-            holdBack = Math.max(holdBack, i);
-            break;
-          }
-        }
-      }
-      return text.length - holdBack;
-    };
-
     const streamIterator = modelGateway.streamChatEvents(prompt.messages);
     let tokenSeq = 0;
 
@@ -2000,70 +1776,24 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
         continue;
       }
       rawBuffer += chunk;
-      if (sentinelDetected) continue;
-
-      const sentinelIdx = findDecisionEnvelopeStart(rawBuffer, sentinelScanFrom);
-      if (sentinelIdx >= 0) {
-        const textToYield = rawBuffer.slice(yieldedLen, sentinelIdx);
-        if (textToYield) {
-          tokenSeq += 1;
-          yield {
-            type: "token",
-            seq: tokenSeq,
-            text: textToYield
-          };
-        }
-        yieldedLen = sentinelIdx;
-        sentinelDetected = true;
-      } else {
-        // Keep overlap window so markers split across chunks can still be matched.
-        sentinelScanFrom = Math.max(
-          0,
-          rawBuffer.length - Math.max(1, DECISION_ENVELOPE_MAX_MARKER_LEN - 1)
-        );
-        // Only hold back the tail that *could* be the start of any sentinel
-        const safeLen = computeSafeFlushLen(rawBuffer);
-        if (safeLen > yieldedLen) {
-          const toYield = rawBuffer.slice(yieldedLen, safeLen);
-          tokenSeq += 1;
-          yield {
-            type: "token",
-            seq: tokenSeq,
-            text: toYield
-          };
-          yieldedLen = safeLen;
-        }
-      }
-    }
-
-    if (!sentinelDetected && rawBuffer.length > yieldedLen) {
       tokenSeq += 1;
       yield {
         type: "token",
         seq: tokenSeq,
-        text: rawBuffer.slice(yieldedLen)
+        text: chunk
       };
     }
     printRawBlock(rawDebugEnabled, "STREAM_OUTPUT_RAW", rawBuffer);
 
-    const parsedTurn = parseTwoPartResponse(rawBuffer, input);
-    const revisedTurn = await maybeRunCriticReviseLoop({
+    const parsedTurn = await resolveTurnFromStructuredMessages({
+      input,
+      assistantMessage: rawBuffer
+    });
+    const pipelineResult = await decisionPipelineGraph.invoke({
       input,
       turn: parsedTurn
     });
-    const rankedTurn = await maybeRunEvaluationRankExplain({
-      input,
-      turn: revisedTurn
-    });
-    const result = await maybeRunApprovalPublish({
-      input,
-      turn: rankedTurn
-    });
-    const finalized = await maybeRunPostPublishMonitorAndMemory({
-      input,
-      turn: result
-    });
-    return finalized;
+    return pipelineResult && pipelineResult.turn ? pipelineResult.turn : parsedTurn;
   }
 
   function getRuntimeInfo() {
@@ -2076,7 +1806,7 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
       configured: true,
       remoteEnabled,
       remoteConfigured: remoteEnabled ? Boolean(apiKey) : false,
-      plannerEngine: "langchain_create_agent_pipeline_v1",
+      plannerEngine: "langgraph_stategraph_pipeline_v1",
       criticLoop: {
         enabled: criticEnabled,
         maxRounds: criticMaxRounds,
@@ -2108,7 +1838,7 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
 }
 
 module.exports = {
-  createAiStrategyService,
+  createStrategyAgentService,
 };
 
 

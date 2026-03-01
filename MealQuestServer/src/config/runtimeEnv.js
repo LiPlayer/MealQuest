@@ -51,10 +51,23 @@ function parseAiProvider(raw) {
   if (!normalized) {
     return "deepseek";
   }
-  if (["deepseek", "openai"].includes(normalized)) {
+  if (["deepseek", "openai", "zhipuai"].includes(normalized)) {
     return normalized;
   }
   return "deepseek";
+}
+
+function resolveAiApiKey(aiProvider, env) {
+  if (aiProvider === "openai") {
+    return asString(env.OPENAI_API_KEY);
+  }
+  if (aiProvider === "deepseek") {
+    return asString(env.DEEPSEEK_API_KEY);
+  }
+  if (aiProvider === "zhipuai") {
+    return asString(env.ZHIPUAI_API_KEY);
+  }
+  return "";
 }
 
 function resolveServerRuntimeEnv(env = process.env) {
@@ -84,29 +97,30 @@ function resolveServerRuntimeEnv(env = process.env) {
   const aiBaseUrlDefaultByProvider = {
     deepseek: "https://api.deepseek.com/v1",
     openai: "https://api.openai.com/v1",
+    zhipuai: "https://open.bigmodel.cn/api/paas/v4",
   };
   const aiModelDefaultByProvider = {
     deepseek: "deepseek-chat",
     openai: "gpt-4o-mini",
+    zhipuai: "glm-3-turbo",
   };
   const aiTimeoutDefaultByProvider = {
     deepseek: 30000,
     openai: 30000,
+    zhipuai: 30000,
   };
   const aiBaseUrl =
-    asString(env.MQ_AI_BASE_URL) ||
     aiBaseUrlDefaultByProvider[aiProvider] ||
     aiBaseUrlDefaultByProvider.deepseek;
   const aiModel =
-    asString(env.MQ_AI_MODEL) ||
     aiModelDefaultByProvider[aiProvider] ||
     aiModelDefaultByProvider.deepseek;
-  const aiApiKey = asString(env.MQ_AI_API_KEY);
+  const aiApiKey = resolveAiApiKey(aiProvider, env);
   const aiTimeoutDefault =
     aiTimeoutDefaultByProvider[aiProvider] ||
     aiTimeoutDefaultByProvider.deepseek;
-  const aiTimeoutMs = parsePositiveInt(env.MQ_AI_TIMEOUT_MS, aiTimeoutDefault);
-  const aiMaxRetries = parsePositiveInt(env.MQ_AI_MAX_RETRIES, 2);
+  const aiTimeoutMs = aiTimeoutDefault;
+  const aiMaxRetries = 2;
   const policyTemplateValidateOnBoot = parseBoolean(
     env.MQ_POLICY_TEMPLATE_VALIDATE_ON_BOOT,
     true
@@ -131,10 +145,24 @@ function resolveServerRuntimeEnv(env = process.env) {
       "At least one customer auth provider is required in production (WeChat or Alipay)"
     );
   }
-  if (isProduction && ["openai", "deepseek"].includes(aiProvider) && !aiApiKey) {
-    errors.push(
-      "MQ_AI_API_KEY is required when MQ_AI_PROVIDER=openai or deepseek in production"
-    );
+  if (
+    isProduction &&
+    ["openai", "deepseek", "zhipuai"].includes(aiProvider) &&
+    !aiApiKey
+  ) {
+    if (aiProvider === "openai") {
+      errors.push(
+        "OPENAI_API_KEY is required when MQ_AI_PROVIDER=openai in production"
+      );
+    } else if (aiProvider === "deepseek") {
+      errors.push(
+        "DEEPSEEK_API_KEY is required when MQ_AI_PROVIDER=deepseek in production"
+      );
+    } else {
+      errors.push(
+        "ZHIPUAI_API_KEY is required when MQ_AI_PROVIDER=zhipuai in production"
+      );
+    }
   }
   if (errors.length > 0) {
     throw new Error(`Invalid server env: ${errors.join("; ")}`);
@@ -167,7 +195,7 @@ function resolveServerRuntimeEnv(env = process.env) {
         appSecret: authAlipayAppSecret
       }
     },
-    aiStrategy: {
+    strategyAgent: {
       provider: aiProvider,
       baseUrl: aiBaseUrl,
       model: aiModel,

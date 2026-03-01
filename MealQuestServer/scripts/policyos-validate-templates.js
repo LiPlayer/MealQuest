@@ -1,6 +1,6 @@
 const { createInMemoryDb } = require("../src/store/inMemoryDb");
 const { createPolicyOsService } = require("../src/policyos/policyOsService");
-const { validateStrategyTemplates } = require("../src/services/strategyTemplateCatalog");
+const { validateStrategyTemplates } = require("../src/services/strategyAgent/templateCatalog");
 
 function main() {
   const db = createInMemoryDb();

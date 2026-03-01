@@ -1,5 +1,4 @@
 const { createAgent, providerStrategy, toolStrategy } = require("langchain");
-const { ChatOpenAI } = require("@langchain/openai");
 
 function asString(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -50,30 +49,6 @@ function coerceRawText(value) {
   }
 }
 
-function extractRawTextFromAiMessage(message) {
-  if (!message || typeof message !== "object") {
-    return "";
-  }
-  if (
-    message.additional_kwargs &&
-    message.additional_kwargs.parsed &&
-    typeof message.additional_kwargs.parsed === "object"
-  ) {
-    return JSON.stringify(message.additional_kwargs.parsed);
-  }
-  const content = normalizeMessageContent(message.content);
-  if (content) {
-    return content;
-  }
-  if (
-    message.additional_kwargs &&
-    typeof message.additional_kwargs.refusal === "string"
-  ) {
-    return message.additional_kwargs.refusal;
-  }
-  return "";
-}
-
 function isAssistantMessage(message) {
   if (!message || typeof message !== "object") {
     return false;
@@ -101,6 +76,30 @@ function isAssistantMessage(message) {
   return false;
 }
 
+function extractRawTextFromAiMessage(message) {
+  if (!message || typeof message !== "object") {
+    return "";
+  }
+  if (
+    message.additional_kwargs &&
+    message.additional_kwargs.parsed &&
+    typeof message.additional_kwargs.parsed === "object"
+  ) {
+    return JSON.stringify(message.additional_kwargs.parsed);
+  }
+  const content = normalizeMessageContent(message.content);
+  if (content) {
+    return content;
+  }
+  if (
+    message.additional_kwargs &&
+    typeof message.additional_kwargs.refusal === "string"
+  ) {
+    return message.additional_kwargs.refusal;
+  }
+  return "";
+}
+
 function extractAssistantRawTextFromAgentState(state) {
   const messages =
     state && Array.isArray(state.messages) ? state.messages : [];
@@ -118,11 +117,11 @@ function extractAssistantRawTextFromAgentState(state) {
 }
 
 function buildStructuredResponseFormat({
-  normalizedProvider,
+  structuredOutputMethod,
   schema,
   strict,
 }) {
-  if (normalizedProvider === "openai") {
+  if (structuredOutputMethod === "providerStrategy") {
     if (strict === undefined) {
       return providerStrategy(schema);
     }
@@ -134,41 +133,46 @@ function buildStructuredResponseFormat({
   return toolStrategy(schema);
 }
 
-function createLangChainModelGateway(options = {}) {
-  const {
-    provider,
-    model,
-    baseUrl,
-    apiKey,
-    timeoutMs,
-    maxRetries,
-    parseJsonStrict,
-  } = options;
-  if (typeof parseJsonStrict !== "function") {
-    throw new Error("langchain model gateway requires parseJsonStrict");
+function buildStructuredAgentCacheKey({
+  method,
+  strict,
+  schema,
+  schemaName,
+}) {
+  const normalizedMethod = asString(method) || "toolStrategy";
+  const strictKey = strict === undefined ? "null" : String(Boolean(strict));
+  const named = asString(schemaName);
+  if (named) {
+    return `${normalizedMethod}|${strictKey}|name:${named}`;
   }
+  if (schema && typeof schema.safeParse === "function") {
+    const schemaType =
+      schema &&
+      schema._def &&
+      typeof schema._def.type === "string"
+        ? schema._def.type
+        : "zod";
+    return `${normalizedMethod}|${strictKey}|zod:${schemaType}`;
+  }
+  try {
+    return `${normalizedMethod}|${strictKey}|json:${JSON.stringify(schema)}`;
+  } catch {
+    return `${normalizedMethod}|${strictKey}|schema:opaque`;
+  }
+}
 
-  const resolvedMaxRetries = Number.isFinite(Number(maxRetries))
-    ? Math.max(0, Math.floor(Number(maxRetries)))
-    : 2;
-  const resolvedTimeoutMs = Number(timeoutMs) || 15000;
-  const normalizedProvider = asString(provider).toLowerCase();
-  const resolvedUseResponsesApi = normalizedProvider === "openai";
-  const defaultStructuredOutputMethod =
-    normalizedProvider === "openai" ? "providerStrategy" : "toolStrategy";
-
-  const chatModel = new ChatOpenAI({
-    model,
-    apiKey,
-    timeout: resolvedTimeoutMs,
-    maxRetries: resolvedMaxRetries,
-    temperature: 0.2,
-    maxTokens: 2048,
-    useResponsesApi: resolvedUseResponsesApi,
-    configuration: {
-      baseURL: asString(baseUrl).replace(/\/+$/, ""),
-    },
-  });
+function createLangChainAgentRuntime(options = {}) {
+  const {
+    chatModel,
+    parseJsonStrict,
+    structuredOutputMethod,
+  } = options;
+  if (!chatModel) {
+    throw new Error("langchain agent runtime requires chatModel");
+  }
+  if (typeof parseJsonStrict !== "function") {
+    throw new Error("langchain agent runtime requires parseJsonStrict");
+  }
 
   const baseAgent = createAgent({
     model: chatModel,
@@ -186,17 +190,18 @@ function createLangChainModelGateway(options = {}) {
       Object.prototype.hasOwnProperty.call(structured, "strict")
         ? Boolean(structured.strict)
         : undefined;
-    const cacheKey = JSON.stringify({
-      method: defaultStructuredOutputMethod,
-      strict: strict === undefined ? null : strict,
+    const cacheKey = buildStructuredAgentCacheKey({
+      method: structuredOutputMethod,
+      strict,
       schema,
+      schemaName: structured && structured.name,
     });
     const cached = structuredAgentCache.get(cacheKey);
     if (cached) {
       return cached;
     }
     const responseFormat = buildStructuredResponseFormat({
-      normalizedProvider,
+      structuredOutputMethod,
       schema,
       strict,
     });
@@ -209,15 +214,14 @@ function createLangChainModelGateway(options = {}) {
     return agent;
   }
 
-  async function invokeJsonWithRaw(messages, invokeOptions = {}) {
+  async function invokeChatWithRaw(messages, invokeOptions = {}) {
     if (
       invokeOptions &&
       typeof invokeOptions === "object" &&
       invokeOptions.structuredOutput &&
       typeof invokeOptions.structuredOutput === "object"
     ) {
-      const structured = invokeOptions.structuredOutput;
-      const structuredAgent = getStructuredAgent(structured);
+      const structuredAgent = getStructuredAgent(invokeOptions.structuredOutput);
       const result = await structuredAgent.invoke({ messages });
       const parsedValue =
         result &&
@@ -240,16 +244,12 @@ function createLangChainModelGateway(options = {}) {
         parsed: parseJsonStrict(rawText),
       };
     }
-    const response = await baseAgent.invoke({ messages });
-    const rawText = extractAssistantRawTextFromAgentState(response);
+    const result = await baseAgent.invoke({ messages });
+    const rawText = extractAssistantRawTextFromAgentState(result);
     return {
       rawText,
       parsed: parseJsonStrict(rawText),
     };
-  }
-
-  function invokeChatWithRaw(messages, invokeOptions) {
-    return invokeJsonWithRaw(messages, invokeOptions);
   }
 
   async function* streamChatEvents(messages) {
@@ -257,9 +257,7 @@ function createLangChainModelGateway(options = {}) {
     let emittedStart = false;
     const eventStream = await baseAgent.streamEvents(
       { messages },
-      {
-        version: "v2",
-      }
+      { version: "v2" }
     );
     for await (const event of eventStream) {
       const eventName = asString(event && event.event).toLowerCase();
@@ -314,24 +312,11 @@ function createLangChainModelGateway(options = {}) {
   return {
     invokeChatWithRaw,
     streamChatEvents,
-    getRuntimeInfo() {
-      return {
-        retry: { maxRetries: resolvedMaxRetries },
-        modelClient: resolvedUseResponsesApi
-          ? "langchain_create_agent_responses"
-          : "langchain_create_agent_chat_completions",
-        transport: resolvedUseResponsesApi ? "responses_api" : "chat_completions",
-        structuredOutput: {
-          defaultMethod: defaultStructuredOutputMethod,
-        },
-        streaming: {
-          mode: "langchain_create_agent_stream_events_v2",
-        },
-      };
-    },
+    structuredOutputMethod,
   };
 }
 
 module.exports = {
-  createLangChainModelGateway,
+  createLangChainAgentRuntime,
 };
+

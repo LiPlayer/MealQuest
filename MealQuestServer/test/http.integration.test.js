@@ -6,7 +6,7 @@ const http = require("node:http");
 const { createAppServer: createAppServerInternal } = require("../src/http/server");
 const { issueToken } = require("../src/core/auth");
 const { createInMemoryDb } = require("../src/store/inMemoryDb");
-const { createPolicySpecFromTemplate } = require("../src/services/strategyTemplateCatalog");
+const { createPolicySpecFromTemplate } = require("../src/services/strategyAgent/templateCatalog");
 
 const TEST_JWT_SECRET = process.env.MQ_JWT_SECRET || "mealquest-dev-secret";
 const activeApps = new Set();

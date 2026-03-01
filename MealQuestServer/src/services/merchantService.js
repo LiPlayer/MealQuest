@@ -1,5 +1,5 @@
 function createMerchantService(db, options = {}) {
-  const aiStrategyService = options.aiStrategyService;
+  const strategyAgentService = options.strategyAgentService;
   const policyOsService = options.policyOsService;
   const wsHub = options.wsHub;
   const fromFreshState = Boolean(options.__fromFreshState);
@@ -47,7 +47,7 @@ function createMerchantService(db, options = {}) {
     }
     return db.runWithFreshState(async (workingDb) => {
       const scopedService = createMerchantService(workingDb, {
-        aiStrategyService,
+        strategyAgentService,
         policyOsService,
         wsHub,
         __fromFreshState: true
@@ -62,7 +62,7 @@ function createMerchantService(db, options = {}) {
     }
     return db.runWithFreshRead(async (workingDb) => {
       const scopedService = createMerchantService(workingDb, {
-        aiStrategyService,
+        strategyAgentService,
         policyOsService,
         wsHub,
         __fromFreshState: true
@@ -2040,7 +2040,6 @@ function createMerchantService(db, options = {}) {
       };
     }
 
-    compactSessionHistoryForModel(session);
     const baselineMessageCount = Array.isArray(session.messages) ? session.messages.length : 0;
     const buildChatResponse = () =>
       buildStrategyChatDeltaResponse({
@@ -2059,28 +2058,14 @@ function createMerchantService(db, options = {}) {
       text
     });
 
-    if (!aiStrategyService || typeof aiStrategyService.streamStrategyChatTurn !== "function") {
-      throw new Error("ai strategy chat service is not configured");
+    if (!strategyAgentService || typeof strategyAgentService.streamStrategyChatTurn !== "function") {
+      throw new Error("strategy agent service is not configured");
     }
 
-    const historyForModel = buildHistoryForModel(session);
-    const salesSnapshot = getSalesSnapshotContext(merchantId);
     const aiInput = {
       merchantId,
       sessionId: session.sessionId,
       userMessage: text,
-      history: historyForModel,
-      activePolicies: getActivePolicyContext(merchantId),
-      approvedStrategies: getApprovedStrategyContext(merchantId),
-      executionHistory: getMarketingExecutionContext(merchantId),
-      salesSnapshot,
-      evaluatePolicyCandidates: buildAiCandidateEvaluationTool({
-        merchantId,
-        operatorId,
-        sessionId: session.sessionId,
-        userMessage: text,
-        salesSnapshot
-      })
     };
 
     // Event streaming: broadcast START/CHUNK/END over WS, then publish final delta state.
@@ -2104,7 +2089,7 @@ function createMerchantService(db, options = {}) {
       let fullText = "";
       let streamStarted = false;
       let streamEnded = false;
-      const gen = aiStrategyService.streamStrategyChatTurn(aiInput);
+      const gen = strategyAgentService.streamStrategyChatTurn(aiInput);
       emitStreamEvent("START", {
         userText: userMessageWrapper.text,
         startedAt: new Date().toISOString()

@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const { createInMemoryDb } = require("../src/store/inMemoryDb");
 const { createMerchantService } = require("../src/services/merchantService");
 const { createPolicyOsService } = require("../src/policyos/policyOsService");
-const { createPolicySpecFromTemplate } = require("../src/services/strategyTemplateCatalog");
+const { createPolicySpecFromTemplate } = require("../src/services/strategyAgent/templateCatalog");
 
 function seedMerchant(db, merchantId = "m_policy_link") {
   db.merchants[merchantId] = {
@@ -58,7 +58,7 @@ test("merchant service links AI proposal evaluate -> approve -> publish lifecycl
     .toUpperCase();
   const merchantService = createMerchantService(db, {
     policyOsService,
-    aiStrategyService: {
+    strategyAgentService: {
       async *streamStrategyChatTurn() {
         return {
           status: "PROPOSAL_READY",
@@ -162,7 +162,7 @@ test("merchant service auto-evaluates and ranks multiple proposal candidates", a
 
   const merchantService = createMerchantService(db, {
     policyOsService,
-    aiStrategyService: {
+    strategyAgentService: {
       async *streamStrategyChatTurn() {
         return {
           status: "PROPOSAL_READY",
@@ -200,7 +200,7 @@ test("merchant service requires evaluation before approving proposal", async () 
   });
   const merchantService = createMerchantService(db, {
     policyOsService,
-    aiStrategyService: null
+    strategyAgentService: null
   });
 
   db.proposals.push({
@@ -255,7 +255,7 @@ test("merchant service supports force refresh evaluation after cached auto evalu
     .toUpperCase();
   const merchantService = createMerchantService(db, {
     policyOsService,
-    aiStrategyService: {
+    strategyAgentService: {
       async *streamStrategyChatTurn() {
         return {
           status: "PROPOSAL_READY",

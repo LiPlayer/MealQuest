@@ -1,12 +1,12 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const { createSchemaRegistry, POLICY_SCHEMA_VERSION } = require("../policyos/schemaRegistry");
+const { createSchemaRegistry, POLICY_SCHEMA_VERSION } = require("../../policyos/schemaRegistry");
 
 const DEFAULT_TTL_SEC = 4 * 60 * 60;
 const MAX_TTL_SEC = 72 * 60 * 60;
 const TEMPLATE_CATALOG_PATH = path.resolve(
   __dirname,
-  "../policyos/templates/strategy-templates.v1.json"
+  "../../policyos/templates/strategy-templates.v1.json"
 );
 
 const templateCache = {

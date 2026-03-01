@@ -10,25 +10,26 @@ test("runtime env: openai provider resolves default endpoint and model", () => {
     MQ_AUTH_WECHAT_MINI_APP_ID: "wx_fixture",
     MQ_AUTH_WECHAT_MINI_APP_SECRET: "wx_secret",
     MQ_AI_PROVIDER: "openai",
+    OPENAI_API_KEY: "openai_key_test",
   });
 
-  assert.equal(env.aiStrategy.provider, "openai");
-  assert.equal(env.aiStrategy.baseUrl, "https://api.openai.com/v1");
-  assert.equal(env.aiStrategy.model, "gpt-4o-mini");
-  assert.equal(env.aiStrategy.maxRetries, 2);
+  assert.equal(env.strategyAgent.provider, "openai");
+  assert.equal(env.strategyAgent.baseUrl, "https://api.openai.com/v1");
+  assert.equal(env.strategyAgent.model, "gpt-4o-mini");
+  assert.equal(env.strategyAgent.maxRetries, 2);
+  assert.equal(env.strategyAgent.apiKey, "openai_key_test");
 });
 
-test("runtime env: ai max retries can be configured", () => {
+test("runtime env: ai max retries is fixed to default", () => {
   const env = resolveServerRuntimeEnv({
     NODE_ENV: "development",
     MQ_DB_URL: "postgres://postgres:postgres@127.0.0.1:5432/mealquest",
     MQ_AUTH_WECHAT_MINI_APP_ID: "wx_fixture",
     MQ_AUTH_WECHAT_MINI_APP_SECRET: "wx_secret",
     MQ_AI_PROVIDER: "openai",
-    MQ_AI_MAX_RETRIES: "5",
   });
 
-  assert.equal(env.aiStrategy.maxRetries, 5);
+  assert.equal(env.strategyAgent.maxRetries, 2);
 });
 
 test("runtime env: deepseek provider resolves default endpoint/model/timeout", () => {
@@ -38,12 +39,31 @@ test("runtime env: deepseek provider resolves default endpoint/model/timeout", (
     MQ_AUTH_WECHAT_MINI_APP_ID: "wx_fixture",
     MQ_AUTH_WECHAT_MINI_APP_SECRET: "wx_secret",
     MQ_AI_PROVIDER: "deepseek",
+    DEEPSEEK_API_KEY: "deepseek_key_test",
   });
 
-  assert.equal(env.aiStrategy.provider, "deepseek");
-  assert.equal(env.aiStrategy.baseUrl, "https://api.deepseek.com/v1");
-  assert.equal(env.aiStrategy.model, "deepseek-chat");
-  assert.equal(env.aiStrategy.timeoutMs, 30000);
+  assert.equal(env.strategyAgent.provider, "deepseek");
+  assert.equal(env.strategyAgent.baseUrl, "https://api.deepseek.com/v1");
+  assert.equal(env.strategyAgent.model, "deepseek-chat");
+  assert.equal(env.strategyAgent.timeoutMs, 30000);
+  assert.equal(env.strategyAgent.apiKey, "deepseek_key_test");
+});
+
+test("runtime env: zhipuai provider resolves default endpoint/model/timeout", () => {
+  const env = resolveServerRuntimeEnv({
+    NODE_ENV: "development",
+    MQ_DB_URL: "postgres://postgres:postgres@127.0.0.1:5432/mealquest",
+    MQ_AUTH_WECHAT_MINI_APP_ID: "wx_fixture",
+    MQ_AUTH_WECHAT_MINI_APP_SECRET: "wx_secret",
+    MQ_AI_PROVIDER: "zhipuai",
+    ZHIPUAI_API_KEY: "zhipu_key_test",
+  });
+
+  assert.equal(env.strategyAgent.provider, "zhipuai");
+  assert.equal(env.strategyAgent.baseUrl, "https://open.bigmodel.cn/api/paas/v4");
+  assert.equal(env.strategyAgent.model, "glm-3-turbo");
+  assert.equal(env.strategyAgent.timeoutMs, 30000);
+  assert.equal(env.strategyAgent.apiKey, "zhipu_key_test");
 });
 
 test("runtime env: production openai requires api key", () => {
@@ -58,7 +78,7 @@ test("runtime env: production openai requires api key", () => {
         MQ_AUTH_WECHAT_MINI_APP_SECRET: "wx_secret",
         MQ_AI_PROVIDER: "openai",
       }),
-    /MQ_AI_API_KEY is required/,
+    /OPENAI_API_KEY is required/,
   );
 });
 
@@ -74,7 +94,23 @@ test("runtime env: production deepseek requires api key", () => {
         MQ_AUTH_WECHAT_MINI_APP_SECRET: "wx_secret",
         MQ_AI_PROVIDER: "deepseek",
       }),
-    /MQ_AI_API_KEY is required/,
+    /DEEPSEEK_API_KEY is required/,
+  );
+});
+
+test("runtime env: production zhipuai requires api key", () => {
+  assert.throws(
+    () =>
+      resolveServerRuntimeEnv({
+        NODE_ENV: "production",
+        MQ_DB_URL: "postgres://postgres:postgres@127.0.0.1:5432/mealquest",
+        MQ_JWT_SECRET: "jwt",
+        MQ_PAYMENT_CALLBACK_SECRET: "cb",
+        MQ_AUTH_WECHAT_MINI_APP_ID: "wx_fixture",
+        MQ_AUTH_WECHAT_MINI_APP_SECRET: "wx_secret",
+        MQ_AI_PROVIDER: "zhipuai",
+      }),
+    /ZHIPUAI_API_KEY is required/,
   );
 });
 

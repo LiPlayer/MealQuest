@@ -14,8 +14,6 @@
 - [ ] 已为目标环境准备 `MealQuestServer/.env.<profile>.local`（dev/staging/prod）。
 - [ ] `MQ_JWT_SECRET` 已替换为安全值（非示例值）。
 - [ ] `MQ_PAYMENT_CALLBACK_SECRET` 已替换为安全值。
-- [ ] 当前阶段确认 `MQ_PAYMENT_PROVIDER=mock`（未接第三方正式通道时）。
-- [ ] 当前阶段确认 `MQ_INVOICE_PROVIDER=mock`（未接第三方正式通道时）。
 
 ## 3. 安全与权限
 

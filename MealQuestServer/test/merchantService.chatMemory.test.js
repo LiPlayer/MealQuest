@@ -1,4 +1,4 @@
-const test = require("node:test");
+﻿const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { createInMemoryDb } = require("../src/store/inMemoryDb");
@@ -36,13 +36,13 @@ function seedMerchant(db, merchantId = "m_store_001") {
   };
 }
 
-test("merchant strategy chat compacts long dialogue into structured memory", async () => {
+test("merchant strategy chat keeps session messages and sends minimal agent input", async () => {
   const db = createInMemoryDb();
   seedMerchant(db);
 
   const capturedInputs = [];
   const merchantService = createMerchantService(db, {
-    aiStrategyService: {
+    strategyAgentService: {
       async *streamStrategyChatTurn(input) {
         capturedInputs.push(input);
         return {
@@ -55,8 +55,8 @@ test("merchant strategy chat compacts long dialogue into structured memory", asy
 
   for (let index = 1; index <= 16; index += 1) {
     const content =
-      `第${index}轮：目标是提升复购和GMV，预算上限 ${300 + index * 10}，不要超预算，主要针对新客和会员，本周末晚高峰执行。` +
-      " 用户反馈：希望低打扰，避免过度折扣，保持毛利。" +
+      `round ${index}: goal is to improve retention and GMV, budget cap ${300 + index * 10}. ` +
+      "user preference: low disturbance, avoid over-discounting, keep margin. " +
       "x".repeat(760);
     const turn = await merchantService.sendStrategyChatMessage({
       merchantId: "m_store_001",
@@ -69,25 +69,14 @@ test("merchant strategy chat compacts long dialogue into structured memory", asy
   const bucket = db.strategyChats.m_store_001;
   const session = bucket.sessions[bucket.activeSessionId];
   assert.ok(session);
-  assert.ok(String(session.memorySummary || "").length > 0);
-  assert.ok(session.memoryFacts && typeof session.memoryFacts === "object");
-  assert.ok(Array.isArray(session.memoryFacts.goals));
-  assert.ok(Array.isArray(session.memoryFacts.constraints));
-  assert.ok(session.memoryFacts.goals.length > 0);
-  assert.ok(session.memoryFacts.constraints.length > 0);
+  assert.ok(Array.isArray(session.messages));
+  assert.ok(session.messages.length >= 32);
 
   const lastInput = capturedInputs[capturedInputs.length - 1];
-  assert.ok(lastInput && Array.isArray(lastInput.history));
-  assert.ok(lastInput.history.length > 0);
-  assert.ok(
-    lastInput.history.some(
-      (item) => item && item.role === "SYSTEM" && ["MEMORY_SUMMARY", "MEMORY_FACTS"].includes(item.type),
-    ),
-  );
-  assert.ok(lastInput.history.length <= 42);
-
-  const latestMessage = lastInput.history[lastInput.history.length - 1];
-  assert.ok(latestMessage);
-  assert.equal(latestMessage.role, "USER");
-  assert.match(String(latestMessage.text || ""), /第16轮/);
+  assert.ok(lastInput);
+  assert.equal(lastInput.merchantId, "m_store_001");
+  assert.equal(lastInput.sessionId, bucket.activeSessionId);
+  assert.match(String(lastInput.userMessage || ""), /round 16/);
+  assert.equal(Object.prototype.hasOwnProperty.call(lastInput, "history"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(lastInput, "salesSnapshot"), false);
 });

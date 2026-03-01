@@ -1,7 +1,7 @@
 ﻿const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { createAiStrategyService } = require("../src/services/aiStrategyService");
+const { createStrategyAgentService } = require("../src/services/strategyAgent");
 
 function safeParseJson(raw) {
   try {
@@ -125,8 +125,16 @@ function createNonStreamingCompletionResponse(content) {
   );
 }
 
-test("ai strategy provider: openai uses expected defaults", () => {
-  const service = createAiStrategyService({
+function buildDecisionPayload({ assistantMessage, proposals = [] }) {
+  return JSON.stringify({
+    mode: "PROPOSAL",
+    assistantMessage: String(assistantMessage || ""),
+    proposals: Array.isArray(proposals) ? proposals : [],
+  });
+}
+
+test("strategy agent provider: openai uses expected defaults", () => {
+  const service = createStrategyAgentService({
     provider: "openai",
     apiKey: "test-key",
   });
@@ -137,16 +145,16 @@ test("ai strategy provider: openai uses expected defaults", () => {
   assert.equal(runtime.model, "gpt-4o-mini");
   assert.equal(runtime.remoteEnabled, true);
   assert.equal(runtime.remoteConfigured, true);
-  assert.equal(runtime.plannerEngine, "langchain_create_agent_pipeline_v1");
+  assert.equal(runtime.plannerEngine, "langgraph_stategraph_pipeline_v1");
   assert.equal(runtime.criticLoop.enabled, true);
   assert.equal(runtime.criticLoop.maxRounds, 1);
-  assert.equal(runtime.modelClient, "langchain_create_agent_responses");
+  assert.equal(runtime.modelClient, "langchain_chat_openai");
   assert.equal(runtime.llmTransport, "responses_api");
   assert.equal(runtime.retryPolicy.maxRetries, 2);
 });
 
-test("ai strategy provider: deepseek uses expected defaults", () => {
-  const service = createAiStrategyService({
+test("strategy agent provider: deepseek uses expected defaults", () => {
+  const service = createStrategyAgentService({
     provider: "deepseek",
     apiKey: "test-key",
   });
@@ -157,13 +165,30 @@ test("ai strategy provider: deepseek uses expected defaults", () => {
   assert.equal(runtime.model, "deepseek-chat");
   assert.equal(runtime.remoteEnabled, true);
   assert.equal(runtime.remoteConfigured, true);
-  assert.equal(runtime.modelClient, "langchain_create_agent_chat_completions");
-  assert.equal(runtime.llmTransport, "chat_completions");
+  assert.equal(runtime.modelClient, "langchain_chat_deepseek");
+  assert.equal(runtime.llmTransport, "provider_sdk");
+  assert.equal(runtime.structuredOutputMethod, "toolStrategy");
+});
+
+test("strategy agent provider: zhipuai uses expected defaults", () => {
+  const service = createStrategyAgentService({
+    provider: "zhipuai",
+    apiKey: "test-key",
+  });
+  const runtime = service.getRuntimeInfo();
+
+  assert.equal(runtime.provider, "zhipuai");
+  assert.equal(runtime.baseUrl, "https://open.bigmodel.cn/api/paas/v4");
+  assert.equal(runtime.model, "glm-3-turbo");
+  assert.equal(runtime.remoteEnabled, true);
+  assert.equal(runtime.remoteConfigured, true);
+  assert.equal(runtime.modelClient, "langchain_chat_zhipuai");
+  assert.equal(runtime.llmTransport, "provider_sdk");
   assert.equal(runtime.structuredOutputMethod, "toolStrategy");
 });
 
 
-test("ai strategy provider: retries transient upstream failures and then succeeds", async () => {
+test("strategy agent provider: retries transient upstream failures and then succeeds", async () => {
   const originalFetch = global.fetch;
   let callCount = 0;
 
@@ -175,34 +200,30 @@ test("ai strategy provider: retries transient upstream failures and then succeed
       throw transientError;
     }
     const requestJson = await parseRequestJson(input, init);
-    const content = [
-      "Recovered after retries.",
-      JSON.stringify({
-        schemaVersion: "2026-02-27",
-        mode: "PROPOSAL",
-        assistantMessage: "Recovered after retries.",
-        proposals: [
-          {
-            templateId: "acquisition_welcome_gift",
-            branchId: "DEFAULT",
-            title: "Recovered Strategy",
-            rationale: "retry path works",
-            confidence: 0.79,
-            policyPatch: {
-              name: "Recovered Strategy",
-            },
+    const streamText = "Recovered after retries.";
+    const decisionPayload = buildDecisionPayload({
+      assistantMessage: streamText,
+      proposals: [
+        {
+          templateId: "acquisition_welcome_gift",
+          branchId: "DEFAULT",
+          title: "Recovered Strategy",
+          rationale: "retry path works",
+          confidence: 0.79,
+          policyPatch: {
+            name: "Recovered Strategy",
           },
-        ],
-      }),
-    ].join("\n");
+        },
+      ],
+    });
     if (requestJson.stream) {
-      return createStreamingCompletionResponse(content);
+      return createStreamingCompletionResponse(streamText);
     }
-    return createNonStreamingCompletionResponse(content);
+    return createNonStreamingCompletionResponse(decisionPayload);
   };
 
   try {
-    const service = createAiStrategyService({
+    const service = createStrategyAgentService({
       provider: "openai",
       apiKey: "test-key",
       baseUrl: "http://127.0.0.1:11434/v1",
@@ -221,55 +242,51 @@ test("ai strategy provider: retries transient upstream failures and then succeed
     });
 
     assert.equal(result.status, "PROPOSAL_READY");
-    assert.equal(callCount, 3);
+    assert.equal(callCount, 4);
     assert.equal(service.getRuntimeInfo().retryPolicy.maxRetries, 3);
   } finally {
     global.fetch = originalFetch;
   }
 });
 
-test("ai strategy provider: strategy chat supports multiple proposal candidates", async () => {
+test("strategy agent provider: strategy chat supports multiple proposal candidates", async () => {
   const originalFetch = global.fetch;
   global.fetch = async (input, init) => {
     const requestJson = await parseRequestJson(input, init);
-    const content = [
-      "Drafted multiple options.",
-      JSON.stringify({
-        schemaVersion: "2026-02-27",
-        mode: "PROPOSAL",
-        assistantMessage: "Drafted multiple options.",
-        proposals: [
-          {
-            templateId: "acquisition_welcome_gift",
-            branchId: "DEFAULT",
-            title: "Option A",
-            rationale: "for hot weather",
-            confidence: 0.75,
-            policyPatch: {
-              name: "Option A",
-            },
+    const streamText = "Drafted multiple options.";
+    const decisionPayload = buildDecisionPayload({
+      assistantMessage: streamText,
+      proposals: [
+        {
+          templateId: "acquisition_welcome_gift",
+          branchId: "DEFAULT",
+          title: "Option A",
+          rationale: "for hot weather",
+          confidence: 0.75,
+          policyPatch: {
+            name: "Option A",
           },
-          {
-            templateId: "acquisition_welcome_gift",
-            branchId: "CHANNEL",
-            title: "Option B",
-            rationale: "for fallback users",
-            confidence: 0.7,
-            policyPatch: {
-              name: "Option B",
-            },
+        },
+        {
+          templateId: "acquisition_welcome_gift",
+          branchId: "CHANNEL",
+          title: "Option B",
+          rationale: "for fallback users",
+          confidence: 0.7,
+          policyPatch: {
+            name: "Option B",
           },
-        ],
-      }),
-    ].join("\n");
+        },
+      ],
+    });
     if (requestJson.stream) {
-      return createStreamingCompletionResponse(content);
+      return createStreamingCompletionResponse(streamText);
     }
-    return createNonStreamingCompletionResponse(content);
+    return createNonStreamingCompletionResponse(decisionPayload);
   };
 
   try {
-    const service = createAiStrategyService({
+    const service = createStrategyAgentService({
       provider: "openai",
       apiKey: "test-key",
       baseUrl: "http://127.0.0.1:11434/v1",
@@ -295,48 +312,44 @@ test("ai strategy provider: strategy chat supports multiple proposal candidates"
     global.fetch = originalFetch;
   }
 });
-test("ai strategy provider: stream flow ranks proposals with evaluation tool and adds explain pack", async () => {
+test("strategy agent provider: stream flow ranks proposals with evaluation tool and adds explain pack", async () => {
   const originalFetch = global.fetch;
   global.fetch = async (input, init) => {
     const requestJson = await parseRequestJson(input, init);
-    const content = [
-      "Drafted two options.",
-      JSON.stringify({
-        schemaVersion: "2026-02-27",
-        assistantMessage: "Drafted two options.",
-        mode: "PROPOSAL",
-        proposals: [
-          {
-            templateId: "acquisition_welcome_gift",
-            branchId: "DEFAULT",
-            title: "Option Low",
-            rationale: "low expected value",
-            confidence: 0.8,
-            policyPatch: {
-              name: "Option Low",
-            },
+    const streamText = "Drafted two options.";
+    const decisionPayload = buildDecisionPayload({
+      assistantMessage: streamText,
+      proposals: [
+        {
+          templateId: "acquisition_welcome_gift",
+          branchId: "DEFAULT",
+          title: "Option Low",
+          rationale: "low expected value",
+          confidence: 0.8,
+          policyPatch: {
+            name: "Option Low",
           },
-          {
-            templateId: "acquisition_welcome_gift",
-            branchId: "CHANNEL",
-            title: "Option High",
-            rationale: "higher expected value",
-            confidence: 0.6,
-            policyPatch: {
-              name: "Option High",
-            },
+        },
+        {
+          templateId: "acquisition_welcome_gift",
+          branchId: "CHANNEL",
+          title: "Option High",
+          rationale: "higher expected value",
+          confidence: 0.6,
+          policyPatch: {
+            name: "Option High",
           },
-        ],
-      }),
-    ].join("\n");
+        },
+      ],
+    });
     if (requestJson.stream) {
-      return createStreamingCompletionResponse(content);
+      return createStreamingCompletionResponse(streamText);
     }
-    return createNonStreamingCompletionResponse(content);
+    return createNonStreamingCompletionResponse(decisionPayload);
   };
 
   try {
-    const service = createAiStrategyService({
+    const service = createStrategyAgentService({
       provider: "openai",
       apiKey: "test-key",
       baseUrl: "http://127.0.0.1:11434/v1",
@@ -399,48 +412,44 @@ test("ai strategy provider: stream flow ranks proposals with evaluation tool and
   }
 });
 
-test("ai strategy provider: publish intent requires approval and can invoke publish tool", async () => {
+test("strategy agent provider: publish intent requires approval and can invoke publish tool", async () => {
   const originalFetch = global.fetch;
   global.fetch = async (input, init) => {
     const requestJson = await parseRequestJson(input, init);
-    const content = [
-      "Drafted two options for publish.",
-      JSON.stringify({
-        schemaVersion: "2026-02-27",
-        assistantMessage: "Drafted two options for publish.",
-        mode: "PROPOSAL",
-        proposals: [
-          {
-            templateId: "acquisition_welcome_gift",
-            branchId: "DEFAULT",
-            title: "Publish A",
-            rationale: "base plan",
-            confidence: 0.7,
-            policyPatch: {
-              name: "Publish A",
-            },
+    const streamText = "Drafted two options for publish.";
+    const decisionPayload = buildDecisionPayload({
+      assistantMessage: streamText,
+      proposals: [
+        {
+          templateId: "acquisition_welcome_gift",
+          branchId: "DEFAULT",
+          title: "Publish A",
+          rationale: "base plan",
+          confidence: 0.7,
+          policyPatch: {
+            name: "Publish A",
           },
-          {
-            templateId: "acquisition_welcome_gift",
-            branchId: "CHANNEL",
-            title: "Publish B",
-            rationale: "channel plan",
-            confidence: 0.72,
-            policyPatch: {
-              name: "Publish B",
-            },
+        },
+        {
+          templateId: "acquisition_welcome_gift",
+          branchId: "CHANNEL",
+          title: "Publish B",
+          rationale: "channel plan",
+          confidence: 0.72,
+          policyPatch: {
+            name: "Publish B",
           },
-        ],
-      }),
-    ].join("\n");
+        },
+      ],
+    });
     if (requestJson.stream) {
-      return createStreamingCompletionResponse(content);
+      return createStreamingCompletionResponse(streamText);
     }
-    return createNonStreamingCompletionResponse(content);
+    return createNonStreamingCompletionResponse(decisionPayload);
   };
 
   try {
-    const service = createAiStrategyService({
+    const service = createStrategyAgentService({
       provider: "openai",
       apiKey: "test-key",
       baseUrl: "http://127.0.0.1:11434/v1",
@@ -499,38 +508,34 @@ test("ai strategy provider: publish intent requires approval and can invoke publ
   }
 });
 
-test("ai strategy provider: post-publish monitor and memory update hooks are attached", async () => {
+test("strategy agent provider: post-publish monitor and memory update hooks are attached", async () => {
   const originalFetch = global.fetch;
   global.fetch = async (input, init) => {
     const requestJson = await parseRequestJson(input, init);
-    const content = [
-      "Ready to publish.",
-      JSON.stringify({
-        schemaVersion: "2026-02-27",
-        assistantMessage: "Ready to publish.",
-        mode: "PROPOSAL",
-        proposals: [
-          {
-            templateId: "acquisition_welcome_gift",
-            branchId: "DEFAULT",
-            title: "Monitor Target",
-            rationale: "monitor after publish",
-            confidence: 0.75,
-            policyPatch: {
-              name: "Monitor Target",
-            },
+    const streamText = "Ready to publish.";
+    const decisionPayload = buildDecisionPayload({
+      assistantMessage: streamText,
+      proposals: [
+        {
+          templateId: "acquisition_welcome_gift",
+          branchId: "DEFAULT",
+          title: "Monitor Target",
+          rationale: "monitor after publish",
+          confidence: 0.75,
+          policyPatch: {
+            name: "Monitor Target",
           },
-        ],
-      }),
-    ].join("\n");
+        },
+      ],
+    });
     if (requestJson.stream) {
-      return createStreamingCompletionResponse(content);
+      return createStreamingCompletionResponse(streamText);
     }
-    return createNonStreamingCompletionResponse(content);
+    return createNonStreamingCompletionResponse(decisionPayload);
   };
 
   try {
-    const service = createAiStrategyService({
+    const service = createStrategyAgentService({
       provider: "openai",
       apiKey: "test-key",
       baseUrl: "http://127.0.0.1:11434/v1",
@@ -601,7 +606,7 @@ test("ai strategy provider: post-publish monitor and memory update hooks are att
   }
 });
 
-test("ai strategy provider: critic revise loop rewrites proposal candidates when needed", async () => {
+test("strategy agent provider: critic revise loop rewrites proposal candidates when needed", async () => {
   const originalFetch = global.fetch;
   let callCount = 0;
 
@@ -609,12 +614,14 @@ test("ai strategy provider: critic revise loop rewrites proposal candidates when
     callCount += 1;
     const requestJson = await parseRequestJson(input, init);
     if (callCount === 1) {
-      const content = [
-        "Drafted initial options.",
-        JSON.stringify({
-          schemaVersion: "2026-02-27",
+      if (requestJson.stream) {
+        return createStreamingCompletionResponse("Drafted initial options.");
+      }
+    }
+    if (callCount === 2) {
+      return createNonStreamingCompletionResponse(
+        buildDecisionPayload({
           assistantMessage: "Drafted initial options.",
-          mode: "PROPOSAL",
           proposals: [
             {
               templateId: "acquisition_welcome_gift",
@@ -637,14 +644,10 @@ test("ai strategy provider: critic revise loop rewrites proposal candidates when
               },
             },
           ],
-        }),
-      ].join("\n");
-      if (requestJson.stream) {
-        return createStreamingCompletionResponse(content);
-      }
-      return createNonStreamingCompletionResponse(content);
+        })
+      );
     }
-    if (callCount === 2) {
+    if (callCount === 3) {
       return createNonStreamingCompletionResponse(
         JSON.stringify({
           needRevision: true,
@@ -684,7 +687,7 @@ test("ai strategy provider: critic revise loop rewrites proposal candidates when
   };
 
   try {
-    const service = createAiStrategyService({
+    const service = createStrategyAgentService({
       provider: "openai",
       apiKey: "test-key",
       baseUrl: "http://127.0.0.1:11434/v1",
@@ -707,7 +710,7 @@ test("ai strategy provider: critic revise loop rewrites proposal candidates when
     });
 
     assert.equal(result.status, "PROPOSAL_READY");
-    assert.equal(callCount, 3);
+    assert.equal(callCount, 4);
     assert.equal(result.assistantMessage, "Revised options ready for review.");
     assert.ok(Array.isArray(result.proposals));
     assert.equal(result.proposals.length, 2);
@@ -719,7 +722,7 @@ test("ai strategy provider: critic revise loop rewrites proposal candidates when
   }
 });
 
-test("ai strategy provider: invalid policyPatch is revised before returning proposal", async () => {
+test("strategy agent provider: invalid policyPatch is revised before returning proposal", async () => {
   const originalFetch = global.fetch;
   let callCount = 0;
 
@@ -727,31 +730,31 @@ test("ai strategy provider: invalid policyPatch is revised before returning prop
     callCount += 1;
     const requestJson = await parseRequestJson(input, init);
     if (callCount === 1) {
-      const content = [
-        "Draft created.",
-        JSON.stringify({
-          schemaVersion: "2026-02-27",
-          mode: "PROPOSAL",
+      if (requestJson.stream) {
+        return createStreamingCompletionResponse("Draft created.");
+      }
+    }
+    if (callCount === 2) {
+      return createNonStreamingCompletionResponse(
+        buildDecisionPayload({
           assistantMessage: "Draft created.",
-          proposal: {
-            templateId: "acquisition_welcome_gift",
-            branchId: "DEFAULT",
-            title: "Invalid Draft",
-            rationale: "contains illegal field",
-            confidence: 0.8,
-            policyPatch: {
-              name: "Invalid Draft",
-              governance: {
-                approval_required: false,
+          proposals: [
+            {
+              templateId: "acquisition_welcome_gift",
+              branchId: "DEFAULT",
+              title: "Invalid Draft",
+              rationale: "contains illegal field",
+              confidence: 0.8,
+              policyPatch: {
+                name: "Invalid Draft",
+                governance: {
+                  approval_required: false,
+                },
               },
             },
-          },
-        }),
-      ].join("\n");
-      if (requestJson.stream) {
-        return createStreamingCompletionResponse(content);
-      }
-      return createNonStreamingCompletionResponse(content);
+          ],
+        })
+      );
     }
     return createNonStreamingCompletionResponse(
       JSON.stringify({
@@ -788,7 +791,7 @@ test("ai strategy provider: invalid policyPatch is revised before returning prop
   };
 
   try {
-    const service = createAiStrategyService({
+    const service = createStrategyAgentService({
       provider: "openai",
       apiKey: "test-key",
       baseUrl: "http://127.0.0.1:11434/v1",
@@ -808,7 +811,7 @@ test("ai strategy provider: invalid policyPatch is revised before returning prop
       approvedStrategies: [],
     });
 
-    assert.equal(callCount, 2);
+    assert.equal(callCount, 3);
     assert.equal(result.status, "PROPOSAL_READY");
     assert.equal(result.proposals[0].title, "Compliant Draft");
     assert.equal(result.protocol.critic.applied, true);

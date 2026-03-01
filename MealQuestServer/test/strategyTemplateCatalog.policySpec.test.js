@@ -5,7 +5,7 @@ const {
   createPolicySpecFromTemplate,
   validatePolicyPatchForTemplate,
   validateStrategyTemplates
-} = require("../src/services/strategyTemplateCatalog");
+} = require("../src/services/strategyAgent/templateCatalog");
 const { createSchemaRegistry } = require("../src/policyos/schemaRegistry");
 const { createInMemoryDb } = require("../src/store/inMemoryDb");
 const { createPolicyOsService } = require("../src/policyos/policyOsService");

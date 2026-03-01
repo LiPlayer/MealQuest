@@ -9,7 +9,7 @@ Minimal runnable backend implementation for MealQuest.
 - Refund clawback (consume gifted balance first, then principal)
 - Policy OS decision engine (policy/trigger/constraint/scoring/action plugins)
 - AI-driven merchant strategy proposal and approval workflow
-- LangGraph-based strategy planning orchestration
+- LangChain createAgent-based strategy planning orchestration
 - Emergency fire-sale override (`Priority:999 + TTL`)
 - Supplier order verification API
 - Alliance configuration (store clusters, shared wallet, cross-store sync)
@@ -54,11 +54,7 @@ MQ_AUTH_ALIPAY_APP_ID=
 MQ_AUTH_ALIPAY_APP_SECRET=
 MQ_AUTH_HTTP_TIMEOUT_MS=10000
 MQ_AI_PROVIDER=deepseek
-MQ_AI_BASE_URL=https://api.deepseek.com/v1
-MQ_AI_MODEL=deepseek-chat
-MQ_AI_API_KEY=
-MQ_AI_TIMEOUT_MS=30000
-MQ_AI_MAX_RETRIES=2
+# API keys are injected via secret manager / runtime environment.
 MQ_POLICY_TEMPLATE_VALIDATE_ON_BOOT=true
 ```
 
@@ -74,14 +70,17 @@ Notes:
 8. Request pipeline enforces tenant-scoped serialization and flushes pending persistence before response.
 9. When `MQ_DB_AUTO_CREATE=true`, server auto-creates the target database if it is missing.
 10. If the app user has no `CREATEDB` privilege, set `MQ_DB_ADMIN_URL` with an admin connection.
-11. `MQ_AI_PROVIDER=deepseek` uses DeepSeek OpenAI-compatible endpoint by default.
-12. `MQ_AI_API_KEY` is required for DeepSeek/OpenAI in production.
-13. AI transport/structured-output path is fixed by provider in server code (no runtime compatibility toggles).
-14. If model inference is unavailable, strategy proposal API returns `AI_UNAVAILABLE` (no local fallback strategy is generated).
-15. `MQ_AI_MAX_RETRIES` controls LangChain model retry attempts (`@langchain/openai`).
-16. Strategy planning is orchestrated by LangGraph (`prepare_input -> remote_decide -> assemble_plan`).
-17. Payment write operations execute on fresh tenant state within one PostgreSQL transaction (`runWithFreshState`).
-18. Policy template catalog is validated at boot by default (`MQ_POLICY_TEMPLATE_VALIDATE_ON_BOOT=true`).
+11. `MQ_AI_PROVIDER` currently supports `deepseek`, `zhipuai`, and `openai`.
+12. `DEEPSEEK_API_KEY` is required for `MQ_AI_PROVIDER=deepseek` in production.
+13. `ZHIPUAI_API_KEY` is required for `MQ_AI_PROVIDER=zhipuai` in production.
+14. `OPENAI_API_KEY` is required for `MQ_AI_PROVIDER=openai` in production.
+15. AI defaults are fixed in server code; env only needs provider + key.
+16. AI provider bindings are fixed in server code: `deepseek -> ChatDeepSeek`, `zhipuai -> ChatZhipuAI`, `openai -> ChatOpenAI`.
+17. Structured output for critic/revise is implemented with Zod schemas and fed to LangChain `responseFormat`.
+18. If model inference is unavailable, strategy proposal API returns `AI_UNAVAILABLE` (no local fallback strategy is generated).
+19. Strategy planning is orchestrated by LangChain createAgent pipeline.
+20. Payment write operations execute on fresh tenant state within one PostgreSQL transaction (`runWithFreshState`).
+21. Policy template catalog is validated at boot by default (`MQ_POLICY_TEMPLATE_VALIDATE_ON_BOOT=true`).
 
 ## Merchant Onboarding
 
@@ -101,7 +100,7 @@ GET  /api/merchant/catalog
 
 Engineering reference:
 
-- `docs/AI_STRATEGY_ENGINEERING.md` (AI strategy architecture and rollout)
+- `docs/STRATEGY_AGENT_ENGINEERING.md` (strategy agent architecture and rollout)
 
 Example body:
 

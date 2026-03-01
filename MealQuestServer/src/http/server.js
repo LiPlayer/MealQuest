@@ -12,8 +12,8 @@ const { createTenantRouter } = require("../core/tenantRouter");
 const { createWebSocketHub } = require("../core/websocketHub");
 const { createInvoiceService } = require("../services/invoiceService");
 const { createMerchantService } = require("../services/merchantService");
-const { createAiStrategyService } = require("../services/aiStrategyService");
-const { assertStrategyTemplatesValid } = require("../services/strategyTemplateCatalog");
+const { createStrategyAgentService } = require("../services/strategyAgent");
+const { assertStrategyTemplatesValid } = require("../services/strategyAgent/templateCatalog");
 const { createAllianceService } = require("../services/allianceService");
 const { createPaymentService } = require("../services/paymentService");
 const { createPrivacyService } = require("../services/privacyService");
@@ -46,7 +46,7 @@ function createAppServer({
   paymentProvider = null,
   socialAuthService = null,
   socialAuthOptions = {},
-  aiStrategyOptions = {},
+  strategyAgentOptions = {},
   policyTemplateValidateOnBoot = true
 } = {}) {
   const actualDb = db || createInMemoryDb();
@@ -106,7 +106,7 @@ function createAppServer({
       timeoutMs: socialAuthOptions.timeoutMs,
       providers: socialAuthOptions.providers
     });
-  const aiStrategyService = createAiStrategyService(aiStrategyOptions);
+  const strategyAgentService = createStrategyAgentService(strategyAgentOptions);
   const wsHub = createWebSocketHub(); // wsHub needs to be defined before getServicesForDb
   const metrics = {
     startedAt: new Date().toISOString(),
@@ -121,7 +121,7 @@ function createAppServer({
       services = {
         paymentService: createPaymentService(scopedDb, { paymentProvider }),
         merchantService: createMerchantService(scopedDb, {
-          aiStrategyService,
+          strategyAgentService,
           policyOsService,
           wsHub
         }),
@@ -384,7 +384,7 @@ async function createAppServerAsync(options = {}) {
     db: rootDb,
     postgresOptions,
     socialAuthOptions,
-    aiStrategyOptions: options.aiStrategyOptions || runtimeEnv.aiStrategy,
+    strategyAgentOptions: options.strategyAgentOptions || runtimeEnv.strategyAgent,
     policyTemplateValidateOnBoot:
       options.policyTemplateValidateOnBoot === undefined
         ? runtimeEnv.policyTemplateValidateOnBoot
@@ -450,7 +450,7 @@ if (require.main === module) {
       timeoutMs: runtimeEnv.authHttpTimeoutMs,
       providers: runtimeEnv.authProviders
     },
-    aiStrategyOptions: runtimeEnv.aiStrategy
+    strategyAgentOptions: runtimeEnv.strategyAgent
   })
     .then((app) => {
       appInstance = app;
