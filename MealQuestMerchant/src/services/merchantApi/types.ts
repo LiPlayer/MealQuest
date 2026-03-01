@@ -146,6 +146,23 @@ export interface StrategyChatStatePayload {
   }>;
 }
 
+export interface StrategyChatStreamEvent {
+  sessionId: string | null;
+  streamId: string;
+  phase: 'START' | 'CHUNK' | 'END' | 'ERROR';
+  userMessageId?: string;
+  assistantMessageId?: string;
+  userText?: string;
+  textDelta?: string;
+  text?: string;
+  seq?: number;
+  reason?: string;
+  startedAt?: string;
+  endedAt?: string;
+  failedAt?: string;
+  at?: string;
+}
+
 export interface StrategyChatSessionResult extends StrategyChatStatePayload { }
 
 export interface StrategyChatTurnResult extends StrategyChatStatePayload {

@@ -35,93 +35,18 @@ function normalizeMessageContent(content) {
     .trim();
 }
 
-function normalizeToolCallArgs(rawArgs) {
-  if (typeof rawArgs === "string") {
-    return rawArgs.trim();
+function coerceRawText(value) {
+  if (typeof value === "string") {
+    return value;
   }
-  if (rawArgs && typeof rawArgs === "object") {
-    return JSON.stringify(rawArgs);
+  if (value === null || value === undefined) {
+    return "";
   }
-  return "";
-}
-
-function toResponsesTools(tools) {
-  const safeTools = Array.isArray(tools) ? tools : [];
-  return safeTools.map((tool) => {
-    if (!tool || typeof tool !== "object") {
-      return tool;
-    }
-    if (tool.type === "function" && tool.function && typeof tool.function === "object") {
-      return {
-        type: "function",
-        function: {
-          name: asString(tool.function.name),
-          description: asString(tool.function.description),
-          parameters:
-            tool.function.parameters && typeof tool.function.parameters === "object"
-              ? tool.function.parameters
-              : { type: "object" },
-          strict: tool.function.strict === true,
-        },
-      };
-    }
-    return tool;
-  });
-}
-
-function toToolChoice(toolChoice) {
-  if (typeof toolChoice === "string") {
-    return toolChoice;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
   }
-  if (!toolChoice || typeof toolChoice !== "object") {
-    return toolChoice;
-  }
-  if (toolChoice.type === "function") {
-    const directName = asString(toolChoice.name);
-    const nestedName = asString(toolChoice.function && toolChoice.function.name);
-    const name = directName || nestedName;
-    if (name) {
-      return {
-        type: "function",
-        function: { name },
-      };
-    }
-  }
-  return toolChoice;
-}
-
-function toLangChainCallOptions(invokeOptions = {}) {
-  const next = {};
-  if (
-    invokeOptions.responseFormat &&
-    typeof invokeOptions.responseFormat === "object" &&
-    invokeOptions.responseFormat.type === "json_schema" &&
-    invokeOptions.responseFormat.json_schema &&
-    typeof invokeOptions.responseFormat.json_schema === "object"
-  ) {
-    const schemaSpec = invokeOptions.responseFormat.json_schema;
-    next.response_format = {
-      type: "json_schema",
-      json_schema: {
-        name: asString(schemaSpec.name) || "structured_output",
-        schema:
-          schemaSpec.schema && typeof schemaSpec.schema === "object"
-            ? schemaSpec.schema
-            : { type: "object" },
-        strict: schemaSpec.strict === true,
-      },
-    };
-  }
-  if (Array.isArray(invokeOptions.tools) && invokeOptions.tools.length > 0) {
-    next.tools = toResponsesTools(invokeOptions.tools);
-    if (next.tools.some((tool) => Boolean(tool && tool.function && tool.function.strict === true))) {
-      next.strict = true;
-    }
-  }
-  if (invokeOptions.toolChoice !== undefined && invokeOptions.toolChoice !== null) {
-    next.tool_choice = toToolChoice(invokeOptions.toolChoice);
-  }
-  return next;
 }
 
 function extractRawTextFromAiMessage(message) {
@@ -134,28 +59,6 @@ function extractRawTextFromAiMessage(message) {
     typeof message.additional_kwargs.parsed === "object"
   ) {
     return JSON.stringify(message.additional_kwargs.parsed);
-  }
-  const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
-  if (toolCalls.length > 0) {
-    const args = normalizeToolCallArgs((toolCalls[0] || {}).args);
-    if (args) {
-      return args;
-    }
-  }
-  const rawToolCalls =
-    message.additional_kwargs &&
-    Array.isArray(message.additional_kwargs.tool_calls)
-      ? message.additional_kwargs.tool_calls
-      : [];
-  if (rawToolCalls.length > 0) {
-    const first = rawToolCalls[0] || {};
-    const args = normalizeToolCallArgs(
-      first.args ||
-      (first.function && first.function.arguments)
-    );
-    if (args) {
-      return args;
-    }
   }
   const content = normalizeMessageContent(message.content);
   if (content) {
@@ -188,11 +91,10 @@ function createLangChainModelGateway(options = {}) {
     ? Math.max(0, Math.floor(Number(maxRetries)))
     : 2;
   const resolvedTimeoutMs = Number(timeoutMs) || 15000;
-
-  const modelKwargs = {};
-  if (provider === "bigmodel") {
-    modelKwargs.reasoning = { effort: "low" };
-  }
+  const normalizedProvider = asString(provider).toLowerCase();
+  const resolvedUseResponsesApi = normalizedProvider === "openai";
+  const defaultStructuredOutputMethod =
+    normalizedProvider === "deepseek" ? "jsonMode" : "jsonSchema";
 
   const chatModel = new ChatOpenAI({
     model,
@@ -201,16 +103,57 @@ function createLangChainModelGateway(options = {}) {
     maxRetries: resolvedMaxRetries,
     temperature: 0.2,
     maxTokens: 2048,
-    useResponsesApi: true,
+    useResponsesApi: resolvedUseResponsesApi,
     configuration: {
       baseURL: asString(baseUrl).replace(/\/+$/, ""),
     },
-    modelKwargs,
   });
 
   async function invokeJsonWithRaw(messages, invokeOptions = {}) {
-    const callOptions = toLangChainCallOptions(invokeOptions);
-    const response = await chatModel.invoke(messages, callOptions);
+    if (
+      invokeOptions &&
+      typeof invokeOptions === "object" &&
+      invokeOptions.structuredOutput &&
+      typeof invokeOptions.structuredOutput === "object"
+    ) {
+      const structured = invokeOptions.structuredOutput;
+      const schema =
+        structured.schema && typeof structured.schema === "object"
+          ? structured.schema
+          : { type: "object" };
+      const structuredConfig = {
+        name: asString(structured.name) || "structured_output",
+        method: defaultStructuredOutputMethod,
+        includeRaw: true,
+      };
+      if (
+        structured.strict !== undefined &&
+        defaultStructuredOutputMethod !== "jsonMode"
+      ) {
+        structuredConfig.strict = Boolean(structured.strict);
+      }
+      const structuredModel = chatModel.withStructuredOutput(schema, structuredConfig);
+      const result = await structuredModel.invoke(messages);
+      const hasParsedContainer =
+        result &&
+        typeof result === "object" &&
+        Object.prototype.hasOwnProperty.call(result, "parsed");
+      const parsedValue = hasParsedContainer ? result.parsed : result;
+      const rawText = hasParsedContainer
+        ? extractRawTextFromAiMessage(result.raw) || coerceRawText(parsedValue)
+        : coerceRawText(parsedValue);
+      if (parsedValue && typeof parsedValue === "object") {
+        return {
+          rawText,
+          parsed: parsedValue,
+        };
+      }
+      return {
+        rawText,
+        parsed: parseJsonStrict(rawText),
+      };
+    }
+    const response = await chatModel.invoke(messages);
     const rawText = extractRawTextFromAiMessage(response);
     return {
       rawText,
@@ -218,38 +161,110 @@ function createLangChainModelGateway(options = {}) {
     };
   }
 
-  async function invokeJson(messages, invokeOptions = {}) {
-    const { parsed } = await invokeJsonWithRaw(messages, invokeOptions);
-    return parsed;
-  }
-
-  function invokeChat(messages, invokeOptions) {
-    return invokeJson(messages, invokeOptions);
-  }
-
   function invokeChatWithRaw(messages, invokeOptions) {
     return invokeJsonWithRaw(messages, invokeOptions);
   }
 
-  async function* streamChatWithRaw(messages) {
-    const stream = await chatModel.stream(messages);
-    for await (const chunk of stream) {
-      const text = normalizeMessageContent(chunk && chunk.content);
+  async function* streamChatEvents(messages) {
+    const runStartAt = new Date().toISOString();
+    let emittedStart = false;
+    try {
+      const eventStream = await chatModel.streamEvents(messages, {
+        version: "v2",
+      });
+      for await (const event of eventStream) {
+        const eventName = asString(event && event.event).toLowerCase();
+        if (eventName === "on_chat_model_start") {
+          emittedStart = true;
+          yield {
+            type: "start",
+            at: runStartAt,
+            runId: asString(event && (event.run_id || event.runId)),
+            raw: event,
+          };
+          continue;
+        }
+        if (eventName === "on_chat_model_stream") {
+          const chunk = event && event.data ? event.data.chunk : null;
+          const text = normalizeMessageContent(chunk && chunk.content);
+          if (!text) {
+            continue;
+          }
+          yield {
+            type: "token",
+            text,
+            raw: event,
+          };
+          continue;
+        }
+        if (eventName === "on_chat_model_end") {
+          yield {
+            type: "end",
+            at: new Date().toISOString(),
+            runId: asString(event && (event.run_id || event.runId)),
+            raw: event,
+          };
+        }
+      }
+      if (!emittedStart) {
+        yield {
+          type: "start",
+          at: runStartAt,
+          runId: "",
+          raw: null,
+        };
+      }
       yield {
-        text,
-        raw: chunk,
+        type: "end",
+        at: new Date().toISOString(),
+        runId: "",
+        raw: null,
+      };
+    } catch (error) {
+      void error;
+      yield {
+        type: "start",
+        at: runStartAt,
+        runId: "",
+        raw: null,
+      };
+      const stream = await chatModel.stream(messages);
+      for await (const chunk of stream) {
+        const text = normalizeMessageContent(chunk && chunk.content);
+        if (!text) {
+          continue;
+        }
+        yield {
+          type: "token",
+          text,
+          raw: chunk,
+        };
+      }
+      yield {
+        type: "end",
+        at: new Date().toISOString(),
+        runId: "",
+        raw: null,
       };
     }
   }
 
   return {
-    invokeChat,
     invokeChatWithRaw,
-    streamChatWithRaw,
+    streamChatEvents,
     getRuntimeInfo() {
       return {
         retry: { maxRetries: resolvedMaxRetries },
-        modelClient: "langchain_chatopenai_responses",
+        modelClient: resolvedUseResponsesApi
+          ? "langchain_chatopenai_responses"
+          : "langchain_chatopenai_chat_completions",
+        transport: resolvedUseResponsesApi ? "responses_api" : "chat_completions",
+        structuredOutput: {
+          defaultMethod: defaultStructuredOutputMethod,
+        },
+        streaming: {
+          mode: "langchain_stream_events_v2",
+        },
       };
     },
   };

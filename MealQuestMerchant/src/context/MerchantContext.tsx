@@ -14,6 +14,7 @@ import {
     AllianceConfig,
     PolicyDecisionResult,
     StrategyChatMessage,
+    StrategyChatStreamEvent,
     StrategyChatPendingReview,
     StrategyChatReviewProgress,
     StrategyChatReviewResult,
@@ -310,6 +311,30 @@ export function MerchantProvider({
         });
     };
 
+    const normalizeStrategyChatStreamEvent = (payload: Record<string, unknown> | null | undefined): StrategyChatStreamEvent | null => {
+        if (!payload || typeof payload !== 'object') return null;
+        const streamId = String(payload.streamId || '').trim();
+        const phaseRaw = String(payload.phase || '').trim().toUpperCase();
+        const allowedPhases = new Set(['START', 'CHUNK', 'END', 'ERROR']);
+        if (!streamId || !allowedPhases.has(phaseRaw)) return null;
+        return {
+            sessionId: payload.sessionId === null || payload.sessionId === undefined ? null : String(payload.sessionId),
+            streamId,
+            phase: phaseRaw as StrategyChatStreamEvent['phase'],
+            userMessageId: payload.userMessageId === undefined ? undefined : String(payload.userMessageId || ''),
+            assistantMessageId: payload.assistantMessageId === undefined ? undefined : String(payload.assistantMessageId || ''),
+            userText: payload.userText === undefined ? undefined : String(payload.userText || ''),
+            textDelta: payload.textDelta === undefined ? undefined : String(payload.textDelta || ''),
+            text: payload.text === undefined ? undefined : String(payload.text || ''),
+            seq: payload.seq === undefined ? undefined : Number(payload.seq),
+            reason: payload.reason === undefined ? undefined : String(payload.reason || ''),
+            startedAt: payload.startedAt === undefined ? undefined : String(payload.startedAt || ''),
+            endedAt: payload.endedAt === undefined ? undefined : String(payload.endedAt || ''),
+            failedAt: payload.failedAt === undefined ? undefined : String(payload.failedAt || ''),
+            at: payload.at === undefined ? undefined : String(payload.at || ''),
+        };
+    };
+
     const ensureStrategyChatSession = async (): Promise<string> => {
         const merchantId = String((MerchantApi.getMerchantId() || merchantState.merchantId) || '').trim();
         const sid = `sc_${merchantId}`;
@@ -409,6 +434,13 @@ export function MerchantProvider({
                         },
                         onMessage: message => {
                             if (!active) return;
+                            if (message.type === 'STRATEGY_CHAT_STREAM_EVENT') {
+                                const streamEvent = normalizeStrategyChatStreamEvent(message.payload as Record<string, unknown>);
+                                if (streamEvent) {
+                                    applyStrategyChatStreamEvent(streamEvent);
+                                }
+                                return;
+                            }
                             if (message.type === 'STRATEGY_CHAT_DELTA') {
                                 const delta = message.payload as StrategyChatDelta;
                                 console.log(`[MerchantContext] RECEIVED DELTA: msgs=${delta.deltaMessages?.length || delta.messages?.length || 0}, pendingReview=${Boolean(delta.pendingReview)}`);
@@ -596,6 +628,131 @@ export function MerchantProvider({
             await refreshAuditLogs();
         } catch (error: any) {
             setLastAction(`Evaluation failed: ${error?.message || 'unknown error'}`);
+        }
+    };
+
+    const applyStrategyChatStreamEvent = (event: StrategyChatStreamEvent) => {
+        if (!event || typeof event !== 'object') return;
+        if (event.sessionId) setStrategyChatSessionId(String(event.sessionId).trim());
+        const phase = String(event.phase || '').trim().toUpperCase();
+        const assistantMessageId = String(event.assistantMessageId || '').trim();
+        const userMessageId = String(event.userMessageId || '').trim();
+
+        if (phase === 'START') {
+            setStrategyChatMessages(prev => {
+                let merged = prev.filter(m => !(m.messageId.startsWith('opt_ai_') || m.messageId.startsWith('opt_user_')));
+                if (userMessageId) {
+                    const hasUser = merged.some(m => m.messageId === userMessageId);
+                    if (!hasUser) {
+                        merged.push({
+                            messageId: userMessageId,
+                            role: 'USER',
+                            type: 'TEXT',
+                            text: String(event.userText || ''),
+                            proposalId: null,
+                            metadata: null,
+                            createdAt: event.startedAt || new Date().toISOString(),
+                            isStreaming: false,
+                            deliveryStatus: 'sent',
+                        } as any);
+                    }
+                }
+                if (assistantMessageId) {
+                    const idx = merged.findIndex(m => m.messageId === assistantMessageId);
+                    if (idx >= 0) {
+                        merged[idx] = { ...merged[idx], isStreaming: true, deliveryStatus: 'sent' };
+                    } else {
+                        merged.push({
+                            messageId: assistantMessageId,
+                            role: 'ASSISTANT',
+                            type: 'TEXT',
+                            text: '',
+                            proposalId: null,
+                            metadata: null,
+                            createdAt: event.startedAt || new Date().toISOString(),
+                            isStreaming: true,
+                            deliveryStatus: 'sent',
+                        } as any);
+                    }
+                }
+                return merged;
+            });
+            return;
+        }
+
+        if (phase === 'CHUNK') {
+            const deltaText = String(event.textDelta || '');
+            if (!deltaText) return;
+            setStrategyChatMessages(prev => {
+                const merged = prev.filter(m => !m.messageId.startsWith('opt_ai_'));
+                if (assistantMessageId) {
+                    const idx = merged.findIndex(m => m.messageId === assistantMessageId);
+                    if (idx >= 0) {
+                        merged[idx] = {
+                            ...merged[idx],
+                            role: 'ASSISTANT',
+                            type: 'TEXT',
+                            text: `${String(merged[idx].text || '')}${deltaText}`,
+                            isStreaming: true,
+                            deliveryStatus: 'sent',
+                        };
+                    } else {
+                        merged.push({
+                            messageId: assistantMessageId,
+                            role: 'ASSISTANT',
+                            type: 'TEXT',
+                            text: deltaText,
+                            proposalId: null,
+                            metadata: null,
+                            createdAt: event.at || new Date().toISOString(),
+                            isStreaming: true,
+                            deliveryStatus: 'sent',
+                        } as any);
+                    }
+                    return merged;
+                }
+                const fallbackIndex = merged.findIndex(m => m.role === 'ASSISTANT' && m.isStreaming);
+                if (fallbackIndex >= 0) {
+                    merged[fallbackIndex] = {
+                        ...merged[fallbackIndex],
+                        text: `${String(merged[fallbackIndex].text || '')}${deltaText}`,
+                        isStreaming: true,
+                        deliveryStatus: 'sent',
+                    };
+                }
+                return merged;
+            });
+            return;
+        }
+
+        if (phase === 'END') {
+            setStrategyChatMessages(prev => prev.map(item => {
+                if (assistantMessageId && item.messageId === assistantMessageId) {
+                    return {
+                        ...item,
+                        text: event.text !== undefined ? String(event.text || '') : item.text,
+                        isStreaming: false,
+                        deliveryStatus: 'sent',
+                    };
+                }
+                if (!assistantMessageId && item.role === 'ASSISTANT' && item.isStreaming) {
+                    return { ...item, isStreaming: false, deliveryStatus: 'sent' };
+                }
+                return item;
+            }));
+            return;
+        }
+
+        if (phase === 'ERROR') {
+            setStrategyChatMessages(prev => prev.map(item => {
+                if (assistantMessageId && item.messageId === assistantMessageId) {
+                    return { ...item, isStreaming: false, deliveryStatus: 'failed' };
+                }
+                return item;
+            }));
+            if (event.reason) {
+                setLastAction(`AI stream failed: ${String(event.reason)}`);
+            }
         }
     };
 

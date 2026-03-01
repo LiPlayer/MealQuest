@@ -5,12 +5,14 @@
 } = require("./strategyTemplateCatalog");
 const { createLangChainModelGateway } = require("./aiStrategy/langchainModelGateway");
 
-const DEFAULT_REMOTE_PROVIDER = "openai_compatible";
-const REMOTE_PROVIDERS = new Set(["deepseek", "openai_compatible", "bigmodel"]);
-const BIGMODEL_BASE_URL = "https://open.bigmodel.cn/api/paas/v4";
-const BIGMODEL_DEFAULT_MODEL = "glm-4.7-flash";
-const BIGMODEL_DEFAULT_TIMEOUT_MS = 45000;
-const DEFAULT_TIMEOUT_MS = 15000;
+const DEFAULT_REMOTE_PROVIDER = "deepseek";
+const REMOTE_PROVIDERS = new Set(["deepseek", "openai"]);
+const OPENAI_BASE_URL = "https://api.openai.com/v1";
+const OPENAI_DEFAULT_MODEL = "gpt-4o-mini";
+const OPENAI_DEFAULT_TIMEOUT_MS = 30000;
+const DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1";
+const DEEPSEEK_DEFAULT_MODEL = "deepseek-chat";
+const DEEPSEEK_DEFAULT_TIMEOUT_MS = 30000;
 const DEFAULT_MAX_RETRIES = 2;
 const MAX_PROPOSAL_CANDIDATES = 12;
 const MAX_HISTORY_ITEMS_FOR_PROMPT = 48;
@@ -116,38 +118,12 @@ function printRawBlock(enabled, label, payload) {
   console.log(`[ai-strategy] [raw] ${label}_END`);
 }
 
-function buildStrictJsonSchemaResponseFormat(name, schema) {
+function buildStructuredOutputOptions(name, schema) {
   return {
-    type: "json_schema",
-    json_schema: {
-      name: asString(name) || "mq_json_schema",
+    structuredOutput: {
+      name: asString(name) || "mq_structured_output",
       strict: true,
-      schema
-    }
-  };
-}
-
-function buildRequiredFunctionCallingOptions({
-  functionName,
-  description,
-  parameters
-}) {
-  const resolvedName = asString(functionName) || "submit_structured_payload";
-  return {
-    tools: [
-      {
-        type: "function",
-        function: {
-          name: resolvedName,
-          description: asString(description) || "Submit structured JSON output.",
-          strict: true,
-          parameters: isObjectLike(parameters) ? parameters : { type: "object" }
-        }
-      }
-    ],
-    toolChoice: {
-      type: "function",
-      function: { name: resolvedName }
+      schema: isObjectLike(schema) ? schema : { type: "object" }
     }
   };
 }
@@ -164,9 +140,6 @@ function normalizeProvider(value) {
   const normalized = asString(value).toLowerCase();
   if (!normalized) {
     return DEFAULT_REMOTE_PROVIDER;
-  }
-  if (["bigmodel", "zhipu", "zhipuai"].includes(normalized)) {
-    return "bigmodel";
   }
   if (REMOTE_PROVIDERS.has(normalized)) {
     return normalized;
@@ -1402,18 +1375,18 @@ function createAiStrategyService(options = {}) {
   const model = asString(
     options.model ||
     process.env.MQ_AI_MODEL ||
-    (provider === "bigmodel" ? BIGMODEL_DEFAULT_MODEL : "qwen2.5:7b-instruct"),
+    (provider === "openai" ? OPENAI_DEFAULT_MODEL : DEEPSEEK_DEFAULT_MODEL),
   );
   const baseUrl = asString(
     options.baseUrl ||
     process.env.MQ_AI_BASE_URL ||
-    (provider === "bigmodel" ? BIGMODEL_BASE_URL : "http://127.0.0.1:11434/v1"),
+    (provider === "openai" ? OPENAI_BASE_URL : DEEPSEEK_BASE_URL),
   );
   const apiKey = asString(options.apiKey || process.env.MQ_AI_API_KEY);
   const timeoutMs = Number(
     options.timeoutMs ||
     process.env.MQ_AI_TIMEOUT_MS ||
-    (provider === "bigmodel" ? BIGMODEL_DEFAULT_TIMEOUT_MS : DEFAULT_TIMEOUT_MS),
+    (provider === "openai" ? OPENAI_DEFAULT_TIMEOUT_MS : DEEPSEEK_DEFAULT_TIMEOUT_MS),
   );
   const maxRetries = toPositiveInt(
     options.maxRetries || process.env.MQ_AI_MAX_RETRIES,
@@ -1523,34 +1496,12 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
             round
           });
           printRawBlock(rawDebugEnabled, "CRITIC_INPUT_MESSAGES", criticMessages);
-          let criticCall;
-          try {
-            criticCall = await modelGateway.invokeChatWithRaw(
-              criticMessages,
-              buildRequiredFunctionCallingOptions({
-                functionName: "submit_critic_decision",
-                description: "Return critic decision for strategy proposals.",
-                parameters: CRITIC_OUTPUT_JSON_SCHEMA
-              })
-            );
-          } catch (functionError) {
-            printRawBlock(rawDebugEnabled, "CRITIC_FUNCTION_FALLBACK", {
-              reason: summarizeError(functionError)
-            });
-            try {
-              criticCall = await modelGateway.invokeChatWithRaw(criticMessages, {
-                responseFormat: buildStrictJsonSchemaResponseFormat(
-                  "mq_strategy_critic_decision",
-                  CRITIC_OUTPUT_JSON_SCHEMA
-                )
-              });
-            } catch (schemaError) {
-              printRawBlock(rawDebugEnabled, "CRITIC_SCHEMA_FALLBACK", {
-                reason: summarizeError(schemaError)
-              });
-              criticCall = await modelGateway.invokeChatWithRaw(criticMessages);
-            }
-          }
+          const criticCall = await modelGateway.invokeChatWithRaw(criticMessages, {
+            ...buildStructuredOutputOptions(
+              "mq_strategy_critic_decision",
+              CRITIC_OUTPUT_JSON_SCHEMA
+            )
+          });
           printRawBlock(rawDebugEnabled, "CRITIC_OUTPUT_RAW", criticCall.rawText || "");
           criticDecision = normalizeCriticDecision(criticCall.parsed);
         } catch (error) {
@@ -1571,34 +1522,12 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
           validationIssues: pendingValidationIssues
         });
         printRawBlock(rawDebugEnabled, "REVISE_INPUT_MESSAGES", reviseMessages);
-        let reviseCall;
-        try {
-          reviseCall = await modelGateway.invokeChatWithRaw(
-            reviseMessages,
-            buildRequiredFunctionCallingOptions({
-              functionName: "submit_revised_proposals",
-              description: "Return rewritten strategy proposals.",
-              parameters: REVISE_OUTPUT_JSON_SCHEMA
-            })
-          );
-        } catch (functionError) {
-          printRawBlock(rawDebugEnabled, "REVISE_FUNCTION_FALLBACK", {
-            reason: summarizeError(functionError)
-          });
-          try {
-            reviseCall = await modelGateway.invokeChatWithRaw(reviseMessages, {
-              responseFormat: buildStrictJsonSchemaResponseFormat(
-                "mq_strategy_revise_output",
-                REVISE_OUTPUT_JSON_SCHEMA
-              )
-            });
-          } catch (schemaError) {
-            printRawBlock(rawDebugEnabled, "REVISE_SCHEMA_FALLBACK", {
-              reason: summarizeError(schemaError)
-            });
-            reviseCall = await modelGateway.invokeChatWithRaw(reviseMessages);
-          }
-        }
+        const reviseCall = await modelGateway.invokeChatWithRaw(reviseMessages, {
+          ...buildStructuredOutputOptions(
+            "mq_strategy_revise_output",
+            REVISE_OUTPUT_JSON_SCHEMA
+          )
+        });
         printRawBlock(rawDebugEnabled, "REVISE_OUTPUT_RAW", reviseCall.rawText || "");
         const revisedRaw = reviseCall.parsed;
         const { normalizedCandidates, invalidCandidates } = normalizeCandidatesFromRaw({
@@ -2003,8 +1932,8 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
   // True streaming: yields plain text tokens from the first chunk,
   // then returns the parsed turn decision at the end (no second LLM call).
   async function* streamStrategyChatTurn(input) {
-    if (provider === "bigmodel" && !apiKey) {
-      throw new Error("MQ_AI_API_KEY is required for provider=bigmodel");
+    if ((provider === "openai" || provider === "deepseek") && !apiKey) {
+      throw new Error("MQ_AI_API_KEY is required for provider=openai/deepseek");
     }
     const prompt = buildChatPromptPayload({
       merchantId: input.merchantId,
@@ -2038,14 +1967,37 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
       return text.length - holdBack;
     };
 
-    const streamIterator = modelGateway.streamChatWithRaw(prompt.messages);
+    const streamIterator = modelGateway.streamChatEvents(prompt.messages);
+    let tokenSeq = 0;
 
     for await (const streamItem of streamIterator) {
-      let chunk = "";
-      if (isObjectLike(streamItem) && Object.prototype.hasOwnProperty.call(streamItem, "text")) {
-        chunk = typeof streamItem.text === "string" ? streamItem.text : String(streamItem.text || "");
-      } else {
-        chunk = typeof streamItem === "string" ? streamItem : String(streamItem || "");
+      if (!isObjectLike(streamItem) || typeof streamItem.type !== "string") {
+        continue;
+      }
+      const streamType = streamItem.type.toLowerCase();
+      if (streamType === "start") {
+        yield {
+          type: "start",
+          at:
+            isObjectLike(streamItem) && typeof streamItem.at === "string"
+              ? streamItem.at
+              : new Date().toISOString(),
+        };
+        continue;
+      }
+      if (streamType === "end") {
+        yield {
+          type: "end",
+          at:
+            isObjectLike(streamItem) && typeof streamItem.at === "string"
+              ? streamItem.at
+              : new Date().toISOString(),
+        };
+        continue;
+      }
+      const chunk = typeof streamItem.text === "string" ? streamItem.text : "";
+      if (!chunk) {
+        continue;
       }
       rawBuffer += chunk;
       if (sentinelDetected) continue;
@@ -2054,7 +2006,12 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
       if (sentinelIdx >= 0) {
         const textToYield = rawBuffer.slice(yieldedLen, sentinelIdx);
         if (textToYield) {
-          yield textToYield;
+          tokenSeq += 1;
+          yield {
+            type: "token",
+            seq: tokenSeq,
+            text: textToYield
+          };
         }
         yieldedLen = sentinelIdx;
         sentinelDetected = true;
@@ -2068,14 +2025,24 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
         const safeLen = computeSafeFlushLen(rawBuffer);
         if (safeLen > yieldedLen) {
           const toYield = rawBuffer.slice(yieldedLen, safeLen);
-          yield toYield;
+          tokenSeq += 1;
+          yield {
+            type: "token",
+            seq: tokenSeq,
+            text: toYield
+          };
           yieldedLen = safeLen;
         }
       }
     }
 
     if (!sentinelDetected && rawBuffer.length > yieldedLen) {
-      yield rawBuffer.slice(yieldedLen);
+      tokenSeq += 1;
+      yield {
+        type: "token",
+        seq: tokenSeq,
+        text: rawBuffer.slice(yieldedLen)
+      };
     }
     printRawBlock(rawDebugEnabled, "STREAM_OUTPUT_RAW", rawBuffer);
 
@@ -2117,12 +2084,20 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
         minConfidence: criticMinConfidence
       },
       structuredOutput: {
-        critic: "function_calling_required_then_json_schema",
-        revise: "function_calling_required_then_json_schema"
+        critic: `langchain_withStructuredOutput_${gatewayInfo.structuredOutput.defaultMethod}`,
+        revise: `langchain_withStructuredOutput_${gatewayInfo.structuredOutput.defaultMethod}`
       },
       rawDebugEnabled,
       retryPolicy: gatewayInfo.retry,
       modelClient: gatewayInfo.modelClient,
+      llmTransport: gatewayInfo.transport,
+      structuredOutputMethod:
+        gatewayInfo.structuredOutput && gatewayInfo.structuredOutput.defaultMethod,
+      useResponsesApi: gatewayInfo.transport === "responses_api",
+      llmStreamingMode:
+        gatewayInfo.streaming && gatewayInfo.streaming.mode
+          ? gatewayInfo.streaming.mode
+          : "langchain_stream",
     };
   }
 

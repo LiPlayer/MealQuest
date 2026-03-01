@@ -2083,45 +2083,86 @@ function createMerchantService(db, options = {}) {
       })
     };
 
-    // True streaming: text tokens arrive from the first LLM token and are broadcast via WS
+    // Event streaming: broadcast START/CHUNK/END over WS, then publish final delta state.
     let aiTurn;
     const assistantMessageId = `msg_${Date.now()}_ai`;
+    const streamId = `stream_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const emitStreamEvent = (phase, extras = {}) => {
+      if (!wsHub) {
+        return;
+      }
+      wsHub.broadcast(merchantId, "STRATEGY_CHAT_STREAM_EVENT", {
+        sessionId: session.sessionId,
+        streamId,
+        phase,
+        userMessageId: userMessageWrapper.messageId,
+        assistantMessageId,
+        ...extras
+      });
+    };
     try {
       let fullText = "";
+      let streamStarted = false;
+      let streamEnded = false;
       const gen = aiStrategyService.streamStrategyChatTurn(aiInput);
-
-      let isFirstToken = true;
-      // Drain generator: yield = text token, done.value = parsed aiTurn
+      emitStreamEvent("START", {
+        userText: userMessageWrapper.text,
+        startedAt: new Date().toISOString()
+      });
+      streamStarted = true;
+      // Drain generator: yield = stream event, done.value = parsed aiTurn
       let next = await gen.next();
       while (!next.done) {
-        const token = String(next.value || "");
-        if (token.length > 0) {
-          fullText += token;
-          if (wsHub) {
-            const deltaMsgs = [];
-            if (isFirstToken) {
-              deltaMsgs.push(userMessageWrapper);
-              isFirstToken = false;
-            }
-            deltaMsgs.push({
-              messageId: assistantMessageId,
-              role: "ASSISTANT",
-              type: "TEXT",
-              text: fullText,
-              isStreaming: true
+        if (!next || !next.value || typeof next.value !== "object") {
+          next = await gen.next();
+          continue;
+        }
+        const event = next.value;
+        const eventType = String(event.type || "")
+          .trim()
+          .toUpperCase();
+        if (eventType === "START") {
+          if (!streamStarted) {
+            emitStreamEvent("START", {
+              userText: userMessageWrapper.text,
+              startedAt: new Date().toISOString()
             });
-            wsHub.broadcast(merchantId, "STRATEGY_CHAT_DELTA", {
-              sessionId: session.sessionId,
-              deltaMessages: deltaMsgs
-            });
-          } else {
-            if (isFirstToken) isFirstToken = false;
+            streamStarted = true;
           }
+        } else if (eventType === "END") {
+          emitStreamEvent("END", {
+            text: fullText,
+            endedAt: new Date().toISOString()
+          });
+          streamEnded = true;
+        } else if (eventType === "TOKEN") {
+          const token = typeof event.text === "string" ? event.text : "";
+          if (!token) {
+            next = await gen.next();
+            continue;
+          }
+          fullText += token;
+          emitStreamEvent("CHUNK", {
+            textDelta: token,
+            text: fullText,
+            seq: Number(event.seq) || undefined,
+            at: new Date().toISOString()
+          });
         }
         next = await gen.next();
       }
+      if (!streamEnded) {
+        emitStreamEvent("END", {
+          text: fullText,
+          endedAt: new Date().toISOString()
+        });
+      }
       aiTurn = next.value;
     } catch (err) {
+      emitStreamEvent("ERROR", {
+        reason: err && err.message ? String(err.message) : "stream_failed",
+        failedAt: new Date().toISOString()
+      });
       aiTurn = null;
     }
 

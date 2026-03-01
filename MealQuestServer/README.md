@@ -53,11 +53,11 @@ MQ_AUTH_ALIPAY_VERIFY_URL=
 MQ_AUTH_ALIPAY_APP_ID=
 MQ_AUTH_ALIPAY_APP_SECRET=
 MQ_AUTH_HTTP_TIMEOUT_MS=10000
-MQ_AI_PROVIDER=bigmodel
-MQ_AI_BASE_URL=https://open.bigmodel.cn/api/paas/v4
-MQ_AI_MODEL=glm-4.7-flash
+MQ_AI_PROVIDER=deepseek
+MQ_AI_BASE_URL=https://api.deepseek.com/v1
+MQ_AI_MODEL=deepseek-chat
 MQ_AI_API_KEY=
-MQ_AI_TIMEOUT_MS=45000
+MQ_AI_TIMEOUT_MS=30000
 MQ_AI_MAX_RETRIES=2
 MQ_POLICY_TEMPLATE_VALIDATE_ON_BOOT=true
 ```
@@ -74,13 +74,14 @@ Notes:
 8. Request pipeline enforces tenant-scoped serialization and flushes pending persistence before response.
 9. When `MQ_DB_AUTO_CREATE=true`, server auto-creates the target database if it is missing.
 10. If the app user has no `CREATEDB` privilege, set `MQ_DB_ADMIN_URL` with an admin connection.
-11. `MQ_AI_PROVIDER=bigmodel` is supported with BigModel chat completions endpoint.
-12. `MQ_AI_API_KEY` is required for BigModel (`provider=bigmodel`), optional for local openai-compatible servers.
-13. If model inference is unavailable, strategy proposal API returns `AI_UNAVAILABLE` (no local fallback strategy is generated).
-14. `MQ_AI_MAX_RETRIES` controls LangChain model retry attempts (`@langchain/openai`).
-15. Strategy planning is orchestrated by LangGraph (`prepare_input -> remote_decide -> assemble_plan`).
-16. Payment write operations execute on fresh tenant state within one PostgreSQL transaction (`runWithFreshState`).
-17. Policy template catalog is validated at boot by default (`MQ_POLICY_TEMPLATE_VALIDATE_ON_BOOT=true`).
+11. `MQ_AI_PROVIDER=deepseek` uses DeepSeek OpenAI-compatible endpoint by default.
+12. `MQ_AI_API_KEY` is required for DeepSeek/OpenAI in production.
+13. AI transport/structured-output path is fixed by provider in server code (no runtime compatibility toggles).
+14. If model inference is unavailable, strategy proposal API returns `AI_UNAVAILABLE` (no local fallback strategy is generated).
+15. `MQ_AI_MAX_RETRIES` controls LangChain model retry attempts (`@langchain/openai`).
+16. Strategy planning is orchestrated by LangGraph (`prepare_input -> remote_decide -> assemble_plan`).
+17. Payment write operations execute on fresh tenant state within one PostgreSQL transaction (`runWithFreshState`).
+18. Policy template catalog is validated at boot by default (`MQ_POLICY_TEMPLATE_VALIDATE_ON_BOOT=true`).
 
 ## Merchant Onboarding
 

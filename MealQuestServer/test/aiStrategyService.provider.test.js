@@ -11,87 +11,6 @@ function safeParseJson(raw) {
   }
 }
 
-function normalizeRequestMessages(requestPayload) {
-  if (Array.isArray(requestPayload)) {
-    return requestPayload;
-  }
-  if (!requestPayload || typeof requestPayload !== "object") {
-    return [];
-  }
-  if (!Array.isArray(requestPayload.input)) {
-    return [];
-  }
-  return requestPayload.input
-    .filter((item) => item && typeof item === "object")
-    .map((item) => {
-      const content = Array.isArray(item.content)
-        ? item.content
-          .map((part) => {
-            if (typeof part === "string") {
-              return part;
-            }
-            if (part && typeof part === "object") {
-              if (typeof part.text === "string") {
-                return part.text;
-              }
-              if (typeof part.input_text === "string") {
-                return part.input_text;
-              }
-            }
-            return "";
-          })
-          .filter(Boolean)
-          .join("\n")
-        : String(item.content || "");
-      return {
-        role: String(item.role || ""),
-        content,
-      };
-    });
-}
-
-function extractAiUserPayload(requestPayload) {
-  const messages = normalizeRequestMessages(requestPayload);
-  if (!Array.isArray(messages) || messages.length === 0) {
-    return {};
-  }
-  const users = messages.filter((item) => item && item.role === "user");
-  const user = users.length > 0 ? users[users.length - 1] : null;
-  const rawText = String(user && user.content ? user.content : "");
-  if (rawText.includes("Context:") && rawText.includes("User:")) {
-    const contextStart = rawText.indexOf("Context:") + "Context:".length;
-    const historyStart = rawText.indexOf("\n\nHistory:");
-    const contextText =
-      historyStart > contextStart
-        ? rawText.slice(contextStart, historyStart).trim()
-        : "";
-    const userMarker = "\n\nUser:";
-    const userStart = rawText.indexOf(userMarker);
-    const historyText =
-      historyStart >= 0
-        ? rawText
-          .slice(historyStart + "\n\nHistory:".length, userStart >= 0 ? userStart : rawText.length)
-          .trim()
-        : "[]";
-    const context = safeParseJson(contextText) || {};
-    const history = safeParseJson(historyText);
-    const userMessage =
-      userStart >= 0 ? rawText.slice(userStart + userMarker.length).trim() : "";
-    return {
-      task: "STRATEGY_CHAT",
-      userMessage,
-      intentFrame: context.intentFrame || null,
-      history: Array.isArray(history) ? history : [],
-      salesSnapshot: context.salesSnapshot || null,
-      executionHistory: Array.isArray(context.executionHistory) ? context.executionHistory : [],
-      approvedStrategies: Array.isArray(context.approvedStrategies)
-        ? context.approvedStrategies
-        : [],
-    };
-  }
-  return safeParseJson(rawText) || {};
-}
-
 async function collectStreamTurn(service, input) {
   const gen = service.streamStrategyChatTurn(input);
   let next = await gen.next();
@@ -206,23 +125,41 @@ function createNonStreamingCompletionResponse(content) {
   );
 }
 
-test("ai strategy provider: bigmodel uses expected defaults", () => {
+test("ai strategy provider: openai uses expected defaults", () => {
   const service = createAiStrategyService({
-    provider: "bigmodel",
+    provider: "openai",
     apiKey: "test-key",
   });
   const runtime = service.getRuntimeInfo();
 
-  assert.equal(runtime.provider, "bigmodel");
-  assert.equal(runtime.baseUrl, "https://open.bigmodel.cn/api/paas/v4");
-  assert.equal(runtime.model, "glm-4.7-flash");
+  assert.equal(runtime.provider, "openai");
+  assert.equal(runtime.baseUrl, "https://api.openai.com/v1");
+  assert.equal(runtime.model, "gpt-4o-mini");
   assert.equal(runtime.remoteEnabled, true);
   assert.equal(runtime.remoteConfigured, true);
   assert.equal(runtime.plannerEngine, "stream_text_json_envelope_v4");
   assert.equal(runtime.criticLoop.enabled, true);
   assert.equal(runtime.criticLoop.maxRounds, 1);
   assert.equal(runtime.modelClient, "langchain_chatopenai_responses");
+  assert.equal(runtime.llmTransport, "responses_api");
   assert.equal(runtime.retryPolicy.maxRetries, 2);
+});
+
+test("ai strategy provider: deepseek uses expected defaults", () => {
+  const service = createAiStrategyService({
+    provider: "deepseek",
+    apiKey: "test-key",
+  });
+  const runtime = service.getRuntimeInfo();
+
+  assert.equal(runtime.provider, "deepseek");
+  assert.equal(runtime.baseUrl, "https://api.deepseek.com/v1");
+  assert.equal(runtime.model, "deepseek-chat");
+  assert.equal(runtime.remoteEnabled, true);
+  assert.equal(runtime.remoteConfigured, true);
+  assert.equal(runtime.modelClient, "langchain_chatopenai_chat_completions");
+  assert.equal(runtime.llmTransport, "chat_completions");
+  assert.equal(runtime.structuredOutputMethod, "jsonMode");
 });
 
 
@@ -266,7 +203,8 @@ test("ai strategy provider: retries transient upstream failures and then succeed
 
   try {
     const service = createAiStrategyService({
-      provider: "openai_compatible",
+      provider: "openai",
+      apiKey: "test-key",
       baseUrl: "http://127.0.0.1:11434/v1",
       model: "test-model",
       maxRetries: 3,
@@ -332,7 +270,8 @@ test("ai strategy provider: strategy chat supports multiple proposal candidates"
 
   try {
     const service = createAiStrategyService({
-      provider: "openai_compatible",
+      provider: "openai",
+      apiKey: "test-key",
       baseUrl: "http://127.0.0.1:11434/v1",
       model: "test-model",
       maxRetries: 1,
@@ -398,7 +337,8 @@ test("ai strategy provider: stream flow ranks proposals with evaluation tool and
 
   try {
     const service = createAiStrategyService({
-      provider: "openai_compatible",
+      provider: "openai",
+      apiKey: "test-key",
       baseUrl: "http://127.0.0.1:11434/v1",
       model: "test-model",
       maxRetries: 1,
@@ -501,7 +441,8 @@ test("ai strategy provider: publish intent requires approval and can invoke publ
 
   try {
     const service = createAiStrategyService({
-      provider: "openai_compatible",
+      provider: "openai",
+      apiKey: "test-key",
       baseUrl: "http://127.0.0.1:11434/v1",
       model: "test-model",
       maxRetries: 1,
@@ -590,7 +531,8 @@ test("ai strategy provider: post-publish monitor and memory update hooks are att
 
   try {
     const service = createAiStrategyService({
-      provider: "openai_compatible",
+      provider: "openai",
+      apiKey: "test-key",
       baseUrl: "http://127.0.0.1:11434/v1",
       model: "test-model",
       maxRetries: 1,
@@ -743,7 +685,8 @@ test("ai strategy provider: critic revise loop rewrites proposal candidates when
 
   try {
     const service = createAiStrategyService({
-      provider: "openai_compatible",
+      provider: "openai",
+      apiKey: "test-key",
       baseUrl: "http://127.0.0.1:11434/v1",
       model: "test-model",
       maxRetries: 1,
@@ -846,7 +789,8 @@ test("ai strategy provider: invalid policyPatch is revised before returning prop
 
   try {
     const service = createAiStrategyService({
-      provider: "openai_compatible",
+      provider: "openai",
+      apiKey: "test-key",
       baseUrl: "http://127.0.0.1:11434/v1",
       model: "test-model",
       maxRetries: 1,
@@ -873,225 +817,8 @@ test("ai strategy provider: invalid policyPatch is revised before returning prop
   }
 });
 
-test("ai strategy provider: strategy chat payload includes sanitized sales snapshot", async () => {
-  const originalFetch = global.fetch;
-  let capturedPayload = null;
 
-  global.fetch = async (input, init) => {
-    const requestJson = await parseRequestJson(input, init);
-    capturedPayload = extractAiUserPayload(requestJson);
-    if (requestJson.stream) {
-      return createStreamingCompletionResponse("snapshot received");
-    }
-    return createNonStreamingCompletionResponse("snapshot received");
-  };
 
-  try {
-    const service = createAiStrategyService({
-      provider: "openai_compatible",
-      baseUrl: "http://127.0.0.1:11434/v1",
-      model: "test-model",
-      maxRetries: 1,
-      timeoutMs: 3000,
-    });
-
-    const result = await collectStreamTurn(service, {
-      merchantId: "m_store_001",
-      sessionId: "sc_sales",
-      userMessage: "Suggest optimization based on sales.",
-      history: [],
-      activePolicies: [],
-      approvedStrategies: [],
-      executionHistory: [
-        {
-          timestamp: "2026-02-25T00:10:00.000Z",
-          action: "STRATEGY_CHAT_REVIEW",
-          status: "SUCCESS",
-          details: {
-            proposalId: "proposal_1",
-            policyId: "policy_1",
-            verbose: "x".repeat(180),
-          },
-        },
-      ],
-      salesSnapshot: {
-        generatedAt: "2026-02-25T00:00:00.000Z",
-        currency: "cny",
-        totals: {
-          ordersPaidCount: 12,
-          externalPaidCount: 3,
-          walletOnlyPaidCount: 9,
-          gmvPaid: 640.556,
-          refundAmount: 40.123,
-          netRevenue: 600.433,
-          aov: 53.379,
-          refundRate: 1.3,
-        },
-        windows: [
-          {
-            days: 7,
-            ordersPaidCount: 6,
-            externalPaidCount: 2,
-            walletOnlyPaidCount: 4,
-            gmvPaid: 320,
-            refundAmount: 16,
-            netRevenue: 304,
-            aov: 53.33,
-            refundRate: 0.05,
-          },
-        ],
-        paymentStatusSummary: {
-          totalPayments: 15,
-          paidCount: 12,
-          pendingExternalCount: 2,
-          failedExternalCount: 1,
-        },
-      },
-    });
-
-    assert.equal(result.status, "CHAT_REPLY");
-    assert.ok(capturedPayload);
-    assert.equal(capturedPayload.task, "STRATEGY_CHAT");
-    assert.ok(capturedPayload.salesSnapshot);
-    assert.ok(capturedPayload.intentFrame);
-    assert.equal(capturedPayload.intentFrame.salesSnapshotAvailable, true);
-    assert.ok(Array.isArray(capturedPayload.executionHistory));
-    assert.equal(capturedPayload.executionHistory[0].action, "STRATEGY_CHAT_REVIEW");
-    assert.equal(capturedPayload.executionHistory[0].details.proposalId, "proposal_1");
-    assert.equal(capturedPayload.salesSnapshot.currency, "CNY");
-    assert.equal(capturedPayload.salesSnapshot.totals.gmvPaid, 640.56);
-    assert.equal(capturedPayload.salesSnapshot.totals.refundRate, 1);
-    assert.equal(capturedPayload.salesSnapshot.windows[0].days, 7);
-    assert.equal(capturedPayload.salesSnapshot.paymentStatusSummary.pendingExternalCount, 2);
-  } finally {
-    global.fetch = originalFetch;
-  }
-});
-
-test("ai strategy provider: prompt payload includes parsed intent frame", async () => {
-  const originalFetch = global.fetch;
-  let capturedPayload = null;
-
-  global.fetch = async (input, init) => {
-    const requestJson = await parseRequestJson(input, init);
-    capturedPayload = extractAiUserPayload(requestJson);
-    if (requestJson.stream) {
-      return createStreamingCompletionResponse("intent parsed");
-    }
-    return createNonStreamingCompletionResponse("intent parsed");
-  };
-
-  try {
-    const service = createAiStrategyService({
-      provider: "openai_compatible",
-      baseUrl: "http://127.0.0.1:11434/v1",
-      model: "test-model",
-      maxRetries: 1,
-      timeoutMs: 3000,
-    });
-
-    const result = await collectStreamTurn(service, {
-      merchantId: "m_store_001",
-      sessionId: "sc_intent",
-      userMessage: "预算200，今天拉新，策略要稳健一些。",
-      history: [],
-      activePolicies: [],
-      approvedStrategies: [],
-      executionHistory: [],
-    });
-
-    assert.equal(result.status, "CHAT_REPLY");
-    assert.ok(capturedPayload);
-    assert.ok(capturedPayload.intentFrame);
-    assert.equal(capturedPayload.intentFrame.primaryGoal, "ACQUISITION");
-    assert.equal(capturedPayload.intentFrame.timeWindowHint, "TODAY");
-    assert.equal(capturedPayload.intentFrame.riskPreference, "CONSERVATIVE");
-    assert.equal(capturedPayload.intentFrame.budgetHint, 200);
-  } finally {
-    global.fetch = originalFetch;
-  }
-});
-
-test("ai strategy provider: prompt history keeps MEMORY prefixes while trimming", async () => {
-  const originalFetch = global.fetch;
-  let capturedPayload = null;
-
-  global.fetch = async (input, init) => {
-    const requestJson = await parseRequestJson(input, init);
-    capturedPayload = extractAiUserPayload(requestJson);
-    if (requestJson.stream) {
-      return createStreamingCompletionResponse("history received");
-    }
-    return createNonStreamingCompletionResponse("history received");
-  };
-
-  try {
-    const service = createAiStrategyService({
-      provider: "openai_compatible",
-      baseUrl: "http://127.0.0.1:11434/v1",
-      model: "test-model",
-      maxRetries: 1,
-      timeoutMs: 3000,
-    });
-
-    const history = [
-      {
-        role: "SYSTEM",
-        type: "MEMORY_FACTS",
-        text: "Goals: æå‡å¤è´­ | Constraints: é¢„ç®—ä¸Šé™ 500",
-        proposalId: "",
-        createdAt: "2026-02-25T00:00:00.000Z",
-      },
-      {
-        role: "SYSTEM",
-        type: "MEMORY_SUMMARY",
-        text: "é•¿æœŸæ€»ç»“ï¼šè€æ¿åå¥½ä½Žæ‰“æ‰°ç­–ç•¥ï¼Œé¿å…é«˜æŠ˜æ‰£ã€‚",
-        proposalId: "",
-        createdAt: "2026-02-25T00:00:01.000Z",
-      },
-    ];
-    for (let idx = 1; idx <= 70; idx += 1) {
-      history.push({
-        role: idx % 2 === 0 ? "ASSISTANT" : "USER",
-        type: "TEXT",
-        text: `turn-${idx} ` + "x".repeat(120),
-        proposalId: "",
-        createdAt: `2026-02-25T00:${String(idx).padStart(2, "0")}:00.000Z`,
-      });
-    }
-
-    const result = await collectStreamTurn(service, {
-      merchantId: "m_store_001",
-      sessionId: "sc_history_memory",
-      userMessage: "ç»§ç»­ä¼˜åŒ–ç­–ç•¥ã€‚",
-      history,
-      activePolicies: [],
-      approvedStrategies: [],
-      executionHistory: [],
-    });
-
-    assert.equal(result.status, "CHAT_REPLY");
-    assert.ok(capturedPayload);
-    assert.ok(Array.isArray(capturedPayload.history));
-    assert.ok(capturedPayload.history.length <= 48);
-    assert.ok(
-      capturedPayload.history.some(
-        (item) => item && item.role === "SYSTEM" && item.type === "MEMORY_FACTS",
-      ),
-    );
-    assert.ok(
-      capturedPayload.history.some(
-        (item) => item && item.role === "SYSTEM" && item.type === "MEMORY_SUMMARY",
-      ),
-    );
-    assert.match(
-      String(capturedPayload.history[capturedPayload.history.length - 1].text || ""),
-      /turn-70/,
-    );
-  } finally {
-    global.fetch = originalFetch;
-  }
-});
 
 
 

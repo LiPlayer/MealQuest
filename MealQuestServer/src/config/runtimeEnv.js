@@ -49,15 +49,12 @@ function parseBoolean(raw, fallback) {
 function parseAiProvider(raw) {
   const normalized = asString(raw).toLowerCase();
   if (!normalized) {
-    return "openai_compatible";
+    return "deepseek";
   }
-  if (["bigmodel", "zhipu", "zhipuai"].includes(normalized)) {
-    return "bigmodel";
-  }
-  if (["deepseek", "openai_compatible"].includes(normalized)) {
+  if (["deepseek", "openai"].includes(normalized)) {
     return normalized;
   }
-  return "openai_compatible";
+  return "deepseek";
 }
 
 function resolveServerRuntimeEnv(env = process.env) {
@@ -84,16 +81,30 @@ function resolveServerRuntimeEnv(env = process.env) {
   const authAlipayAppId = asString(env.MQ_AUTH_ALIPAY_APP_ID);
   const authAlipayAppSecret = asString(env.MQ_AUTH_ALIPAY_APP_SECRET);
   const aiProvider = parseAiProvider(env.MQ_AI_PROVIDER);
+  const aiBaseUrlDefaultByProvider = {
+    deepseek: "https://api.deepseek.com/v1",
+    openai: "https://api.openai.com/v1",
+  };
+  const aiModelDefaultByProvider = {
+    deepseek: "deepseek-chat",
+    openai: "gpt-4o-mini",
+  };
+  const aiTimeoutDefaultByProvider = {
+    deepseek: 30000,
+    openai: 30000,
+  };
   const aiBaseUrl =
     asString(env.MQ_AI_BASE_URL) ||
-    (aiProvider === "bigmodel"
-      ? "https://open.bigmodel.cn/api/paas/v4"
-      : "http://127.0.0.1:11434/v1");
+    aiBaseUrlDefaultByProvider[aiProvider] ||
+    aiBaseUrlDefaultByProvider.deepseek;
   const aiModel =
     asString(env.MQ_AI_MODEL) ||
-    (aiProvider === "bigmodel" ? "glm-4.7-flash" : "qwen2.5:7b-instruct");
+    aiModelDefaultByProvider[aiProvider] ||
+    aiModelDefaultByProvider.deepseek;
   const aiApiKey = asString(env.MQ_AI_API_KEY);
-  const aiTimeoutDefault = aiProvider === "bigmodel" ? 45000 : 15000;
+  const aiTimeoutDefault =
+    aiTimeoutDefaultByProvider[aiProvider] ||
+    aiTimeoutDefaultByProvider.deepseek;
   const aiTimeoutMs = parsePositiveInt(env.MQ_AI_TIMEOUT_MS, aiTimeoutDefault);
   const aiMaxRetries = parsePositiveInt(env.MQ_AI_MAX_RETRIES, 2);
   const policyTemplateValidateOnBoot = parseBoolean(
@@ -120,8 +131,10 @@ function resolveServerRuntimeEnv(env = process.env) {
       "At least one customer auth provider is required in production (WeChat or Alipay)"
     );
   }
-  if (isProduction && aiProvider === "bigmodel" && !aiApiKey) {
-    errors.push("MQ_AI_API_KEY is required when MQ_AI_PROVIDER=bigmodel in production");
+  if (isProduction && ["openai", "deepseek"].includes(aiProvider) && !aiApiKey) {
+    errors.push(
+      "MQ_AI_API_KEY is required when MQ_AI_PROVIDER=openai or deepseek in production"
+    );
   }
   if (errors.length > 0) {
     throw new Error(`Invalid server env: ${errors.join("; ")}`);
