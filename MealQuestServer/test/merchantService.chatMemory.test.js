@@ -42,7 +42,7 @@ test("merchant strategy chat keeps session messages and sends minimal agent inpu
 
   const capturedInputs = [];
   const merchantService = createMerchantService(db, {
-    strategyAgentService: {
+    strategyChatService: {
       async *streamStrategyChatTurn(input) {
         capturedInputs.push(input);
         return {
@@ -80,3 +80,4 @@ test("merchant strategy chat keeps session messages and sends minimal agent inpu
   assert.equal(Object.prototype.hasOwnProperty.call(lastInput, "history"), false);
   assert.equal(Object.prototype.hasOwnProperty.call(lastInput, "salesSnapshot"), false);
 });
+

@@ -12,12 +12,11 @@ const { createTenantRouter } = require("../core/tenantRouter");
 const { createWebSocketHub } = require("../core/websocketHub");
 const { createInvoiceService } = require("../services/invoiceService");
 const { createMerchantService } = require("../services/merchantService");
-const { createStrategyAgentService } = require("../services/strategyAgent");
-const { assertStrategyTemplatesValid } = require("../services/strategyAgent/templateCatalog");
 const { createAllianceService } = require("../services/allianceService");
 const { createPaymentService } = require("../services/paymentService");
 const { createPrivacyService } = require("../services/privacyService");
 const { createSupplierService } = require("../services/supplierService");
+const { createStrategyChatService } = require("../services/strategyChatService");
 const { createPolicyOsService } = require("../policyos/policyOsService");
 const {
   createSocialAuthService
@@ -46,7 +45,7 @@ function createAppServer({
   paymentProvider = null,
   socialAuthService = null,
   socialAuthOptions = {},
-  strategyAgentOptions = {},
+  strategyChatOptions = {},
   policyTemplateValidateOnBoot = true
 } = {}) {
   const actualDb = db || createInMemoryDb();
@@ -106,8 +105,8 @@ function createAppServer({
       timeoutMs: socialAuthOptions.timeoutMs,
       providers: socialAuthOptions.providers
     });
-  const strategyAgentService = createStrategyAgentService(strategyAgentOptions);
   const wsHub = createWebSocketHub(); // wsHub needs to be defined before getServicesForDb
+  const strategyChatService = createStrategyChatService(strategyChatOptions);
   const metrics = {
     startedAt: new Date().toISOString(),
     requestsTotal: 0,
@@ -121,9 +120,9 @@ function createAppServer({
       services = {
         paymentService: createPaymentService(scopedDb, { paymentProvider }),
         merchantService: createMerchantService(scopedDb, {
-          strategyAgentService,
           policyOsService,
-          wsHub
+          wsHub,
+          strategyChatService,
         }),
         allianceService: createAllianceService(scopedDb),
         invoiceService: createInvoiceService(scopedDb),
@@ -140,11 +139,6 @@ function createAppServer({
     return getServicesForDb(scopedDb);
   };
   const services = getServicesForDb(actualDb);
-  if (policyTemplateValidateOnBoot) {
-    assertStrategyTemplatesValid({
-      knownPlugins: services.policyOsService.listPlugins()
-    });
-  }
   const allSockets = new Set();
   const appendAuditLog = ({ merchantId, action, status, auth, details }) => {
     tenantRepository.appendAuditLog({
@@ -384,7 +378,24 @@ async function createAppServerAsync(options = {}) {
     db: rootDb,
     postgresOptions,
     socialAuthOptions,
-    strategyAgentOptions: options.strategyAgentOptions || runtimeEnv.strategyAgent,
+    strategyChatOptions: {
+      apiKey:
+        options.strategyChatOptions && options.strategyChatOptions.apiKey !== undefined
+          ? options.strategyChatOptions.apiKey
+          : runtimeEnv.ai.deepseekApiKey,
+      modelName:
+        options.strategyChatOptions && options.strategyChatOptions.modelName !== undefined
+          ? options.strategyChatOptions.modelName
+          : runtimeEnv.ai.deepseekModel,
+      timeoutMs:
+        options.strategyChatOptions && options.strategyChatOptions.timeoutMs !== undefined
+          ? options.strategyChatOptions.timeoutMs
+          : runtimeEnv.ai.timeoutMs,
+      temperature:
+        options.strategyChatOptions && options.strategyChatOptions.temperature !== undefined
+          ? options.strategyChatOptions.temperature
+          : runtimeEnv.ai.temperature,
+    },
     policyTemplateValidateOnBoot:
       options.policyTemplateValidateOnBoot === undefined
         ? runtimeEnv.policyTemplateValidateOnBoot
@@ -449,8 +460,7 @@ if (require.main === module) {
     socialAuthOptions: {
       timeoutMs: runtimeEnv.authHttpTimeoutMs,
       providers: runtimeEnv.authProviders
-    },
-    strategyAgentOptions: runtimeEnv.strategyAgent
+    }
   })
     .then((app) => {
       appInstance = app;

@@ -6,7 +6,73 @@ const http = require("node:http");
 const { createAppServer: createAppServerInternal } = require("../src/http/server");
 const { issueToken } = require("../src/core/auth");
 const { createInMemoryDb } = require("../src/store/inMemoryDb");
-const { createPolicySpecFromTemplate } = require("../src/services/strategyAgent/templateCatalog");
+const templateCatalog = require("../src/policyos/templates/strategy-templates.v1.json");
+
+function deepClone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function createPolicySpecFromTemplate({
+  merchantId,
+  templateId = "acquisition_welcome_gift",
+  branchId = "DEFAULT",
+  policyPatch = {}
+}) {
+  const template = (templateCatalog.templates || []).find(
+    (item) => item && item.templateId === templateId
+  );
+  if (!template) {
+    throw new Error("template not found");
+  }
+  const branch = (template.branches || []).find(
+    (item) => item && item.branchId === branchId
+  );
+  if (!branch) {
+    throw new Error("branch not found");
+  }
+
+  const baseSpec = deepClone(branch.policySpec || {});
+  const spec = {
+    ...baseSpec,
+    ...deepClone(policyPatch || {}),
+    policy_key:
+      (policyPatch && policyPatch.policy_key) ||
+      `${templateId}.${String(branchId || "default").toLowerCase()}`,
+    resource_scope: {
+      merchant_id: merchantId
+    },
+    governance: {
+      approval_required: true,
+      approval_level: "OWNER",
+      approval_token_ttl_sec: 3600,
+      ...(baseSpec.governance || {}),
+      ...((policyPatch && policyPatch.governance) || {})
+    },
+    story: {
+      schema_version: "story.v1",
+      templateId,
+      narrative: baseSpec.name || template.name || "Policy template",
+      assets: [],
+      triggers: Array.isArray(baseSpec.triggers)
+        ? baseSpec.triggers
+          .map((item) => String(item && item.event ? item.event : "").trim())
+          .filter(Boolean)
+        : []
+    }
+  };
+
+  return {
+    spec,
+    template: {
+      templateId: template.templateId,
+      name: template.name || template.templateId
+    },
+    branch: {
+      branchId: branch.branchId,
+      name: branch.name || branch.branchId
+    }
+  };
+}
 
 const TEST_JWT_SECRET = process.env.MQ_JWT_SECRET || "mealquest-dev-secret";
 const activeApps = new Set();

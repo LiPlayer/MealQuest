@@ -1,10 +1,76 @@
-const test = require("node:test");
+﻿const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { createInMemoryDb } = require("../src/store/inMemoryDb");
 const { createMerchantService } = require("../src/services/merchantService");
 const { createPolicyOsService } = require("../src/policyos/policyOsService");
-const { createPolicySpecFromTemplate } = require("../src/services/strategyAgent/templateCatalog");
+const templateCatalog = require("../src/policyos/templates/strategy-templates.v1.json");
+
+function deepClone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function createPolicySpecFromTemplate({
+  merchantId,
+  templateId = "acquisition_welcome_gift",
+  branchId = "DEFAULT",
+  policyPatch = {}
+}) {
+  const template = (templateCatalog.templates || []).find(
+    (item) => item && item.templateId === templateId
+  );
+  if (!template) {
+    throw new Error("template not found");
+  }
+  const branch = (template.branches || []).find(
+    (item) => item && item.branchId === branchId
+  );
+  if (!branch) {
+    throw new Error("branch not found");
+  }
+
+  const baseSpec = deepClone(branch.policySpec || {});
+  const spec = {
+    ...baseSpec,
+    ...deepClone(policyPatch || {}),
+    policy_key:
+      (policyPatch && policyPatch.policy_key) ||
+      `${templateId}.${String(branchId || "default").toLowerCase()}`,
+    resource_scope: {
+      merchant_id: merchantId
+    },
+    governance: {
+      approval_required: true,
+      approval_level: "OWNER",
+      approval_token_ttl_sec: 3600,
+      ...(baseSpec.governance || {}),
+      ...((policyPatch && policyPatch.governance) || {})
+    },
+    story: {
+      schema_version: "story.v1",
+      templateId,
+      narrative: (baseSpec.name || template.name || "Policy template"),
+      assets: [],
+      triggers: Array.isArray(baseSpec.triggers)
+        ? baseSpec.triggers
+          .map((item) => String(item && item.event ? item.event : "").trim())
+          .filter(Boolean)
+        : []
+    }
+  };
+
+  return {
+    spec,
+    template: {
+      templateId: template.templateId,
+      name: template.name || template.templateId
+    },
+    branch: {
+      branchId: branch.branchId,
+      name: branch.name || branch.branchId
+    }
+  };
+}
 
 function seedMerchant(db, merchantId = "m_policy_link") {
   db.merchants[merchantId] = {
@@ -58,7 +124,7 @@ test("merchant service links AI proposal evaluate -> approve -> publish lifecycl
     .toUpperCase();
   const merchantService = createMerchantService(db, {
     policyOsService,
-    strategyAgentService: {
+    strategyChatService: {
       async *streamStrategyChatTurn() {
         return {
           status: "PROPOSAL_READY",
@@ -162,7 +228,7 @@ test("merchant service auto-evaluates and ranks multiple proposal candidates", a
 
   const merchantService = createMerchantService(db, {
     policyOsService,
-    strategyAgentService: {
+    strategyChatService: {
       async *streamStrategyChatTurn() {
         return {
           status: "PROPOSAL_READY",
@@ -200,7 +266,7 @@ test("merchant service requires evaluation before approving proposal", async () 
   });
   const merchantService = createMerchantService(db, {
     policyOsService,
-    strategyAgentService: null
+    strategyChatService: null
   });
 
   db.proposals.push({
@@ -255,7 +321,7 @@ test("merchant service supports force refresh evaluation after cached auto evalu
     .toUpperCase();
   const merchantService = createMerchantService(db, {
     policyOsService,
-    strategyAgentService: {
+    strategyChatService: {
       async *streamStrategyChatTurn() {
         return {
           status: "PROPOSAL_READY",
@@ -305,3 +371,4 @@ test("merchant service supports force refresh evaluation after cached auto evalu
   assert.equal(refreshed.reused, false);
   assert.equal(evaluateCalls, 2);
 });
+

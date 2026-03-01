@@ -1,5 +1,5 @@
-function createMerchantService(db, options = {}) {
-  const strategyAgentService = options.strategyAgentService;
+﻿function createMerchantService(db, options = {}) {
+  const strategyChatService = options.strategyChatService;
   const policyOsService = options.policyOsService;
   const wsHub = options.wsHub;
   const fromFreshState = Boolean(options.__fromFreshState);
@@ -47,7 +47,7 @@ function createMerchantService(db, options = {}) {
     }
     return db.runWithFreshState(async (workingDb) => {
       const scopedService = createMerchantService(workingDb, {
-        strategyAgentService,
+        strategyChatService,
         policyOsService,
         wsHub,
         __fromFreshState: true
@@ -62,7 +62,7 @@ function createMerchantService(db, options = {}) {
     }
     return db.runWithFreshRead(async (workingDb) => {
       const scopedService = createMerchantService(workingDb, {
-        strategyAgentService,
+        strategyChatService,
         policyOsService,
         wsHub,
         __fromFreshState: true
@@ -420,7 +420,7 @@ function createMerchantService(db, options = {}) {
   function splitTextToFacts(text) {
     return String(text || "")
       .replace(/\s+/g, " ")
-      .split(/[\n。！？!?；;]+/g)
+      .split(/[\nã€‚ï¼ï¼Ÿ!?ï¼›;]+/g)
       .map((item) => item.trim())
       .filter(Boolean);
   }
@@ -449,29 +449,29 @@ function createMerchantService(db, options = {}) {
       for (const fragment of fragments) {
         const lower = fragment.toLowerCase();
         if (
-          /(目标|希望|想要|提升|增长|拉新|复购|gmv|转化|roi|goal|grow|increase|improve|boost)/i.test(
+          /(ç›®æ ‡|å¸Œæœ›|æƒ³è¦|æå‡|å¢žé•¿|æ‹‰æ–°|å¤è´­|gmv|è½¬åŒ–|roi|goal|grow|increase|improve|boost)/i.test(
             fragment
           )
         ) {
           appendMemoryFact(facts, "goals", fragment);
         }
         if (
-          /(预算|上限|不能|不要|避免|限制|成本|毛利|折扣|风险|budget|cap|limit|avoid|must not|constraint)/i.test(
+          /(é¢„ç®—|ä¸Šé™|ä¸èƒ½|ä¸è¦|é¿å…|é™åˆ¶|æˆæœ¬|æ¯›åˆ©|æŠ˜æ‰£|é£Žé™©|budget|cap|limit|avoid|must not|constraint)/i.test(
             fragment
           )
         ) {
           appendMemoryFact(facts, "constraints", fragment);
         }
-        if (/(新客|老客|会员|客群|学生|白领|用户|用户群|audience|segment|user)/i.test(fragment)) {
+        if (/(æ–°å®¢|è€å®¢|ä¼šå‘˜|å®¢ç¾¤|å­¦ç”Ÿ|ç™½é¢†|ç”¨æˆ·|ç”¨æˆ·ç¾¤|audience|segment|user)/i.test(fragment)) {
           appendMemoryFact(facts, "audience", fragment);
         }
-        if (/(今天|本周|本月|节假日|周末|晚高峰|午餐|晚餐|天|周|月|hour|day|week|month|timeline)/i.test(fragment)) {
+        if (/(ä»Šå¤©|æœ¬å‘¨|æœ¬æœˆ|èŠ‚å‡æ—¥|å‘¨æœ«|æ™šé«˜å³°|åˆé¤|æ™šé¤|å¤©|å‘¨|æœˆ|hour|day|week|month|timeline)/i.test(fragment)) {
           appendMemoryFact(facts, "timing", fragment);
         }
         if (!/[0-9]/.test(lower)) {
           continue;
         }
-        if (/(预算|cap|预算上限|成本|折扣|coupon|voucher|ttl|小时|天|周|月|%)/i.test(lower)) {
+        if (/(é¢„ç®—|cap|é¢„ç®—ä¸Šé™|æˆæœ¬|æŠ˜æ‰£|coupon|voucher|ttl|å°æ—¶|å¤©|å‘¨|æœˆ|%)/i.test(lower)) {
           appendMemoryFact(facts, "constraints", fragment);
         }
       }
@@ -2059,8 +2059,21 @@ function createMerchantService(db, options = {}) {
       text
     });
 
-    if (!strategyAgentService || typeof strategyAgentService.streamStrategyChatTurn !== "function") {
-      throw new Error("strategy agent service is not configured");
+    if (!strategyChatService || typeof strategyChatService.streamStrategyChatTurn !== "function") {
+      const assistantMessage = "Agent æœªå¯ç”¨ï¼Œå½“å‰ä»…æ”¯æŒéž Agent çš„è¿è¥èƒ½åŠ›ã€‚";
+      appendChatMessage(session, {
+        role: "ASSISTANT",
+        type: "TEXT",
+        text: assistantMessage
+      });
+      return {
+        status: "CHAT_REPLY",
+        assistantMessage,
+        ...buildBaseProtocolResponse({
+          aiProtocol: null,
+        }),
+        ...buildChatResponse()
+      };
     }
 
     const aiInput = {
@@ -2102,7 +2115,7 @@ function createMerchantService(db, options = {}) {
       let fullText = "";
       let streamStarted = false;
       let streamEnded = false;
-      const gen = strategyAgentService.streamStrategyChatTurn(aiInput);
+      const gen = strategyChatService.streamStrategyChatTurn(aiInput);
       // Drain generator: yield = stream event, done.value = parsed aiTurn
       let next = await gen.next();
       while (!next.done) {
@@ -2473,3 +2486,4 @@ function createMerchantService(db, options = {}) {
 module.exports = {
   createMerchantService
 };
+

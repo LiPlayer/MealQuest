@@ -1,1146 +1,638 @@
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { FetchStreamTransport, useStream } from '@langchain/langgraph-sdk/react';
-import { MerchantApi } from '../services/merchantApi';
-import {
-    AuditLogRow,
-    buildAuditLogRow,
-} from '../services/auditLogViewModel';
-import { createRealtimeClient, RealtimeClient } from '../services/merchantRealtime';
-import {
-    buildRealtimeEventRow,
-    buildSystemEventRow,
-    RealtimeEventRow,
-} from '../services/realtimeEventViewModel';
-import {
-    AllianceConfig,
-    PolicyDecisionResult,
-    StrategyChatMessage,
-    StrategyChatStreamEvent,
-    StrategyChatPendingReview,
-    StrategyChatReviewProgress,
-    StrategyChatReviewResult,
-    StrategyChatSessionResult,
-} from '../services/merchantApi/types';
+import React, { createContext, useContext, useMemo, useState } from 'react';
 import { createInitialMerchantState, MerchantState } from '../domain/merchantEngine';
+import {
+  loginMerchantByPhone,
+  requestMerchantPhoneCode,
+  streamMerchantChat,
+  type ChatStreamEvent,
+} from '../services/apiClient';
 
 export type MessageStatus = 'sending' | 'sent' | 'failed';
+
+export type StrategyChatMessage = {
+  messageId: string;
+  role: 'USER' | 'ASSISTANT';
+  type?: 'TEXT' | 'PROPOSAL_CARD';
+  text: string;
+  proposalId?: string | null;
+  isStreaming?: boolean;
+};
+
 export type StrategyChatMessageWithStatus = StrategyChatMessage & {
-    deliveryStatus?: MessageStatus;
+  deliveryStatus?: MessageStatus;
 };
 
-export type AuditActionFilter =
-    | 'ALL'
-    | 'PAYMENT_VERIFY'
-    | 'PAYMENT_REFUND'
-    | 'PRIVACY_CANCEL'
-    | 'STRATEGY_CHAT_SESSION_CREATE'
-    | 'STRATEGY_CHAT_MESSAGE'
-    | 'STRATEGY_CHAT_REVIEW'
-    | 'STRATEGY_CHAT_EVALUATE'
-    | 'STRATEGY_CHAT_PUBLISH'
-    | 'POLICY_DRAFT_CREATE'
-    | 'POLICY_DRAFT_SUBMIT'
-    | 'POLICY_DRAFT_APPROVE'
-    | 'POLICY_PUBLISH'
-    | 'POLICY_EVALUATE'
-    | 'POLICY_EXECUTE'
-    | 'SUPPLIER_VERIFY'
-    | 'ALLIANCE_CONFIG_SET'
-    | 'ALLIANCE_SYNC_USER'
-    | 'KILL_SWITCH_SET'
-    ;
-export type AuditStatusFilter = 'ALL' | 'SUCCESS' | 'DENIED' | 'BLOCKED' | 'FAILED';
-export type AuditTimeRange = '24H' | '7D' | 'ALL';
-
-export type StrategyChatSnapshot = Pick<
-    StrategyChatSessionResult,
-    'sessionId' | 'messages' | 'pendingReview' | 'reviewProgress'
-> & {
-    pendingReviews?: StrategyChatPendingReview[];
+export type StrategyChatPendingReview = {
+  proposalId: string;
+  title: string;
+  templateId?: string;
+  branchId?: string;
+  evaluation?: {
+    evaluatedAt?: string;
+    evaluateError?: string;
+    recommended?: boolean;
+    rank?: number;
+    score: number;
+    expectedRevenue: number;
+    estimatedCost: number;
+    riskCount: number;
+    rejectedCount: number;
+    selectedCount?: number;
+  };
 };
-export type StrategyChatDelta = {
-    sessionId: string | null;
-    pendingReview: StrategyChatPendingReview | null;
-    pendingReviews?: StrategyChatPendingReview[];
-    reviewProgress?: StrategyChatReviewProgress | null;
-    messages?: StrategyChatMessage[];
-    deltaMessages?: StrategyChatMessage[];
+
+export type StrategyChatReviewProgress = {
+  totalCandidates: number;
+  reviewedCandidates: number;
+};
+
+export type PolicyDecisionResult = {
+  mode: string;
+  selected: Array<Record<string, unknown>>;
+  rejected: Array<Record<string, unknown>>;
 };
 
 export type AgentProgressEvent = {
-    phase: string;
-    status: string;
-    tokenCount: number;
-    elapsedMs: number;
-    at: string;
-    resultStatus?: string;
-    error?: string;
+  phase: string;
+  status: string;
+  tokenCount: number;
+  elapsedMs: number;
+  at: string;
+  resultStatus?: string;
+  error?: string;
 };
 
-export function buildAuditStartTime(range: AuditTimeRange): string {
-    if (range === 'ALL') return '';
-    const now = Date.now();
-    const hours = range === '24H' ? 24 : 24 * 7;
-    return new Date(now - hours * 60 * 60 * 1000).toISOString();
-}
+export type RealtimeEventRow = {
+  id: string;
+  label: string;
+  summary: string;
+  detail: string;
+  severity: 'info' | 'warn' | 'error';
+  isAnomaly: boolean;
+};
+
+export type AuditLogRow = {
+  id: string;
+  title: string;
+  summary: string;
+  detail: string;
+  severity: 'info' | 'warn' | 'error';
+};
+
+export type AllianceConfig = {
+  clusterId: string;
+  walletShared: boolean;
+};
+
+export type MerchantAuthSession = {
+  token: string;
+  merchantId: string;
+  role: string;
+  phone: string;
+};
+
+export type AuditActionFilter =
+  | 'ALL'
+  | 'PAYMENT_VERIFY'
+  | 'PAYMENT_REFUND'
+  | 'STRATEGY_CHAT_SESSION_CREATE'
+  | 'STRATEGY_CHAT_MESSAGE'
+  | 'STRATEGY_CHAT_REVIEW'
+  | 'STRATEGY_CHAT_EVALUATE'
+  | 'STRATEGY_CHAT_PUBLISH'
+  | 'POLICY_DRAFT_CREATE'
+  | 'POLICY_DRAFT_SUBMIT'
+  | 'POLICY_DRAFT_APPROVE'
+  | 'POLICY_PUBLISH'
+  | 'POLICY_EVALUATE'
+  | 'POLICY_EXECUTE'
+  | 'SUPPLIER_VERIFY'
+  | 'ALLIANCE_CONFIG_SET'
+  | 'ALLIANCE_SYNC_USER'
+  | 'KILL_SWITCH_SET';
+
+export type AuditStatusFilter = 'ALL' | 'SUCCESS' | 'DENIED' | 'BLOCKED' | 'FAILED';
+export type AuditTimeRange = '24H' | '7D' | 'ALL';
 
 interface MerchantContextType {
-    merchantState: MerchantState;
-    lastAction: string;
-    setLastAction: (action: string) => void;
-    realtimeEvents: RealtimeEventRow[];
-    visibleRealtimeEvents: RealtimeEventRow[];
-    expandedEventId: string | null;
-    setExpandedEventId: (id: string | null) => void;
-    showOnlyAnomaly: boolean;
-    setShowOnlyAnomaly: (val: boolean) => void;
-    auditLogs: AuditLogRow[];
-    expandedAuditId: string | null;
-    setExpandedAuditId: (id: string | null) => void;
-    auditCursor: string | null;
-    auditHasMore: boolean;
-    auditLoading: boolean;
-    auditActionFilter: AuditActionFilter;
-    setAuditActionFilter: (val: AuditActionFilter) => void;
-    auditStatusFilter: AuditStatusFilter;
-    setAuditStatusFilter: (val: AuditStatusFilter) => void;
-    auditTimeRange: AuditTimeRange;
-    setAuditTimeRange: (val: AuditTimeRange) => void;
-    allianceConfig: AllianceConfig | null;
-    allianceStores: { merchantId: string; name: string }[];
-    customerUserId: string;
-    setCustomerUserId: (val: string) => void;
-    qrStoreId: string;
-    setQrStoreId: (val: string) => void;
-    qrScene: string;
-    setQrScene: (val: string) => void;
-    qrPayload: string;
-    aiIntentDraft: string;
-    setAiIntentDraft: (val: string) => void;
-    aiIntentSubmitting: boolean;
-    strategyChatMessages: StrategyChatMessageWithStatus[];
-    strategyChatPendingReview: StrategyChatPendingReview | null;
-    strategyChatEvaluation: PolicyDecisionResult | null;
-    strategyChatEvaluationReady: boolean;
-    agentProgressEvents: AgentProgressEvent[];
-    activeAgentProgress: AgentProgressEvent | null;
-    pendingReviewCount: number;
-    totalReviewCount: number;
-    currentReviewIndex: number;
-    contractStatus: 'LOADING' | 'NOT_SUBMITTED' | 'SUBMITTED';
-    setContractStatus: (val: 'LOADING' | 'NOT_SUBMITTED' | 'SUBMITTED') => void;
-    wsConnected: boolean;
-
-    // Handlers
-    onCopyEventDetail: (detail: string) => Promise<void>;
-    onTriggerProactiveScan: () => Promise<void>;
-    onCreateIntentProposal: () => Promise<void>;
-    onRetryMessage: (messageId: string) => Promise<void>;
-    onEvaluatePendingStrategy: () => Promise<void>;
-    onReviewPendingStrategy: (decision: 'APPROVE' | 'REJECT') => Promise<void>;
-    onPublishApprovedProposal: (proposalId: string) => Promise<void>;
-    onToggleAllianceWalletShared: () => Promise<void>;
-    onSyncAllianceUser: () => Promise<void>;
-    onToggleKillSwitch: () => Promise<void>;
-    onGenerateMerchantQr: () => void;
-    refreshAuditLogs: (options?: { append?: boolean; cursor?: string | null; forceReset?: boolean }) => Promise<void>;
-    refreshRemoteState: (options?: { force?: boolean }) => Promise<void>;
+  authSession: MerchantAuthSession | null;
+  isAuthenticated: boolean;
+  authSubmitting: boolean;
+  authError: string;
+  requestLoginCode: (phone: string) => Promise<void>;
+  loginWithPhone: (params: { phone: string; code: string; merchantId: string }) => Promise<void>;
+  logout: () => void;
+  merchantState: MerchantState;
+  lastAction: string;
+  setLastAction: (action: string) => void;
+  realtimeEvents: RealtimeEventRow[];
+  visibleRealtimeEvents: RealtimeEventRow[];
+  expandedEventId: string | null;
+  setExpandedEventId: (id: string | null) => void;
+  showOnlyAnomaly: boolean;
+  setShowOnlyAnomaly: (val: boolean) => void;
+  auditLogs: AuditLogRow[];
+  expandedAuditId: string | null;
+  setExpandedAuditId: (id: string | null) => void;
+  auditCursor: string | null;
+  auditHasMore: boolean;
+  auditLoading: boolean;
+  auditActionFilter: AuditActionFilter;
+  setAuditActionFilter: (val: AuditActionFilter) => void;
+  auditStatusFilter: AuditStatusFilter;
+  setAuditStatusFilter: (val: AuditStatusFilter) => void;
+  auditTimeRange: AuditTimeRange;
+  setAuditTimeRange: (val: AuditTimeRange) => void;
+  allianceConfig: AllianceConfig | null;
+  allianceStores: { merchantId: string; name: string }[];
+  customerUserId: string;
+  setCustomerUserId: (val: string) => void;
+  qrStoreId: string;
+  setQrStoreId: (val: string) => void;
+  qrScene: string;
+  setQrScene: (val: string) => void;
+  qrPayload: string;
+  aiIntentDraft: string;
+  setAiIntentDraft: (val: string) => void;
+  aiIntentSubmitting: boolean;
+  strategyChatMessages: StrategyChatMessageWithStatus[];
+  strategyChatPendingReview: StrategyChatPendingReview | null;
+  strategyChatEvaluation: PolicyDecisionResult | null;
+  strategyChatEvaluationReady: boolean;
+  agentProgressEvents: AgentProgressEvent[];
+  activeAgentProgress: AgentProgressEvent | null;
+  pendingReviewCount: number;
+  totalReviewCount: number;
+  currentReviewIndex: number;
+  contractStatus: 'LOADING' | 'NOT_SUBMITTED' | 'SUBMITTED';
+  setContractStatus: (val: 'LOADING' | 'NOT_SUBMITTED' | 'SUBMITTED') => void;
+  wsConnected: boolean;
+  onCopyEventDetail: (detail: string) => Promise<void>;
+  onTriggerProactiveScan: () => Promise<void>;
+  onCreateIntentProposal: () => Promise<void>;
+  onRetryMessage: (messageId: string) => Promise<void>;
+  onEvaluatePendingStrategy: () => Promise<void>;
+  onReviewPendingStrategy: (decision: 'APPROVE' | 'REJECT') => Promise<void>;
+  onPublishApprovedProposal: (proposalId: string) => Promise<void>;
+  onToggleAllianceWalletShared: () => Promise<void>;
+  onSyncAllianceUser: () => Promise<void>;
+  onToggleKillSwitch: () => Promise<void>;
+  onGenerateMerchantQr: () => void;
+  refreshAuditLogs: (_?: { append?: boolean; cursor?: string | null; forceReset?: boolean }) => Promise<void>;
+  refreshRemoteState: (_?: { force?: boolean }) => Promise<void>;
 }
 
 const MerchantContext = createContext<MerchantContextType | undefined>(undefined);
 
-export function MerchantProvider({
-    children,
-    initialToken,
-    initialMerchantState,
-    onAuthExpired,
-}: {
-    children: React.ReactNode;
-    initialToken: string;
-    initialMerchantState?: MerchantState;
-    onAuthExpired: () => void;
-}) {
-    const [merchantState, setMerchantState] = useState<MerchantState>(
-        initialMerchantState ?? createInitialMerchantState(),
-    );
-    const [lastAction, setLastAction] = useState('已连接...');
-    const remoteToken = initialToken || null;
-    const contractStatusFetchedRef = useRef(false);
-    const stateRefreshInFlightRef = useRef<Promise<void> | null>(null);
-    const lastStateRefreshAtRef = useRef(0);
-    const auditRefreshInFlightRef = useRef<Promise<void> | null>(null);
-    const lastAuditRefreshAtRef = useRef(0);
+function createDemoMerchantState(): MerchantState {
+  return {
+    ...createInitialMerchantState(),
+    merchantId: 'm_demo_001',
+    merchantName: 'Demo Bistro',
+    budgetCap: 1200,
+    budgetUsed: 180,
+    activePolicies: [
+      {
+        id: 'policy_demo_1',
+        name: 'Welcome Gift',
+        status: 'ACTIVE',
+        triggerEvent: 'USER_ENTER_SHOP',
+        condition: { field: 'isNewUser', equals: true },
+        budget: { cap: 300, used: 60, costPerHit: 6 },
+      },
+    ],
+  };
+}
 
-    const [realtimeEvents, setRealtimeEvents] = useState<RealtimeEventRow[]>([]);
-    const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
-    const [showOnlyAnomaly, setShowOnlyAnomaly] = useState(false);
+function extractText(data: unknown): string {
+  if (!data || typeof data !== 'object') {
+    return '';
+  }
+  const record = data as Record<string, unknown>;
+  const assistant = record.assistant;
+  if (assistant && typeof assistant === 'object') {
+    const content = (assistant as Record<string, unknown>).content;
+    if (typeof content === 'string') {
+      return content;
+    }
+  }
+  return '';
+}
 
-    const [auditLogs, setAuditLogs] = useState<AuditLogRow[]>([]);
-    const [expandedAuditId, setExpandedAuditId] = useState<string | null>(null);
-    const [auditCursor, setAuditCursor] = useState<string | null>(null);
-    const [auditHasMore, setAuditHasMore] = useState(false);
-    const [auditLoading, setAuditLoading] = useState(false);
-    const [auditActionFilter, setAuditActionFilter] = useState<AuditActionFilter>('ALL');
-    const [auditStatusFilter, setAuditStatusFilter] = useState<AuditStatusFilter>('ALL');
-    const [auditTimeRange, setAuditTimeRange] = useState<AuditTimeRange>('7D');
+function toProgress(data: unknown): AgentProgressEvent | null {
+  if (!data || typeof data !== 'object') {
+    return null;
+  }
+  const record = data as Record<string, unknown>;
+  return {
+    phase: typeof record.phase === 'string' ? record.phase : 'UNKNOWN',
+    status: typeof record.status === 'string' ? record.status : 'running',
+    tokenCount: Number(record.tokenCount) || 0,
+    elapsedMs: Number(record.elapsedMs) || 0,
+    at: typeof record.at === 'string' ? record.at : new Date().toISOString(),
+    resultStatus: typeof record.resultStatus === 'string' ? record.resultStatus : undefined,
+    error: typeof record.error === 'string' ? record.error : undefined,
+  };
+}
 
-    const [allianceConfig, setAllianceConfig] = useState<AllianceConfig | null>(null);
-    const [allianceStores, setAllianceStores] = useState<{ merchantId: string; name: string }[]>([]);
-    const [customerUserId, setCustomerUserId] = useState('');
-    const [qrStoreId, setQrStoreId] = useState('');
-    const [qrScene, setQrScene] = useState('entry');
-    const [qrPayload, setQrPayload] = useState('');
+export function MerchantProvider({ children }: { children: React.ReactNode }) {
+  const [authSession, setAuthSession] = useState<MerchantAuthSession | null>(null);
+  const [authSubmitting, setAuthSubmitting] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [merchantState, setMerchantState] = useState<MerchantState>(createDemoMerchantState);
+  const [lastAction, setLastAction] = useState('Please login before entering chat.');
+  const [realtimeEvents, setRealtimeEvents] = useState<RealtimeEventRow[]>([
+    {
+      id: 'evt_1',
+      label: 'System',
+      summary: 'Auth-gated mode active',
+      detail: '{"mode":"auth_gated"}',
+      severity: 'info',
+      isAnomaly: false,
+    },
+  ]);
+  const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
+  const [showOnlyAnomaly, setShowOnlyAnomaly] = useState(false);
+  const [auditLogs] = useState<AuditLogRow[]>([
+    {
+      id: 'audit_1',
+      title: 'System',
+      summary: 'Waiting for backend actions',
+      detail: 'Login then start chat to generate runtime records.',
+      severity: 'info',
+    },
+  ]);
+  const [expandedAuditId, setExpandedAuditId] = useState<string | null>(null);
+  const [auditActionFilter, setAuditActionFilter] = useState<AuditActionFilter>('ALL');
+  const [auditStatusFilter, setAuditStatusFilter] = useState<AuditStatusFilter>('ALL');
+  const [auditTimeRange, setAuditTimeRange] = useState<AuditTimeRange>('7D');
+  const [allianceConfig, setAllianceConfig] = useState<AllianceConfig | null>({
+    clusterId: 'demo-cluster',
+    walletShared: false,
+  });
+  const [allianceStores] = useState([{ merchantId: 'm_demo_001', name: 'Demo Bistro' }]);
+  const [customerUserId, setCustomerUserId] = useState('u_demo_001');
+  const [qrStoreId, setQrStoreId] = useState('m_demo_001');
+  const [qrScene, setQrScene] = useState('entry');
+  const [qrPayload, setQrPayload] = useState('');
+  const [aiIntentDraft, setAiIntentDraft] = useState('');
+  const [aiIntentSubmitting, setAiIntentSubmitting] = useState(false);
+  const [strategyChatMessages, setStrategyChatMessages] = useState<StrategyChatMessageWithStatus[]>([]);
+  const [strategyChatPendingReview, setStrategyChatPendingReview] = useState<StrategyChatPendingReview | null>(null);
+  const [strategyChatPendingReviews, setStrategyChatPendingReviews] = useState<StrategyChatPendingReview[]>([]);
+  const [strategyChatReviewProgress] = useState<StrategyChatReviewProgress | null>(null);
+  const [strategyChatEvaluation, setStrategyChatEvaluation] = useState<PolicyDecisionResult | null>(null);
+  const [agentProgressEvents, setAgentProgressEvents] = useState<AgentProgressEvent[]>([]);
+  const [contractStatus, setContractStatus] = useState<'LOADING' | 'NOT_SUBMITTED' | 'SUBMITTED'>('NOT_SUBMITTED');
 
-    const [aiIntentDraft, setAiIntentDraft] = useState('');
-    const [aiIntentSubmitting, setAiIntentSubmitting] = useState(false);
-    const [strategyChatSessionId, setStrategyChatSessionId] = useState('');
-    const [strategyChatMessages, setStrategyChatMessages] = useState<StrategyChatMessageWithStatus[]>([]);
-    const [strategyChatPendingReview, setStrategyChatPendingReview] = useState<StrategyChatPendingReview | null>(null);
-    const [strategyChatPendingReviews, setStrategyChatPendingReviews] = useState<StrategyChatPendingReview[]>([]);
-    const [strategyChatReviewProgress, setStrategyChatReviewProgress] = useState<StrategyChatReviewProgress | null>(null);
-    const [strategyChatEvaluation, setStrategyChatEvaluation] = useState<PolicyDecisionResult | null>(null);
-    const [agentProgressEvents, setAgentProgressEvents] = useState<AgentProgressEvent[]>([]);
+  const isAuthenticated = Boolean(authSession && authSession.token && authSession.merchantId);
+  const pendingReviewCount = strategyChatPendingReviews.length;
+  const totalReviewCount = Math.max(pendingReviewCount, Number(strategyChatReviewProgress?.totalCandidates || 0));
+  const reviewedReviewCount = Math.max(0, Number(strategyChatReviewProgress?.reviewedCandidates || 0));
+  const currentReviewIndex = pendingReviewCount > 0 ? Math.min(totalReviewCount, reviewedReviewCount + 1) : 0;
+  const strategyChatEvaluationReady = Boolean(strategyChatEvaluation);
+  const activeAgentProgress = agentProgressEvents.length > 0 ? agentProgressEvents[agentProgressEvents.length - 1] : null;
+  const visibleRealtimeEvents = useMemo(
+    () => (showOnlyAnomaly ? realtimeEvents.filter(item => item.isAnomaly) : realtimeEvents),
+    [realtimeEvents, showOnlyAnomaly],
+  );
 
-    const [contractStatus, setContractStatus] = useState<'LOADING' | 'NOT_SUBMITTED' | 'SUBMITTED'>('LOADING');
-    const [wsConnected, setWsConnected] = useState(false);
-    const realtimeClientRef = useRef<RealtimeClient | null>(null);
+  const requestLoginCode = async (phone: string) => {
+    const normalized = String(phone || '').trim();
+    if (!normalized) {
+      throw new Error('phone is required');
+    }
+    setAuthSubmitting(true);
+    setAuthError('');
+    try {
+      await requestMerchantPhoneCode(normalized);
+      setLastAction('Verification code requested. Check server log output.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'request code failed';
+      setAuthError(message);
+      throw error;
+    } finally {
+      setAuthSubmitting(false);
+    }
+  };
 
-    const pendingReviewCount = strategyChatPendingReviews.length;
-    const totalReviewCount = Math.max(pendingReviewCount, Number(strategyChatReviewProgress?.totalCandidates || 0));
-    const reviewedReviewCount = Math.max(0, Number(strategyChatReviewProgress?.reviewedCandidates || 0));
-    const currentReviewIndex = pendingReviewCount > 0 ? Math.min(totalReviewCount, reviewedReviewCount + 1) : 0;
-    const autoEvaluationReady = Boolean(
-        strategyChatPendingReview?.evaluation?.evaluatedAt &&
-        !strategyChatPendingReview?.evaluation?.evaluateError,
-    );
-    const strategyChatEvaluationReady = Boolean(strategyChatEvaluation) || autoEvaluationReady;
-    const activeAgentProgress = agentProgressEvents.length > 0 ? agentProgressEvents[agentProgressEvents.length - 1] : null;
+  const loginWithPhone = async (params: { phone: string; code: string; merchantId: string }) => {
+    const phone = String(params.phone || '').trim();
+    const code = String(params.code || '').trim();
+    const merchantId = String(params.merchantId || '').trim();
+    if (!phone || !code || !merchantId) {
+      throw new Error('phone, code and merchantId are required');
+    }
+    setAuthSubmitting(true);
+    setAuthError('');
+    try {
+      const result = await loginMerchantByPhone({ phone, code, merchantId });
+      const resolvedMerchantId = String(result.profile?.merchantId || merchantId).trim();
+      if (!result.token || !resolvedMerchantId) {
+        throw new Error('login response missing token or merchantId');
+      }
+      setAuthSession({
+        token: result.token,
+        merchantId: resolvedMerchantId,
+        role: String(result.profile?.role || 'OWNER'),
+        phone: String(result.profile?.phone || phone),
+      });
+      setMerchantState(prev => ({
+        ...prev,
+        merchantId: resolvedMerchantId,
+      }));
+      setQrStoreId(resolvedMerchantId);
+      setLastAction(`Logged in as ${resolvedMerchantId}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'login failed';
+      setAuthError(message);
+      throw error;
+    } finally {
+      setAuthSubmitting(false);
+    }
+  };
 
-    const visibleRealtimeEvents = useMemo(
-        () => (showOnlyAnomaly ? realtimeEvents.filter(item => item.isAnomaly) : realtimeEvents),
-        [realtimeEvents, showOnlyAnomaly],
-    );
+  const logout = () => {
+    setAuthSession(null);
+    setStrategyChatMessages([]);
+    setAgentProgressEvents([]);
+    setStrategyChatPendingReview(null);
+    setStrategyChatPendingReviews([]);
+    setStrategyChatEvaluation(null);
+    setLastAction('Logged out.');
+  };
 
-    const appendRealtimeEvent = (event: RealtimeEventRow) => {
-        setRealtimeEvents(prev => [event, ...prev].slice(0, 8));
-    };
+  const onCopyEventDetail = async (_detail: string) => {
+    setLastAction('Copy action triggered.');
+  };
 
-    const onCopyEventDetail = async (detail: string) => {
-        try {
-            const clipboard = (globalThis as any)?.navigator?.clipboard;
-            if (clipboard?.writeText) {
-                await clipboard.writeText(detail);
-                setLastAction('已复制详情');
-                return;
-            }
-        } catch { /* fallback */ }
-        setLastAction('当前环境不支持一键复制，请长按文本复制');
-    };
+  const onTriggerProactiveScan = async () => {
+    setAgentProgressEvents([
+      {
+        phase: 'scan',
+        status: 'completed',
+        tokenCount: 0,
+        elapsedMs: 10,
+        at: new Date().toISOString(),
+      },
+    ]);
+    setLastAction('Proactive scan simulated.');
+  };
 
-    const refreshRemoteState = async (options: { force?: boolean } = {}) => {
-        if (!remoteToken) return;
-        if (stateRefreshInFlightRef.current) {
-            await stateRefreshInFlightRef.current;
-            return;
-        }
-        const force = Boolean(options.force);
-        if (!force && Date.now() - lastStateRefreshAtRef.current < 800) {
-            return;
-        }
-        const task = (async () => {
-            const remoteState = await MerchantApi.getState(remoteToken);
-            setMerchantState(remoteState);
-            lastStateRefreshAtRef.current = Date.now();
-        })();
-        stateRefreshInFlightRef.current = task;
-        try {
-            await task;
-        } finally {
-            if (stateRefreshInFlightRef.current === task) {
-                stateRefreshInFlightRef.current = null;
-            }
-        }
-    };
+  const onCreateIntentProposal = async () => {
+    const draft = String(aiIntentDraft || '').trim();
+    if (!draft) {
+      setLastAction('Please input your intent first.');
+      return;
+    }
+    if (!authSession) {
+      setLastAction('Please login first.');
+      return;
+    }
 
-    const applyStrategyChatSnapshot = (snapshot: StrategyChatSnapshot) => {
-        const pendingReviews = Array.isArray(snapshot.pendingReviews)
-            ? snapshot.pendingReviews
-            : snapshot.pendingReview ? [snapshot.pendingReview] : [];
-        setStrategyChatSessionId(String(snapshot.sessionId || '').trim());
-        setStrategyChatMessages(Array.isArray(snapshot.messages) ? snapshot.messages : []);
-        setStrategyChatPendingReviews(pendingReviews);
-        setStrategyChatPendingReview(snapshot.pendingReview || pendingReviews[0] || null);
-        setStrategyChatReviewProgress(snapshot.reviewProgress || null);
-        setStrategyChatEvaluation(null);
-    };
+    setAiIntentSubmitting(true);
+    setStrategyChatPendingReview(null);
+    setStrategyChatPendingReviews([]);
+    setStrategyChatEvaluation(null);
+    setAgentProgressEvents([]);
+    const now = Date.now();
+    const userMessageId = `msg_user_${now}`;
+    const assistantMessageId = `msg_ai_${now}`;
+    setStrategyChatMessages(prev => [
+      ...prev,
+      {
+        messageId: userMessageId,
+        role: 'USER',
+        type: 'TEXT',
+        text: draft,
+        deliveryStatus: 'sending',
+      },
+      {
+        messageId: assistantMessageId,
+        role: 'ASSISTANT',
+        type: 'TEXT',
+        text: '',
+        isStreaming: true,
+      },
+    ]);
 
-    const applyStrategyChatDelta = (delta: StrategyChatDelta) => {
-        const pendingReviews = Array.isArray(delta.pendingReviews)
-            ? delta.pendingReviews
-            : delta.pendingReview ? [delta.pendingReview] : [];
-        if (delta.sessionId) setStrategyChatSessionId(String(delta.sessionId).trim());
-        if (pendingReviews.length > 0 || delta.pendingReview !== undefined) {
-            setStrategyChatPendingReviews(pendingReviews);
-            setStrategyChatPendingReview(delta.pendingReview || pendingReviews[0] || null);
-            setStrategyChatEvaluation(null);
-        }
-        if (delta.reviewProgress !== undefined) setStrategyChatReviewProgress(delta.reviewProgress || null);
-
-        // full replace (snapshot)
-        if (Array.isArray(delta.messages)) {
-            setStrategyChatMessages(prev => {
-                const finalById = new Map(delta.messages!.map(m => [m.messageId, m]));
-                const streamingKept = prev.filter(m => m.isStreaming && !finalById.has(m.messageId));
-                const messages = [...delta.messages!, ...streamingKept];
-                return messages.map(m => ({ ...m, deliveryStatus: 'sent' }));
-            });
-            return;
-        }
-        const incoming = Array.isArray(delta.deltaMessages) ? delta.deltaMessages : [];
-        if (incoming.length === 0) return;
-
-        setStrategyChatMessages(prev => {
-            let merged = prev.slice();
-            const incomingRoles = new Set(incoming.map(m => m.role));
-
-            // Remove optimistic placeholders as soon as a real message of that role arrives
-            if (incomingRoles.has('ASSISTANT')) {
-                merged = merged.filter(m => !m.messageId.startsWith('opt_ai_'));
-            }
-            if (incomingRoles.has('USER')) {
-                merged = merged.filter(m => !m.messageId.startsWith('opt_user_'));
-            }
-
-            const indexById = new Map(merged.map((item, index) => [item.messageId, index]));
-            for (const item of incoming) {
-                const existing = indexById.get(item.messageId);
-                if (existing === undefined) {
-                    indexById.set(item.messageId, merged.length);
-                    merged.push({ ...item, deliveryStatus: 'sent' });
-                } else {
-                    // When the final non-streaming message lands, clear isStreaming
-                    merged[existing] = { ...merged[existing], ...item, deliveryStatus: 'sent' };
-                }
-            }
-            return merged;
-        });
-    };
-
-    const strategyStreamTransport = useMemo(() => {
-        const baseUrl = MerchantApi.getBaseUrl();
-        if (!baseUrl) {
-            return new FetchStreamTransport({
-                apiUrl: 'http://127.0.0.1:65535/__disabled__',
-            });
-        }
-        return new FetchStreamTransport({
-            apiUrl: `${baseUrl}/api/merchant/strategy-chat/stream`,
-            defaultHeaders: remoteToken ? { Authorization: `Bearer ${remoteToken}` } : undefined,
-            onRequest: async (_url, init) => {
-                let body: Record<string, unknown> = {};
-                if (typeof init.body === 'string') {
-                    try {
-                        body = JSON.parse(init.body);
-                    } catch {
-                        body = {};
-                    }
-                }
-                const merchantId = String(MerchantApi.getMerchantId() || merchantState.merchantId || '').trim();
-                const context =
-                    body.context && typeof body.context === 'object'
-                        ? body.context as Record<string, unknown>
-                        : {};
-                return {
-                    ...init,
-                    body: JSON.stringify({
-                        ...body,
-                        context: {
-                            ...context,
-                            merchantId,
-                        },
-                    }),
-                };
-            },
-        });
-    }, [merchantState.merchantId, remoteToken]);
-
-    const strategyChatStream = useStream<{ messages: Array<Record<string, unknown>> }>({
-        transport: strategyStreamTransport,
-        threadId: strategyChatSessionId || undefined,
-        onThreadId: id => {
-            if (typeof id === 'string' && id.trim()) {
-                setStrategyChatSessionId(id.trim());
-            }
+    let streamError = '';
+    try {
+      await streamMerchantChat({
+        token: authSession.token,
+        payload: {
+          context: {
+            merchantId: authSession.merchantId,
+          },
+          input: {
+            messages: [
+              {
+                role: 'user',
+                content: draft,
+              },
+            ],
+          },
+          streamMode: ['messages', 'updates'],
         },
-        initialValues: { messages: [] },
-        throttle: 0,
-        onCustomEvent: data => {
-            if (!data || typeof data !== 'object') return;
-            const envelope = data as Record<string, unknown>;
-            const kind = String(envelope.kind || '').trim().toLowerCase();
-            if (kind === 'strategy_chat_delta') {
-                const payload = envelope.payload;
-                if (!payload || typeof payload !== 'object') return;
-                applyStrategyChatDelta(payload as StrategyChatDelta);
-                return;
+        onEvent: (event: ChatStreamEvent) => {
+          if (event.event === 'updates') {
+            const progress = toProgress(event.data);
+            if (progress) {
+              setAgentProgressEvents(prev => [...prev.slice(-29), progress]);
             }
-            if (kind === 'agent_progress') {
-                const payload = envelope.payload;
-                if (!payload || typeof payload !== 'object') return;
-                const raw = payload as Record<string, unknown>;
-                const event: AgentProgressEvent = {
-                    phase: String(raw.phase || 'UNKNOWN'),
-                    status: String(raw.status || 'running'),
-                    tokenCount: Number(raw.tokenCount) || 0,
-                    elapsedMs: Number(raw.elapsedMs) || 0,
-                    at: typeof raw.at === 'string' && raw.at.trim() ? raw.at : new Date().toISOString(),
-                    resultStatus:
-                        raw.resultStatus === undefined || raw.resultStatus === null
-                            ? undefined
-                            : String(raw.resultStatus || ''),
-                    error:
-                        raw.error === undefined || raw.error === null
-                            ? undefined
-                            : String(raw.error || ''),
-                };
-                setAgentProgressEvents(prev => {
-                    const next = [...prev, event];
-                    if (next.length <= 120) return next;
-                    return next.slice(next.length - 120);
-                });
+            return;
+          }
+          if (event.event === 'messages') {
+            const assistantText = extractText(event.data);
+            if (!assistantText) {
+              return;
             }
+            setStrategyChatMessages(prev =>
+              prev.map(item =>
+                item.messageId === assistantMessageId
+                  ? { ...item, text: assistantText, isStreaming: true }
+                  : item,
+              ),
+            );
+            return;
+          }
+          if (event.event === 'error') {
+            const data = event.data as { error?: { message?: string } };
+            streamError =
+              data && data.error && typeof data.error.message === 'string'
+                ? data.error.message
+                : 'chat stream failed';
+          }
         },
-        onError: error => {
-            const msg =
-                error && typeof error === 'object' && 'message' in error
-                    ? String((error as { message?: unknown }).message || '')
-                    : '';
-            if (msg) {
-                setLastAction(`AI stream failed: ${msg}`);
-            }
-        },
-    });
+      });
 
-    useEffect(() => {
-        if (!strategyChatStream.isLoading) {
-            return;
-        }
-        const streamMessages = Array.isArray(strategyChatStream.messages)
-            ? strategyChatStream.messages
-            : [];
-        const normalizeContent = (content: unknown): string => {
-            if (typeof content === 'string') return content;
-            if (Array.isArray(content)) {
-                return content
-                    .map(part => {
-                        if (typeof part === 'string') return part;
-                        if (!part || typeof part !== 'object') return '';
-                        if ('text' in part && typeof (part as { text?: unknown }).text === 'string') {
-                            return String((part as { text?: unknown }).text || '');
-                        }
-                        return '';
-                    })
-                    .join('');
-            }
-            if (content && typeof content === 'object' && 'text' in content) {
-                const text = (content as { text?: unknown }).text;
-                if (typeof text === 'string') return text;
-            }
-            return '';
-        };
-        const mapped: StrategyChatMessageWithStatus[] = streamMessages
-            .map((item, idx) => {
-                const safe = item && typeof item === 'object' ? item : {};
-                const typeRaw = String((safe as Record<string, unknown>).type || '').trim().toLowerCase();
-                const role = typeRaw === 'human' ? 'USER' : 'ASSISTANT';
-                const messageIdRaw = (safe as Record<string, unknown>).id;
-                const messageId = typeof messageIdRaw === 'string' && messageIdRaw.trim()
-                    ? messageIdRaw.trim()
-                    : `lg_stream_${idx}`;
-                return {
-                    messageId,
-                    role,
-                    type: 'TEXT',
-                    text: normalizeContent((safe as Record<string, unknown>).content),
-                    proposalId: null,
-                    metadata: null,
-                    createdAt: new Date().toISOString(),
-                    isStreaming:
-                        strategyChatStream.isLoading &&
-                        idx === streamMessages.length - 1 &&
-                        role === 'ASSISTANT',
-                    deliveryStatus: 'sent',
-                };
-            });
-        if (mapped.length === 0) {
-            return;
-        }
-        setStrategyChatMessages(prev => {
-            const merged = prev.filter(
-                m => !(m.messageId.startsWith('opt_ai_') || m.messageId.startsWith('opt_user_')),
-            );
-            const indexById = new Map(merged.map((item, index) => [item.messageId, index]));
-            for (const item of mapped) {
-                const index = indexById.get(item.messageId);
-                if (index === undefined) {
-                    indexById.set(item.messageId, merged.length);
-                    merged.push(item);
-                } else {
-                    merged[index] = {
-                        ...merged[index],
-                        ...item,
-                    };
-                }
-            }
-            return merged;
-        });
-    }, [strategyChatStream.isLoading, strategyChatStream.messages]);
+      if (streamError) {
+        throw new Error(streamError);
+      }
 
-    const normalizeStrategyChatStreamEvent = (payload: Record<string, unknown> | null | undefined): StrategyChatStreamEvent | null => {
-        if (!payload || typeof payload !== 'object') return null;
-        const streamId = String(payload.streamId || '').trim();
-        const eventName = String(payload.event || '').trim();
-        if (!streamId || !eventName) return null;
-        const data = payload.data && typeof payload.data === 'object'
-            ? payload.data as Record<string, unknown>
-            : null;
-        return {
-            sessionId: payload.sessionId === null || payload.sessionId === undefined ? null : String(payload.sessionId),
-            streamId,
-            protocol: payload.protocol === undefined ? undefined : String(payload.protocol || ''),
-            event: eventName,
-            data,
-            userMessageId: payload.userMessageId === undefined ? undefined : String(payload.userMessageId || ''),
-            assistantMessageId: payload.assistantMessageId === undefined ? undefined : String(payload.assistantMessageId || ''),
-            at: payload.at === undefined ? undefined : String(payload.at || ''),
-        };
-    };
+      setStrategyChatMessages(prev =>
+        prev.map(item => {
+          if (item.messageId === userMessageId && item.role === 'USER') {
+            return { ...item, deliveryStatus: 'sent' };
+          }
+          if (item.messageId === assistantMessageId && item.role === 'ASSISTANT') {
+            return { ...item, isStreaming: false };
+          }
+          return item;
+        }),
+      );
+      setAiIntentDraft('');
+      setLastAction('Chat response received.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'chat stream failed';
+      setStrategyChatMessages(prev =>
+        prev.map(item => {
+          if (item.messageId === userMessageId && item.role === 'USER') {
+            return { ...item, deliveryStatus: 'failed' };
+          }
+          if (item.messageId === assistantMessageId && item.role === 'ASSISTANT') {
+            return {
+              ...item,
+              text: item.text || `Error: ${message}`,
+              isStreaming: false,
+            };
+          }
+          return item;
+        }),
+      );
+      setLastAction(`Chat failed: ${message}`);
+    } finally {
+      setAiIntentSubmitting(false);
+    }
+  };
 
-    const ensureStrategyChatSession = async (): Promise<string> => {
-        const merchantId = String((MerchantApi.getMerchantId() || merchantState.merchantId) || '').trim();
-        const sid = `sc_${merchantId}`;
-        setStrategyChatSessionId(sid);
-        return sid;
-    };
+  const onRetryMessage = async (messageId: string) => {
+    const target = strategyChatMessages.find(item => item.messageId === messageId && item.role === 'USER');
+    if (!target || !target.text) {
+      setLastAction('No retry target found.');
+      return;
+    }
+    setAiIntentDraft(target.text);
+    setLastAction('Retry message loaded into input box.');
+  };
 
-    const refreshAllianceData = async (token: string) => {
-        try {
-            const [config, stores] = await Promise.all([
-                MerchantApi.getAllianceConfig(token),
-                MerchantApi.listStores(token),
-            ]);
-            setAllianceConfig(config);
-            setAllianceStores(stores.stores || []);
-        } catch {
-            setAllianceConfig(null);
-            setAllianceStores([]);
-        }
-    };
+  const onEvaluatePendingStrategy = async () => {
+    setLastAction('No pending proposal in text-only mode.');
+  };
 
-    const refreshAuditLogs = async (options: { append?: boolean; cursor?: string | null; forceReset?: boolean } = {}) => {
-        if (!remoteToken) return;
-        const append = Boolean(options.append && !options.forceReset);
-        if (auditRefreshInFlightRef.current) {
-            await auditRefreshInFlightRef.current;
-            return;
-        }
-        if (!append && !options.forceReset && Date.now() - lastAuditRefreshAtRef.current < 500) {
-            return;
-        }
-        const cursor = append ? options.cursor ?? auditCursor : null;
-        const startTime = buildAuditStartTime(auditTimeRange);
-        const task = (async () => {
-            setAuditLoading(true);
-            try {
-                const page = await MerchantApi.getAuditLogs(remoteToken, {
-                    limit: 6,
-                    cursor,
-                    action: auditActionFilter,
-                    status: auditStatusFilter,
-                    startTime,
-                });
-                const rows = (page.items || []).map(buildAuditLogRow);
-                setAuditLogs(prev => (append ? [...prev, ...rows] : rows));
-                setAuditCursor(page.pageInfo?.nextCursor || null);
-                setAuditHasMore(Boolean(page.pageInfo?.hasMore));
-                if (!append) setExpandedAuditId(null);
-                lastAuditRefreshAtRef.current = Date.now();
-            } catch {
-                if (!append) {
-                    setAuditLogs([]);
-                    setAuditCursor(null);
-                    setAuditHasMore(false);
-                }
-            } finally {
-                setAuditLoading(false);
-            }
-        })();
-        auditRefreshInFlightRef.current = task;
-        try {
-            await task;
-        } finally {
-            if (auditRefreshInFlightRef.current === task) {
-                auditRefreshInFlightRef.current = null;
-            }
-        }
-    };
+  const onReviewPendingStrategy = async (_decision: 'APPROVE' | 'REJECT') => {
+    setLastAction('No pending proposal in text-only mode.');
+  };
 
-    const isTokenExpiredError = (err: any) => {
-        const msg = String(err?.message || '').toLowerCase();
-        return msg.includes('token') && (msg.includes('expired') || msg.includes('invalid'));
-    };
+  const onPublishApprovedProposal = async (_proposalId: string) => {
+    setLastAction('Publish is disabled in text-only mode.');
+  };
 
-    useEffect(() => {
-        let active = true;
-        let realtimeClientInstance: RealtimeClient | null = null;
-        const bootstrapRemote = async () => {
-            if (!MerchantApi.isConfigured() || !remoteToken) {
-                return;
-            }
-            try {
-                setLastAction('已连接服务端驾驶舱');
-                if (!initialMerchantState) await refreshRemoteState({ force: true });
-                const wsUrl = MerchantApi.getWsUrl(remoteToken);
+  const onToggleAllianceWalletShared = async () => {
+    setAllianceConfig(prev => (prev ? { ...prev, walletShared: !prev.walletShared } : prev));
+    setLastAction('Alliance wallet switch toggled locally.');
+  };
 
-                if (wsUrl) {
-                    realtimeClientInstance = createRealtimeClient({
-                        wsUrl,
-                        onConnect: () => {
-                            if (!active) return;
-                            setWsConnected(true);
-                        },
-                        onClose: () => {
-                            if (!active) return;
-                            setWsConnected(false);
-                        },
-                        onMessage: message => {
-                            if (!active) return;
-                            if (message.type === 'STRATEGY_CHAT_STREAM_EVENT') {
-                                const streamEvent = normalizeStrategyChatStreamEvent(message.payload as Record<string, unknown>);
-                                if (streamEvent) {
-                                    applyStrategyChatStreamEvent(streamEvent);
-                                }
-                                return;
-                            }
-                            if (message.type === 'STRATEGY_CHAT_DELTA') {
-                                const delta = message.payload as StrategyChatDelta;
-                                console.log(`[MerchantContext] RECEIVED DELTA: msgs=${delta.deltaMessages?.length || delta.messages?.length || 0}, pendingReview=${Boolean(delta.pendingReview)}`);
-                                applyStrategyChatDelta(delta);
-                                return;
-                            }
-                            appendRealtimeEvent(buildRealtimeEventRow(message));
-                            setLastAction(`实时事件：${message.type}`);
-                            refreshRemoteState().catch(() => { });
-                        },
-                        onError: () => {
-                            if (!active) return;
-                            setWsConnected(false);
-                        },
-                    });
-                    realtimeClientRef.current = realtimeClientInstance;
-                }
-            } catch (err) {
-                if (!active) return;
-                if (isTokenExpiredError(err)) { onAuthExpired(); return; }
-                setLastAction('远程会话失效，请重新登录');
-            }
-        };
-        bootstrapRemote().catch(() => { });
-        return () => { active = false; realtimeClientInstance?.close(); realtimeClientRef.current = null; };
-    }, [remoteToken]);
+  const onSyncAllianceUser = async () => {
+    setLastAction(`Alliance sync simulated for user ${customerUserId || '(empty)'}.`);
+  };
 
-    useEffect(() => {
-        if (!remoteToken) return;
-        refreshAuditLogs({ forceReset: true }).catch(() => { });
-    }, [remoteToken, auditActionFilter, auditStatusFilter, auditTimeRange]);
+  const onToggleKillSwitch = async () => {
+    setMerchantState(prev => ({ ...prev, killSwitchEnabled: !prev.killSwitchEnabled }));
+    setLastAction('Kill switch toggled locally.');
+  };
 
-    useEffect(() => {
-        if (!remoteToken) return;
-        setStrategyChatSessionId('');
-        setStrategyChatMessages([]);
-        setStrategyChatPendingReview(null);
-        setStrategyChatPendingReviews([]);
-        setStrategyChatReviewProgress(null);
-        setStrategyChatEvaluation(null);
-        setAgentProgressEvents([]);
+  const onGenerateMerchantQr = () => {
+    const storeId = String(qrStoreId || merchantState.merchantId || 'm_demo_001').trim();
+    const scene = String(qrScene || 'entry').trim();
+    const payload = `mealquest://merchant/pay?storeId=${encodeURIComponent(storeId)}&scene=${encodeURIComponent(scene)}`;
+    setQrPayload(payload);
+    setLastAction('Merchant QR generated locally.');
+  };
 
-        // Static session initialization (local only, no HTTP)
-        const merchantId = MerchantApi.getMerchantId();
-        if (merchantId) {
-            setStrategyChatSessionId(`sc_${merchantId}`);
-        }
+  const refreshAuditLogs = async () => {
+    setLastAction('Audit refresh simulated.');
+  };
 
-        refreshAllianceData(remoteToken).catch(() => { });
-    }, [remoteToken]);
+  const refreshRemoteState = async () => {
+    setLastAction('Remote state refresh not implemented in this build.');
+  };
 
-    useEffect(() => {
-        if (!qrStoreId && merchantState.merchantId) setQrStoreId(merchantState.merchantId);
-    }, [merchantState.merchantId, qrStoreId]);
+  const contextValue: MerchantContextType = {
+    authSession,
+    isAuthenticated,
+    authSubmitting,
+    authError,
+    requestLoginCode,
+    loginWithPhone,
+    logout,
+    merchantState,
+    lastAction,
+    setLastAction,
+    realtimeEvents,
+    visibleRealtimeEvents,
+    expandedEventId,
+    setExpandedEventId,
+    showOnlyAnomaly,
+    setShowOnlyAnomaly,
+    auditLogs,
+    expandedAuditId,
+    setExpandedAuditId,
+    auditCursor: null,
+    auditHasMore: false,
+    auditLoading: false,
+    auditActionFilter,
+    setAuditActionFilter,
+    auditStatusFilter,
+    setAuditStatusFilter,
+    auditTimeRange,
+    setAuditTimeRange,
+    allianceConfig,
+    allianceStores,
+    customerUserId,
+    setCustomerUserId,
+    qrStoreId,
+    setQrStoreId,
+    qrScene,
+    setQrScene,
+    qrPayload,
+    aiIntentDraft,
+    setAiIntentDraft,
+    aiIntentSubmitting,
+    strategyChatMessages,
+    strategyChatPendingReview,
+    strategyChatEvaluation,
+    strategyChatEvaluationReady,
+    agentProgressEvents,
+    activeAgentProgress,
+    pendingReviewCount,
+    totalReviewCount,
+    currentReviewIndex,
+    contractStatus,
+    setContractStatus,
+    wsConnected: false,
+    onCopyEventDetail,
+    onTriggerProactiveScan,
+    onCreateIntentProposal,
+    onRetryMessage,
+    onEvaluatePendingStrategy,
+    onReviewPendingStrategy,
+    onPublishApprovedProposal,
+    onToggleAllianceWalletShared,
+    onSyncAllianceUser,
+    onToggleKillSwitch,
+    onGenerateMerchantQr,
+    refreshAuditLogs,
+    refreshRemoteState,
+  };
 
-    useEffect(() => {
-        if (!remoteToken || !MerchantApi.isConfigured()) return;
-        contractStatusFetchedRef.current = false;
-    }, [remoteToken]);
-
-    useEffect(() => {
-        if (!remoteToken || !MerchantApi.isConfigured() || contractStatusFetchedRef.current) return;
-        const currentMerchantId = MerchantApi.getMerchantId();
-        if (!currentMerchantId) return;
-        contractStatusFetchedRef.current = true;
-        MerchantApi.getContractStatus(remoteToken, currentMerchantId)
-            .then(result => setContractStatus(result.status === 'NOT_SUBMITTED' ? 'NOT_SUBMITTED' : 'SUBMITTED'))
-            .catch(() => setContractStatus('SUBMITTED'));
-    }, [remoteToken]);
-
-    const onCreateIntentProposal = async () => {
-        if (!remoteToken) { setLastAction('连接未就绪'); return; }
-        const intent = aiIntentDraft.trim();
-        if (intent.length < 4) { setLastAction('请输入更具体的经营需求（至少4个字）'); return; }
-        if (strategyChatPendingReviews.length > 0) { setLastAction('存在待审核策略，请先确认或拒绝'); return; }
-
-        setAiIntentSubmitting(true);
-        setAgentProgressEvents([]);
-        const optimisticUserMsgId = `opt_user_${Date.now()}`;
-        const optimisticAiMsgId = `opt_ai_${Date.now()}`;
-
-        setStrategyChatMessages(prev => [
-            ...prev,
-            {
-                messageId: optimisticUserMsgId,
-                role: 'USER',
-                type: 'TEXT',
-                text: intent,
-                isStreaming: false,
-                deliveryStatus: 'sending'
-            } as any,
-            {
-                messageId: optimisticAiMsgId,
-                role: 'ASSISTANT',
-                type: 'TEXT',
-                text: '',
-                isStreaming: true
-            } as any,
-        ]);
-        setAiIntentDraft('');
-
-        try {
-            const sessionId = await ensureStrategyChatSession();
-            await strategyChatStream.submit(
-                {
-                    messages: [
-                        {
-                            type: 'human',
-                            content: intent,
-                        },
-                    ],
-                },
-                {
-                    context: {
-                        merchantId: MerchantApi.getMerchantId(),
-                        sessionId,
-                    },
-                    config: {
-                        configurable: {
-                            thread_id: sessionId,
-                        },
-                    },
-                },
-            );
-
-        } catch (err: any) {
-            setStrategyChatMessages(prev => prev.map(m => m.messageId === optimisticUserMsgId ? { ...m, deliveryStatus: 'failed' } : m));
-            setLastAction(`AI request failed: ${err?.message || 'failed'}`);
-        } finally {
-            setAiIntentSubmitting(false);
-        }
-    };
-
-    const onRetryMessage = async (messageId: string) => {
-        const msg = strategyChatMessages.find(m => m.messageId === messageId);
-        if (!msg || msg.role !== 'USER') return;
-
-        setAgentProgressEvents([]);
-        setStrategyChatMessages(prev => prev.map(m => m.messageId === messageId ? { ...m, deliveryStatus: 'sending' } : m));
-
-        try {
-            const sessionId = await ensureStrategyChatSession();
-            await strategyChatStream.submit(
-                {
-                    messages: [
-                        {
-                            type: 'human',
-                            content: msg.text,
-                        },
-                    ],
-                },
-                {
-                    context: {
-                        merchantId: MerchantApi.getMerchantId(),
-                        sessionId,
-                    },
-                    config: {
-                        configurable: {
-                            thread_id: sessionId,
-                        },
-                    },
-                },
-            );
-        } catch {
-            setStrategyChatMessages(prev => prev.map(m => m.messageId === messageId ? { ...m, deliveryStatus: 'failed' } : m));
-        }
-    };
-
-    const onEvaluatePendingStrategy = async () => {
-        if (!remoteToken || !strategyChatPendingReview?.proposalId) {
-            setLastAction('No pending proposal to evaluate');
-            return;
-        }
-        const currentPending = strategyChatPendingReview;
-        const chosenEvent = String(currentPending.triggerEvent || 'APP_OPEN').trim().toUpperCase() || 'APP_OPEN';
-        const chosenUserId = customerUserId.trim();
-        try {
-            const result = await MerchantApi.evaluateStrategyChatProposal(remoteToken, {
-                proposalId: currentPending.proposalId,
-                event: chosenEvent,
-                eventId: `evt_eval_${Date.now()}`,
-                userId: chosenUserId || undefined,
-                context: {
-                    source: 'MERCHANT_REVIEW_EVALUATE',
-                    proposalId: currentPending.proposalId,
-                },
-            });
-            const evaluation = result.evaluation;
-            setStrategyChatEvaluation(evaluation);
-            const selected = Array.isArray(evaluation.selected) ? evaluation.selected.length : 0;
-            const rejected = Array.isArray(evaluation.rejected) ? evaluation.rejected.length : 0;
-            setLastAction(
-                `${result.reused ? 'Evaluation reused' : 'Evaluation ready'}: selected ${selected}, rejected ${rejected}${chosenUserId ? `, user ${chosenUserId}` : ''}`,
-            );
-            await refreshAuditLogs();
-        } catch (error: any) {
-            setLastAction(`Evaluation failed: ${error?.message || 'unknown error'}`);
-        }
-    };
-
-    const applyStrategyChatStreamEvent = (event: StrategyChatStreamEvent) => {
-        if (!event || typeof event !== 'object') return;
-        if (event.sessionId) setStrategyChatSessionId(String(event.sessionId).trim());
-        const eventName = String(event.event || '').trim().toLowerCase();
-        const data = event.data && typeof event.data === 'object'
-            ? event.data
-            : {};
-        const chunk = data.chunk && typeof data.chunk === 'object'
-            ? data.chunk as Record<string, unknown>
-            : null;
-        const output = data.output && typeof data.output === 'object'
-            ? data.output as Record<string, unknown>
-            : null;
-        const errorObj = data.error && typeof data.error === 'object'
-            ? data.error as Record<string, unknown>
-            : null;
-        const userText = typeof data.input === 'string'
-            ? data.input
-            : (data.input && typeof data.input === 'object' && typeof (data.input as Record<string, unknown>).text === 'string')
-                ? String((data.input as Record<string, unknown>).text || '')
-                : '';
-        const deltaText = chunk && typeof chunk.text === 'string' ? chunk.text : '';
-        const outputText = output && typeof output.text === 'string' ? output.text : '';
-        const errorMessage = errorObj && typeof errorObj.message === 'string' ? errorObj.message : '';
-        const assistantMessageId = String(event.assistantMessageId || '').trim();
-        const userMessageId = String(event.userMessageId || '').trim();
-
-        if (eventName === 'on_chat_model_start') {
-            setStrategyChatMessages(prev => {
-                let merged = prev.filter(m => !(m.messageId.startsWith('opt_ai_') || m.messageId.startsWith('opt_user_')));
-                if (userMessageId) {
-                    const hasUser = merged.some(m => m.messageId === userMessageId);
-                    if (!hasUser) {
-                        merged.push({
-                            messageId: userMessageId,
-                            role: 'USER',
-                            type: 'TEXT',
-                            text: userText,
-                            proposalId: null,
-                            metadata: null,
-                            createdAt: event.at || new Date().toISOString(),
-                            isStreaming: false,
-                            deliveryStatus: 'sent',
-                        } as any);
-                    }
-                }
-                if (assistantMessageId) {
-                    const idx = merged.findIndex(m => m.messageId === assistantMessageId);
-                    if (idx >= 0) {
-                        merged[idx] = { ...merged[idx], isStreaming: true, deliveryStatus: 'sent' };
-                    } else {
-                        merged.push({
-                            messageId: assistantMessageId,
-                            role: 'ASSISTANT',
-                            type: 'TEXT',
-                            text: '',
-                            proposalId: null,
-                            metadata: null,
-                            createdAt: event.at || new Date().toISOString(),
-                            isStreaming: true,
-                            deliveryStatus: 'sent',
-                        } as any);
-                    }
-                }
-                return merged;
-            });
-            return;
-        }
-
-        if (eventName === 'on_chat_model_stream') {
-            if (!deltaText) return;
-            setStrategyChatMessages(prev => {
-                const merged = prev.filter(m => !m.messageId.startsWith('opt_ai_'));
-                if (assistantMessageId) {
-                    const idx = merged.findIndex(m => m.messageId === assistantMessageId);
-                    if (idx >= 0) {
-                        merged[idx] = {
-                            ...merged[idx],
-                            role: 'ASSISTANT',
-                            type: 'TEXT',
-                            text: `${String(merged[idx].text || '')}${deltaText}`,
-                            isStreaming: true,
-                            deliveryStatus: 'sent',
-                        };
-                    } else {
-                        merged.push({
-                            messageId: assistantMessageId,
-                            role: 'ASSISTANT',
-                            type: 'TEXT',
-                            text: deltaText,
-                            proposalId: null,
-                            metadata: null,
-                            createdAt: event.at || new Date().toISOString(),
-                            isStreaming: true,
-                            deliveryStatus: 'sent',
-                        } as any);
-                    }
-                    return merged;
-                }
-                const fallbackIndex = merged.findIndex(m => m.role === 'ASSISTANT' && m.isStreaming);
-                if (fallbackIndex >= 0) {
-                    merged[fallbackIndex] = {
-                        ...merged[fallbackIndex],
-                        text: `${String(merged[fallbackIndex].text || '')}${deltaText}`,
-                        isStreaming: true,
-                        deliveryStatus: 'sent',
-                    };
-                }
-                return merged;
-            });
-            return;
-        }
-
-        if (eventName === 'on_chat_model_end') {
-            setStrategyChatMessages(prev => prev.map(item => {
-                if (assistantMessageId && item.messageId === assistantMessageId) {
-                    return {
-                        ...item,
-                        text: outputText || item.text,
-                        isStreaming: false,
-                        deliveryStatus: 'sent',
-                    };
-                }
-                if (!assistantMessageId && item.role === 'ASSISTANT' && item.isStreaming) {
-                    return { ...item, isStreaming: false, deliveryStatus: 'sent' };
-                }
-                return item;
-            }));
-            return;
-        }
-
-        if (eventName === 'on_chat_model_error') {
-            setStrategyChatMessages(prev => prev.map(item => {
-                if (assistantMessageId && item.messageId === assistantMessageId) {
-                    return { ...item, isStreaming: false, deliveryStatus: 'failed' };
-                }
-                return item;
-            }));
-            if (errorMessage) {
-                setLastAction(`AI stream failed: ${errorMessage}`);
-            }
-        }
-    };
-
-    const onTriggerProactiveScan = async () => {
-        if (!remoteToken) { setLastAction('Connection not ready'); return; }
-        if (strategyChatPendingReviews.length > 0) { setLastAction('Please finish pending reviews first'); return; }
-        setAgentProgressEvents([]);
-        const activeCount = merchantState.activePolicies.filter(item => (item.status || 'ACTIVE') === 'ACTIVE').length;
-        const budgetUsage = Math.round((merchantState.budgetUsed / Math.max(merchantState.budgetCap, 1)) * 100);
-        const proactiveIntent = [
-            '主动巡检：请基于以下经营信号自动提案。',
-            `预算使用率=${budgetUsage}%`,
-            `进行中活动=${activeCount}`,
-            `熔断状态=${merchantState.killSwitchEnabled ? 'ON' : 'OFF'}`,
-            '如果无需提案请明确说明原因；如需提案请输出可审核策略。',
-        ].join('；');
-
-        const optimisticUserMsgId = `opt_user_${Date.now()}`;
-        const optimisticAiMsgId = `opt_ai_${Date.now()}`;
-        setStrategyChatMessages(prev => [
-            ...prev,
-            {
-                messageId: optimisticUserMsgId,
-                role: 'USER',
-                type: 'TEXT',
-                text: proactiveIntent,
-                isStreaming: false,
-                deliveryStatus: 'sending'
-            } as any,
-            {
-                messageId: optimisticAiMsgId,
-                role: 'ASSISTANT',
-                type: 'TEXT',
-                text: '',
-                isStreaming: true
-            } as any,
-        ]);
-        try {
-            const sessionId = await ensureStrategyChatSession();
-            await strategyChatStream.submit(
-                {
-                    messages: [
-                        {
-                            type: 'human',
-                            content: proactiveIntent,
-                        },
-                    ],
-                },
-                {
-                    context: {
-                        merchantId: MerchantApi.getMerchantId(),
-                        sessionId,
-                    },
-                    config: {
-                        configurable: {
-                            thread_id: sessionId,
-                        },
-                    },
-                },
-            );
-            setLastAction('AI proactive scan triggered');
-        } catch (error: any) {
-            setStrategyChatMessages(prev => prev.map(m => m.messageId === optimisticUserMsgId ? { ...m, deliveryStatus: 'failed' } : m));
-            setLastAction(`AI proactive scan failed: ${error?.message || 'failed'}`);
-        }
-    };
-
-    const onReviewPendingStrategy = async (decision: 'APPROVE' | 'REJECT') => {
-        if (!remoteToken || !strategyChatPendingReview?.proposalId) { setLastAction('No pending proposal to review'); return; }
-        if (decision === 'APPROVE' && !strategyChatEvaluationReady) {
-            setLastAction('Evaluation is required before approve');
-            return;
-        }
-        try {
-            const currentPending = strategyChatPendingReview;
-            const result = await MerchantApi.reviewStrategyChatProposal(remoteToken, {
-                proposalId: currentPending.proposalId,
-                decision,
-            });
-            applyStrategyChatDelta(result);
-            if (decision === 'APPROVE' && result.status === 'APPROVED') {
-                setStrategyChatEvaluation(null);
-                setLastAction('Proposal approved. Publish it to activate.');
-            } else if (result.status === 'REJECTED') {
-                setStrategyChatEvaluation(null);
-                setLastAction('Proposal rejected');
-            }
-            await refreshRemoteState({ force: true });
-            await refreshAuditLogs();
-        } catch {
-            setLastAction('Proposal review failed, please retry');
-        }
-    };
-
-    const onPublishApprovedProposal = async (proposalId: string) => {
-        if (!remoteToken) return;
-        const target = String(proposalId || '').trim();
-        if (!target) {
-            setLastAction('Proposal ID is required');
-            return;
-        }
-        try {
-            const result = await MerchantApi.publishStrategyChatProposal(remoteToken, {
-                proposalId: target,
-            });
-            await refreshRemoteState({ force: true });
-            await refreshAuditLogs();
-            setLastAction(`Policy published: ${result.policyId}`);
-        } catch (error: any) {
-            setLastAction(`Publish failed: ${error?.message || 'unknown error'}`);
-        }
-    };
-
-    const onToggleAllianceWalletShared = async () => {
-        if (!remoteToken || !allianceConfig) return;
-        const response = await MerchantApi.setAllianceConfig(remoteToken, {
-            clusterId: allianceConfig.clusterId,
-            stores: allianceConfig.stores,
-            walletShared: !allianceConfig.walletShared,
-            tierShared: allianceConfig.tierShared,
-        });
-        setAllianceConfig(response);
-        await refreshAuditLogs();
-        setLastAction(`连锁钱包互通已${response.walletShared ? '开启' : '关闭'}`);
-    };
-
-    const onSyncAllianceUser = async () => {
-        if (!remoteToken) return;
-        const targetUserId = customerUserId.trim();
-        if (!targetUserId) { setLastAction('Please input customer user ID first'); return; }
-        const response = await MerchantApi.syncAllianceUser(remoteToken, { userId: targetUserId });
-        await refreshAllianceData(remoteToken);
-        await refreshAuditLogs();
-        setLastAction(`跨店用户同步完成：${response.syncedStores.join(', ')}`);
-    };
-
-    const onToggleKillSwitch = async () => {
-        if (!remoteToken) return;
-        const targetEnabled = !merchantState.killSwitchEnabled;
-        await MerchantApi.setKillSwitch(remoteToken, targetEnabled);
-        await refreshRemoteState({ force: true });
-        await refreshAuditLogs();
-        setLastAction(targetEnabled ? '已开启预算熔断' : '已关闭预算熔断');
-    };
-
-    const onGenerateMerchantQr = () => {
-        const storeId = qrStoreId.trim();
-        if (!/^[a-zA-Z0-9_-]{2,64}$/.test(storeId)) { setLastAction('Store ID invalid'); return; }
-        const scene = qrScene.trim();
-        let payload = `https://mealquest.app/startup?id=${encodeURIComponent(storeId)}&action=pay`;
-        if (scene) payload += `&scene=${encodeURIComponent(scene)}`;
-        setQrPayload(payload);
-        setLastAction(`QR generated for ${storeId}`);
-    };
-
-    const value = {
-        merchantState, lastAction, setLastAction, realtimeEvents, visibleRealtimeEvents,
-        expandedEventId, setExpandedEventId, showOnlyAnomaly, setShowOnlyAnomaly,
-        auditLogs, expandedAuditId, setExpandedAuditId, auditCursor, auditHasMore, auditLoading,
-        auditActionFilter, setAuditActionFilter, auditStatusFilter, setAuditStatusFilter,
-        auditTimeRange, setAuditTimeRange, allianceConfig, allianceStores, customerUserId, setCustomerUserId,
-        qrStoreId, setQrStoreId, qrScene, setQrScene, qrPayload, aiIntentDraft, setAiIntentDraft,
-        aiIntentSubmitting, strategyChatMessages, strategyChatPendingReview, strategyChatEvaluation, strategyChatEvaluationReady,
-        agentProgressEvents, activeAgentProgress,
-        pendingReviewCount, totalReviewCount, currentReviewIndex, contractStatus, setContractStatus,
-        wsConnected,
-        onCopyEventDetail, onTriggerProactiveScan, onCreateIntentProposal, onRetryMessage, onEvaluatePendingStrategy, onReviewPendingStrategy, onPublishApprovedProposal,
-        onToggleAllianceWalletShared, onSyncAllianceUser, onToggleKillSwitch,
-        onGenerateMerchantQr, refreshAuditLogs, refreshRemoteState,
-    };
-
-    return <MerchantContext.Provider value={value}>{children}</MerchantContext.Provider>;
+  return <MerchantContext.Provider value={contextValue}>{children}</MerchantContext.Provider>;
 }
 
 export function useMerchant() {
-    const context = useContext(MerchantContext);
-    if (context === undefined) {
-        throw new Error('useMerchant must be used within a MerchantProvider');
-    }
-    return context;
+  const context = useContext(MerchantContext);
+  if (!context) {
+    throw new Error('useMerchant must be used within MerchantProvider');
+  }
+  return context;
 }

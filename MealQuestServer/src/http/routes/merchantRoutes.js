@@ -67,6 +67,9 @@ function createMerchantRoutesHandler({
     if (!input || typeof input !== "object") {
       return "";
     }
+    if (typeof input.text === "string" && input.text.trim()) {
+      return input.text.trim();
+    }
     if (typeof input.userMessage === "string" && input.userMessage.trim()) {
       return input.userMessage.trim();
     }
@@ -112,7 +115,7 @@ function createMerchantRoutesHandler({
       return true;
     }
 
-    if (method === "POST" && url.pathname === "/api/merchant/strategy-chat/stream") {
+    if (method === "POST" && url.pathname === "/api/merchant/chat/stream") {
       ensureRole(auth, MERCHANT_ROLES);
       const body = await readJsonBody(req);
       const merchantId =
@@ -155,33 +158,31 @@ function createMerchantRoutesHandler({
         userText: content,
         assistantText: "",
       };
-      const emitProgress = (phase, status = "running", extras = {}) => {
-        writeSseEvent(res, "custom", {
-          kind: "agent_progress",
-          payload: {
-            phase: String(phase || "UNKNOWN"),
-            status: String(status || "running"),
-            tokenCount,
-            elapsedMs: Math.max(0, Date.now() - startedAtMs),
-            at: new Date().toISOString(),
-            ...extras,
-          },
+      const emitUpdate = (phase, status = "running", extras = {}) => {
+        writeSseEvent(res, "updates", {
+          phase: String(phase || "UNKNOWN"),
+          status: String(status || "running"),
+          tokenCount,
+          elapsedMs: Math.max(0, Date.now() - startedAtMs),
+          at: new Date().toISOString(),
+          ...extras,
         });
       };
-      const toValues = () => ({
-        messages: [
-          {
+      const emitMessages = (extras = {}) => {
+        writeSseEvent(res, "messages", {
+          user: {
             id: streamState.userMessageId || `m_user_${Date.now()}`,
             type: "human",
             content: streamState.userText,
           },
-          {
+          assistant: {
             id: streamState.assistantMessageId || `m_ai_${Date.now()}`,
             type: "ai",
             content: streamState.assistantText,
           },
-        ],
-      });
+          ...extras,
+        });
+      };
 
       res.writeHead(200, {
         "Content-Type": "text/event-stream; charset=utf-8",
@@ -195,11 +196,12 @@ function createMerchantRoutesHandler({
 
       try {
         writeSseEvent(res, "metadata", {
-          protocol: "langchain.stream_events.v2",
+          protocol: "langchain.chat.stream",
+          streamMode: ["messages", "updates"],
           merchantId,
         });
-        emitProgress("REQUEST_ACCEPTED");
-        emitProgress("AGENT_EXECUTION_START");
+        emitUpdate("REQUEST_ACCEPTED");
+        emitUpdate("AGENT_EXECUTION_START");
         const result = await merchantService.sendStrategyChatMessage({
           merchantId,
           operatorId: auth.operatorId || "system",
@@ -223,8 +225,8 @@ function createMerchantRoutesHandler({
               if (typeof data.input === "string" && data.input.trim()) {
                 streamState.userText = data.input.trim();
               }
-              emitProgress("LLM_STREAM_START");
-              writeSseEvent(res, "values", toValues());
+              emitUpdate("LLM_STREAM_START");
+              emitMessages();
               return;
             }
             if (eventName === "on_chat_model_stream") {
@@ -236,10 +238,10 @@ function createMerchantRoutesHandler({
               }
               tokenCount += 1;
               if (tokenCount === 1 || tokenCount % 8 === 0) {
-                emitProgress("LLM_TOKEN_STREAMING");
+                emitUpdate("LLM_TOKEN_STREAMING");
               }
               streamState.assistantText += token;
-              writeSseEvent(res, "values", toValues());
+              emitMessages({ delta: token });
               return;
             }
             if (eventName === "on_chat_model_end") {
@@ -248,26 +250,16 @@ function createMerchantRoutesHandler({
               if (typeof output.text === "string") {
                 streamState.assistantText = output.text;
               }
-              emitProgress("LLM_STREAM_END", "completed");
-              writeSseEvent(res, "values", toValues());
+              emitUpdate("LLM_STREAM_END", "completed");
+              emitMessages();
               return;
             }
             if (eventName === "on_tool_end") {
-              emitProgress("TOOL_RESULT_READY");
-              writeSseEvent(res, "custom", {
-                kind: "tool_result",
-                payload: {
-                  name: typeof data.name === "string" ? data.name : "",
-                  output:
-                    data && Object.prototype.hasOwnProperty.call(data, "output")
-                      ? data.output
-                      : null,
-                },
-              });
+              emitUpdate("TOOL_RESULT_READY");
               return;
             }
             if (eventName === "on_chat_model_error") {
-              emitProgress("LLM_STREAM_ERROR", "failed");
+              emitUpdate("LLM_STREAM_ERROR", "failed");
               writeSseEvent(res, "error", {
                 error: {
                   message:
@@ -285,14 +277,10 @@ function createMerchantRoutesHandler({
 
         if (!streamState.assistantText && typeof result.assistantMessage === "string") {
           streamState.assistantText = result.assistantMessage;
-          writeSseEvent(res, "values", toValues());
+          emitMessages();
         }
-        emitProgress("DECISION_FINALIZING");
-        writeSseEvent(res, "custom", {
-          kind: "strategy_chat_delta",
-          payload: result,
-        });
-        emitProgress("AGENT_EXECUTION_END", "completed", {
+        emitUpdate("DECISION_FINALIZING");
+        emitUpdate("AGENT_EXECUTION_END", "completed", {
           resultStatus: result.status || "",
         });
         appendAuditLog({
@@ -307,7 +295,7 @@ function createMerchantRoutesHandler({
         });
         res.end();
       } catch (error) {
-        emitProgress("AGENT_EXECUTION_END", "failed", {
+        emitUpdate("AGENT_EXECUTION_END", "failed", {
           error: error && error.message ? String(error.message) : "strategy chat stream failed",
         });
         writeSseEvent(res, "error", {

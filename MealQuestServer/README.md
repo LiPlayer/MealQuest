@@ -8,8 +8,6 @@ Minimal runnable backend implementation for MealQuest.
 - Payment verification with idempotency protection
 - Refund clawback (consume gifted balance first, then principal)
 - Policy OS decision engine (policy/trigger/constraint/scoring/action plugins)
-- AI-driven merchant strategy proposal and approval workflow
-- LangChain createAgent-based strategy planning orchestration
 - Emergency fire-sale override (`Priority:999 + TTL`)
 - Supplier order verification API
 - Alliance configuration (store clusters, shared wallet, cross-store sync)
@@ -53,8 +51,6 @@ MQ_AUTH_ALIPAY_VERIFY_URL=
 MQ_AUTH_ALIPAY_APP_ID=
 MQ_AUTH_ALIPAY_APP_SECRET=
 MQ_AUTH_HTTP_TIMEOUT_MS=10000
-MQ_AI_PROVIDER=deepseek
-# API keys are injected via secret manager / runtime environment.
 MQ_POLICY_TEMPLATE_VALIDATE_ON_BOOT=true
 ```
 
@@ -70,17 +66,8 @@ Notes:
 8. Request pipeline enforces tenant-scoped serialization and flushes pending persistence before response.
 9. When `MQ_DB_AUTO_CREATE=true`, server auto-creates the target database if it is missing.
 10. If the app user has no `CREATEDB` privilege, set `MQ_DB_ADMIN_URL` with an admin connection.
-11. `MQ_AI_PROVIDER` currently supports `deepseek`, `zhipuai`, and `openai`.
-12. `DEEPSEEK_API_KEY` is required for `MQ_AI_PROVIDER=deepseek` in production.
-13. `ZHIPUAI_API_KEY` is required for `MQ_AI_PROVIDER=zhipuai` in production.
-14. `OPENAI_API_KEY` is required for `MQ_AI_PROVIDER=openai` in production.
-15. AI defaults are fixed in server code; env only needs provider + key.
-16. AI provider bindings are fixed in server code: `deepseek -> ChatDeepSeek`, `zhipuai -> ChatZhipuAI`, `openai -> ChatOpenAI`.
-17. Structured output for critic/revise is implemented with Zod schemas and fed to LangChain `responseFormat`.
-18. If model inference is unavailable, strategy proposal API returns `AI_UNAVAILABLE` (no local fallback strategy is generated).
-19. Strategy planning is orchestrated by LangChain createAgent pipeline.
-20. Payment write operations execute on fresh tenant state within one PostgreSQL transaction (`runWithFreshState`).
-21. Policy template catalog is validated at boot by default (`MQ_POLICY_TEMPLATE_VALIDATE_ON_BOOT=true`).
+11. Payment write operations execute on fresh tenant state within one PostgreSQL transaction (`runWithFreshState`).
+12. Policy template catalog is validated at boot by default (`MQ_POLICY_TEMPLATE_VALIDATE_ON_BOOT=true`).
 
 ## Merchant Onboarding
 
@@ -97,10 +84,6 @@ API endpoints:
 POST /api/merchant/onboard
 GET  /api/merchant/catalog
 ```
-
-Engineering reference:
-
-- `docs/STRATEGY_AGENT_ENGINEERING.md` (strategy agent architecture and rollout)
 
 Example body:
 
@@ -163,9 +146,7 @@ POST /api/merchant/migration/cutover
 Strategy chat and operations:
 
 ```text
-GET  /api/merchant/strategy-chat/session?merchantId=<id>
-POST /api/merchant/strategy-chat/sessions
-POST /api/merchant/strategy-chat/messages
+POST /api/merchant/chat/stream
 POST /api/merchant/strategy-chat/proposals/:id/review
 POST /api/merchant/strategy-chat/proposals/:id/evaluate
 POST /api/merchant/strategy-chat/proposals/:id/publish

@@ -49,7 +49,7 @@ test("merchant strategy chat does not forward payment sales snapshot into agent 
 
   let capturedInput = null;
   const merchantService = createMerchantService(db, {
-    strategyAgentService: {
+    strategyChatService: {
       async *streamStrategyChatTurn(input) {
         capturedInput = input;
         return {
@@ -73,3 +73,4 @@ test("merchant strategy chat does not forward payment sales snapshot into agent 
   assert.equal(capturedInput.userMessage, "Summarize sales and suggest next strategy.");
   assert.equal(Object.prototype.hasOwnProperty.call(capturedInput, "salesSnapshot"), false);
 });
+
