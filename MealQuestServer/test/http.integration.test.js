@@ -486,8 +486,40 @@ function safeParseJson(raw) {
   }
 }
 
-function extractAiUserPayload(messages) {
-  if (!Array.isArray(messages)) {
+function normalizeRequestMessages(requestPayload) {
+  if (!requestPayload || typeof requestPayload !== "object") {
+    return [];
+  }
+  if (!Array.isArray(requestPayload.input)) {
+    return [];
+  }
+  return requestPayload.input
+    .filter((item) => item && typeof item === "object")
+    .map((item) => {
+      let content = item.content;
+      if (Array.isArray(content)) {
+        content = content
+          .map((part) => {
+            if (typeof part === "string") return part;
+            if (part && typeof part.text === "string") return part.text;
+            if (part && typeof part.input_text === "string") return part.input_text;
+            return "";
+          })
+          .filter(Boolean)
+          .join("\n");
+      } else if (content && typeof content === "object" && typeof content.text === "string") {
+        content = content.text;
+      }
+      return {
+        role: String(item.role || ""),
+        content: String(content || ""),
+      };
+    });
+}
+
+function extractAiUserPayload(requestPayload) {
+  const messages = normalizeRequestMessages(requestPayload);
+  if (!Array.isArray(messages) || messages.length === 0) {
     return {};
   }
   const users = messages.filter((item) => item && item.role === "user");
@@ -648,9 +680,41 @@ function toMockAiContent(payload, decision) {
   return JSON.stringify(decision || {});
 }
 
+function createMockResponsesPayload(content) {
+  const text = String(content || "");
+  return {
+    id: "mock-response-1",
+    object: "response",
+    created_at: Math.floor(Date.now() / 1000),
+    status: "completed",
+    model: "mock-model",
+    output_text: text,
+    output: [
+      {
+        id: "mock-message-1",
+        type: "message",
+        role: "assistant",
+        status: "completed",
+        content: [
+          {
+            type: "output_text",
+            text,
+            annotations: [],
+          },
+        ],
+      },
+    ],
+    usage: {
+      input_tokens: 0,
+      output_tokens: 0,
+      total_tokens: 0,
+    },
+  };
+}
+
 async function startMockAiServer() {
   const server = http.createServer((req, res) => {
-    if (req.method !== "POST" || !/\/chat\/completions$/.test(String(req.url || ""))) {
+    if (req.method !== "POST" || !/\/responses$/.test(String(req.url || ""))) {
       res.writeHead(404, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "not found" }));
       return;
@@ -666,12 +730,13 @@ async function startMockAiServer() {
         res.end(JSON.stringify({ error: "invalid json" }));
         return;
       }
-      const payload = extractAiUserPayload(parsed.messages);
+      const payload = extractAiUserPayload(parsed);
       const decision =
         payload && payload.task === "STRATEGY_CHAT"
           ? pickAiChatDecision(payload)
           : pickAiDecision(payload);
       const content = toMockAiContent(payload, decision);
+      const fullResponse = createMockResponsesPayload(content);
       const wantsStream = Boolean(parsed.stream);
       if (wantsStream) {
         res.writeHead(200, {
@@ -679,6 +744,15 @@ async function startMockAiServer() {
           "Cache-Control": "no-cache",
           Connection: "keep-alive",
         });
+        res.write(
+          `data: ${JSON.stringify({
+            type: "response.created",
+            response: {
+              id: fullResponse.id,
+              model: fullResponse.model,
+            },
+          })}\n\n`
+        );
         const chunks = [];
         const text = String(content || "");
         const step = 24;
@@ -691,52 +765,23 @@ async function startMockAiServer() {
         for (const piece of chunks) {
           res.write(
             `data: ${JSON.stringify({
-              id: "mock-chatcmpl-1",
-              object: "chat.completion.chunk",
-              choices: [
-                {
-                  index: 0,
-                  delta: { content: piece },
-                  finish_reason: null,
-                },
-              ],
+              type: "response.output_text.delta",
+              delta: piece,
+              content_index: 0,
             })}\n\n`
           );
         }
         res.write(
           `data: ${JSON.stringify({
-            id: "mock-chatcmpl-1",
-            object: "chat.completion.chunk",
-            choices: [
-              {
-                index: 0,
-                delta: {},
-                finish_reason: "stop",
-              },
-            ],
+            type: "response.completed",
+            response: fullResponse,
           })}\n\n`
         );
-        res.write("data: [DONE]\n\n");
         res.end();
         return;
       }
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(
-        JSON.stringify({
-          id: "mock-chatcmpl-1",
-          object: "chat.completion",
-          choices: [
-            {
-              index: 0,
-              message: {
-                role: "assistant",
-                content,
-              },
-              finish_reason: "stop",
-            },
-          ],
-        }),
-      );
+      res.end(JSON.stringify(fullResponse));
     });
   });
 

@@ -21,9 +21,135 @@ const DEFAULT_CRITIC_ENABLED = true;
 const DEFAULT_CRITIC_MAX_ROUNDS = 1;
 const DEFAULT_CRITIC_MIN_PROPOSALS = 2;
 const DEFAULT_CRITIC_MIN_CONFIDENCE = 0.72;
+const CRITIC_OUTPUT_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["needRevision", "summary", "issues", "focus"],
+  properties: {
+    needRevision: { type: "boolean" },
+    summary: { type: "string" },
+    issues: {
+      type: "array",
+      items: { type: "string" },
+      maxItems: 8
+    },
+    focus: {
+      type: "array",
+      items: { type: "string" },
+      maxItems: 6
+    }
+  }
+};
+const REVISE_OUTPUT_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["assistantMessage", "proposals"],
+  properties: {
+    assistantMessage: { type: "string" },
+    proposals: {
+      type: "array",
+      minItems: 1,
+      maxItems: MAX_PROPOSAL_CANDIDATES,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "templateId",
+          "branchId",
+          "title",
+          "rationale",
+          "confidence",
+          "policyPatch"
+        ],
+        properties: {
+          templateId: { type: "string" },
+          branchId: { type: "string" },
+          title: { type: "string" },
+          rationale: { type: "string" },
+          confidence: { type: "number" },
+          policyPatch: { type: "object" }
+        }
+      }
+    }
+  }
+};
 
 function asString(value) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function parseBooleanLike(value, fallback = false) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  const normalized = asString(value).toLowerCase();
+  if (!normalized) {
+    return fallback;
+  }
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+  return fallback;
+}
+
+function toRawLogText(value) {
+  if (typeof value === "string") {
+    return value;
+  }
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value || "");
+  }
+}
+
+function printRawBlock(enabled, label, payload) {
+  if (!enabled) {
+    return;
+  }
+  const text = toRawLogText(payload);
+  console.log(`[ai-strategy] [raw] ${label}_BEGIN`);
+  console.log(text);
+  console.log(`[ai-strategy] [raw] ${label}_END`);
+}
+
+function buildStrictJsonSchemaResponseFormat(name, schema) {
+  return {
+    type: "json_schema",
+    json_schema: {
+      name: asString(name) || "mq_json_schema",
+      strict: true,
+      schema
+    }
+  };
+}
+
+function buildRequiredFunctionCallingOptions({
+  functionName,
+  description,
+  parameters
+}) {
+  const resolvedName = asString(functionName) || "submit_structured_payload";
+  return {
+    tools: [
+      {
+        type: "function",
+        function: {
+          name: resolvedName,
+          description: asString(description) || "Submit structured JSON output.",
+          strict: true,
+          parameters: isObjectLike(parameters) ? parameters : { type: "object" }
+        }
+      }
+    ],
+    toolChoice: {
+      type: "function",
+      function: { name: resolvedName }
+    }
+  };
 }
 
 function toPositiveInt(value, fallback) {
@@ -1246,6 +1372,13 @@ function attachMemoryUpdateToTurn({ turn, memoryUpdate }) {
   };
 }
 
+function buildEmptyLlmMessages() {
+  return [
+    { role: "system", content: "" },
+    { role: "user", content: "" },
+  ];
+}
+
 function buildChatPromptPayload({
   merchantId,
   sessionId,
@@ -1257,101 +1390,8 @@ function buildChatPromptPayload({
   salesSnapshot = null,
   intentFrame = null,
 }) {
-  const safeHistory = sanitizeHistoryForPrompt(history);
-
-  const safeActivePolicies = Array.isArray(activePolicies)
-    ? activePolicies.slice(0, 12).map((item) => ({
-      id: asString(item.id),
-      name: truncateText(item.name || "", 120),
-      status: asString(item.status || "UNKNOWN").toUpperCase(),
-      triggerEvent: asString(item.trigger && item.trigger.event),
-      priority: Number(item.priority) || 0,
-    }))
-    : [];
-
-  const safeApprovedStrategies = Array.isArray(approvedStrategies)
-    ? approvedStrategies.slice(0, 12).map((item) => ({
-      proposalId: asString(item.proposalId),
-      policyId: asString(item.policyId),
-      title: truncateText(item.title || "", 120),
-      templateId: asString(item.templateId),
-      branchId: asString(item.branchId),
-      approvedAt: asString(item.approvedAt || ""),
-    }))
-    : [];
-  const safeExecutionHistory = sanitizeExecutionHistory(executionHistory);
-  const safeSalesSnapshot = sanitizeSalesSnapshot(salesSnapshot);
-  const resolvedIntentFrame = isObjectLike(intentFrame)
-    ? intentFrame
-    : inferIntentFrame({
-      userMessage,
-      salesSnapshot: safeSalesSnapshot
-    });
-
-  const contextPayload = {
-    merchantId,
-    sessionId,
-    intentFrame: resolvedIntentFrame,
-    activePolicies: safeActivePolicies,
-    approvedStrategies: safeApprovedStrategies,
-    executionHistory: safeExecutionHistory,
-    salesSnapshot: safeSalesSnapshot,
-  };
-
-  const proposalSchema = {
-    templateId: "string",
-    branchId: "string",
-    title: "string",
-    rationale: "string",
-    confidence: "number 0-1",
-    policyPatch: {
-      name: "string",
-      lane: "EMERGENCY|GUARDED|NORMAL|BACKGROUND",
-      triggers: [{ event: "string" }],
-      segment: {
-        plugin: "condition_segment_v1|tag_segment_v1|all_users_v1",
-        params: { conditions: [{ field: "string", op: "eq|neq|gte|lte|includes", value: "any" }] }
-      },
-      program: {
-        ttl_sec: "number",
-        pacing: { max_cost_per_minute: "number" }
-      },
-      actions: [{ plugin: "voucher_grant_v1|wallet_grant_v1|story_inject_v1|fragment_grant_v1", params: "object" }],
-      constraints: [{ plugin: "kill_switch_v1|budget_guard_v1|global_budget_guard_v1|inventory_lock_v1|frequency_cap_v1|anti_fraud_hook_v1", params: "object" }]
-    },
-  };
-
-  const systemContent = [
-    "You are MealQuest merchant strategy copilot. Reply in the same language as the user.",
-    "",
-    "OUTPUT FORMAT:",
-    "1. Write your conversational reply as plain text directly (no prefix, no JSON wrapper).",
-    "   - Use **bold** for key terms.",
-    "   - Be concise and practical.",
-    "2. ONLY if the user clearly asks to create/finalize a strategy, append ONE compact JSON object",
-    "   on a new line after your text:",
-    `   {"schemaVersion":"${STRUCTURED_SCHEMA_VERSION}","mode":"PROPOSAL","assistantMessage":"string","proposals":[${JSON.stringify(proposalSchema)}]}`,
-    "",
-    "RULES:",
-    "- Do not output custom separators.",
-    "- Do not wrap JSON in markdown code fences.",
-    "- Only append JSON when user explicitly requests a strategy proposal.",
-    "- Avoid repeating approved strategies with the same templateId+branchId.",
-    "- Reference salesSnapshot for optimization direction.",
-    "- Reference executionHistory to avoid repeated operations.",
-  ].join("\n");
-
-  const userContent = [
-    `Context: ${JSON.stringify(contextPayload)}`,
-    `History: ${JSON.stringify(safeHistory)}`,
-    `User: ${asString(userMessage)}`,
-  ].join("\n\n");
-
   return {
-    messages: [
-      { role: "system", content: systemContent },
-      { role: "user", content: userContent },
-    ],
+    messages: buildEmptyLlmMessages(),
   };
 }
 
@@ -1388,6 +1428,10 @@ function createAiStrategyService(options = {}) {
     maxRetries,
     parseJsonStrict,
   });
+  const rawDebugEnabled =
+    options.rawDebugEnabled !== undefined
+      ? Boolean(options.rawDebugEnabled)
+      : parseBooleanLike(process.env.MQ_AI_DEBUG_RAW, true);
   const criticEnabled = options.criticEnabled !== undefined
     ? Boolean(options.criticEnabled)
     : DEFAULT_CRITIC_ENABLED;
@@ -1424,70 +1468,11 @@ function createAiStrategyService(options = {}) {
     )
   );
   function buildCriticMessages({ input, turn, round }) {
-    const proposals = summarizeProposalsForCritic(turn.proposals || []);
-    const payload = {
-      merchantId: asString(input && input.merchantId),
-      sessionId: asString(input && input.sessionId),
-      userMessage: asString(input && input.userMessage),
-      round: round + 1,
-      proposals
-    };
-    const system = [
-      "You are Strategy Critic. Evaluate proposal quality and execution safety.",
-      "Return strict JSON only:",
-      '{"needRevision":boolean,"summary":"string","issues":["string"],"focus":["string"]}',
-      "Rules:",
-      "- needRevision=true if proposals conflict with user goal, are duplicated, or are weakly differentiated.",
-      "- Keep issues short and actionable.",
-      "- If proposals are already good, set needRevision=false."
-    ].join("\n");
-    return [
-      { role: "system", content: system },
-      { role: "user", content: JSON.stringify(payload) }
-    ];
+    return buildEmptyLlmMessages();
   }
 
 function buildReviseMessages({ input, turn, criticDecision, round, validationIssues = [] }) {
-  const proposals = summarizeProposalsForCritic(turn.proposals || []);
-  const payload = {
-    merchantId: asString(input && input.merchantId),
-    sessionId: asString(input && input.sessionId),
-    userMessage: asString(input && input.userMessage),
-      round: round + 1,
-      currentProposals: proposals,
-      critic: {
-      summary: criticDecision.summary,
-      issues: criticDecision.issues,
-      focus: criticDecision.focus
-    },
-    validationIssues: summarizeValidationIssues(validationIssues)
-  };
-    const outputSchema = {
-      assistantMessage: "string",
-      proposals: [
-        {
-          templateId: "string",
-          branchId: "string",
-          title: "string",
-          rationale: "string",
-          confidence: "number 0-1",
-          policyPatch: "object"
-        }
-      ]
-    };
-    const system = [
-      "You are Strategy Rewriter. Rewrite proposals according to critic feedback.",
-      "Return strict JSON only and do not add markdown.",
-      JSON.stringify(outputSchema),
-      "Rules:",
-      "- Keep proposals executable in a policy system.",
-      "- Prefer diverse options with clear differences.",
-      "- Preserve user's business intent and budget sensitivity."
-    ].join("\n");
-    return [
-      { role: "system", content: system },
-      { role: "user", content: JSON.stringify(payload) }
-    ];
+    return buildEmptyLlmMessages();
   }
 
   function attachCriticProtocol(protocol, metadata) {
@@ -1532,14 +1517,42 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
         };
       } else {
         try {
-          const criticRaw = await modelGateway.invokeChat(
-            buildCriticMessages({
-              input,
-              turn: currentTurn,
-              round
-            })
-          );
-          criticDecision = normalizeCriticDecision(criticRaw);
+          const criticMessages = buildCriticMessages({
+            input,
+            turn: currentTurn,
+            round
+          });
+          printRawBlock(rawDebugEnabled, "CRITIC_INPUT_MESSAGES", criticMessages);
+          let criticCall;
+          try {
+            criticCall = await modelGateway.invokeChatWithRaw(
+              criticMessages,
+              buildRequiredFunctionCallingOptions({
+                functionName: "submit_critic_decision",
+                description: "Return critic decision for strategy proposals.",
+                parameters: CRITIC_OUTPUT_JSON_SCHEMA
+              })
+            );
+          } catch (functionError) {
+            printRawBlock(rawDebugEnabled, "CRITIC_FUNCTION_FALLBACK", {
+              reason: summarizeError(functionError)
+            });
+            try {
+              criticCall = await modelGateway.invokeChatWithRaw(criticMessages, {
+                responseFormat: buildStrictJsonSchemaResponseFormat(
+                  "mq_strategy_critic_decision",
+                  CRITIC_OUTPUT_JSON_SCHEMA
+                )
+              });
+            } catch (schemaError) {
+              printRawBlock(rawDebugEnabled, "CRITIC_SCHEMA_FALLBACK", {
+                reason: summarizeError(schemaError)
+              });
+              criticCall = await modelGateway.invokeChatWithRaw(criticMessages);
+            }
+          }
+          printRawBlock(rawDebugEnabled, "CRITIC_OUTPUT_RAW", criticCall.rawText || "");
+          criticDecision = normalizeCriticDecision(criticCall.parsed);
         } catch (error) {
           void error;
           break;
@@ -1550,15 +1563,44 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
       }
 
       try {
-        const revisedRaw = await modelGateway.invokeChat(
-          buildReviseMessages({
-            input,
-            turn: currentTurn,
-            criticDecision,
-            round,
-            validationIssues: pendingValidationIssues
-          })
-        );
+        const reviseMessages = buildReviseMessages({
+          input,
+          turn: currentTurn,
+          criticDecision,
+          round,
+          validationIssues: pendingValidationIssues
+        });
+        printRawBlock(rawDebugEnabled, "REVISE_INPUT_MESSAGES", reviseMessages);
+        let reviseCall;
+        try {
+          reviseCall = await modelGateway.invokeChatWithRaw(
+            reviseMessages,
+            buildRequiredFunctionCallingOptions({
+              functionName: "submit_revised_proposals",
+              description: "Return rewritten strategy proposals.",
+              parameters: REVISE_OUTPUT_JSON_SCHEMA
+            })
+          );
+        } catch (functionError) {
+          printRawBlock(rawDebugEnabled, "REVISE_FUNCTION_FALLBACK", {
+            reason: summarizeError(functionError)
+          });
+          try {
+            reviseCall = await modelGateway.invokeChatWithRaw(reviseMessages, {
+              responseFormat: buildStrictJsonSchemaResponseFormat(
+                "mq_strategy_revise_output",
+                REVISE_OUTPUT_JSON_SCHEMA
+              )
+            });
+          } catch (schemaError) {
+            printRawBlock(rawDebugEnabled, "REVISE_SCHEMA_FALLBACK", {
+              reason: summarizeError(schemaError)
+            });
+            reviseCall = await modelGateway.invokeChatWithRaw(reviseMessages);
+          }
+        }
+        printRawBlock(rawDebugEnabled, "REVISE_OUTPUT_RAW", reviseCall.rawText || "");
+        const revisedRaw = reviseCall.parsed;
         const { normalizedCandidates, invalidCandidates } = normalizeCandidatesFromRaw({
           rawCandidates: coerceProposalCandidates(revisedRaw),
           input,
@@ -1974,6 +2016,7 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
       executionHistory: input.executionHistory,
       salesSnapshot: input.salesSnapshot,
     });
+    printRawBlock(rawDebugEnabled, "STREAM_INPUT_MESSAGES", prompt.messages);
 
     let rawBuffer = "";
     let yieldedLen = 0;
@@ -2034,6 +2077,7 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
     if (!sentinelDetected && rawBuffer.length > yieldedLen) {
       yield rawBuffer.slice(yieldedLen);
     }
+    printRawBlock(rawDebugEnabled, "STREAM_OUTPUT_RAW", rawBuffer);
 
     const parsedTurn = parseTwoPartResponse(rawBuffer, input);
     const revisedTurn = await maybeRunCriticReviseLoop({
@@ -2072,6 +2116,11 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
         minProposals: criticMinProposals,
         minConfidence: criticMinConfidence
       },
+      structuredOutput: {
+        critic: "function_calling_required_then_json_schema",
+        revise: "function_calling_required_then_json_schema"
+      },
+      rawDebugEnabled,
       retryPolicy: gatewayInfo.retry,
       modelClient: gatewayInfo.modelClient,
     };

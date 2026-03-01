@@ -11,8 +11,48 @@ function safeParseJson(raw) {
   }
 }
 
-function extractAiUserPayload(messages) {
-  if (!Array.isArray(messages)) {
+function normalizeRequestMessages(requestPayload) {
+  if (Array.isArray(requestPayload)) {
+    return requestPayload;
+  }
+  if (!requestPayload || typeof requestPayload !== "object") {
+    return [];
+  }
+  if (!Array.isArray(requestPayload.input)) {
+    return [];
+  }
+  return requestPayload.input
+    .filter((item) => item && typeof item === "object")
+    .map((item) => {
+      const content = Array.isArray(item.content)
+        ? item.content
+          .map((part) => {
+            if (typeof part === "string") {
+              return part;
+            }
+            if (part && typeof part === "object") {
+              if (typeof part.text === "string") {
+                return part.text;
+              }
+              if (typeof part.input_text === "string") {
+                return part.input_text;
+              }
+            }
+            return "";
+          })
+          .filter(Boolean)
+          .join("\n")
+        : String(item.content || "");
+      return {
+        role: String(item.role || ""),
+        content,
+      };
+    });
+}
+
+function extractAiUserPayload(requestPayload) {
+  const messages = normalizeRequestMessages(requestPayload);
+  if (!Array.isArray(messages) || messages.length === 0) {
     return {};
   }
   const users = messages.filter((item) => item && item.role === "user");
@@ -84,43 +124,65 @@ function chunkText(value, size = 48) {
   return chunks;
 }
 
+function createResponsesPayload(content) {
+  const text = String(content || "");
+  return {
+    id: "resp_test_1",
+    object: "response",
+    created_at: Math.floor(Date.now() / 1000),
+    status: "completed",
+    model: "test-model",
+    output_text: text,
+    output: [
+      {
+        id: "msg_test_1",
+        type: "message",
+        role: "assistant",
+        status: "completed",
+        content: [
+          {
+            type: "output_text",
+            text,
+            annotations: [],
+          },
+        ],
+      },
+    ],
+    usage: {
+      input_tokens: 0,
+      output_tokens: 0,
+      total_tokens: 0,
+    },
+  };
+}
+
 function createStreamingCompletionResponse(content) {
   const encoder = new TextEncoder();
   const chunks = chunkText(content, 48);
+  const fullResponse = createResponsesPayload(content);
   const stream = new ReadableStream({
     start(controller) {
-      const created = Math.floor(Date.now() / 1000);
+      const createdPayload = {
+        type: "response.created",
+        response: {
+          id: fullResponse.id,
+          model: fullResponse.model,
+        },
+      };
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify(createdPayload)}\n\n`));
       for (const part of chunks) {
         const payload = {
-          id: "chatcmpl_test",
-          object: "chat.completion.chunk",
-          created,
-          model: "test-model",
-          choices: [
-            {
-              index: 0,
-              delta: { content: part },
-              finish_reason: null,
-            },
-          ],
+          type: "response.output_text.delta",
+          delta: part,
+          content_index: 0,
         };
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
       }
       const donePayload = {
-        id: "chatcmpl_test",
-        object: "chat.completion.chunk",
-        created,
-        model: "test-model",
-        choices: [
-          {
-            index: 0,
-            delta: {},
-            finish_reason: "stop",
-          },
-        ],
+        type: "response.completed",
+        response: fullResponse,
       };
       controller.enqueue(encoder.encode(`data: ${JSON.stringify(donePayload)}\n\n`));
-      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
       controller.close();
     },
   });
@@ -134,15 +196,7 @@ function createStreamingCompletionResponse(content) {
 
 function createNonStreamingCompletionResponse(content) {
   return new Response(
-    JSON.stringify({
-      choices: [
-        {
-          message: {
-            content,
-          },
-        },
-      ],
-    }),
+    JSON.stringify(createResponsesPayload(content)),
     {
       status: 200,
       headers: {
@@ -167,7 +221,7 @@ test("ai strategy provider: bigmodel uses expected defaults", () => {
   assert.equal(runtime.plannerEngine, "stream_text_json_envelope_v4");
   assert.equal(runtime.criticLoop.enabled, true);
   assert.equal(runtime.criticLoop.maxRounds, 1);
-  assert.equal(runtime.modelClient, "langchain_chatopenai");
+  assert.equal(runtime.modelClient, "langchain_chatopenai_responses");
   assert.equal(runtime.retryPolicy.maxRetries, 2);
 });
 
@@ -825,7 +879,7 @@ test("ai strategy provider: strategy chat payload includes sanitized sales snaps
 
   global.fetch = async (input, init) => {
     const requestJson = await parseRequestJson(input, init);
-    capturedPayload = extractAiUserPayload(requestJson.messages);
+    capturedPayload = extractAiUserPayload(requestJson);
     if (requestJson.stream) {
       return createStreamingCompletionResponse("snapshot received");
     }
@@ -920,7 +974,7 @@ test("ai strategy provider: prompt payload includes parsed intent frame", async 
 
   global.fetch = async (input, init) => {
     const requestJson = await parseRequestJson(input, init);
-    capturedPayload = extractAiUserPayload(requestJson.messages);
+    capturedPayload = extractAiUserPayload(requestJson);
     if (requestJson.stream) {
       return createStreamingCompletionResponse("intent parsed");
     }
@@ -964,7 +1018,7 @@ test("ai strategy provider: prompt history keeps MEMORY prefixes while trimming"
 
   global.fetch = async (input, init) => {
     const requestJson = await parseRequestJson(input, init);
-    capturedPayload = extractAiUserPayload(requestJson.messages);
+    capturedPayload = extractAiUserPayload(requestJson);
     if (requestJson.stream) {
       return createStreamingCompletionResponse("history received");
     }

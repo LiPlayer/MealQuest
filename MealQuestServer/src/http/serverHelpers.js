@@ -682,6 +682,31 @@ function sanitizePhone(input) {
   return value;
 }
 
+function parseBooleanLike(value, fallback = false) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) {
+    return fallback;
+  }
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+  return fallback;
+}
+
+function printSmsCode(code) {
+  const enabled = parseBooleanLike(process.env.MQ_AUTH_DEBUG_SMS, true);
+  if (!enabled) {
+    return;
+  }
+  console.log(`[sms-auth] code=${String(code || "")}`);
+}
+
 function issuePhoneCode(db, phone) {
   const now = Date.now();
   const code = String(Math.floor(100000 + Math.random() * 900000));
@@ -694,6 +719,7 @@ function issuePhoneCode(db, phone) {
     expiresAt: new Date(now + 5 * 60 * 1000).toISOString(),
     createdAt: new Date(now).toISOString()
   };
+  printSmsCode(code);
   db.save();
   return {
     phone,
