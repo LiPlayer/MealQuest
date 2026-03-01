@@ -51,8 +51,10 @@ MQ_AUTH_ALIPAY_VERIFY_URL=
 MQ_AUTH_ALIPAY_APP_ID=
 MQ_AUTH_ALIPAY_APP_SECRET=
 MQ_AUTH_HTTP_TIMEOUT_MS=10000
-MQ_POLICY_TEMPLATE_VALIDATE_ON_BOOT=true
+DEEPSEEK_MODEL=deepseek-chat
 ```
+
+Set `DEEPSEEK_API_KEY` via host environment injection (CI/CD secret or process manager), not in `.env`.
 
 Notes:
 
@@ -67,7 +69,6 @@ Notes:
 9. When `MQ_DB_AUTO_CREATE=true`, server auto-creates the target database if it is missing.
 10. If the app user has no `CREATEDB` privilege, set `MQ_DB_ADMIN_URL` with an admin connection.
 11. Payment write operations execute on fresh tenant state within one PostgreSQL transaction (`runWithFreshState`).
-12. Policy template catalog is validated at boot by default (`MQ_POLICY_TEMPLATE_VALIDATE_ON_BOOT=true`).
 
 ## Merchant Onboarding
 

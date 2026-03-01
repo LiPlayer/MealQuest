@@ -69,15 +69,7 @@ function resolveServerRuntimeEnv(env = process.env) {
   const authAlipayVerifyUrl = asString(env.MQ_AUTH_ALIPAY_VERIFY_URL);
   const authAlipayAppId = asString(env.MQ_AUTH_ALIPAY_APP_ID);
   const authAlipayAppSecret = asString(env.MQ_AUTH_ALIPAY_APP_SECRET);
-  const aiDeepSeekApiKey = asString(env.MQ_AI_DEEPSEEK_API_KEY);
-  const aiDeepSeekModel = asString(env.MQ_AI_DEEPSEEK_MODEL) || "deepseek-chat";
-  const aiTimeoutMs = parsePositiveInt(env.MQ_AI_TIMEOUT_MS, 45000);
-  const aiTemperatureRaw = Number(env.MQ_AI_TEMPERATURE);
-  const aiTemperature = Number.isFinite(aiTemperatureRaw) ? aiTemperatureRaw : 0.2;
-  const policyTemplateValidateOnBoot = parseBoolean(
-    env.MQ_POLICY_TEMPLATE_VALIDATE_ON_BOOT,
-    true
-  );
+  const aiDeepSeekModel = asString(env.DEEPSEEK_MODEL) || "deepseek-chat";
 
   const errors = [];
   if (isProduction && !jwtSecret) {
@@ -130,12 +122,8 @@ function resolveServerRuntimeEnv(env = process.env) {
       }
     },
     ai: {
-      deepseekApiKey: aiDeepSeekApiKey,
       deepseekModel: aiDeepSeekModel,
-      timeoutMs: aiTimeoutMs,
-      temperature: aiTemperature,
     },
-    policyTemplateValidateOnBoot
   };
 }
 

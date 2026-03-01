@@ -69,7 +69,7 @@ AI Calls:         GLM API → (国内出口，延迟 <200ms)
 
 1. **WebSocket 会话保持**: CLB/SLB 配置"一致性哈希"或"IP哈希"会话保持，确保 WebSocket 连接不断。
 2. **数据安全**: 务必启用 PostgreSQL 的 **行级安全策略 (RLS)**（`.env` 中已有 `MQ_DB_ENFORCE_RLS=true`），云托管 DB 请开启 SSL 连接。
-3. **AI 调用防超时**: GLM API 超时已设为 45s (`MQ_AI_TIMEOUT_MS=45000`)，建议在 CDN/WAF 层同步调整上游超时为 60s，防止网关提前断链。
+3. **AI 调用防超时**: AI 请求超时建议 45s，建议在 CDN/WAF 层同步调整上游超时为 60s，防止网关提前断链。
 
 ---
 

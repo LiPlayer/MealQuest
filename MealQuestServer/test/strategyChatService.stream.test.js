@@ -38,7 +38,6 @@ test("strategy chat service streams START -> TOKEN* -> END with chat reply", asy
 
 test("strategy chat service returns AI_UNAVAILABLE when model is missing", async () => {
   const service = createStrategyChatService({
-    apiKey: "",
     loadModel: async () => null,
   });
 

@@ -1,7 +1,6 @@
 function createStrategyChatService(options = {}) {
   const {
-    apiKey = "",
-    modelName = "deepseek-chat",
+    modelName = process.env.DEEPSEEK_MODEL || "deepseek-chat",
     temperature = 0.2,
     timeoutMs = 45000,
     systemPrompt =
@@ -45,12 +44,9 @@ function createStrategyChatService(options = {}) {
     if (typeof loadModel === "function") {
       return loadModel();
     }
-    if (!apiKey) {
-      return null;
-    }
     const { ChatDeepSeek } = await import("@langchain/deepseek");
+    // Use LangChain official env variable handling (DEEPSEEK_API_KEY).
     return new ChatDeepSeek({
-      apiKey,
       model: modelName,
       temperature,
       timeout: timeoutMs,
@@ -118,7 +114,9 @@ function createStrategyChatService(options = {}) {
       yield { type: "END", runId };
       return {
         status: "CHAT_REPLY",
-        assistantMessage: fullText.trim() || "我已收到。请补充更具体的目标、预算和时间窗口。",
+        assistantMessage:
+          fullText.trim() ||
+          "Received. Please share more details about goals, budget, and timeline.",
         protocol: {
           name: "LANGCHAIN_CHAT",
           provider: "deepseek",

@@ -34,18 +34,6 @@ test("runtime env: db rls enforcement defaults on and can be disabled", () => {
   assert.equal(disabled.dbEnforceRls, false);
 });
 
-test("runtime env: policy template boot validation defaults on and can be disabled", () => {
-  const defaults = resolveServerRuntimeEnv(createBaseEnv());
-  assert.equal(defaults.policyTemplateValidateOnBoot, true);
-
-  const disabled = resolveServerRuntimeEnv(
-    createBaseEnv({
-      MQ_POLICY_TEMPLATE_VALIDATE_ON_BOOT: "false"
-    })
-  );
-  assert.equal(disabled.policyTemplateValidateOnBoot, false);
-});
-
 test("runtime env: production requires core secrets", () => {
   assert.throws(
     () =>

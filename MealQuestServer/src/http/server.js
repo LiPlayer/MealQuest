@@ -46,7 +46,6 @@ function createAppServer({
   socialAuthService = null,
   socialAuthOptions = {},
   strategyChatOptions = {},
-  policyTemplateValidateOnBoot = true
 } = {}) {
   const actualDb = db || createInMemoryDb();
   if (typeof actualDb.save !== "function") {
@@ -379,10 +378,6 @@ async function createAppServerAsync(options = {}) {
     postgresOptions,
     socialAuthOptions,
     strategyChatOptions: {
-      apiKey:
-        options.strategyChatOptions && options.strategyChatOptions.apiKey !== undefined
-          ? options.strategyChatOptions.apiKey
-          : runtimeEnv.ai.deepseekApiKey,
       modelName:
         options.strategyChatOptions && options.strategyChatOptions.modelName !== undefined
           ? options.strategyChatOptions.modelName
@@ -390,16 +385,12 @@ async function createAppServerAsync(options = {}) {
       timeoutMs:
         options.strategyChatOptions && options.strategyChatOptions.timeoutMs !== undefined
           ? options.strategyChatOptions.timeoutMs
-          : runtimeEnv.ai.timeoutMs,
+          : 45000,
       temperature:
         options.strategyChatOptions && options.strategyChatOptions.temperature !== undefined
           ? options.strategyChatOptions.temperature
-          : runtimeEnv.ai.temperature,
+          : 0.2,
     },
-    policyTemplateValidateOnBoot:
-      options.policyTemplateValidateOnBoot === undefined
-        ? runtimeEnv.policyTemplateValidateOnBoot
-        : Boolean(options.policyTemplateValidateOnBoot),
     tenantDbMap: {
       ...persistedTenantDbMap,
       ...(options.tenantDbMap || {}),
