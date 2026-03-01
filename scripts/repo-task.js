@@ -13,6 +13,7 @@ const projects = {
     cwd: path.join(repoRoot, "MealQuestServer"),
     commands: {
       bootstrap: ["ci"],
+      typecheck: ["run", "typecheck"],
       test: ["test"],
     },
   },
@@ -74,6 +75,7 @@ for (const step of stepList) {
     const result = spawnSync(npmCmd, args, {
       cwd: project.cwd,
       stdio: "inherit",
+      shell: process.platform === "win32",
       env: {
         ...process.env,
         ...extraEnv,

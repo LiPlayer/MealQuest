@@ -4,14 +4,14 @@
 Keep `createHttpRequestHandler` as a thin dispatcher and move business routes into domain modules.
 
 ## Module Ownership
-- `preAuthRoutes.js`: public endpoints and callback endpoints that do not require JWT auth.
-- `systemRoutes.js`: state/audit/websocket status query endpoints.
-- `paymentRoutes.js`: payment quote/verify/refund/ledger endpoints.
-- `invoiceRoutes.js`: invoice issue and list endpoints.
-- `privacyRoutes.js`: privacy export/delete/cancel endpoints.
-- `merchantRoutes.js`: merchant dashboard, strategy (including strategy chat), policy lifecycle, contract, supplier, kill-switch endpoints.
-- `allianceRoutes.js`: alliance config/store/sync endpoints.
-- `tenantRoutes.js`: tenant policy and migration endpoints.
+- `preAuthRoutes.ts`: public endpoints and callback endpoints that do not require JWT auth.
+- `systemRoutes.ts`: state/audit/websocket status query endpoints.
+- `paymentRoutes.ts`: payment quote/verify/refund/ledger endpoints.
+- `invoiceRoutes.ts`: invoice issue and list endpoints.
+- `privacyRoutes.ts`: privacy export/delete/cancel endpoints.
+- `merchantRoutes.ts`: merchant dashboard, strategy (including strategy chat), policy lifecycle, contract, supplier, kill-switch endpoints.
+- `allianceRoutes.ts`: alliance config/store/sync endpoints.
+- `tenantRoutes.ts`: tenant policy and migration endpoints.
 
 ## Contract
 Each module exports a route handler factory. The produced handler must:

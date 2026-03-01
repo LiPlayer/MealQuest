@@ -4,6 +4,7 @@ jspm_packages/
 .bundle/
 vendor/bundle/
 **/Pods/
+.npm-cache
 
 # Build Outputs
 dist/
