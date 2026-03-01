@@ -164,14 +164,10 @@ function buildStructuredAgentCacheKey({
 function createLangChainAgentRuntime(options = {}) {
   const {
     chatModel,
-    parseJsonStrict,
     structuredOutputMethod,
   } = options;
   if (!chatModel) {
     throw new Error("langchain agent runtime requires chatModel");
-  }
-  if (typeof parseJsonStrict !== "function") {
-    throw new Error("langchain agent runtime requires parseJsonStrict");
   }
 
   const baseAgent = createAgent({
@@ -179,6 +175,36 @@ function createLangChainAgentRuntime(options = {}) {
     tools: [],
   });
   const structuredAgentCache = new Map();
+  const streamingAgentCache = new Map();
+
+  function toToolCacheKey(tools) {
+    if (!Array.isArray(tools) || tools.length === 0) {
+      return "base";
+    }
+    const names = tools
+      .map((item) => asString(item && item.name))
+      .filter(Boolean)
+      .sort();
+    return `tools:${names.join(",")}`;
+  }
+
+  function getStreamingAgent(streamOptions = {}) {
+    const tools = Array.isArray(streamOptions.tools) ? streamOptions.tools : [];
+    if (tools.length === 0) {
+      return baseAgent;
+    }
+    const cacheKey = toToolCacheKey(tools);
+    const cached = streamingAgentCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    const agent = createAgent({
+      model: chatModel,
+      tools,
+    });
+    streamingAgentCache.set(cacheKey, agent);
+    return agent;
+  }
 
   function getStructuredAgent(structured) {
     const schema =
@@ -215,47 +241,44 @@ function createLangChainAgentRuntime(options = {}) {
   }
 
   async function invokeChatWithRaw(messages, invokeOptions = {}) {
-    if (
+    const structured =
       invokeOptions &&
       typeof invokeOptions === "object" &&
       invokeOptions.structuredOutput &&
       typeof invokeOptions.structuredOutput === "object"
-    ) {
-      const structuredAgent = getStructuredAgent(invokeOptions.structuredOutput);
-      const result = await structuredAgent.invoke({ messages });
-      const parsedValue =
-        result &&
-        typeof result === "object" &&
-        result.structuredResponse &&
-        typeof result.structuredResponse === "object"
-          ? result.structuredResponse
-          : null;
-      const rawText =
-        extractAssistantRawTextFromAgentState(result) ||
-        coerceRawText(parsedValue);
-      if (parsedValue && typeof parsedValue === "object") {
-        return {
-          rawText,
-          parsed: parsedValue,
-        };
-      }
-      return {
-        rawText,
-        parsed: parseJsonStrict(rawText),
-      };
+        ? invokeOptions.structuredOutput
+        : null;
+    if (!structured) {
+      throw new Error(
+        "invokeChatWithRaw requires structuredOutput; text-delimited structured parsing is removed"
+      );
     }
-    const result = await baseAgent.invoke({ messages });
-    const rawText = extractAssistantRawTextFromAgentState(result);
+    const structuredAgent = getStructuredAgent(structured);
+    const result = await structuredAgent.invoke({ messages });
+    const parsedValue =
+      result &&
+      typeof result === "object" &&
+      result.structuredResponse &&
+      typeof result.structuredResponse === "object"
+        ? result.structuredResponse
+        : null;
+    const rawText =
+      extractAssistantRawTextFromAgentState(result) ||
+      coerceRawText(parsedValue);
+    if (!parsedValue) {
+      throw new Error("structured output is missing from agent response");
+    }
     return {
       rawText,
-      parsed: parseJsonStrict(rawText),
+      parsed: parsedValue,
     };
   }
 
-  async function* streamChatEvents(messages) {
+  async function* streamChatEvents(messages, streamOptions = {}) {
     const runStartAt = new Date().toISOString();
     let emittedStart = false;
-    const eventStream = await baseAgent.streamEvents(
+    const streamAgent = getStreamingAgent(streamOptions);
+    const eventStream = await streamAgent.streamEvents(
       { messages },
       { version: "v2" }
     );
@@ -291,6 +314,19 @@ function createLangChainAgentRuntime(options = {}) {
           runId: asString(event && (event.run_id || event.runId)),
           raw: event,
         };
+        continue;
+      }
+      if (eventName === "on_tool_end") {
+        const output =
+          event && event.data && Object.prototype.hasOwnProperty.call(event.data, "output")
+            ? event.data.output
+            : null;
+        yield {
+          type: "tool_result",
+          toolName: asString(event && event.name),
+          output,
+          raw: event,
+        };
       }
     }
     if (!emittedStart) {
@@ -319,4 +355,3 @@ function createLangChainAgentRuntime(options = {}) {
 module.exports = {
   createLangChainAgentRuntime,
 };
-

@@ -252,6 +252,20 @@ function createMerchantRoutesHandler({
               writeSseEvent(res, "values", toValues());
               return;
             }
+            if (eventName === "on_tool_end") {
+              emitProgress("TOOL_RESULT_READY");
+              writeSseEvent(res, "custom", {
+                kind: "tool_result",
+                payload: {
+                  name: typeof data.name === "string" ? data.name : "",
+                  output:
+                    data && Object.prototype.hasOwnProperty.call(data, "output")
+                      ? data.output
+                      : null,
+                },
+              });
+              return;
+            }
             if (eventName === "on_chat_model_error") {
               emitProgress("LLM_STREAM_ERROR", "failed");
               writeSseEvent(res, "error", {

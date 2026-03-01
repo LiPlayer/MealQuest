@@ -1,24 +1,21 @@
+const { HumanMessage, SystemMessage } = require("@langchain/core/messages");
+
 function asString(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
 function buildMessages(systemText, userContent) {
   return [
-    {
-      role: "system",
-      content: asString(systemText),
-    },
-    {
-      role: "user",
-      content:
-        typeof userContent === "string"
-          ? userContent
-          : JSON.stringify(userContent || {}),
-    },
+    new SystemMessage(asString(systemText)),
+    new HumanMessage(
+      typeof userContent === "string"
+        ? userContent
+        : JSON.stringify(userContent || {})
+    ),
   ];
 }
 
-function buildChatPromptPayload({ userMessage }) {
+function buildChatPromptPayload({ userMessage, templateCatalog }) {
   const promptUserMessage = asString(userMessage);
   return {
     messages: buildMessages(
@@ -26,32 +23,13 @@ function buildChatPromptPayload({ userMessage }) {
         "You are MealQuest strategy copilot for merchants.",
         "Keep responses concise, practical, and aligned with the merchant language.",
         "Do not output markdown code fences.",
+        "When user explicitly asks to draft/create/publish a strategy, call tool propose_policy_draft with valid templateId and branchId.",
+        "When user only chats, do not call any tool.",
+        `Available templates: ${JSON.stringify(Array.isArray(templateCatalog) ? templateCatalog : [])}`,
       ].join(" "),
       promptUserMessage || "Please ask a clarifying question.",
     ),
   };
-}
-
-function buildDecisionMessages({
-  userMessage,
-  assistantMessage,
-  templateCatalog,
-  schemaVersion,
-}) {
-  return buildMessages(
-    [
-      "Decide whether this turn should remain chat or become a strategy proposal.",
-      "Return mode=PROPOSAL only when the user clearly asks to draft/create/publish a strategy.",
-      "If mode=PROPOSAL, proposals must use valid templateId and branchId from templateCatalog.",
-      "Always return assistantMessage in the same language as the user message.",
-    ].join(" "),
-    {
-      schemaVersion,
-      userMessage: asString(userMessage),
-      assistantMessage: asString(assistantMessage),
-      templateCatalog: Array.isArray(templateCatalog) ? templateCatalog : [],
-    },
-  );
 }
 
 function buildCriticMessages({
@@ -104,8 +82,6 @@ function buildReviseMessages({
 
 module.exports = {
   buildChatPromptPayload,
-  buildDecisionMessages,
   buildCriticMessages,
   buildReviseMessages,
 };
-

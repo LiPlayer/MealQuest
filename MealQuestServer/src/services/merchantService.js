@@ -2143,6 +2143,13 @@ function createMerchantService(db, options = {}) {
             },
             seq: Number(event.seq) || undefined
           });
+        } else if (eventType === "TOOL_RESULT") {
+          emitStreamEvent("on_tool_end", {
+            name: typeof event.toolName === "string" ? event.toolName : "",
+            output: event && Object.prototype.hasOwnProperty.call(event, "output")
+              ? event.output
+              : null,
+          });
         }
         next = await gen.next();
       }

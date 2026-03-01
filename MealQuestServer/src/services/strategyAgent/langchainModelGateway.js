@@ -12,11 +12,7 @@ function createLangChainModelGateway(options = {}) {
     apiKey,
     timeoutMs,
     maxRetries,
-    parseJsonStrict,
   } = options;
-  if (typeof parseJsonStrict !== "function") {
-    throw new Error("langchain model gateway requires parseJsonStrict");
-  }
 
   const resolvedMaxRetries = Number.isFinite(Number(maxRetries))
     ? Math.max(0, Math.floor(Number(maxRetries)))
@@ -35,13 +31,14 @@ function createLangChainModelGateway(options = {}) {
   });
   const agentRuntime = createLangChainAgentRuntime({
     chatModel: modelRuntime.chatModel,
-    parseJsonStrict,
     structuredOutputMethod: modelRuntime.runtime.structuredOutputMethod,
   });
 
   return {
     invokeChatWithRaw: agentRuntime.invokeChatWithRaw,
-    streamChatEvents: agentRuntime.streamChatEvents,
+    streamChatEvents(messages, streamOptions = {}) {
+      return agentRuntime.streamChatEvents(messages, streamOptions);
+    },
     getRuntimeInfo() {
       return {
         retry: { maxRetries: resolvedMaxRetries },
@@ -61,4 +58,3 @@ function createLangChainModelGateway(options = {}) {
 module.exports = {
   createLangChainModelGateway,
 };
-

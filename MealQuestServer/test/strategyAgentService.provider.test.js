@@ -125,14 +125,6 @@ function createNonStreamingCompletionResponse(content) {
   );
 }
 
-function buildDecisionPayload({ assistantMessage, proposals = [] }) {
-  return JSON.stringify({
-    mode: "PROPOSAL",
-    assistantMessage: String(assistantMessage || ""),
-    proposals: Array.isArray(proposals) ? proposals : [],
-  });
-}
-
 test("strategy agent provider: openai uses expected defaults", () => {
   const service = createStrategyAgentService({
     provider: "openai",
@@ -201,25 +193,17 @@ test("strategy agent provider: retries transient upstream failures and then succ
     }
     const requestJson = await parseRequestJson(input, init);
     const streamText = "Recovered after retries.";
-    const decisionPayload = buildDecisionPayload({
-      assistantMessage: streamText,
-      proposals: [
-        {
-          templateId: "acquisition_welcome_gift",
-          branchId: "DEFAULT",
-          title: "Recovered Strategy",
-          rationale: "retry path works",
-          confidence: 0.79,
-          policyPatch: {
-            name: "Recovered Strategy",
-          },
-        },
-      ],
-    });
     if (requestJson.stream) {
       return createStreamingCompletionResponse(streamText);
     }
-    return createNonStreamingCompletionResponse(decisionPayload);
+    return createNonStreamingCompletionResponse(
+      JSON.stringify({
+        needRevision: false,
+        summary: "not required",
+        issues: [],
+        focus: [],
+      })
+    );
   };
 
   try {
@@ -236,13 +220,25 @@ test("strategy agent provider: retries transient upstream failures and then succ
       merchantId: "m_store_001",
       sessionId: "sc_retry",
       userMessage: "Please create a cooling proposal.",
+      toolProposalCandidates: [
+        {
+          templateId: "acquisition_welcome_gift",
+          branchId: "DEFAULT",
+          title: "Recovered Strategy",
+          rationale: "retry path works",
+          confidence: 0.79,
+          policyPatch: {
+            name: "Recovered Strategy",
+          },
+        },
+      ],
       history: [],
       activePolicies: [],
       approvedStrategies: [],
     });
 
     assert.equal(result.status, "PROPOSAL_READY");
-    assert.equal(callCount, 4);
+    assert.equal(callCount, 3);
     assert.equal(service.getRuntimeInfo().retryPolicy.maxRetries, 3);
   } finally {
     global.fetch = originalFetch;
@@ -254,9 +250,34 @@ test("strategy agent provider: strategy chat supports multiple proposal candidat
   global.fetch = async (input, init) => {
     const requestJson = await parseRequestJson(input, init);
     const streamText = "Drafted multiple options.";
-    const decisionPayload = buildDecisionPayload({
-      assistantMessage: streamText,
-      proposals: [
+    if (requestJson.stream) {
+      return createStreamingCompletionResponse(streamText);
+    }
+    return createNonStreamingCompletionResponse(
+      JSON.stringify({
+        needRevision: false,
+        summary: "not required",
+        issues: [],
+        focus: [],
+      })
+    );
+  };
+
+  try {
+    const service = createStrategyAgentService({
+      provider: "openai",
+      apiKey: "test-key",
+      baseUrl: "http://127.0.0.1:11434/v1",
+      model: "test-model",
+      maxRetries: 1,
+      timeoutMs: 3000,
+    });
+
+    const result = await collectStreamTurn(service, {
+      merchantId: "m_store_001",
+      sessionId: "sc_multi",
+      userMessage: "Give me two options.",
+      toolProposalCandidates: [
         {
           templateId: "acquisition_welcome_gift",
           branchId: "DEFAULT",
@@ -278,27 +299,6 @@ test("strategy agent provider: strategy chat supports multiple proposal candidat
           },
         },
       ],
-    });
-    if (requestJson.stream) {
-      return createStreamingCompletionResponse(streamText);
-    }
-    return createNonStreamingCompletionResponse(decisionPayload);
-  };
-
-  try {
-    const service = createStrategyAgentService({
-      provider: "openai",
-      apiKey: "test-key",
-      baseUrl: "http://127.0.0.1:11434/v1",
-      model: "test-model",
-      maxRetries: 1,
-      timeoutMs: 3000,
-    });
-
-    const result = await collectStreamTurn(service, {
-      merchantId: "m_store_001",
-      sessionId: "sc_multi",
-      userMessage: "Give me two options.",
       history: [],
       activePolicies: [],
       approvedStrategies: [],
@@ -317,9 +317,35 @@ test("strategy agent provider: stream flow ranks proposals with evaluation tool 
   global.fetch = async (input, init) => {
     const requestJson = await parseRequestJson(input, init);
     const streamText = "Drafted two options.";
-    const decisionPayload = buildDecisionPayload({
-      assistantMessage: streamText,
-      proposals: [
+    if (requestJson.stream) {
+      return createStreamingCompletionResponse(streamText);
+    }
+    return createNonStreamingCompletionResponse(
+      JSON.stringify({
+        needRevision: false,
+        summary: "not required",
+        issues: [],
+        focus: [],
+      })
+    );
+  };
+
+  try {
+    const service = createStrategyAgentService({
+      provider: "openai",
+      apiKey: "test-key",
+      baseUrl: "http://127.0.0.1:11434/v1",
+      model: "test-model",
+      maxRetries: 1,
+      timeoutMs: 3000,
+      criticEnabled: false,
+    });
+
+    const result = await collectStreamTurn(service, {
+      merchantId: "m_store_001",
+      sessionId: "sc_graph_rank",
+      userMessage: "Please propose two options and rank by expected value.",
+      toolProposalCandidates: [
         {
           templateId: "acquisition_welcome_gift",
           branchId: "DEFAULT",
@@ -341,28 +367,6 @@ test("strategy agent provider: stream flow ranks proposals with evaluation tool 
           },
         },
       ],
-    });
-    if (requestJson.stream) {
-      return createStreamingCompletionResponse(streamText);
-    }
-    return createNonStreamingCompletionResponse(decisionPayload);
-  };
-
-  try {
-    const service = createStrategyAgentService({
-      provider: "openai",
-      apiKey: "test-key",
-      baseUrl: "http://127.0.0.1:11434/v1",
-      model: "test-model",
-      maxRetries: 1,
-      timeoutMs: 3000,
-      criticEnabled: false,
-    });
-
-    const result = await collectStreamTurn(service, {
-      merchantId: "m_store_001",
-      sessionId: "sc_graph_rank",
-      userMessage: "Please propose two options and rank by expected value.",
       history: [],
       activePolicies: [],
       approvedStrategies: [],
@@ -417,9 +421,36 @@ test("strategy agent provider: publish intent requires approval and can invoke p
   global.fetch = async (input, init) => {
     const requestJson = await parseRequestJson(input, init);
     const streamText = "Drafted two options for publish.";
-    const decisionPayload = buildDecisionPayload({
-      assistantMessage: streamText,
-      proposals: [
+    if (requestJson.stream) {
+      return createStreamingCompletionResponse(streamText);
+    }
+    return createNonStreamingCompletionResponse(
+      JSON.stringify({
+        needRevision: false,
+        summary: "not required",
+        issues: [],
+        focus: [],
+      })
+    );
+  };
+
+  try {
+    const service = createStrategyAgentService({
+      provider: "openai",
+      apiKey: "test-key",
+      baseUrl: "http://127.0.0.1:11434/v1",
+      model: "test-model",
+      maxRetries: 1,
+      timeoutMs: 3000,
+      criticEnabled: false,
+    });
+
+    const publishedCalls = [];
+    const result = await collectStreamTurn(service, {
+      merchantId: "m_store_001",
+      sessionId: "sc_publish_intent",
+      userMessage: "publish this now",
+      toolProposalCandidates: [
         {
           templateId: "acquisition_welcome_gift",
           branchId: "DEFAULT",
@@ -441,29 +472,6 @@ test("strategy agent provider: publish intent requires approval and can invoke p
           },
         },
       ],
-    });
-    if (requestJson.stream) {
-      return createStreamingCompletionResponse(streamText);
-    }
-    return createNonStreamingCompletionResponse(decisionPayload);
-  };
-
-  try {
-    const service = createStrategyAgentService({
-      provider: "openai",
-      apiKey: "test-key",
-      baseUrl: "http://127.0.0.1:11434/v1",
-      model: "test-model",
-      maxRetries: 1,
-      timeoutMs: 3000,
-      criticEnabled: false,
-    });
-
-    const publishedCalls = [];
-    const result = await collectStreamTurn(service, {
-      merchantId: "m_store_001",
-      sessionId: "sc_publish_intent",
-      userMessage: "publish this now",
       history: [],
       activePolicies: [],
       approvedStrategies: [],
@@ -513,25 +521,17 @@ test("strategy agent provider: post-publish monitor and memory update hooks are 
   global.fetch = async (input, init) => {
     const requestJson = await parseRequestJson(input, init);
     const streamText = "Ready to publish.";
-    const decisionPayload = buildDecisionPayload({
-      assistantMessage: streamText,
-      proposals: [
-        {
-          templateId: "acquisition_welcome_gift",
-          branchId: "DEFAULT",
-          title: "Monitor Target",
-          rationale: "monitor after publish",
-          confidence: 0.75,
-          policyPatch: {
-            name: "Monitor Target",
-          },
-        },
-      ],
-    });
     if (requestJson.stream) {
       return createStreamingCompletionResponse(streamText);
     }
-    return createNonStreamingCompletionResponse(decisionPayload);
+    return createNonStreamingCompletionResponse(
+      JSON.stringify({
+        needRevision: false,
+        summary: "not required",
+        issues: [],
+        focus: [],
+      })
+    );
   };
 
   try {
@@ -551,6 +551,18 @@ test("strategy agent provider: post-publish monitor and memory update hooks are 
       merchantId: "m_store_001",
       sessionId: "sc_post_publish",
       userMessage: "publish and monitor",
+      toolProposalCandidates: [
+        {
+          templateId: "acquisition_welcome_gift",
+          branchId: "DEFAULT",
+          title: "Monitor Target",
+          rationale: "monitor after publish",
+          confidence: 0.75,
+          policyPatch: {
+            name: "Monitor Target",
+          },
+        },
+      ],
       history: [],
       activePolicies: [],
       approvedStrategies: [],
@@ -620,35 +632,6 @@ test("strategy agent provider: critic revise loop rewrites proposal candidates w
     }
     if (callCount === 2) {
       return createNonStreamingCompletionResponse(
-        buildDecisionPayload({
-          assistantMessage: "Drafted initial options.",
-          proposals: [
-            {
-              templateId: "acquisition_welcome_gift",
-              branchId: "DEFAULT",
-              title: "Initial A",
-              rationale: "baseline",
-              confidence: 0.61,
-              policyPatch: {
-                name: "Initial A",
-              },
-            },
-            {
-              templateId: "acquisition_welcome_gift",
-              branchId: "CHANNEL",
-              title: "Initial B",
-              rationale: "close variant",
-              confidence: 0.58,
-              policyPatch: {
-                name: "Initial B",
-              },
-            },
-          ],
-        })
-      );
-    }
-    if (callCount === 3) {
-      return createNonStreamingCompletionResponse(
         JSON.stringify({
           needRevision: true,
           summary: "options too similar",
@@ -704,13 +687,35 @@ test("strategy agent provider: critic revise loop rewrites proposal candidates w
       merchantId: "m_store_001",
       sessionId: "sc_critic",
       userMessage: "Give me two differentiated launch options.",
+      toolProposalCandidates: [
+        {
+          templateId: "acquisition_welcome_gift",
+          branchId: "DEFAULT",
+          title: "Initial A",
+          rationale: "baseline",
+          confidence: 0.61,
+          policyPatch: {
+            name: "Initial A",
+          },
+        },
+        {
+          templateId: "acquisition_welcome_gift",
+          branchId: "CHANNEL",
+          title: "Initial B",
+          rationale: "close variant",
+          confidence: 0.58,
+          policyPatch: {
+            name: "Initial B",
+          },
+        },
+      ],
       history: [],
       activePolicies: [],
       approvedStrategies: [],
     });
 
     assert.equal(result.status, "PROPOSAL_READY");
-    assert.equal(callCount, 4);
+    assert.equal(callCount, 3);
     assert.equal(result.assistantMessage, "Revised options ready for review.");
     assert.ok(Array.isArray(result.proposals));
     assert.equal(result.proposals.length, 2);
@@ -733,28 +738,6 @@ test("strategy agent provider: invalid policyPatch is revised before returning p
       if (requestJson.stream) {
         return createStreamingCompletionResponse("Draft created.");
       }
-    }
-    if (callCount === 2) {
-      return createNonStreamingCompletionResponse(
-        buildDecisionPayload({
-          assistantMessage: "Draft created.",
-          proposals: [
-            {
-              templateId: "acquisition_welcome_gift",
-              branchId: "DEFAULT",
-              title: "Invalid Draft",
-              rationale: "contains illegal field",
-              confidence: 0.8,
-              policyPatch: {
-                name: "Invalid Draft",
-                governance: {
-                  approval_required: false,
-                },
-              },
-            },
-          ],
-        })
-      );
     }
     return createNonStreamingCompletionResponse(
       JSON.stringify({
@@ -806,12 +789,27 @@ test("strategy agent provider: invalid policyPatch is revised before returning p
       merchantId: "m_store_001",
       sessionId: "sc_invalid_patch",
       userMessage: "Please create a strategy.",
+      toolProposalCandidates: [
+        {
+          templateId: "acquisition_welcome_gift",
+          branchId: "DEFAULT",
+          title: "Invalid Draft",
+          rationale: "contains illegal field",
+          confidence: 0.8,
+          policyPatch: {
+            name: "Invalid Draft",
+            governance: {
+              approval_required: false,
+            },
+          },
+        },
+      ],
       history: [],
       activePolicies: [],
       approvedStrategies: [],
     });
 
-    assert.equal(callCount, 3);
+    assert.equal(callCount, 2);
     assert.equal(result.status, "PROPOSAL_READY");
     assert.equal(result.proposals[0].title, "Compliant Draft");
     assert.equal(result.protocol.critic.applied, true);

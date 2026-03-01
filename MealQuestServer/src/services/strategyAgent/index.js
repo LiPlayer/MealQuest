@@ -7,12 +7,12 @@ const { createLangChainModelGateway } = require("./langchainModelGateway");
 const { createDecisionPipelineGraph } = require("./stateGraph");
 const {
   CRITIC_OUTPUT_ZOD_SCHEMA,
+  PROPOSAL_TOOL_INPUT_ZOD_SCHEMA,
   REVISE_OUTPUT_ZOD_SCHEMA,
-  TURN_DECISION_OUTPUT_ZOD_SCHEMA,
 } = require("./schemas");
+const { tool } = require("langchain");
 const {
   buildChatPromptPayload,
-  buildDecisionMessages,
   buildCriticMessages,
   buildReviseMessages,
 } = require("./prompts");
@@ -32,7 +32,7 @@ const {
   PROTOCOL_NAME,
   PROTOCOL_VERSION,
   STRUCTURED_SCHEMA_VERSION,
-  DECISION_SOURCE_FORMAT_MESSAGES,
+  DECISION_SOURCE_FORMAT_TOOLS,
 } = require("./constants");
 
 function asString(value) {
@@ -135,14 +135,6 @@ function mergePatch(base, patch) {
     }
   }
   return result;
-}
-
-function parseJsonStrict(raw) {
-  const direct = asString(raw);
-  if (!direct) {
-    throw new Error("empty ai response");
-  }
-  return JSON.parse(direct);
 }
 
 function findTemplateById(templates, templateId) {
@@ -514,17 +506,25 @@ function shouldRunCriticLoop({
   );
 }
 
-function normalizeTurnDecisionFromStructuredResponse(rawDecision, assistantFallback = "") {
-  const decision = isObjectLike(rawDecision) ? rawDecision : {};
-  const mode = asString(decision.mode).toUpperCase();
-  return {
-    assistantMessage: asString(decision.assistantMessage) || asString(assistantFallback),
-    sourceFormat: DECISION_SOURCE_FORMAT_MESSAGES,
-    schemaVersion: STRUCTURED_SCHEMA_VERSION,
-    forceProposal: mode === "PROPOSAL",
-    rawCandidates: coerceProposalCandidates(decision),
-    parseError: false,
-  };
+function normalizeRawCandidatesFromToolCalls(rawToolCalls = []) {
+  const calls = Array.isArray(rawToolCalls) ? rawToolCalls : [];
+  const normalized = [];
+  for (const item of calls.slice(0, MAX_PROPOSAL_CANDIDATES)) {
+    if (!isObjectLike(item)) {
+      continue;
+    }
+    normalized.push({
+      templateId: asString(item.templateId),
+      branchId: asString(item.branchId),
+      title: asString(item.title),
+      rationale: asString(item.rationale),
+      confidence: Number.isFinite(Number(item.confidence)) ? Number(item.confidence) : 0.72,
+      policyPatch: isObjectLike(item.policyPatch) ? item.policyPatch : {},
+    });
+  }
+  return normalized.filter(
+    (item) => item.templateId && item.branchId && item.title && item.rationale
+  );
 }
 
 function buildTurnFromCandidateEvaluation({
@@ -1154,7 +1154,6 @@ function createStrategyAgentService(options = {}) {
     apiKey,
     timeoutMs,
     maxRetries,
-    parseJsonStrict,
   });
   const rawDebugEnabled =
     options.rawDebugEnabled !== undefined
@@ -1670,7 +1669,14 @@ function createStrategyAgentService(options = {}) {
       maybeRunPostPublishMonitorAndMemory({ input: state.input, turn: state.turn }),
   });
 
-  async function resolveTurnFromStructuredMessages({ input, assistantMessage }) {
+  // Streaming delivers assistant text tokens in real time.
+  // Preferred path: single pass with tool calls for proposals.
+  // If no proposal tool call is produced, turn stays chat-only.
+  async function* streamStrategyChatTurn(input) {
+    if (REMOTE_PROVIDERS.has(provider) && !apiKey) {
+      const keyName = PROVIDER_API_KEY_ENV[provider] || "API_KEY";
+      throw new Error(`${keyName} is required for provider=${provider}`);
+    }
     const templateCatalog = listStrategyTemplates().map((item) => ({
       templateId: item.templateId,
       branches: Array.isArray(item.branches)
@@ -1678,72 +1684,46 @@ function createStrategyAgentService(options = {}) {
         : [],
       defaultBranchId: item.defaultBranchId
     }));
-    const decisionMessages = buildDecisionMessages({
-      userMessage: input && input.userMessage,
-      assistantMessage,
-      templateCatalog,
-      schemaVersion: STRUCTURED_SCHEMA_VERSION,
-    });
-    printRawBlock(rawDebugEnabled, "DECISION_INPUT_MESSAGES", decisionMessages);
-    try {
-      const decisionCall = await modelGateway.invokeChatWithRaw(decisionMessages, {
-        ...buildStructuredOutputOptions(
-          "mq_strategy_turn_decision",
-          TURN_DECISION_OUTPUT_ZOD_SCHEMA
-        )
-      });
-      printRawBlock(rawDebugEnabled, "DECISION_OUTPUT_RAW", decisionCall.rawText || "");
-      const parsed = normalizeTurnDecisionFromStructuredResponse(
-        decisionCall.parsed,
-        assistantMessage
-      );
-      const { normalizedCandidates, invalidCandidates } = normalizeCandidatesFromRaw({
-        rawCandidates: parsed.rawCandidates,
-        input,
-        provider,
-        model,
-      });
-      return buildTurnFromCandidateEvaluation({
-        assistantMessage: parsed.assistantMessage,
-        sourceFormat: parsed.sourceFormat,
-        schemaVersion: parsed.schemaVersion,
-        forceProposal: parsed.forceProposal,
-        parseError: false,
-        normalizedCandidates,
-        invalidCandidates,
-      });
-    } catch (error) {
-      return {
-        status: "CHAT_REPLY",
-        assistantMessage:
-          asString(assistantMessage) ||
-          "Please tell me your goal, budget, and expected time window.",
-        protocol: {
-          name: PROTOCOL_NAME,
-          version: PROTOCOL_VERSION,
-          constrained: true,
-          sourceFormat: "structured_decision_failed",
-          schemaVersion: STRUCTURED_SCHEMA_VERSION,
-          error: summarizeError(error),
-        },
-      };
-    }
-  }
-
-  // Streaming delivers assistant text tokens in real time.
-  // Structured decision (chat/proposal) is resolved in a second strict-schema call.
-  async function* streamStrategyChatTurn(input) {
-    if (REMOTE_PROVIDERS.has(provider) && !apiKey) {
-      const keyName = PROVIDER_API_KEY_ENV[provider] || "API_KEY";
-      throw new Error(`${keyName} is required for provider=${provider}`);
-    }
     const prompt = buildChatPromptPayload({
       userMessage: input.userMessage,
+      templateCatalog,
     });
     printRawBlock(rawDebugEnabled, "STREAM_INPUT_MESSAGES", prompt.messages);
 
+    const rawToolCandidates = [];
+    if (input && Array.isArray(input.toolProposalCandidates)) {
+      rawToolCandidates.push(...input.toolProposalCandidates.filter(isObjectLike));
+    }
+    const proposalTool = tool(
+      async (proposalInput) => {
+        const candidate = isObjectLike(proposalInput) ? proposalInput : {};
+        rawToolCandidates.push({
+          templateId: asString(candidate.templateId),
+          branchId: asString(candidate.branchId),
+          title: asString(candidate.title),
+          rationale: asString(candidate.rationale),
+          confidence: Number.isFinite(Number(candidate.confidence))
+            ? Number(candidate.confidence)
+            : 0.72,
+          policyPatch: isObjectLike(candidate.policyPatch) ? candidate.policyPatch : {},
+        });
+        return {
+          accepted: true,
+          proposal: rawToolCandidates[rawToolCandidates.length - 1],
+        };
+      },
+      {
+        name: "propose_policy_draft",
+        description:
+          "Create one strategy proposal candidate for policy drafting with templateId, branchId, rationale and policyPatch.",
+        schema: PROPOSAL_TOOL_INPUT_ZOD_SCHEMA,
+      }
+    );
+
     let rawBuffer = "";
-    const streamIterator = modelGateway.streamChatEvents(prompt.messages);
+    const streamIterator = modelGateway.streamChatEvents(prompt.messages, {
+      tools: [proposalTool],
+    });
     let tokenSeq = 0;
 
     for await (const streamItem of streamIterator) {
@@ -1772,6 +1752,21 @@ function createStrategyAgentService(options = {}) {
         continue;
       }
       const chunk = typeof streamItem.text === "string" ? streamItem.text : "";
+      if (streamType === "tool_result") {
+        const toolOutput = isObjectLike(streamItem.output) ? streamItem.output : {};
+        if (isObjectLike(toolOutput.proposal)) {
+          rawToolCandidates.push(toolOutput.proposal);
+        }
+        if (Array.isArray(toolOutput.proposals)) {
+          rawToolCandidates.push(...toolOutput.proposals.filter(isObjectLike));
+        }
+        yield {
+          type: "tool_result",
+          toolName: asString(streamItem.toolName),
+          output: streamItem.output,
+        };
+        continue;
+      }
       if (!chunk) {
         continue;
       }
@@ -1784,11 +1779,41 @@ function createStrategyAgentService(options = {}) {
       };
     }
     printRawBlock(rawDebugEnabled, "STREAM_OUTPUT_RAW", rawBuffer);
+    printRawBlock(rawDebugEnabled, "STREAM_TOOL_CANDIDATES_RAW", rawToolCandidates);
 
-    const parsedTurn = await resolveTurnFromStructuredMessages({
-      input,
-      assistantMessage: rawBuffer
-    });
+    let parsedTurn;
+    const normalizedRawToolCandidates = normalizeRawCandidatesFromToolCalls(rawToolCandidates);
+    if (normalizedRawToolCandidates.length > 0) {
+      const { normalizedCandidates, invalidCandidates } = normalizeCandidatesFromRaw({
+        rawCandidates: normalizedRawToolCandidates,
+        input,
+        provider,
+        model,
+      });
+      parsedTurn = buildTurnFromCandidateEvaluation({
+        assistantMessage: asString(rawBuffer),
+        sourceFormat: DECISION_SOURCE_FORMAT_TOOLS,
+        schemaVersion: STRUCTURED_SCHEMA_VERSION,
+        forceProposal: true,
+        parseError: false,
+        normalizedCandidates,
+        invalidCandidates,
+      });
+    } else {
+      parsedTurn = {
+        status: "CHAT_REPLY",
+        assistantMessage:
+          asString(rawBuffer) ||
+          "Please tell me your goal, budget, and expected time window.",
+        protocol: {
+          name: PROTOCOL_NAME,
+          version: PROTOCOL_VERSION,
+          constrained: true,
+          sourceFormat: "langchain_messages_chat_only",
+          schemaVersion: STRUCTURED_SCHEMA_VERSION,
+        },
+      };
+    }
     const pipelineResult = await decisionPipelineGraph.invoke({
       input,
       turn: parsedTurn
