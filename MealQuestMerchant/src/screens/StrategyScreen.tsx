@@ -50,6 +50,7 @@ export default function StrategyScreen() {
         onCreateIntentProposal,
         onRetryMessage,
         strategyChatMessages,
+        activeAgentProgress,
         strategyChatPendingReview,
         strategyChatEvaluation,
         strategyChatEvaluationReady,
@@ -116,6 +117,20 @@ export default function StrategyScreen() {
                     keyboardDismissMode="on-drag"
                     keyboardShouldPersistTaps="handled"
                 >
+                    {activeAgentProgress ? (
+                        <View style={styles.progressWrap}>
+                            <Text style={styles.progressTitle}>Agent Progress</Text>
+                            <Text style={styles.progressText}>
+                                {activeAgentProgress.phase} | {activeAgentProgress.status}
+                            </Text>
+                            <Text style={styles.progressText}>
+                                Tokens {activeAgentProgress.tokenCount} | {Math.max(0, Math.round(activeAgentProgress.elapsedMs))}ms
+                            </Text>
+                            {activeAgentProgress.error ? (
+                                <Text style={styles.progressError}>{activeAgentProgress.error}</Text>
+                            ) : null}
+                        </View>
+                    ) : null}
                     {strategyChatMessages.length === 0 ? (
                         <View style={styles.emptyState}>
                             <Info size={32} color="#cbd5e1" />
@@ -364,6 +379,31 @@ const styles = StyleSheet.create({
         padding: 16,
         gap: 16,
         paddingBottom: 24,
+    },
+    progressWrap: {
+        backgroundColor: '#f0fdfa',
+        borderWidth: 1,
+        borderColor: '#99f6e4',
+        borderRadius: 10,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        marginBottom: 4,
+    },
+    progressTitle: {
+        fontSize: 12,
+        fontWeight: '800',
+        color: '#0f766e',
+        marginBottom: 2,
+    },
+    progressText: {
+        fontSize: 12,
+        color: '#134e4a',
+    },
+    progressError: {
+        marginTop: 4,
+        fontSize: 12,
+        color: '#b91c1c',
+        fontWeight: '700',
     },
     messageRow: {
         width: '100%',

@@ -2000,7 +2000,8 @@ function createMerchantService(db, options = {}) {
   async function sendStrategyChatMessage({
     merchantId,
     operatorId = "system",
-    content = ""
+    content = "",
+    streamObserver = null,
   }) {
     const freshResult = await runWithFreshState("sendStrategyChatMessage", {
       merchantId,
@@ -2068,33 +2069,40 @@ function createMerchantService(db, options = {}) {
       userMessage: text,
     };
 
-    // Event streaming: broadcast START/CHUNK/END over WS, then publish final delta state.
+    // Event streaming: broadcast LangChain-style semantic events over WS, then publish final delta state.
     let aiTurn;
     const assistantMessageId = `msg_${Date.now()}_ai`;
     const streamId = `stream_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const emitStreamEvent = (phase, extras = {}) => {
-      if (!wsHub) {
-        return;
-      }
-      wsHub.broadcast(merchantId, "STRATEGY_CHAT_STREAM_EVENT", {
+    const emitStreamEvent = (eventName, data = {}, extras = {}) => {
+      const payload = {
         sessionId: session.sessionId,
         streamId,
-        phase,
+        protocol: "langchain.stream_events.v2",
+        event: String(eventName || ""),
+        data: data && typeof data === "object" ? data : {},
         userMessageId: userMessageWrapper.messageId,
         assistantMessageId,
+        at: new Date().toISOString(),
         ...extras
-      });
+      };
+      if (typeof streamObserver === "function") {
+        try {
+          streamObserver(payload);
+        } catch {
+          // ignore stream observer errors
+        }
+      }
+      const shouldBroadcastToWs = typeof streamObserver !== "function";
+      if (!wsHub || !shouldBroadcastToWs) {
+        return;
+      }
+      wsHub.broadcast(merchantId, "STRATEGY_CHAT_STREAM_EVENT", payload);
     };
     try {
       let fullText = "";
       let streamStarted = false;
       let streamEnded = false;
       const gen = strategyAgentService.streamStrategyChatTurn(aiInput);
-      emitStreamEvent("START", {
-        userText: userMessageWrapper.text,
-        startedAt: new Date().toISOString()
-      });
-      streamStarted = true;
       // Drain generator: yield = stream event, done.value = parsed aiTurn
       let next = await gen.next();
       while (!next.done) {
@@ -2108,16 +2116,18 @@ function createMerchantService(db, options = {}) {
           .toUpperCase();
         if (eventType === "START") {
           if (!streamStarted) {
-            emitStreamEvent("START", {
-              userText: userMessageWrapper.text,
-              startedAt: new Date().toISOString()
+            emitStreamEvent("on_chat_model_start", {
+              input: userMessageWrapper.text,
+              runId: typeof event.runId === "string" ? event.runId : ""
             });
             streamStarted = true;
           }
         } else if (eventType === "END") {
-          emitStreamEvent("END", {
-            text: fullText,
-            endedAt: new Date().toISOString()
+          emitStreamEvent("on_chat_model_end", {
+            output: {
+              text: fullText
+            },
+            runId: typeof event.runId === "string" ? event.runId : ""
           });
           streamEnded = true;
         } else if (eventType === "TOKEN") {
@@ -2127,26 +2137,36 @@ function createMerchantService(db, options = {}) {
             continue;
           }
           fullText += token;
-          emitStreamEvent("CHUNK", {
-            textDelta: token,
-            text: fullText,
-            seq: Number(event.seq) || undefined,
-            at: new Date().toISOString()
+          emitStreamEvent("on_chat_model_stream", {
+            chunk: {
+              text: token
+            },
+            seq: Number(event.seq) || undefined
           });
         }
         next = await gen.next();
       }
+      if (!streamStarted) {
+        emitStreamEvent("on_chat_model_start", {
+          input: userMessageWrapper.text,
+          runId: ""
+        });
+        streamStarted = true;
+      }
       if (!streamEnded) {
-        emitStreamEvent("END", {
-          text: fullText,
-          endedAt: new Date().toISOString()
+        emitStreamEvent("on_chat_model_end", {
+          output: {
+            text: fullText
+          },
+          runId: ""
         });
       }
       aiTurn = next.value;
     } catch (err) {
-      emitStreamEvent("ERROR", {
-        reason: err && err.message ? String(err.message) : "stream_failed",
-        failedAt: new Date().toISOString()
+      emitStreamEvent("on_chat_model_error", {
+        error: {
+          message: err && err.message ? String(err.message) : "stream_failed"
+        }
       });
       aiTurn = null;
     }

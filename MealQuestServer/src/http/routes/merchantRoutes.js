@@ -32,6 +32,69 @@ function createMerchantRoutesHandler({
     return runner(actualDb);
   }
 
+  function readMessageText(message) {
+    if (!message || typeof message !== "object") {
+      return "";
+    }
+    if (typeof message.content === "string") {
+      return message.content;
+    }
+    if (Array.isArray(message.content)) {
+      return message.content
+        .map((part) => {
+          if (typeof part === "string") {
+            return part;
+          }
+          if (!part || typeof part !== "object") {
+            return "";
+          }
+          if (typeof part.text === "string") {
+            return part.text;
+          }
+          if (typeof part.content === "string") {
+            return part.content;
+          }
+          return "";
+        })
+        .filter(Boolean)
+        .join("")
+        .trim();
+    }
+    return "";
+  }
+
+  function extractLatestHumanText(input) {
+    if (!input || typeof input !== "object") {
+      return "";
+    }
+    if (typeof input.userMessage === "string" && input.userMessage.trim()) {
+      return input.userMessage.trim();
+    }
+    const messages = Array.isArray(input.messages) ? input.messages : [];
+    for (let idx = messages.length - 1; idx >= 0; idx -= 1) {
+      const item = messages[idx];
+      if (!item || typeof item !== "object") {
+        continue;
+      }
+      const role = String(item.type || item.role || "").trim().toLowerCase();
+      if (role !== "human" && role !== "user") {
+        continue;
+      }
+      const text = readMessageText(item);
+      if (text) {
+        return text;
+      }
+    }
+    return "";
+  }
+
+  function writeSseEvent(res, eventName, data) {
+    const safeEvent = String(eventName || "").trim() || "custom";
+    const safeData = data === undefined ? null : data;
+    res.write(`event: ${safeEvent}\n`);
+    res.write(`data: ${JSON.stringify(safeData)}\n\n`);
+  }
+
   return async function handleMerchantRoutes({ method, url, req, auth, res }) {
     if (method === "GET" && url.pathname === "/api/merchant/dashboard") {
       ensureRole(auth, MERCHANT_ROLES);
@@ -49,7 +112,208 @@ function createMerchantRoutesHandler({
       return true;
     }
 
-    // AI Strategy Chat HTTP routes removed (now WS-only)
+    if (method === "POST" && url.pathname === "/api/merchant/strategy-chat/stream") {
+      ensureRole(auth, MERCHANT_ROLES);
+      const body = await readJsonBody(req);
+      const merchantId =
+        auth.merchantId ||
+        (body && body.context && body.context.merchantId) ||
+        body.merchantId ||
+        "";
+      if (!merchantId) {
+        sendJson(res, 400, { error: "merchantId is required" });
+        return true;
+      }
+      if (auth.merchantId && auth.merchantId !== merchantId) {
+        sendJson(res, 403, { error: "merchant scope denied" });
+        return true;
+      }
+      if (
+        !enforceTenantPolicyForHttp({
+          tenantPolicyManager,
+          merchantId,
+          operation: "STRATEGY_CHAT_WRITE",
+          res,
+          auth,
+          appendAuditLog,
+        })
+      ) {
+        return true;
+      }
+      const content = extractLatestHumanText(body && body.input);
+      if (!content) {
+        sendJson(res, 400, { error: "input.messages with latest human text is required" });
+        return true;
+      }
+
+      const { merchantService } = getServicesForMerchant(merchantId);
+      const startedAtMs = Date.now();
+      let tokenCount = 0;
+      const streamState = {
+        userMessageId: "",
+        assistantMessageId: "",
+        userText: content,
+        assistantText: "",
+      };
+      const emitProgress = (phase, status = "running", extras = {}) => {
+        writeSseEvent(res, "custom", {
+          kind: "agent_progress",
+          payload: {
+            phase: String(phase || "UNKNOWN"),
+            status: String(status || "running"),
+            tokenCount,
+            elapsedMs: Math.max(0, Date.now() - startedAtMs),
+            at: new Date().toISOString(),
+            ...extras,
+          },
+        });
+      };
+      const toValues = () => ({
+        messages: [
+          {
+            id: streamState.userMessageId || `m_user_${Date.now()}`,
+            type: "human",
+            content: streamState.userText,
+          },
+          {
+            id: streamState.assistantMessageId || `m_ai_${Date.now()}`,
+            type: "ai",
+            content: streamState.assistantText,
+          },
+        ],
+      });
+
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
+      });
+      if (typeof res.flushHeaders === "function") {
+        res.flushHeaders();
+      }
+
+      try {
+        writeSseEvent(res, "metadata", {
+          protocol: "langchain.stream_events.v2",
+          merchantId,
+        });
+        emitProgress("REQUEST_ACCEPTED");
+        emitProgress("AGENT_EXECUTION_START");
+        const result = await merchantService.sendStrategyChatMessage({
+          merchantId,
+          operatorId: auth.operatorId || "system",
+          content,
+          streamObserver: (eventPayload) => {
+            if (!eventPayload || typeof eventPayload !== "object") {
+              return;
+            }
+            const eventName = String(eventPayload.event || "").trim().toLowerCase();
+            if (eventPayload.userMessageId) {
+              streamState.userMessageId = String(eventPayload.userMessageId);
+            }
+            if (eventPayload.assistantMessageId) {
+              streamState.assistantMessageId = String(eventPayload.assistantMessageId);
+            }
+            const data =
+              eventPayload.data && typeof eventPayload.data === "object"
+                ? eventPayload.data
+                : {};
+            if (eventName === "on_chat_model_start") {
+              if (typeof data.input === "string" && data.input.trim()) {
+                streamState.userText = data.input.trim();
+              }
+              emitProgress("LLM_STREAM_START");
+              writeSseEvent(res, "values", toValues());
+              return;
+            }
+            if (eventName === "on_chat_model_stream") {
+              const chunk =
+                data.chunk && typeof data.chunk === "object" ? data.chunk : {};
+              const token = typeof chunk.text === "string" ? chunk.text : "";
+              if (!token) {
+                return;
+              }
+              tokenCount += 1;
+              if (tokenCount === 1 || tokenCount % 8 === 0) {
+                emitProgress("LLM_TOKEN_STREAMING");
+              }
+              streamState.assistantText += token;
+              writeSseEvent(res, "values", toValues());
+              return;
+            }
+            if (eventName === "on_chat_model_end") {
+              const output =
+                data.output && typeof data.output === "object" ? data.output : {};
+              if (typeof output.text === "string") {
+                streamState.assistantText = output.text;
+              }
+              emitProgress("LLM_STREAM_END", "completed");
+              writeSseEvent(res, "values", toValues());
+              return;
+            }
+            if (eventName === "on_chat_model_error") {
+              emitProgress("LLM_STREAM_ERROR", "failed");
+              writeSseEvent(res, "error", {
+                error: {
+                  message:
+                    data &&
+                    data.error &&
+                    typeof data.error === "object" &&
+                    typeof data.error.message === "string"
+                      ? data.error.message
+                      : "strategy chat stream failed",
+                },
+              });
+            }
+          },
+        });
+
+        if (!streamState.assistantText && typeof result.assistantMessage === "string") {
+          streamState.assistantText = result.assistantMessage;
+          writeSseEvent(res, "values", toValues());
+        }
+        emitProgress("DECISION_FINALIZING");
+        writeSseEvent(res, "custom", {
+          kind: "strategy_chat_delta",
+          payload: result,
+        });
+        emitProgress("AGENT_EXECUTION_END", "completed", {
+          resultStatus: result.status || "",
+        });
+        appendAuditLog({
+          merchantId,
+          action: "STRATEGY_CHAT_MESSAGE",
+          status: "SUCCESS",
+          auth,
+          details: {
+            sessionId: result.sessionId || null,
+            status: result.status || null,
+          },
+        });
+        res.end();
+      } catch (error) {
+        emitProgress("AGENT_EXECUTION_END", "failed", {
+          error: error && error.message ? String(error.message) : "strategy chat stream failed",
+        });
+        writeSseEvent(res, "error", {
+          error: {
+            message: error && error.message ? String(error.message) : "strategy chat stream failed",
+          },
+        });
+        appendAuditLog({
+          merchantId,
+          action: "STRATEGY_CHAT_MESSAGE",
+          status: "FAILED",
+          auth,
+          details: {
+            error: error && error.message ? String(error.message) : "strategy chat stream failed",
+          },
+        });
+        res.end();
+      }
+      return true;
+    }
 
 
     const strategyChatReviewMatch = url.pathname.match(

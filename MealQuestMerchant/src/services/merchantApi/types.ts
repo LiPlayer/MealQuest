@@ -149,17 +149,11 @@ export interface StrategyChatStatePayload {
 export interface StrategyChatStreamEvent {
   sessionId: string | null;
   streamId: string;
-  phase: 'START' | 'CHUNK' | 'END' | 'ERROR';
+  protocol?: string;
+  event: string;
+  data?: Record<string, unknown> | null;
   userMessageId?: string;
   assistantMessageId?: string;
-  userText?: string;
-  textDelta?: string;
-  text?: string;
-  seq?: number;
-  reason?: string;
-  startedAt?: string;
-  endedAt?: string;
-  failedAt?: string;
   at?: string;
 }
 

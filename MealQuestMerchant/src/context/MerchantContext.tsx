@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { FetchStreamTransport, useStream } from '@langchain/langgraph-sdk/react';
 import { MerchantApi } from '../services/merchantApi';
 import {
     AuditLogRow,
@@ -66,6 +67,16 @@ export type StrategyChatDelta = {
     deltaMessages?: StrategyChatMessage[];
 };
 
+export type AgentProgressEvent = {
+    phase: string;
+    status: string;
+    tokenCount: number;
+    elapsedMs: number;
+    at: string;
+    resultStatus?: string;
+    error?: string;
+};
+
 export function buildAuditStartTime(range: AuditTimeRange): string {
     if (range === 'ALL') return '';
     const now = Date.now();
@@ -111,6 +122,8 @@ interface MerchantContextType {
     strategyChatPendingReview: StrategyChatPendingReview | null;
     strategyChatEvaluation: PolicyDecisionResult | null;
     strategyChatEvaluationReady: boolean;
+    agentProgressEvents: AgentProgressEvent[];
+    activeAgentProgress: AgentProgressEvent | null;
     pendingReviewCount: number;
     totalReviewCount: number;
     currentReviewIndex: number;
@@ -186,6 +199,7 @@ export function MerchantProvider({
     const [strategyChatPendingReviews, setStrategyChatPendingReviews] = useState<StrategyChatPendingReview[]>([]);
     const [strategyChatReviewProgress, setStrategyChatReviewProgress] = useState<StrategyChatReviewProgress | null>(null);
     const [strategyChatEvaluation, setStrategyChatEvaluation] = useState<PolicyDecisionResult | null>(null);
+    const [agentProgressEvents, setAgentProgressEvents] = useState<AgentProgressEvent[]>([]);
 
     const [contractStatus, setContractStatus] = useState<'LOADING' | 'NOT_SUBMITTED' | 'SUBMITTED'>('LOADING');
     const [wsConnected, setWsConnected] = useState(false);
@@ -200,6 +214,7 @@ export function MerchantProvider({
         !strategyChatPendingReview?.evaluation?.evaluateError,
     );
     const strategyChatEvaluationReady = Boolean(strategyChatEvaluation) || autoEvaluationReady;
+    const activeAgentProgress = agentProgressEvents.length > 0 ? agentProgressEvents[agentProgressEvents.length - 1] : null;
 
     const visibleRealtimeEvents = useMemo(
         () => (showOnlyAnomaly ? realtimeEvents.filter(item => item.isAnomaly) : realtimeEvents),
@@ -311,26 +326,192 @@ export function MerchantProvider({
         });
     };
 
+    const strategyStreamTransport = useMemo(() => {
+        const baseUrl = MerchantApi.getBaseUrl();
+        if (!baseUrl) {
+            return new FetchStreamTransport({
+                apiUrl: 'http://127.0.0.1:65535/__disabled__',
+            });
+        }
+        return new FetchStreamTransport({
+            apiUrl: `${baseUrl}/api/merchant/strategy-chat/stream`,
+            defaultHeaders: remoteToken ? { Authorization: `Bearer ${remoteToken}` } : undefined,
+            onRequest: async (_url, init) => {
+                let body: Record<string, unknown> = {};
+                if (typeof init.body === 'string') {
+                    try {
+                        body = JSON.parse(init.body);
+                    } catch {
+                        body = {};
+                    }
+                }
+                const merchantId = String(MerchantApi.getMerchantId() || merchantState.merchantId || '').trim();
+                const context =
+                    body.context && typeof body.context === 'object'
+                        ? body.context as Record<string, unknown>
+                        : {};
+                return {
+                    ...init,
+                    body: JSON.stringify({
+                        ...body,
+                        context: {
+                            ...context,
+                            merchantId,
+                        },
+                    }),
+                };
+            },
+        });
+    }, [merchantState.merchantId, remoteToken]);
+
+    const strategyChatStream = useStream<{ messages: Array<Record<string, unknown>> }>({
+        transport: strategyStreamTransport,
+        threadId: strategyChatSessionId || undefined,
+        onThreadId: id => {
+            if (typeof id === 'string' && id.trim()) {
+                setStrategyChatSessionId(id.trim());
+            }
+        },
+        initialValues: { messages: [] },
+        throttle: 0,
+        onCustomEvent: data => {
+            if (!data || typeof data !== 'object') return;
+            const envelope = data as Record<string, unknown>;
+            const kind = String(envelope.kind || '').trim().toLowerCase();
+            if (kind === 'strategy_chat_delta') {
+                const payload = envelope.payload;
+                if (!payload || typeof payload !== 'object') return;
+                applyStrategyChatDelta(payload as StrategyChatDelta);
+                return;
+            }
+            if (kind === 'agent_progress') {
+                const payload = envelope.payload;
+                if (!payload || typeof payload !== 'object') return;
+                const raw = payload as Record<string, unknown>;
+                const event: AgentProgressEvent = {
+                    phase: String(raw.phase || 'UNKNOWN'),
+                    status: String(raw.status || 'running'),
+                    tokenCount: Number(raw.tokenCount) || 0,
+                    elapsedMs: Number(raw.elapsedMs) || 0,
+                    at: typeof raw.at === 'string' && raw.at.trim() ? raw.at : new Date().toISOString(),
+                    resultStatus:
+                        raw.resultStatus === undefined || raw.resultStatus === null
+                            ? undefined
+                            : String(raw.resultStatus || ''),
+                    error:
+                        raw.error === undefined || raw.error === null
+                            ? undefined
+                            : String(raw.error || ''),
+                };
+                setAgentProgressEvents(prev => {
+                    const next = [...prev, event];
+                    if (next.length <= 120) return next;
+                    return next.slice(next.length - 120);
+                });
+            }
+        },
+        onError: error => {
+            const msg =
+                error && typeof error === 'object' && 'message' in error
+                    ? String((error as { message?: unknown }).message || '')
+                    : '';
+            if (msg) {
+                setLastAction(`AI stream failed: ${msg}`);
+            }
+        },
+    });
+
+    useEffect(() => {
+        if (!strategyChatStream.isLoading) {
+            return;
+        }
+        const streamMessages = Array.isArray(strategyChatStream.messages)
+            ? strategyChatStream.messages
+            : [];
+        const normalizeContent = (content: unknown): string => {
+            if (typeof content === 'string') return content;
+            if (Array.isArray(content)) {
+                return content
+                    .map(part => {
+                        if (typeof part === 'string') return part;
+                        if (!part || typeof part !== 'object') return '';
+                        if ('text' in part && typeof (part as { text?: unknown }).text === 'string') {
+                            return String((part as { text?: unknown }).text || '');
+                        }
+                        return '';
+                    })
+                    .join('');
+            }
+            if (content && typeof content === 'object' && 'text' in content) {
+                const text = (content as { text?: unknown }).text;
+                if (typeof text === 'string') return text;
+            }
+            return '';
+        };
+        const mapped: StrategyChatMessageWithStatus[] = streamMessages
+            .map((item, idx) => {
+                const safe = item && typeof item === 'object' ? item : {};
+                const typeRaw = String((safe as Record<string, unknown>).type || '').trim().toLowerCase();
+                const role = typeRaw === 'human' ? 'USER' : 'ASSISTANT';
+                const messageIdRaw = (safe as Record<string, unknown>).id;
+                const messageId = typeof messageIdRaw === 'string' && messageIdRaw.trim()
+                    ? messageIdRaw.trim()
+                    : `lg_stream_${idx}`;
+                return {
+                    messageId,
+                    role,
+                    type: 'TEXT',
+                    text: normalizeContent((safe as Record<string, unknown>).content),
+                    proposalId: null,
+                    metadata: null,
+                    createdAt: new Date().toISOString(),
+                    isStreaming:
+                        strategyChatStream.isLoading &&
+                        idx === streamMessages.length - 1 &&
+                        role === 'ASSISTANT',
+                    deliveryStatus: 'sent',
+                };
+            });
+        if (mapped.length === 0) {
+            return;
+        }
+        setStrategyChatMessages(prev => {
+            const merged = prev.filter(
+                m => !(m.messageId.startsWith('opt_ai_') || m.messageId.startsWith('opt_user_')),
+            );
+            const indexById = new Map(merged.map((item, index) => [item.messageId, index]));
+            for (const item of mapped) {
+                const index = indexById.get(item.messageId);
+                if (index === undefined) {
+                    indexById.set(item.messageId, merged.length);
+                    merged.push(item);
+                } else {
+                    merged[index] = {
+                        ...merged[index],
+                        ...item,
+                    };
+                }
+            }
+            return merged;
+        });
+    }, [strategyChatStream.isLoading, strategyChatStream.messages]);
+
     const normalizeStrategyChatStreamEvent = (payload: Record<string, unknown> | null | undefined): StrategyChatStreamEvent | null => {
         if (!payload || typeof payload !== 'object') return null;
         const streamId = String(payload.streamId || '').trim();
-        const phaseRaw = String(payload.phase || '').trim().toUpperCase();
-        const allowedPhases = new Set(['START', 'CHUNK', 'END', 'ERROR']);
-        if (!streamId || !allowedPhases.has(phaseRaw)) return null;
+        const eventName = String(payload.event || '').trim();
+        if (!streamId || !eventName) return null;
+        const data = payload.data && typeof payload.data === 'object'
+            ? payload.data as Record<string, unknown>
+            : null;
         return {
             sessionId: payload.sessionId === null || payload.sessionId === undefined ? null : String(payload.sessionId),
             streamId,
-            phase: phaseRaw as StrategyChatStreamEvent['phase'],
+            protocol: payload.protocol === undefined ? undefined : String(payload.protocol || ''),
+            event: eventName,
+            data,
             userMessageId: payload.userMessageId === undefined ? undefined : String(payload.userMessageId || ''),
             assistantMessageId: payload.assistantMessageId === undefined ? undefined : String(payload.assistantMessageId || ''),
-            userText: payload.userText === undefined ? undefined : String(payload.userText || ''),
-            textDelta: payload.textDelta === undefined ? undefined : String(payload.textDelta || ''),
-            text: payload.text === undefined ? undefined : String(payload.text || ''),
-            seq: payload.seq === undefined ? undefined : Number(payload.seq),
-            reason: payload.reason === undefined ? undefined : String(payload.reason || ''),
-            startedAt: payload.startedAt === undefined ? undefined : String(payload.startedAt || ''),
-            endedAt: payload.endedAt === undefined ? undefined : String(payload.endedAt || ''),
-            failedAt: payload.failedAt === undefined ? undefined : String(payload.failedAt || ''),
             at: payload.at === undefined ? undefined : String(payload.at || ''),
         };
     };
@@ -481,6 +662,7 @@ export function MerchantProvider({
         setStrategyChatPendingReviews([]);
         setStrategyChatReviewProgress(null);
         setStrategyChatEvaluation(null);
+        setAgentProgressEvents([]);
 
         // Static session initialization (local only, no HTTP)
         const merchantId = MerchantApi.getMerchantId();
@@ -512,12 +694,12 @@ export function MerchantProvider({
 
     const onCreateIntentProposal = async () => {
         if (!remoteToken) { setLastAction('连接未就绪'); return; }
-        if (!wsConnected || !realtimeClientRef.current) { setLastAction('实时连接已断开'); return; }
         const intent = aiIntentDraft.trim();
         if (intent.length < 4) { setLastAction('请输入更具体的经营需求（至少4个字）'); return; }
         if (strategyChatPendingReviews.length > 0) { setLastAction('存在待审核策略，请先确认或拒绝'); return; }
 
         setAiIntentSubmitting(true);
+        setAgentProgressEvents([]);
         const optimisticUserMsgId = `opt_user_${Date.now()}`;
         const optimisticAiMsgId = `opt_ai_${Date.now()}`;
 
@@ -542,24 +724,28 @@ export function MerchantProvider({
         setAiIntentDraft('');
 
         try {
-            await ensureStrategyChatSession();
-            realtimeClientRef.current.send({
-                type: 'STRATEGY_CHAT_SEND_MESSAGE',
-                merchantId: MerchantApi.getMerchantId(),
-                payload: { content: intent },
-                timestamp: new Date().toISOString()
-            });
-
-            // Status tracking timeout
-            setTimeout(() => {
-                setStrategyChatMessages(prev => {
-                    const msg = prev.find(m => m.messageId === optimisticUserMsgId);
-                    if (msg && msg.deliveryStatus === 'sending') {
-                        return prev.map(m => m.messageId === optimisticUserMsgId ? { ...m, deliveryStatus: 'failed' } : m);
-                    }
-                    return prev;
-                });
-            }, 8000);
+            const sessionId = await ensureStrategyChatSession();
+            await strategyChatStream.submit(
+                {
+                    messages: [
+                        {
+                            type: 'human',
+                            content: intent,
+                        },
+                    ],
+                },
+                {
+                    context: {
+                        merchantId: MerchantApi.getMerchantId(),
+                        sessionId,
+                    },
+                    config: {
+                        configurable: {
+                            thread_id: sessionId,
+                        },
+                    },
+                },
+            );
 
         } catch (err: any) {
             setStrategyChatMessages(prev => prev.map(m => m.messageId === optimisticUserMsgId ? { ...m, deliveryStatus: 'failed' } : m));
@@ -573,27 +759,32 @@ export function MerchantProvider({
         const msg = strategyChatMessages.find(m => m.messageId === messageId);
         if (!msg || msg.role !== 'USER') return;
 
-        if (!wsConnected || !realtimeClientRef.current) { setLastAction('实时连接已断开'); return; }
-
+        setAgentProgressEvents([]);
         setStrategyChatMessages(prev => prev.map(m => m.messageId === messageId ? { ...m, deliveryStatus: 'sending' } : m));
 
         try {
-            realtimeClientRef.current.send({
-                type: 'STRATEGY_CHAT_SEND_MESSAGE',
-                merchantId: MerchantApi.getMerchantId(),
-                payload: { content: msg.text },
-                timestamp: new Date().toISOString()
-            });
-
-            setTimeout(() => {
-                setStrategyChatMessages(prev => {
-                    const current = prev.find(m => m.messageId === messageId);
-                    if (current && current.deliveryStatus === 'sending') {
-                        return prev.map(m => m.messageId === messageId ? { ...m, deliveryStatus: 'failed' } : m);
-                    }
-                    return prev;
-                });
-            }, 8000);
+            const sessionId = await ensureStrategyChatSession();
+            await strategyChatStream.submit(
+                {
+                    messages: [
+                        {
+                            type: 'human',
+                            content: msg.text,
+                        },
+                    ],
+                },
+                {
+                    context: {
+                        merchantId: MerchantApi.getMerchantId(),
+                        sessionId,
+                    },
+                    config: {
+                        configurable: {
+                            thread_id: sessionId,
+                        },
+                    },
+                },
+            );
         } catch {
             setStrategyChatMessages(prev => prev.map(m => m.messageId === messageId ? { ...m, deliveryStatus: 'failed' } : m));
         }
@@ -634,11 +825,31 @@ export function MerchantProvider({
     const applyStrategyChatStreamEvent = (event: StrategyChatStreamEvent) => {
         if (!event || typeof event !== 'object') return;
         if (event.sessionId) setStrategyChatSessionId(String(event.sessionId).trim());
-        const phase = String(event.phase || '').trim().toUpperCase();
+        const eventName = String(event.event || '').trim().toLowerCase();
+        const data = event.data && typeof event.data === 'object'
+            ? event.data
+            : {};
+        const chunk = data.chunk && typeof data.chunk === 'object'
+            ? data.chunk as Record<string, unknown>
+            : null;
+        const output = data.output && typeof data.output === 'object'
+            ? data.output as Record<string, unknown>
+            : null;
+        const errorObj = data.error && typeof data.error === 'object'
+            ? data.error as Record<string, unknown>
+            : null;
+        const userText = typeof data.input === 'string'
+            ? data.input
+            : (data.input && typeof data.input === 'object' && typeof (data.input as Record<string, unknown>).text === 'string')
+                ? String((data.input as Record<string, unknown>).text || '')
+                : '';
+        const deltaText = chunk && typeof chunk.text === 'string' ? chunk.text : '';
+        const outputText = output && typeof output.text === 'string' ? output.text : '';
+        const errorMessage = errorObj && typeof errorObj.message === 'string' ? errorObj.message : '';
         const assistantMessageId = String(event.assistantMessageId || '').trim();
         const userMessageId = String(event.userMessageId || '').trim();
 
-        if (phase === 'START') {
+        if (eventName === 'on_chat_model_start') {
             setStrategyChatMessages(prev => {
                 let merged = prev.filter(m => !(m.messageId.startsWith('opt_ai_') || m.messageId.startsWith('opt_user_')));
                 if (userMessageId) {
@@ -648,10 +859,10 @@ export function MerchantProvider({
                             messageId: userMessageId,
                             role: 'USER',
                             type: 'TEXT',
-                            text: String(event.userText || ''),
+                            text: userText,
                             proposalId: null,
                             metadata: null,
-                            createdAt: event.startedAt || new Date().toISOString(),
+                            createdAt: event.at || new Date().toISOString(),
                             isStreaming: false,
                             deliveryStatus: 'sent',
                         } as any);
@@ -669,7 +880,7 @@ export function MerchantProvider({
                             text: '',
                             proposalId: null,
                             metadata: null,
-                            createdAt: event.startedAt || new Date().toISOString(),
+                            createdAt: event.at || new Date().toISOString(),
                             isStreaming: true,
                             deliveryStatus: 'sent',
                         } as any);
@@ -680,8 +891,7 @@ export function MerchantProvider({
             return;
         }
 
-        if (phase === 'CHUNK') {
-            const deltaText = String(event.textDelta || '');
+        if (eventName === 'on_chat_model_stream') {
             if (!deltaText) return;
             setStrategyChatMessages(prev => {
                 const merged = prev.filter(m => !m.messageId.startsWith('opt_ai_'));
@@ -725,12 +935,12 @@ export function MerchantProvider({
             return;
         }
 
-        if (phase === 'END') {
+        if (eventName === 'on_chat_model_end') {
             setStrategyChatMessages(prev => prev.map(item => {
                 if (assistantMessageId && item.messageId === assistantMessageId) {
                     return {
                         ...item,
-                        text: event.text !== undefined ? String(event.text || '') : item.text,
+                        text: outputText || item.text,
                         isStreaming: false,
                         deliveryStatus: 'sent',
                     };
@@ -743,23 +953,23 @@ export function MerchantProvider({
             return;
         }
 
-        if (phase === 'ERROR') {
+        if (eventName === 'on_chat_model_error') {
             setStrategyChatMessages(prev => prev.map(item => {
                 if (assistantMessageId && item.messageId === assistantMessageId) {
                     return { ...item, isStreaming: false, deliveryStatus: 'failed' };
                 }
                 return item;
             }));
-            if (event.reason) {
-                setLastAction(`AI stream failed: ${String(event.reason)}`);
+            if (errorMessage) {
+                setLastAction(`AI stream failed: ${errorMessage}`);
             }
         }
     };
 
     const onTriggerProactiveScan = async () => {
         if (!remoteToken) { setLastAction('Connection not ready'); return; }
-        if (!wsConnected || !realtimeClientRef.current) { setLastAction('Realtime channel disconnected'); return; }
         if (strategyChatPendingReviews.length > 0) { setLastAction('Please finish pending reviews first'); return; }
+        setAgentProgressEvents([]);
         const activeCount = merchantState.activePolicies.filter(item => (item.status || 'ACTIVE') === 'ACTIVE').length;
         const budgetUsage = Math.round((merchantState.budgetUsed / Math.max(merchantState.budgetCap, 1)) * 100);
         const proactiveIntent = [
@@ -791,13 +1001,28 @@ export function MerchantProvider({
             } as any,
         ]);
         try {
-            await ensureStrategyChatSession();
-            realtimeClientRef.current.send({
-                type: 'STRATEGY_CHAT_SEND_MESSAGE',
-                merchantId: MerchantApi.getMerchantId(),
-                payload: { content: proactiveIntent },
-                timestamp: new Date().toISOString()
-            });
+            const sessionId = await ensureStrategyChatSession();
+            await strategyChatStream.submit(
+                {
+                    messages: [
+                        {
+                            type: 'human',
+                            content: proactiveIntent,
+                        },
+                    ],
+                },
+                {
+                    context: {
+                        merchantId: MerchantApi.getMerchantId(),
+                        sessionId,
+                    },
+                    config: {
+                        configurable: {
+                            thread_id: sessionId,
+                        },
+                    },
+                },
+            );
             setLastAction('AI proactive scan triggered');
         } catch (error: any) {
             setStrategyChatMessages(prev => prev.map(m => m.messageId === optimisticUserMsgId ? { ...m, deliveryStatus: 'failed' } : m));
@@ -901,6 +1126,7 @@ export function MerchantProvider({
         auditTimeRange, setAuditTimeRange, allianceConfig, allianceStores, customerUserId, setCustomerUserId,
         qrStoreId, setQrStoreId, qrScene, setQrScene, qrPayload, aiIntentDraft, setAiIntentDraft,
         aiIntentSubmitting, strategyChatMessages, strategyChatPendingReview, strategyChatEvaluation, strategyChatEvaluationReady,
+        agentProgressEvents, activeAgentProgress,
         pendingReviewCount, totalReviewCount, currentReviewIndex, contractStatus, setContractStatus,
         wsConnected,
         onCopyEventDetail, onTriggerProactiveScan, onCreateIntentProposal, onRetryMessage, onEvaluatePendingStrategy, onReviewPendingStrategy, onPublishApprovedProposal,
