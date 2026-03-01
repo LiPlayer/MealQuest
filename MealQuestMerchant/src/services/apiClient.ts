@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import Config from 'react-native-config';
 
 export type MerchantLoginResult = {
   token: string;
@@ -34,13 +35,8 @@ const DEFAULT_BASE_URL = Platform.select({
 });
 
 export function getApiBaseUrl(): string {
-  const globalValue =
-    typeof globalThis === 'object' &&
-    globalThis &&
-    (globalThis as unknown as { MEALQUEST_API_BASE_URL?: unknown }).MEALQUEST_API_BASE_URL;
-  const fromGlobal =
-    typeof globalValue === 'string' && globalValue.trim() ? globalValue.trim() : '';
-  return fromGlobal || String(DEFAULT_BASE_URL || 'http://127.0.0.1:3030');
+  const envUrl = typeof Config.MQ_SERVER_URL === 'string' ? Config.MQ_SERVER_URL.trim() : '';
+  return envUrl || String(DEFAULT_BASE_URL || 'http://127.0.0.1:3030');
 }
 
 async function postJson<T>(
