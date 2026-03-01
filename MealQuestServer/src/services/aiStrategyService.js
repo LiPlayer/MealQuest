@@ -2076,7 +2076,7 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
       configured: true,
       remoteEnabled,
       remoteConfigured: remoteEnabled ? Boolean(apiKey) : false,
-      plannerEngine: "stream_text_json_envelope_v4",
+      plannerEngine: "langchain_create_agent_pipeline_v1",
       criticLoop: {
         enabled: criticEnabled,
         maxRounds: criticMaxRounds,
@@ -2084,8 +2084,8 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
         minConfidence: criticMinConfidence
       },
       structuredOutput: {
-        critic: `langchain_withStructuredOutput_${gatewayInfo.structuredOutput.defaultMethod}`,
-        revise: `langchain_withStructuredOutput_${gatewayInfo.structuredOutput.defaultMethod}`
+        critic: `langchain_createAgent_responseFormat_${gatewayInfo.structuredOutput.defaultMethod}`,
+        revise: `langchain_createAgent_responseFormat_${gatewayInfo.structuredOutput.defaultMethod}`
       },
       rawDebugEnabled,
       retryPolicy: gatewayInfo.retry,

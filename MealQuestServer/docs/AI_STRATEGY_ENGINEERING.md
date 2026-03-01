@@ -5,14 +5,21 @@ This document describes the production-grade architecture used by `createAiStrat
 ## Architecture Layers
 
 1. Workflow Orchestration (`src/services/aiStrategyService.js`)
-   - LangGraph planner graph: `prepare_input -> remote_decide -> assemble_plan`
-   - LangGraph chat graph: `prepare_input -> remote_decide -> finalize_turn`
+   - Deterministic pipeline:
+     - stream assistant output
+     - parse proposal envelope
+     - evaluate/rank
+     - approval/publish gating
+     - post-publish monitor/memory update
    - Business guardrails remain in merchant service (`proposal review`, `risk blocking`, `policy lifecycle`).
 
 2. Model Gateway (`src/services/aiStrategy/langchainModelGateway.js`)
-   - Uses LangChain official `@langchain/openai` `ChatOpenAI` client against OpenAI-compatible endpoints.
-   - Encapsulates request payload normalization and response extraction.
-   - Keeps provider-specific payload extensions isolated (for example BigModel `thinking` control).
+   - Uses LangChain v1 official `createAgent` runtime as the primary entrypoint.
+   - Model backend uses `@langchain/openai` `ChatOpenAI` for OpenAI/DeepSeek providers.
+   - Structured output uses `responseFormat` strategies:
+     - `openai`: `providerStrategy(...)`
+     - `deepseek`: `toolStrategy(...)`
+   - Streaming uses `agent.streamEvents(..., { version: "v2" })` and emits normalized `start/token/end`.
 
 ## Runtime Controls
 

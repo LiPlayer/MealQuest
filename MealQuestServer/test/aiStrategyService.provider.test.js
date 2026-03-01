@@ -137,10 +137,10 @@ test("ai strategy provider: openai uses expected defaults", () => {
   assert.equal(runtime.model, "gpt-4o-mini");
   assert.equal(runtime.remoteEnabled, true);
   assert.equal(runtime.remoteConfigured, true);
-  assert.equal(runtime.plannerEngine, "stream_text_json_envelope_v4");
+  assert.equal(runtime.plannerEngine, "langchain_create_agent_pipeline_v1");
   assert.equal(runtime.criticLoop.enabled, true);
   assert.equal(runtime.criticLoop.maxRounds, 1);
-  assert.equal(runtime.modelClient, "langchain_chatopenai_responses");
+  assert.equal(runtime.modelClient, "langchain_create_agent_responses");
   assert.equal(runtime.llmTransport, "responses_api");
   assert.equal(runtime.retryPolicy.maxRetries, 2);
 });
@@ -157,9 +157,9 @@ test("ai strategy provider: deepseek uses expected defaults", () => {
   assert.equal(runtime.model, "deepseek-chat");
   assert.equal(runtime.remoteEnabled, true);
   assert.equal(runtime.remoteConfigured, true);
-  assert.equal(runtime.modelClient, "langchain_chatopenai_chat_completions");
+  assert.equal(runtime.modelClient, "langchain_create_agent_chat_completions");
   assert.equal(runtime.llmTransport, "chat_completions");
-  assert.equal(runtime.structuredOutputMethod, "jsonMode");
+  assert.equal(runtime.structuredOutputMethod, "toolStrategy");
 });
 
 

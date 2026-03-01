@@ -1,3 +1,4 @@
+const { createAgent, providerStrategy, toolStrategy } = require("langchain");
 const { ChatOpenAI } = require("@langchain/openai");
 
 function asString(value) {
@@ -73,6 +74,66 @@ function extractRawTextFromAiMessage(message) {
   return "";
 }
 
+function isAssistantMessage(message) {
+  if (!message || typeof message !== "object") {
+    return false;
+  }
+  const role = asString(message.role).toLowerCase();
+  if (role === "assistant") {
+    return true;
+  }
+  const typeByField = asString(message.type).toLowerCase();
+  if (typeByField === "ai" || typeByField === "assistant") {
+    return true;
+  }
+  if (typeof message.getType === "function") {
+    const type = asString(message.getType()).toLowerCase();
+    if (type === "ai" || type === "assistant") {
+      return true;
+    }
+  }
+  if (typeof message._getType === "function") {
+    const type = asString(message._getType()).toLowerCase();
+    if (type === "ai" || type === "assistant") {
+      return true;
+    }
+  }
+  return false;
+}
+
+function extractAssistantRawTextFromAgentState(state) {
+  const messages =
+    state && Array.isArray(state.messages) ? state.messages : [];
+  for (let idx = messages.length - 1; idx >= 0; idx -= 1) {
+    const message = messages[idx];
+    if (!isAssistantMessage(message)) {
+      continue;
+    }
+    const text = extractRawTextFromAiMessage(message);
+    if (text) {
+      return text;
+    }
+  }
+  return "";
+}
+
+function buildStructuredResponseFormat({
+  normalizedProvider,
+  schema,
+  strict,
+}) {
+  if (normalizedProvider === "openai") {
+    if (strict === undefined) {
+      return providerStrategy(schema);
+    }
+    return providerStrategy({
+      schema,
+      strict: Boolean(strict),
+    });
+  }
+  return toolStrategy(schema);
+}
+
 function createLangChainModelGateway(options = {}) {
   const {
     provider,
@@ -94,7 +155,7 @@ function createLangChainModelGateway(options = {}) {
   const normalizedProvider = asString(provider).toLowerCase();
   const resolvedUseResponsesApi = normalizedProvider === "openai";
   const defaultStructuredOutputMethod =
-    normalizedProvider === "deepseek" ? "jsonMode" : "jsonSchema";
+    normalizedProvider === "openai" ? "providerStrategy" : "toolStrategy";
 
   const chatModel = new ChatOpenAI({
     model,
@@ -109,6 +170,45 @@ function createLangChainModelGateway(options = {}) {
     },
   });
 
+  const baseAgent = createAgent({
+    model: chatModel,
+    tools: [],
+  });
+  const structuredAgentCache = new Map();
+
+  function getStructuredAgent(structured) {
+    const schema =
+      structured && structured.schema && typeof structured.schema === "object"
+        ? structured.schema
+        : { type: "object" };
+    const strict =
+      structured &&
+      Object.prototype.hasOwnProperty.call(structured, "strict")
+        ? Boolean(structured.strict)
+        : undefined;
+    const cacheKey = JSON.stringify({
+      method: defaultStructuredOutputMethod,
+      strict: strict === undefined ? null : strict,
+      schema,
+    });
+    const cached = structuredAgentCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    const responseFormat = buildStructuredResponseFormat({
+      normalizedProvider,
+      schema,
+      strict,
+    });
+    const agent = createAgent({
+      model: chatModel,
+      tools: [],
+      responseFormat,
+    });
+    structuredAgentCache.set(cacheKey, agent);
+    return agent;
+  }
+
   async function invokeJsonWithRaw(messages, invokeOptions = {}) {
     if (
       invokeOptions &&
@@ -117,31 +217,18 @@ function createLangChainModelGateway(options = {}) {
       typeof invokeOptions.structuredOutput === "object"
     ) {
       const structured = invokeOptions.structuredOutput;
-      const schema =
-        structured.schema && typeof structured.schema === "object"
-          ? structured.schema
-          : { type: "object" };
-      const structuredConfig = {
-        name: asString(structured.name) || "structured_output",
-        method: defaultStructuredOutputMethod,
-        includeRaw: true,
-      };
-      if (
-        structured.strict !== undefined &&
-        defaultStructuredOutputMethod !== "jsonMode"
-      ) {
-        structuredConfig.strict = Boolean(structured.strict);
-      }
-      const structuredModel = chatModel.withStructuredOutput(schema, structuredConfig);
-      const result = await structuredModel.invoke(messages);
-      const hasParsedContainer =
+      const structuredAgent = getStructuredAgent(structured);
+      const result = await structuredAgent.invoke({ messages });
+      const parsedValue =
         result &&
         typeof result === "object" &&
-        Object.prototype.hasOwnProperty.call(result, "parsed");
-      const parsedValue = hasParsedContainer ? result.parsed : result;
-      const rawText = hasParsedContainer
-        ? extractRawTextFromAiMessage(result.raw) || coerceRawText(parsedValue)
-        : coerceRawText(parsedValue);
+        result.structuredResponse &&
+        typeof result.structuredResponse === "object"
+          ? result.structuredResponse
+          : null;
+      const rawText =
+        extractAssistantRawTextFromAgentState(result) ||
+        coerceRawText(parsedValue);
       if (parsedValue && typeof parsedValue === "object") {
         return {
           rawText,
@@ -153,8 +240,8 @@ function createLangChainModelGateway(options = {}) {
         parsed: parseJsonStrict(rawText),
       };
     }
-    const response = await chatModel.invoke(messages);
-    const rawText = extractRawTextFromAiMessage(response);
+    const response = await baseAgent.invoke({ messages });
+    const rawText = extractAssistantRawTextFromAgentState(response);
     return {
       rawText,
       parsed: parseJsonStrict(rawText),
@@ -168,68 +255,26 @@ function createLangChainModelGateway(options = {}) {
   async function* streamChatEvents(messages) {
     const runStartAt = new Date().toISOString();
     let emittedStart = false;
-    try {
-      const eventStream = await chatModel.streamEvents(messages, {
+    const eventStream = await baseAgent.streamEvents(
+      { messages },
+      {
         version: "v2",
-      });
-      for await (const event of eventStream) {
-        const eventName = asString(event && event.event).toLowerCase();
-        if (eventName === "on_chat_model_start") {
-          emittedStart = true;
-          yield {
-            type: "start",
-            at: runStartAt,
-            runId: asString(event && (event.run_id || event.runId)),
-            raw: event,
-          };
-          continue;
-        }
-        if (eventName === "on_chat_model_stream") {
-          const chunk = event && event.data ? event.data.chunk : null;
-          const text = normalizeMessageContent(chunk && chunk.content);
-          if (!text) {
-            continue;
-          }
-          yield {
-            type: "token",
-            text,
-            raw: event,
-          };
-          continue;
-        }
-        if (eventName === "on_chat_model_end") {
-          yield {
-            type: "end",
-            at: new Date().toISOString(),
-            runId: asString(event && (event.run_id || event.runId)),
-            raw: event,
-          };
-        }
       }
-      if (!emittedStart) {
+    );
+    for await (const event of eventStream) {
+      const eventName = asString(event && event.event).toLowerCase();
+      if (eventName === "on_chat_model_start") {
+        emittedStart = true;
         yield {
           type: "start",
           at: runStartAt,
-          runId: "",
-          raw: null,
+          runId: asString(event && (event.run_id || event.runId)),
+          raw: event,
         };
+        continue;
       }
-      yield {
-        type: "end",
-        at: new Date().toISOString(),
-        runId: "",
-        raw: null,
-      };
-    } catch (error) {
-      void error;
-      yield {
-        type: "start",
-        at: runStartAt,
-        runId: "",
-        raw: null,
-      };
-      const stream = await chatModel.stream(messages);
-      for await (const chunk of stream) {
+      if (eventName === "on_chat_model_stream") {
+        const chunk = event && event.data ? event.data.chunk : null;
         const text = normalizeMessageContent(chunk && chunk.content);
         if (!text) {
           continue;
@@ -237,16 +282,33 @@ function createLangChainModelGateway(options = {}) {
         yield {
           type: "token",
           text,
-          raw: chunk,
+          raw: event,
+        };
+        continue;
+      }
+      if (eventName === "on_chat_model_end") {
+        yield {
+          type: "end",
+          at: new Date().toISOString(),
+          runId: asString(event && (event.run_id || event.runId)),
+          raw: event,
         };
       }
+    }
+    if (!emittedStart) {
       yield {
-        type: "end",
-        at: new Date().toISOString(),
+        type: "start",
+        at: runStartAt,
         runId: "",
         raw: null,
       };
     }
+    yield {
+      type: "end",
+      at: new Date().toISOString(),
+      runId: "",
+      raw: null,
+    };
   }
 
   return {
@@ -256,14 +318,14 @@ function createLangChainModelGateway(options = {}) {
       return {
         retry: { maxRetries: resolvedMaxRetries },
         modelClient: resolvedUseResponsesApi
-          ? "langchain_chatopenai_responses"
-          : "langchain_chatopenai_chat_completions",
+          ? "langchain_create_agent_responses"
+          : "langchain_create_agent_chat_completions",
         transport: resolvedUseResponsesApi ? "responses_api" : "chat_completions",
         structuredOutput: {
           defaultMethod: defaultStructuredOutputMethod,
         },
         streaming: {
-          mode: "langchain_stream_events_v2",
+          mode: "langchain_create_agent_stream_events_v2",
         },
       };
     },
