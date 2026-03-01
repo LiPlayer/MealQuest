@@ -78,9 +78,9 @@ Policy runtime workflow:
 5. LLM has no direct execution authority.
 6. Illegal `policyPatch` fields are validated and rejected before proposal enters review; agent revise loop must fix violations.
 
-## 9. Current LangGraph Backbone (Implemented)
+## 9. Current Stream Backbone (Implemented)
 
-Unary chat path (`generateStrategyChatTurn`) now runs explicit nodes:
+Stream chat path (`streamStrategyChatTurn`) runs the following fixed pipeline:
 
 1. `prepare_input`
 2. `intent_parse`
@@ -103,6 +103,6 @@ Unary chat path (`generateStrategyChatTurn`) now runs explicit nodes:
 19. `post_publish_monitor`
 20. `memory_update`
 
-`generateStrategyChatTurn` now uses this graph as the single unary pipeline.
+`streamStrategyChatTurn` is now the only runtime entry for strategy chat.
 
 Roadmap tracking: `docs/engineering/langgraph-agent-todo.md`

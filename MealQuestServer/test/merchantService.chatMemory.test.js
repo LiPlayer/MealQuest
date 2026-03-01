@@ -43,7 +43,7 @@ test("merchant strategy chat compacts long dialogue into structured memory", asy
   const capturedInputs = [];
   const merchantService = createMerchantService(db, {
     aiStrategyService: {
-      async generateStrategyChatTurn(input) {
+      async *streamStrategyChatTurn(input) {
         capturedInputs.push(input);
         return {
           status: "CHAT_REPLY",

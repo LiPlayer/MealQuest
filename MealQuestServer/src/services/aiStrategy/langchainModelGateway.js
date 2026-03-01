@@ -58,10 +58,10 @@ function createLangChainModelGateway(options = {}) {
     apiKey,
     timeoutMs,
     maxRetries,
-    parseJsonLoose,
+    parseJsonStrict,
   } = options;
-  if (typeof parseJsonLoose !== "function") {
-    throw new Error("langchain model gateway requires parseJsonLoose");
+  if (typeof parseJsonStrict !== "function") {
+    throw new Error("langchain model gateway requires parseJsonStrict");
   }
 
   const resolvedMaxRetries = Number.isFinite(Number(maxRetries))
@@ -87,31 +87,11 @@ function createLangChainModelGateway(options = {}) {
     const response = await modelClient.invoke(messages);
     const rawContent = response && response.content;
     const content = normalizeMessageContent(rawContent);
-    return parseJsonLoose(content);
+    return parseJsonStrict(content);
   }
 
   function invokeChat(messages) {
     return invokeJson(messages, chatModel);
-  }
-
-  async function invokeChatRaw(messages) {
-    const verbose = await invokeChatRawVerbose(messages);
-    return verbose.content;
-  }
-
-  async function invokeChatRawVerbose(messages) {
-    const response = await chatModel.invoke(messages);
-    return {
-      content: normalizeMessageContent(response && response.content),
-      raw: buildRawMessageSnapshot(response),
-    };
-  }
-
-  async function* streamChat(messages) {
-    const stream = streamChatWithRaw(messages);
-    for await (const item of stream) {
-      yield item.text;
-    }
   }
 
   async function* streamChatWithRaw(messages) {
@@ -126,23 +106,9 @@ function createLangChainModelGateway(options = {}) {
     }
   }
 
-  async function* streamChatLegacy(messages) {
-    const stream = await chatModel.stream(messages);
-    for await (const chunk of stream) {
-      if (chunk.content) {
-        const content = normalizeMessageContent(chunk.content);
-        yield content;
-      }
-    }
-  }
-
   return {
     invokeChat,
-    invokeChatRaw,
-    invokeChatRawVerbose,
-    streamChat,
     streamChatWithRaw,
-    streamChatLegacy,
     getRuntimeInfo() {
       return {
         retry: { maxRetries: resolvedMaxRetries },

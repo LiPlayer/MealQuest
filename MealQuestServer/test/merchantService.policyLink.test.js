@@ -59,7 +59,7 @@ test("merchant service links AI proposal evaluate -> approve -> publish lifecycl
   const merchantService = createMerchantService(db, {
     policyOsService,
     aiStrategyService: {
-      async generateStrategyChatTurn() {
+      async *streamStrategyChatTurn() {
         return {
           status: "PROPOSAL_READY",
           assistantMessage: "Strategy drafted.",
@@ -163,7 +163,7 @@ test("merchant service auto-evaluates and ranks multiple proposal candidates", a
   const merchantService = createMerchantService(db, {
     policyOsService,
     aiStrategyService: {
-      async generateStrategyChatTurn() {
+      async *streamStrategyChatTurn() {
         return {
           status: "PROPOSAL_READY",
           assistantMessage: "Two strategies drafted.",
@@ -256,7 +256,7 @@ test("merchant service supports force refresh evaluation after cached auto evalu
   const merchantService = createMerchantService(db, {
     policyOsService,
     aiStrategyService: {
-      async generateStrategyChatTurn() {
+      async *streamStrategyChatTurn() {
         return {
           status: "PROPOSAL_READY",
           assistantMessage: "Strategy drafted.",

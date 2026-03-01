@@ -3,7 +3,6 @@
   listStrategyTemplates,
   validatePolicyPatchForTemplate,
 } = require("./strategyTemplateCatalog");
-const { Annotation, StateGraph, START, END } = require("@langchain/langgraph");
 const { createLangChainModelGateway } = require("./aiStrategy/langchainModelGateway");
 
 const DEFAULT_REMOTE_PROVIDER = "openai_compatible";
@@ -72,26 +71,12 @@ function mergePatch(base, patch) {
   return result;
 }
 
-function parseJsonLoose(raw) {
+function parseJsonStrict(raw) {
   const direct = asString(raw);
   if (!direct) {
     throw new Error("empty ai response");
   }
-  try {
-    return JSON.parse(direct);
-  } catch {
-    // continue
-  }
-  const fencedMatch = direct.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  if (fencedMatch && fencedMatch[1]) {
-    return JSON.parse(fencedMatch[1]);
-  }
-  const first = direct.indexOf("{");
-  const last = direct.lastIndexOf("}");
-  if (first >= 0 && last > first) {
-    return JSON.parse(direct.slice(first, last + 1));
-  }
-  throw new Error("invalid ai response json");
+  return JSON.parse(direct);
 }
 
 function findTemplateById(templates, templateId) {
@@ -205,20 +190,6 @@ function summarizeError(error) {
     (error && typeof error.message === "string" && error.message) ||
     String(error || "unknown error");
   return raw.replace(/\s+/g, " ").slice(0, 180);
-}
-
-function logFullLlmOutput({ channel, merchantId, sessionId, text }) {
-  void channel;
-  void merchantId;
-  void sessionId;
-  void text;
-}
-
-function logRawLlmResponse({ channel, merchantId, sessionId, payload }) {
-  void channel;
-  void merchantId;
-  void sessionId;
-  void payload;
 }
 
 function createAiUnavailableResult(reason) {
@@ -474,23 +445,28 @@ function sanitizeExecutionHistory(input) {
 const PROTOCOL_NAME = "MQ_STRATEGY_CHAT";
 const PROTOCOL_VERSION = "2.0";
 const STRUCTURED_SCHEMA_VERSION = "2026-02-27";
-const DECISION_ENVELOPE_STARTS = [
+const DECISION_ENVELOPE_START_MARKERS = [
   "\n{\"schemaVersion\"",
-  "\n{\"mode\"",
-  "\n{\"assistantMessage\"",
   "{\"schemaVersion\"",
 ];
+const DECISION_ENVELOPE_MAX_MARKER_LEN = DECISION_ENVELOPE_START_MARKERS.reduce(
+  (max, marker) => Math.max(max, marker.length),
+  0
+);
 
-function findFirstDecisionEnvelopeStart(text) {
+function findDecisionEnvelopeStart(text, fromIndex = 0) {
   const source = asString(text);
+  if (!source) {
+    return -1;
+  }
+  const start = Math.max(0, Math.floor(Number(fromIndex) || 0));
   let first = -1;
-  for (const marker of DECISION_ENVELOPE_STARTS) {
-    const idx = source.indexOf(marker);
-    if (idx < 0) {
-      continue;
-    }
-    if (first < 0 || idx < first) {
-      first = idx;
+  for (const marker of DECISION_ENVELOPE_START_MARKERS) {
+    const idx = source.indexOf(marker, start);
+    if (idx >= 0) {
+      if (first < 0 || idx < first) {
+        first = idx;
+      }
     }
   }
   return first;
@@ -633,95 +609,46 @@ function shouldRunCriticLoop({
   );
 }
 
-function looksLikeDecisionEnvelope(value) {
-  if (!isObjectLike(value)) {
-    return false;
-  }
-  return (
-    Array.isArray(value.proposals) ||
-    isObjectLike(value.proposal) ||
-    Boolean(asString(value.mode)) ||
-    Boolean(asString(value.schemaVersion)) ||
-    Boolean(asString(value.assistantMessage))
-  );
-}
-
-function parseTextWithTrailingDecisionEnvelope(rawText) {
-  const text = asString(rawText);
-  if (!text || !text.includes("{")) {
-    return null;
-  }
-  let cursor = text.lastIndexOf("{");
-  while (cursor >= 0) {
-    const decisionText = text.slice(cursor).trim();
-    if (!decisionText) {
-      cursor = text.lastIndexOf("{", cursor - 1);
-      continue;
-    }
-    try {
-      const parsed = parseJsonLoose(decisionText);
-      if (looksLikeDecisionEnvelope(parsed)) {
-        return {
-          assistantMessage: text.slice(0, cursor).trim(),
-          decision: parsed,
-          sourceFormat: "text_plus_json",
-          schemaVersion: asString(parsed.schemaVersion) || STRUCTURED_SCHEMA_VERSION,
-        };
-      }
-    } catch {
-      // continue scanning previous "{"
-    }
-    cursor = text.lastIndexOf("{", cursor - 1);
-  }
-  return null;
-}
-
 function parseAssistantDecisionEnvelope(rawText) {
   const text = asString(rawText);
-  const envelopeStartIdx = findFirstDecisionEnvelopeStart(text);
-  let assistantMessage =
-    envelopeStartIdx >= 0 ? text.slice(0, envelopeStartIdx).trim() : text;
-  let sourceFormat = "plain_text";
-  let schemaVersion = STRUCTURED_SCHEMA_VERSION;
-  let decision = {};
-
-  try {
-    const direct = parseJsonLoose(text);
-    if (looksLikeDecisionEnvelope(direct)) {
-      const directDecision = isObjectLike(direct) ? direct : {};
-      assistantMessage = asString(directDecision.assistantMessage) || assistantMessage;
-      sourceFormat = "json_envelope";
-      schemaVersion = asString(directDecision.schemaVersion) || STRUCTURED_SCHEMA_VERSION;
-      decision = directDecision;
-    } else {
-      const parsed = parseTextWithTrailingDecisionEnvelope(text);
-      if (parsed) {
-        assistantMessage = asString(parsed.assistantMessage);
-        sourceFormat = parsed.sourceFormat;
-        schemaVersion = asString(parsed.schemaVersion) || STRUCTURED_SCHEMA_VERSION;
-        decision = isObjectLike(parsed.decision) ? parsed.decision : {};
-      }
-    }
-  } catch {
-    const parsed = parseTextWithTrailingDecisionEnvelope(text);
-    if (parsed) {
-      assistantMessage = asString(parsed.assistantMessage);
-      sourceFormat = parsed.sourceFormat;
-      schemaVersion = asString(parsed.schemaVersion) || STRUCTURED_SCHEMA_VERSION;
-      decision = isObjectLike(parsed.decision) ? parsed.decision : {};
-    }
+  const envelopeStartIdx = findDecisionEnvelopeStart(text);
+  if (envelopeStartIdx < 0) {
+    return {
+      assistantMessage: text,
+      sourceFormat: "text_only",
+      schemaVersion: STRUCTURED_SCHEMA_VERSION,
+      decision: {},
+      forceProposal: false,
+      rawCandidates: [],
+      parseError: false,
+    };
   }
-
-  const mode = asString(decision.mode).toUpperCase();
-  return {
-    assistantMessage: assistantMessage || text,
-    sourceFormat,
-    schemaVersion,
-    decision,
-    forceProposal: mode === "PROPOSAL",
-    rawCandidates: coerceProposalCandidates(decision),
-    parseError: false,
-  };
+  const assistantPrefix = text.slice(0, envelopeStartIdx).trim();
+  const decisionText = text.slice(envelopeStartIdx).trim();
+  try {
+    const parsed = parseJsonStrict(decisionText);
+    const decision = isObjectLike(parsed) ? parsed : {};
+    const mode = asString(decision.mode).toUpperCase();
+    return {
+      assistantMessage: asString(decision.assistantMessage) || assistantPrefix,
+      sourceFormat: "text_plus_json",
+      schemaVersion: asString(decision.schemaVersion) || STRUCTURED_SCHEMA_VERSION,
+      decision,
+      forceProposal: mode === "PROPOSAL",
+      rawCandidates: coerceProposalCandidates(decision),
+      parseError: false,
+    };
+  } catch {
+    return {
+      assistantMessage: assistantPrefix || text,
+      sourceFormat: "invalid_json",
+      schemaVersion: STRUCTURED_SCHEMA_VERSION,
+      decision: {},
+      forceProposal: false,
+      rawCandidates: [],
+      parseError: true,
+    };
+  }
 }
 
 function buildTurnFromCandidateEvaluation({
@@ -1428,848 +1355,6 @@ function buildChatPromptPayload({
   };
 }
 
-function createStrategyChatGraph({
-  modelGateway,
-  provider,
-  model,
-  criticEnabled,
-  criticMaxRounds,
-  criticMinProposals,
-  criticMinConfidence,
-  buildCriticMessages,
-  buildReviseMessages,
-  attachCriticProtocol,
-}) {
-  const ChatState = Annotation.Root({
-    input: Annotation(),
-    intentFrame: Annotation({ default: () => null }),
-    promptMessages: Annotation({ default: () => [] }),
-    rawContent: Annotation({ default: () => "" }),
-    parsedResponse: Annotation({ default: () => null }),
-    rawCandidates: Annotation({ default: () => [] }),
-    normalizedCandidates: Annotation({ default: () => [] }),
-    invalidCandidates: Annotation({ default: () => [] }),
-    criticRound: Annotation({ default: () => 0 }),
-    criticDecision: Annotation({ default: () => null }),
-    evaluationPayload: Annotation({ default: () => ({ source: "NONE", userId: "", items: [] }) }),
-    rankedCandidates: Annotation({ default: () => [] }),
-    explainPack: Annotation({ default: () => null }),
-    approvalDecision: Annotation({ default: () => null }),
-    publishResult: Annotation({ default: () => null }),
-    postPublishMonitorReport: Annotation({ default: () => null }),
-    memoryUpdateResult: Annotation({ default: () => null }),
-    turn: Annotation({ default: () => null }),
-  });
-
-  const withGraphNodeLog = (nodeName, handler) => async (state) => {
-    void nodeName;
-    return handler(state);
-  };
-
-  const logGraphRoute = (nodeName, nextNode, state) => {
-    void nodeName;
-    void state;
-    return nextNode;
-  };
-
-  const prepareInput = (state) => ({
-    input: isObjectLike(state.input) ? state.input : {},
-  });
-
-  const intentParse = (state) => {
-    const input = isObjectLike(state.input) ? state.input : {};
-    return {
-      intentFrame: inferIntentFrame({
-        userMessage: input.userMessage,
-        salesSnapshot: sanitizeSalesSnapshot(input.salesSnapshot),
-      })
-    };
-  };
-
-  const buildPrompt = (state) => {
-    const input = isObjectLike(state.input) ? state.input : {};
-    const prompt = buildChatPromptPayload({
-      merchantId: input.merchantId,
-      sessionId: input.sessionId,
-      userMessage: input.userMessage,
-      history: input.history,
-      activePolicies: input.activePolicies,
-      approvedStrategies: input.approvedStrategies,
-      executionHistory: input.executionHistory,
-      salesSnapshot: input.salesSnapshot,
-      intentFrame: state.intentFrame,
-    });
-    return {
-      promptMessages: Array.isArray(prompt.messages) ? prompt.messages : [],
-    };
-  };
-
-  const remoteDecide = async (state) => {
-    try {
-      let remoteDecision = "";
-      const input = isObjectLike(state.input) ? state.input : {};
-      if (typeof modelGateway.invokeChatRawVerbose === "function") {
-        const verbose = await modelGateway.invokeChatRawVerbose(state.promptMessages);
-        remoteDecision = asString(verbose && verbose.content);
-        logRawLlmResponse({
-          channel: "unary",
-          merchantId: input.merchantId,
-          sessionId: input.sessionId,
-          payload: verbose && verbose.raw ? verbose.raw : {},
-        });
-      } else {
-        remoteDecision = await modelGateway.invokeChatRaw(state.promptMessages);
-      }
-      logFullLlmOutput({
-        channel: "unary",
-        merchantId: input.merchantId,
-        sessionId: input.sessionId,
-        text: asString(remoteDecision),
-      });
-      return {
-        rawContent: asString(remoteDecision),
-      };
-    } catch (error) {
-      return {
-        turn: createAiUnavailableResult(summarizeError(error)),
-      };
-    }
-  };
-
-  const parseResponse = (state) => {
-    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
-      return {};
-    }
-    return {
-      parsedResponse: parseAssistantDecisionEnvelope(state.rawContent),
-    };
-  };
-
-  const candidateGenerate = (state) => {
-    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
-      return {};
-    }
-    const parsed = isObjectLike(state.parsedResponse) ? state.parsedResponse : {};
-    return {
-      rawCandidates: Array.isArray(parsed.rawCandidates) ? parsed.rawCandidates : [],
-    };
-  };
-
-  const patchValidate = (state) => {
-    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
-      return {};
-    }
-    const input = isObjectLike(state.input) ? state.input : {};
-    const rawCandidates = Array.isArray(state.rawCandidates) ? state.rawCandidates : [];
-    const { normalizedCandidates, invalidCandidates } = normalizeCandidatesFromRaw({
-      rawCandidates,
-      input,
-      provider,
-      model,
-    });
-    return {
-      normalizedCandidates,
-      invalidCandidates,
-    };
-  };
-
-  const finalizeTurn = (state) => {
-    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
-      return {};
-    }
-    const parsed = isObjectLike(state.parsedResponse) ? state.parsedResponse : {};
-    return {
-      turn: buildTurnFromCandidateEvaluation({
-        assistantMessage: asString(parsed.assistantMessage),
-        sourceFormat: asString(parsed.sourceFormat) || "plain_text",
-        schemaVersion: asString(parsed.schemaVersion) || STRUCTURED_SCHEMA_VERSION,
-        forceProposal: Boolean(parsed.forceProposal),
-        parseError: Boolean(parsed.parseError),
-        normalizedCandidates: state.normalizedCandidates,
-        invalidCandidates: state.invalidCandidates,
-      })
-    };
-  };
-
-  const criticGate = (state) => {
-    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
-      return {};
-    }
-    return {};
-  };
-
-  const routeCriticGate = (state) => {
-    if (!criticEnabled || criticMaxRounds <= 0) {
-      return logGraphRoute("critic_gate", "critic_finalize", state);
-    }
-    const turn = isObjectLike(state.turn) ? state.turn : null;
-    if (!turn || turn.status !== "PROPOSAL_READY") {
-      return logGraphRoute("critic_gate", "critic_finalize", state);
-    }
-    const round = Math.max(0, Math.floor(toFiniteNumber(state.criticRound, 0)));
-    if (round >= criticMaxRounds) {
-      return logGraphRoute("critic_gate", "critic_finalize", state);
-    }
-    const pendingValidationIssues = Array.isArray(turn.validationIssues) ? turn.validationIssues : [];
-    const needQualityRevision = shouldRunCriticLoop({
-      turn,
-      minProposals: criticMinProposals,
-      minConfidence: criticMinConfidence
-    });
-    if (!needQualityRevision && pendingValidationIssues.length === 0) {
-      return logGraphRoute("critic_gate", "critic_finalize", state);
-    }
-    return logGraphRoute("critic_gate", "critic_node", state);
-  };
-
-  const criticNode = async (state) => {
-    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
-      return {};
-    }
-    const input = isObjectLike(state.input) ? state.input : {};
-    const turn = isObjectLike(state.turn) ? state.turn : {};
-    const round = Math.max(0, Math.floor(toFiniteNumber(state.criticRound, 0)));
-    const pendingValidationIssues = Array.isArray(turn.validationIssues) ? turn.validationIssues : [];
-    if (pendingValidationIssues.length > 0) {
-      return {
-        criticDecision: {
-          needRevision: true,
-          issues: summarizeValidationIssues(pendingValidationIssues),
-          focus: ["policyPatch compliance"],
-          summary: "proposal violates policyPatch allowlist"
-        }
-      };
-    }
-    try {
-      const criticRaw = await modelGateway.invokeChat(
-        buildCriticMessages({
-          input,
-          turn,
-          round
-        })
-      );
-      return {
-        criticDecision: normalizeCriticDecision(criticRaw),
-      };
-    } catch (error) {
-      void error;
-      return {
-        criticDecision: {
-          needRevision: false,
-          issues: [],
-          focus: [],
-          summary: "critic unavailable"
-        }
-      };
-    }
-  };
-
-  const routeAfterCritic = (state) => {
-    const decision = isObjectLike(state.criticDecision) ? state.criticDecision : {};
-    if (!decision.needRevision) {
-      return logGraphRoute("critic_node", "critic_finalize", state);
-    }
-    const round = Math.max(0, Math.floor(toFiniteNumber(state.criticRound, 0)));
-    if (round >= criticMaxRounds) {
-      return logGraphRoute("critic_node", "critic_finalize", state);
-    }
-    return logGraphRoute("critic_node", "revise_node", state);
-  };
-
-  const reviseNode = async (state) => {
-    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
-      return {};
-    }
-    const input = isObjectLike(state.input) ? state.input : {};
-    const turn = isObjectLike(state.turn) ? state.turn : {};
-    const round = Math.max(0, Math.floor(toFiniteNumber(state.criticRound, 0)));
-    const criticDecision = isObjectLike(state.criticDecision) ? state.criticDecision : {
-      needRevision: true,
-      issues: [],
-      focus: [],
-      summary: ""
-    };
-    const pendingValidationIssues = Array.isArray(turn.validationIssues) ? turn.validationIssues : [];
-
-    try {
-      const revisedRaw = await modelGateway.invokeChat(
-        buildReviseMessages({
-          input,
-          turn,
-          criticDecision,
-          round,
-          validationIssues: pendingValidationIssues
-        })
-      );
-      const { normalizedCandidates, invalidCandidates } = normalizeCandidatesFromRaw({
-        rawCandidates: coerceProposalCandidates(revisedRaw),
-        input,
-        provider,
-        model,
-      });
-      const nextRound = round + 1;
-      if (normalizedCandidates.length === 0) {
-        return {
-          turn: {
-            ...turn,
-            validationIssues: invalidCandidates,
-            protocol: attachCriticProtocol(turn.protocol, {
-              round: nextRound,
-              issues: criticDecision.issues,
-              summary: criticDecision.summary
-            })
-          },
-          criticRound: nextRound,
-          criticDecision: null,
-        };
-      }
-      return {
-        turn: {
-          ...turn,
-          status: "PROPOSAL_READY",
-          assistantMessage:
-            asString(revisedRaw && revisedRaw.assistantMessage) ||
-            turn.assistantMessage ||
-            "Strategy proposal drafted. Please review immediately.",
-          proposals: normalizedCandidates,
-          proposal: normalizedCandidates[0],
-          validationIssues: invalidCandidates,
-          protocol: attachCriticProtocol(turn.protocol, {
-            round: nextRound,
-            issues: criticDecision.issues,
-            summary: criticDecision.summary
-          })
-        },
-        criticRound: nextRound,
-        criticDecision: null,
-      };
-    } catch (error) {
-      void error;
-      return {
-        criticRound: criticMaxRounds,
-        criticDecision: null,
-      };
-    }
-  };
-
-  const criticFinalize = (state) => {
-    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
-      return {};
-    }
-    const turn = isObjectLike(state.turn) ? state.turn : null;
-    if (
-      turn &&
-      turn.status === "PROPOSAL_READY" &&
-      (!Array.isArray(turn.proposals) || turn.proposals.length === 0)
-    ) {
-      return {
-        turn: {
-          status: "CHAT_REPLY",
-          assistantMessage:
-            "I need a quick clarification before drafting a compliant strategy proposal.",
-          protocol: attachCriticProtocol(turn.protocol, {
-            round: criticMaxRounds,
-            issues: summarizeValidationIssues(turn.validationIssues || []),
-            summary: "proposal validation failed"
-          })
-        }
-      };
-    }
-    return {};
-  };
-
-  const evaluateCandidates = async (state) => {
-    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
-      return {};
-    }
-    const turn = isObjectLike(state.turn) ? state.turn : {};
-    if (turn.status !== "PROPOSAL_READY" || !Array.isArray(turn.proposals) || turn.proposals.length === 0) {
-      return {
-        evaluationPayload: {
-          source: "NONE",
-          userId: "",
-          items: []
-        }
-      };
-    }
-    const input = isObjectLike(state.input) ? state.input : {};
-    const evaluateTool = typeof input.evaluatePolicyCandidates === "function"
-      ? input.evaluatePolicyCandidates
-      : null;
-    if (!evaluateTool) {
-      return {
-        evaluationPayload: {
-          source: "UNAVAILABLE",
-          userId: "",
-          items: []
-        }
-      };
-    }
-    try {
-      const rawPayload = await evaluateTool({
-        proposals: turn.proposals,
-        merchantId: input.merchantId,
-        sessionId: input.sessionId,
-        userMessage: input.userMessage,
-        intentFrame: state.intentFrame,
-      });
-      return {
-        evaluationPayload: normalizeEvaluationPayload(rawPayload, turn.proposals.length),
-      };
-    } catch (error) {
-      return {
-        evaluationPayload: normalizeEvaluationPayload({
-          source: "TOOL_ERROR",
-          results: turn.proposals.map((_, idx) => ({
-            proposalIndex: idx,
-            blocked: true,
-            error: summarizeError(error),
-            reason_codes: ["evaluate_tool_error"],
-            risk_flags: ["EVALUATION_ERROR"],
-            selected_count: 0,
-            rejected_count: 1,
-            estimated_cost: 0,
-            score: -100
-          }))
-        }, turn.proposals.length),
-      };
-    }
-  };
-
-  const rankCandidates = (state) => {
-    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
-      return {};
-    }
-    const turn = isObjectLike(state.turn) ? state.turn : {};
-    if (turn.status !== "PROPOSAL_READY" || !Array.isArray(turn.proposals) || turn.proposals.length === 0) {
-      return {
-        rankedCandidates: []
-      };
-    }
-    const evaluationItems = Array.isArray(state.evaluationPayload && state.evaluationPayload.items)
-      ? state.evaluationPayload.items
-      : [];
-    const hasEvaluationData = evaluationItems.length > 0;
-    const evaluationByIndex = new Map();
-    for (const item of evaluationItems) {
-      evaluationByIndex.set(item.proposalIndex, item);
-    }
-    const rankedBase = turn.proposals.map((proposal, idx) => {
-      const evaluation = evaluationByIndex.get(idx) || null;
-      const scorePack = computeProposalRankScore({
-        proposal,
-        evaluation
-      });
-      return {
-        proposal,
-        evaluation,
-        rankScore: scorePack.rankScore,
-        expectedMid: scorePack.expectedMid,
-        confidence: scorePack.confidence
-      };
-    });
-    const ranked = hasEvaluationData
-      ? rankedBase.sort((left, right) => {
-      const leftBlocked = Boolean(left.evaluation && left.evaluation.blocked);
-      const rightBlocked = Boolean(right.evaluation && right.evaluation.blocked);
-      if (leftBlocked !== rightBlocked) {
-        return leftBlocked ? 1 : -1;
-      }
-      if (right.rankScore !== left.rankScore) {
-        return right.rankScore - left.rankScore;
-      }
-      return right.confidence - left.confidence;
-      })
-      : rankedBase;
-    return {
-      rankedCandidates: ranked
-    };
-  };
-
-  const explainPack = (state) => {
-    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
-      return {};
-    }
-    const turn = isObjectLike(state.turn) ? state.turn : {};
-    if (turn.status !== "PROPOSAL_READY" || !Array.isArray(turn.proposals) || turn.proposals.length === 0) {
-      return {};
-    }
-    const ranked = Array.isArray(state.rankedCandidates) ? state.rankedCandidates : [];
-    if (ranked.length === 0) {
-      return {};
-    }
-    const source = asString(state.evaluationPayload && state.evaluationPayload.source) || "NONE";
-    const rankedProposals = ranked.map((item) => ({
-      ...item.proposal,
-      evaluation: {
-        rank_score: item.rankScore,
-        expected_mid: item.expectedMid,
-        confidence: item.confidence,
-        blocked: Boolean(item.evaluation && item.evaluation.blocked),
-        reason_codes: item.evaluation && Array.isArray(item.evaluation.reasonCodes)
-          ? item.evaluation.reasonCodes
-          : [],
-        risk_flags: item.evaluation && Array.isArray(item.evaluation.riskFlags)
-          ? item.evaluation.riskFlags
-          : [],
-        expected_range: item.evaluation && item.evaluation.expectedRange ? item.evaluation.expectedRange : null,
-        selected_count: item.evaluation ? item.evaluation.selectedCount : 0,
-        rejected_count: item.evaluation ? item.evaluation.rejectedCount : 0,
-        estimated_cost: item.evaluation ? item.evaluation.estimatedCost : 0,
-        decision_id: item.evaluation ? item.evaluation.decisionId : "",
-        evaluation_error: item.evaluation ? item.evaluation.error : "",
-      }
-    }));
-    const pack = buildExplainPackFromRanked({
-      ranked,
-      source
-    });
-    const protocol = isObjectLike(turn.protocol) ? turn.protocol : {};
-    const nextProtocol = {
-      ...protocol,
-      evaluation: {
-        source,
-        count: pack.items.length
-      },
-      ranking: {
-        strategy: "VALUE_RISK_COST_V1",
-        count: pack.items.length
-      }
-    };
-    return {
-      explainPack: pack,
-      turn: {
-        ...turn,
-        proposals: rankedProposals,
-        proposal: rankedProposals[0] || null,
-        explainPack: pack,
-        protocol: nextProtocol
-      }
-    };
-  };
-
-  const approvalGate = async (state) => {
-    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
-      return {};
-    }
-    const turn = isObjectLike(state.turn) ? state.turn : {};
-    if (turn.status !== "PROPOSAL_READY" || !Array.isArray(turn.proposals) || turn.proposals.length === 0) {
-      return {};
-    }
-    const input = isObjectLike(state.input) ? state.input : {};
-    const publishIntent = Boolean(input.publishIntent);
-    if (!publishIntent) {
-      return {
-        approvalDecision: normalizeApprovalDecision({
-          approved: false,
-          reason: "",
-          source: "DISABLED"
-        }, false)
-      };
-    }
-    const approvalToken = asString(input.approvalToken);
-    if (!approvalToken) {
-      return {
-        approvalDecision: normalizeApprovalDecision({
-          approved: false,
-          reason: "approval token is required",
-          source: "MISSING_TOKEN"
-        }, true)
-      };
-    }
-    const validator = typeof input.validateApproval === "function"
-      ? input.validateApproval
-      : null;
-    if (!validator) {
-      return {
-        approvalDecision: normalizeApprovalDecision({
-          approved: false,
-          reason: "approval validator is not configured",
-          source: "VALIDATOR_MISSING"
-        }, true)
-      };
-    }
-    try {
-      const raw = await validator({
-        merchantId: input.merchantId,
-        sessionId: input.sessionId,
-        approvalToken,
-        proposals: turn.proposals,
-      });
-      return {
-        approvalDecision: normalizeApprovalDecision(raw, true),
-      };
-    } catch (error) {
-      return {
-        approvalDecision: normalizeApprovalDecision({
-          approved: false,
-          reason: summarizeError(error),
-          source: "VALIDATOR_ERROR"
-        }, true)
-      };
-    }
-  };
-
-  const routeAfterApprovalGate = (state) => {
-    const turn = isObjectLike(state.turn) ? state.turn : {};
-    if (turn.status !== "PROPOSAL_READY" || !Array.isArray(turn.proposals) || turn.proposals.length === 0) {
-      return logGraphRoute("approval_gate", "publish_finalize", state);
-    }
-    const input = isObjectLike(state.input) ? state.input : {};
-    const publishIntent = Boolean(input.publishIntent);
-    if (!publishIntent) {
-      return logGraphRoute("approval_gate", "publish_finalize", state);
-    }
-    const approvalDecision = isObjectLike(state.approvalDecision) ? state.approvalDecision : {};
-    if (!approvalDecision.approved) {
-      return logGraphRoute("approval_gate", "publish_finalize", state);
-    }
-    const publishFn = typeof input.publishPolicies === "function" ? input.publishPolicies : null;
-    if (!publishFn) {
-      return logGraphRoute("approval_gate", "publish_finalize", state);
-    }
-    return logGraphRoute("approval_gate", "publish_policy", state);
-  };
-
-  const publishPolicy = async (state) => {
-    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
-      return {};
-    }
-    const turn = isObjectLike(state.turn) ? state.turn : {};
-    if (turn.status !== "PROPOSAL_READY" || !Array.isArray(turn.proposals) || turn.proposals.length === 0) {
-      return {};
-    }
-    const input = isObjectLike(state.input) ? state.input : {};
-    const publishFn = typeof input.publishPolicies === "function" ? input.publishPolicies : null;
-    if (!publishFn) {
-      return {
-        publishResult: normalizePublishResult({
-          source: "UNAVAILABLE",
-          items: []
-        }, turn.proposals.length)
-      };
-    }
-    const approvalDecision = isObjectLike(state.approvalDecision) ? state.approvalDecision : {};
-    try {
-      const raw = await publishFn({
-        merchantId: input.merchantId,
-        sessionId: input.sessionId,
-        approvalId: asString(approvalDecision.approvalId),
-        approvalToken: asString(input.approvalToken),
-        proposals: turn.proposals,
-        intentFrame: state.intentFrame,
-        userMessage: input.userMessage,
-      });
-      return {
-        publishResult: normalizePublishResult(raw, turn.proposals.length),
-      };
-    } catch (error) {
-      return {
-        publishResult: normalizePublishResult({
-          source: "PUBLISH_TOOL_ERROR",
-          failed: turn.proposals.map((_, idx) => ({
-            proposalIndex: idx,
-            error: summarizeError(error)
-          }))
-        }, turn.proposals.length)
-      };
-    }
-  };
-
-  const publishFinalize = (state) => {
-    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
-      return {};
-    }
-    const input = isObjectLike(state.input) ? state.input : {};
-    const turn = attachApprovalPublishToTurn({
-      turn: state.turn,
-      publishIntent: Boolean(input.publishIntent),
-      approvalDecision: state.approvalDecision,
-      publishResult: state.publishResult,
-    });
-    return {
-      turn: turn || state.turn,
-    };
-  };
-
-  const postPublishMonitor = async (state) => {
-    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
-      return {};
-    }
-    const turn = isObjectLike(state.turn) ? state.turn : {};
-    const proposals = Array.isArray(turn.proposals) ? turn.proposals : [];
-    const publishedProposals = proposals.filter(
-      (item) => isObjectLike(item && item.publish) && Boolean(item.publish.ok)
-    );
-    if (publishedProposals.length === 0) {
-      const report = normalizePostPublishMonitorReport({
-        source: "SKIPPED",
-        summary: "No published policy to monitor.",
-        alerts: [],
-        recommendations: [],
-        publishedCount: 0
-      }, { publishedCount: 0 });
-      return {
-        postPublishMonitorReport: report,
-        turn: attachPostPublishMonitorToTurn({ turn, report }),
-      };
-    }
-    const input = isObjectLike(state.input) ? state.input : {};
-    const monitorFn = typeof input.monitorPublishedPolicies === "function"
-      ? input.monitorPublishedPolicies
-      : null;
-    if (!monitorFn) {
-      const report = buildFallbackPostPublishMonitorReport({ turn, publishedProposals });
-      return {
-        postPublishMonitorReport: report,
-        turn: attachPostPublishMonitorToTurn({ turn, report }),
-      };
-    }
-    try {
-      const raw = await monitorFn({
-        merchantId: input.merchantId,
-        sessionId: input.sessionId,
-        proposals: proposals,
-        publishedProposals,
-        intentFrame: state.intentFrame,
-        explainPack: state.explainPack,
-        publishReport: turn.publishReport,
-      });
-      const report = normalizePostPublishMonitorReport(raw, { publishedCount: publishedProposals.length });
-      return {
-        postPublishMonitorReport: report,
-        turn: attachPostPublishMonitorToTurn({ turn, report }),
-      };
-    } catch (error) {
-      const report = normalizePostPublishMonitorReport({
-        source: "MONITOR_ERROR",
-        summary: summarizeError(error),
-        alerts: ["monitor_tool_failed"],
-        recommendations: ["fallback_to_manual_review"],
-        publishedCount: publishedProposals.length
-      }, { publishedCount: publishedProposals.length });
-      return {
-        postPublishMonitorReport: report,
-        turn: attachPostPublishMonitorToTurn({ turn, report }),
-      };
-    }
-  };
-
-  const memoryUpdate = async (state) => {
-    if (state.turn && state.turn.status === "AI_UNAVAILABLE") {
-      return {};
-    }
-    const input = isObjectLike(state.input) ? state.input : {};
-    const turn = isObjectLike(state.turn) ? state.turn : {};
-    const monitorReport = isObjectLike(state.postPublishMonitorReport)
-      ? state.postPublishMonitorReport
-      : null;
-    const memoryFacts = buildMemoryFactsFromInput({
-      input,
-      turn,
-      intentFrame: state.intentFrame,
-      monitorReport
-    });
-    const summaryText = summarizeMemoryFacts(memoryFacts);
-    const updateFn = typeof input.updateStrategyMemory === "function"
-      ? input.updateStrategyMemory
-      : null;
-    if (!updateFn) {
-      const result = normalizeMemoryUpdateResult({
-        source: "INLINE",
-        persisted: false,
-        summary: summaryText,
-        facts: memoryFacts
-      }, memoryFacts, summaryText);
-      return {
-        memoryUpdateResult: result,
-        turn: attachMemoryUpdateToTurn({ turn, memoryUpdate: result }),
-      };
-    }
-    try {
-      const raw = await updateFn({
-        merchantId: input.merchantId,
-        sessionId: input.sessionId,
-        userMessage: asString(input.userMessage),
-        intentFrame: state.intentFrame,
-        turn,
-        monitorReport,
-        memoryFacts,
-        summary: summaryText
-      });
-      const result = normalizeMemoryUpdateResult(raw, memoryFacts, summaryText);
-      return {
-        memoryUpdateResult: result,
-        turn: attachMemoryUpdateToTurn({ turn, memoryUpdate: result }),
-      };
-    } catch (error) {
-      const result = normalizeMemoryUpdateResult({
-        source: "MEMORY_ERROR",
-        persisted: false,
-        summary: summarizeError(error),
-        facts: memoryFacts
-      }, memoryFacts, summaryText);
-      return {
-        memoryUpdateResult: result,
-        turn: attachMemoryUpdateToTurn({ turn, memoryUpdate: result }),
-      };
-    }
-  };
-
-  return new StateGraph(ChatState)
-    .addNode("prepare_input", withGraphNodeLog("prepare_input", prepareInput))
-    .addNode("intent_parse", withGraphNodeLog("intent_parse", intentParse))
-    .addNode("build_prompt", withGraphNodeLog("build_prompt", buildPrompt))
-    .addNode("remote_decide", withGraphNodeLog("remote_decide", remoteDecide))
-    .addNode("parse_response", withGraphNodeLog("parse_response", parseResponse))
-    .addNode("candidate_generate", withGraphNodeLog("candidate_generate", candidateGenerate))
-    .addNode("patch_validate", withGraphNodeLog("patch_validate", patchValidate))
-    .addNode("finalize_turn", withGraphNodeLog("finalize_turn", finalizeTurn))
-    .addNode("critic_gate", withGraphNodeLog("critic_gate", criticGate))
-    .addNode("critic_node", withGraphNodeLog("critic_node", criticNode))
-    .addNode("revise_node", withGraphNodeLog("revise_node", reviseNode))
-    .addNode("critic_finalize", withGraphNodeLog("critic_finalize", criticFinalize))
-    .addNode("evaluate_candidates", withGraphNodeLog("evaluate_candidates", evaluateCandidates))
-    .addNode("rank_candidates", withGraphNodeLog("rank_candidates", rankCandidates))
-    .addNode("explain_pack", withGraphNodeLog("explain_pack", explainPack))
-    .addNode("approval_gate", withGraphNodeLog("approval_gate", approvalGate))
-    .addNode("publish_policy", withGraphNodeLog("publish_policy", publishPolicy))
-    .addNode("publish_finalize", withGraphNodeLog("publish_finalize", publishFinalize))
-    .addNode("post_publish_monitor", withGraphNodeLog("post_publish_monitor", postPublishMonitor))
-    .addNode("memory_update", withGraphNodeLog("memory_update", memoryUpdate))
-    .addEdge(START, "prepare_input")
-    .addEdge("prepare_input", "intent_parse")
-    .addEdge("intent_parse", "build_prompt")
-    .addEdge("build_prompt", "remote_decide")
-    .addEdge("remote_decide", "parse_response")
-    .addEdge("parse_response", "candidate_generate")
-    .addEdge("candidate_generate", "patch_validate")
-    .addEdge("patch_validate", "finalize_turn")
-    .addEdge("finalize_turn", "critic_gate")
-    .addConditionalEdges("critic_gate", routeCriticGate, {
-      critic_node: "critic_node",
-      critic_finalize: "critic_finalize",
-    })
-    .addConditionalEdges("critic_node", routeAfterCritic, {
-      revise_node: "revise_node",
-      critic_finalize: "critic_finalize",
-    })
-    .addEdge("revise_node", "critic_gate")
-    .addEdge("critic_finalize", "evaluate_candidates")
-    .addEdge("evaluate_candidates", "rank_candidates")
-    .addEdge("rank_candidates", "explain_pack")
-    .addEdge("explain_pack", "approval_gate")
-    .addConditionalEdges("approval_gate", routeAfterApprovalGate, {
-      publish_policy: "publish_policy",
-      publish_finalize: "publish_finalize",
-    })
-    .addEdge("publish_policy", "publish_finalize")
-    .addEdge("publish_finalize", "post_publish_monitor")
-    .addEdge("post_publish_monitor", "memory_update")
-    .addEdge("memory_update", END)
-    .compile();
-}
-
 function createAiStrategyService(options = {}) {
   const provider = normalizeProvider(
     options.provider || process.env.MQ_AI_PROVIDER || DEFAULT_REMOTE_PROVIDER,
@@ -2301,7 +1386,7 @@ function createAiStrategyService(options = {}) {
     apiKey,
     timeoutMs,
     maxRetries,
-    parseJsonLoose,
+    parseJsonStrict,
   });
   const criticEnabled = options.criticEnabled !== undefined
     ? Boolean(options.criticEnabled)
@@ -2338,19 +1423,6 @@ function createAiStrategyService(options = {}) {
       )
     )
   );
-  const strategyChatGraph = createStrategyChatGraph({
-    modelGateway,
-    provider,
-    model,
-    criticEnabled,
-    criticMaxRounds,
-    criticMinProposals,
-    criticMinConfidence,
-    buildCriticMessages,
-    buildReviseMessages,
-    attachCriticProtocol,
-  });
-
   function buildCriticMessages({ input, turn, round }) {
     const proposals = summarizeProposalsForCritic(turn.proposals || []);
     const payload = {
@@ -2886,27 +1958,6 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
     });
   }
 
-  async function generateStrategyChatTurn(input) {
-    if (provider === "bigmodel" && !apiKey) {
-      return createAiUnavailableResult("MQ_AI_API_KEY is required for provider=bigmodel");
-    }
-    try {
-      const graphResult = await strategyChatGraph.invoke({
-        input: isObjectLike(input) ? input : {},
-      });
-      const parsedTurn =
-        graphResult && isObjectLike(graphResult.turn)
-          ? graphResult.turn
-          : {
-            status: "CHAT_REPLY",
-            assistantMessage: "Please tell me your goal, budget, and expected time window.",
-          };
-      return parsedTurn;
-    } catch (error) {
-      return createAiUnavailableResult(`strategy chat failed: ${summarizeError(error)}`);
-    }
-  }
-
   // True streaming: yields plain text tokens from the first chunk,
   // then returns the parsed turn decision at the end (no second LLM call).
   async function* streamStrategyChatTurn(input) {
@@ -2927,8 +1978,8 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
     let rawBuffer = "";
     let yieldedLen = 0;
     let sentinelDetected = false;
-    const rawChunks = [];
-    const SENTINELS = DECISION_ENVELOPE_STARTS;
+    const SENTINELS = DECISION_ENVELOPE_START_MARKERS;
+    let sentinelScanFrom = 0;
 
     const computeSafeFlushLen = (text) => {
       let holdBack = 0;
@@ -2944,25 +1995,19 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
       return text.length - holdBack;
     };
 
-    const streamIterator =
-      typeof modelGateway.streamChatWithRaw === "function"
-        ? modelGateway.streamChatWithRaw(prompt.messages)
-        : modelGateway.streamChat(prompt.messages);
+    const streamIterator = modelGateway.streamChatWithRaw(prompt.messages);
 
     for await (const streamItem of streamIterator) {
       let chunk = "";
       if (isObjectLike(streamItem) && Object.prototype.hasOwnProperty.call(streamItem, "text")) {
         chunk = typeof streamItem.text === "string" ? streamItem.text : String(streamItem.text || "");
-        if (isObjectLike(streamItem.raw)) {
-          rawChunks.push(streamItem.raw);
-        }
       } else {
         chunk = typeof streamItem === "string" ? streamItem : String(streamItem || "");
       }
       rawBuffer += chunk;
       if (sentinelDetected) continue;
 
-      const sentinelIdx = findFirstDecisionEnvelopeStart(rawBuffer);
+      const sentinelIdx = findDecisionEnvelopeStart(rawBuffer, sentinelScanFrom);
       if (sentinelIdx >= 0) {
         const textToYield = rawBuffer.slice(yieldedLen, sentinelIdx);
         if (textToYield) {
@@ -2971,6 +2016,11 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
         yieldedLen = sentinelIdx;
         sentinelDetected = true;
       } else {
+        // Keep overlap window so markers split across chunks can still be matched.
+        sentinelScanFrom = Math.max(
+          0,
+          rawBuffer.length - Math.max(1, DECISION_ENVELOPE_MAX_MARKER_LEN - 1)
+        );
         // Only hold back the tail that *could* be the start of any sentinel
         const safeLen = computeSafeFlushLen(rawBuffer);
         if (safeLen > yieldedLen) {
@@ -2984,22 +2034,6 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
     if (!sentinelDetected && rawBuffer.length > yieldedLen) {
       yield rawBuffer.slice(yieldedLen);
     }
-
-    logFullLlmOutput({
-      channel: "stream",
-      merchantId: input.merchantId,
-      sessionId: input.sessionId,
-      text: rawBuffer,
-    });
-    logRawLlmResponse({
-      channel: "stream",
-      merchantId: input.merchantId,
-      sessionId: input.sessionId,
-      payload: {
-        chunkCount: rawChunks.length,
-        chunks: rawChunks,
-      },
-    });
 
     const parsedTurn = parseTwoPartResponse(rawBuffer, input);
     const revisedTurn = await maybeRunCriticReviseLoop({
@@ -3031,7 +2065,7 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
       configured: true,
       remoteEnabled,
       remoteConfigured: remoteEnabled ? Boolean(apiKey) : false,
-      plannerEngine: "text_json_envelope_v3",
+      plannerEngine: "stream_text_json_envelope_v4",
       criticLoop: {
         enabled: criticEnabled,
         maxRounds: criticMaxRounds,
@@ -3044,7 +2078,6 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
   }
 
   return {
-    generateStrategyChatTurn,
     streamStrategyChatTurn,
     getRuntimeInfo,
   };
@@ -3053,4 +2086,5 @@ function buildReviseMessages({ input, turn, criticDecision, round, validationIss
 module.exports = {
   createAiStrategyService,
 };
+
 

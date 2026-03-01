@@ -52,6 +52,106 @@ function extractAiUserPayload(messages) {
   return safeParseJson(rawText) || {};
 }
 
+async function collectStreamTurn(service, input) {
+  const gen = service.streamStrategyChatTurn(input);
+  let next = await gen.next();
+  while (!next.done) {
+    next = await gen.next();
+  }
+  return next.value;
+}
+
+async function parseRequestJson(input, init) {
+  if (init && typeof init.body === "string") {
+    return safeParseJson(init.body) || {};
+  }
+  if (input && typeof input.text === "function") {
+    const text = await input.text();
+    return safeParseJson(text) || {};
+  }
+  return {};
+}
+
+function chunkText(value, size = 48) {
+  const text = String(value || "");
+  if (!text) {
+    return [""];
+  }
+  const chunks = [];
+  for (let cursor = 0; cursor < text.length; cursor += size) {
+    chunks.push(text.slice(cursor, cursor + size));
+  }
+  return chunks;
+}
+
+function createStreamingCompletionResponse(content) {
+  const encoder = new TextEncoder();
+  const chunks = chunkText(content, 48);
+  const stream = new ReadableStream({
+    start(controller) {
+      const created = Math.floor(Date.now() / 1000);
+      for (const part of chunks) {
+        const payload = {
+          id: "chatcmpl_test",
+          object: "chat.completion.chunk",
+          created,
+          model: "test-model",
+          choices: [
+            {
+              index: 0,
+              delta: { content: part },
+              finish_reason: null,
+            },
+          ],
+        };
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+      }
+      const donePayload = {
+        id: "chatcmpl_test",
+        object: "chat.completion.chunk",
+        created,
+        model: "test-model",
+        choices: [
+          {
+            index: 0,
+            delta: {},
+            finish_reason: "stop",
+          },
+        ],
+      };
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify(donePayload)}\n\n`));
+      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      controller.close();
+    },
+  });
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/event-stream",
+    },
+  });
+}
+
+function createNonStreamingCompletionResponse(content) {
+  return new Response(
+    JSON.stringify({
+      choices: [
+        {
+          message: {
+            content,
+          },
+        },
+      ],
+    }),
+    {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+      },
+    }
+  );
+}
+
 test("ai strategy provider: bigmodel uses expected defaults", () => {
   const service = createAiStrategyService({
     provider: "bigmodel",
@@ -64,7 +164,7 @@ test("ai strategy provider: bigmodel uses expected defaults", () => {
   assert.equal(runtime.model, "glm-4.7-flash");
   assert.equal(runtime.remoteEnabled, true);
   assert.equal(runtime.remoteConfigured, true);
-  assert.equal(runtime.plannerEngine, "text_json_envelope_v3");
+  assert.equal(runtime.plannerEngine, "stream_text_json_envelope_v4");
   assert.equal(runtime.criticLoop.enabled, true);
   assert.equal(runtime.criticLoop.maxRounds, 1);
   assert.equal(runtime.modelClient, "langchain_chatopenai");
@@ -76,48 +176,38 @@ test("ai strategy provider: retries transient upstream failures and then succeed
   const originalFetch = global.fetch;
   let callCount = 0;
 
-  global.fetch = async () => {
+  global.fetch = async (input, init) => {
     callCount += 1;
     if (callCount < 3) {
       const transientError = new Error("ECONNRESET upstream disconnected");
       transientError.code = "ECONNRESET";
       throw transientError;
     }
-    return new Response(
+    const requestJson = await parseRequestJson(input, init);
+    const content = [
+      "Recovered after retries.",
       JSON.stringify({
-        choices: [
+        schemaVersion: "2026-02-27",
+        mode: "PROPOSAL",
+        assistantMessage: "Recovered after retries.",
+        proposals: [
           {
-            message: {
-              content: [
-                "Recovered after retries.",
-                JSON.stringify({
-                  schemaVersion: "2026-02-27",
-                  assistantMessage: "Recovered after retries.",
-                  proposals: [
-                    {
-                      templateId: "acquisition_welcome_gift",
-                      branchId: "DEFAULT",
-                      title: "Recovered Strategy",
-                      rationale: "retry path works",
-                      confidence: 0.79,
-                      policyPatch: {
-                        name: "Recovered Strategy",
-                      },
-                    },
-                  ],
-                }),
-              ].join("\n"),
+            templateId: "acquisition_welcome_gift",
+            branchId: "DEFAULT",
+            title: "Recovered Strategy",
+            rationale: "retry path works",
+            confidence: 0.79,
+            policyPatch: {
+              name: "Recovered Strategy",
             },
           },
         ],
       }),
-      {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      },
-    );
+    ].join("\n");
+    if (requestJson.stream) {
+      return createStreamingCompletionResponse(content);
+    }
+    return createNonStreamingCompletionResponse(content);
   };
 
   try {
@@ -129,7 +219,7 @@ test("ai strategy provider: retries transient upstream failures and then succeed
       timeoutMs: 3000,
     });
 
-    const result = await service.generateStrategyChatTurn({
+    const result = await collectStreamTurn(service, {
       merchantId: "m_store_001",
       sessionId: "sc_retry",
       userMessage: "Please create a cooling proposal.",
@@ -148,52 +238,43 @@ test("ai strategy provider: retries transient upstream failures and then succeed
 
 test("ai strategy provider: strategy chat supports multiple proposal candidates", async () => {
   const originalFetch = global.fetch;
-  global.fetch = async () =>
-    new Response(
+  global.fetch = async (input, init) => {
+    const requestJson = await parseRequestJson(input, init);
+    const content = [
+      "Drafted multiple options.",
       JSON.stringify({
-        choices: [
+        schemaVersion: "2026-02-27",
+        mode: "PROPOSAL",
+        assistantMessage: "Drafted multiple options.",
+        proposals: [
           {
-            message: {
-              content: [
-                "Drafted multiple options.",
-                JSON.stringify({
-                  schemaVersion: "2026-02-27",
-                  assistantMessage: "Drafted multiple options.",
-                  proposals: [
-                    {
-                      templateId: "acquisition_welcome_gift",
-                      branchId: "DEFAULT",
-                      title: "Option A",
-                      rationale: "for hot weather",
-                      confidence: 0.75,
-                      policyPatch: {
-                        name: "Option A",
-                      },
-                    },
-                    {
-                      templateId: "acquisition_welcome_gift",
-                      branchId: "CHANNEL",
-                      title: "Option B",
-                      rationale: "for fallback users",
-                      confidence: 0.7,
-                      policyPatch: {
-                        name: "Option B",
-                      },
-                    },
-                  ],
-                }),
-              ].join("\n"),
+            templateId: "acquisition_welcome_gift",
+            branchId: "DEFAULT",
+            title: "Option A",
+            rationale: "for hot weather",
+            confidence: 0.75,
+            policyPatch: {
+              name: "Option A",
+            },
+          },
+          {
+            templateId: "acquisition_welcome_gift",
+            branchId: "CHANNEL",
+            title: "Option B",
+            rationale: "for fallback users",
+            confidence: 0.7,
+            policyPatch: {
+              name: "Option B",
             },
           },
         ],
       }),
-      {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      },
-    );
+    ].join("\n");
+    if (requestJson.stream) {
+      return createStreamingCompletionResponse(content);
+    }
+    return createNonStreamingCompletionResponse(content);
+  };
 
   try {
     const service = createAiStrategyService({
@@ -204,7 +285,7 @@ test("ai strategy provider: strategy chat supports multiple proposal candidates"
       timeoutMs: 3000,
     });
 
-    const result = await service.generateStrategyChatTurn({
+    const result = await collectStreamTurn(service, {
       merchantId: "m_store_001",
       sessionId: "sc_multi",
       userMessage: "Give me two options.",
@@ -221,55 +302,45 @@ test("ai strategy provider: strategy chat supports multiple proposal candidates"
     global.fetch = originalFetch;
   }
 });
-test("ai strategy provider: unary graph ranks proposals with evaluation tool and adds explain pack", async () => {
+test("ai strategy provider: stream flow ranks proposals with evaluation tool and adds explain pack", async () => {
   const originalFetch = global.fetch;
-  global.fetch = async () =>
-    new Response(
+  global.fetch = async (input, init) => {
+    const requestJson = await parseRequestJson(input, init);
+    const content = [
+      "Drafted two options.",
       JSON.stringify({
-        choices: [
+        schemaVersion: "2026-02-27",
+        assistantMessage: "Drafted two options.",
+        mode: "PROPOSAL",
+        proposals: [
           {
-            message: {
-              content: [
-                "Drafted two options.",
-                JSON.stringify({
-                  schemaVersion: "2026-02-27",
-                  assistantMessage: "Drafted two options.",
-                  mode: "PROPOSAL",
-                  proposals: [
-                    {
-                      templateId: "acquisition_welcome_gift",
-                      branchId: "DEFAULT",
-                      title: "Option Low",
-                      rationale: "low expected value",
-                      confidence: 0.8,
-                      policyPatch: {
-                        name: "Option Low",
-                      },
-                    },
-                    {
-                      templateId: "acquisition_welcome_gift",
-                      branchId: "CHANNEL",
-                      title: "Option High",
-                      rationale: "higher expected value",
-                      confidence: 0.6,
-                      policyPatch: {
-                        name: "Option High",
-                      },
-                    },
-                  ],
-                }),
-              ].join("\n"),
+            templateId: "acquisition_welcome_gift",
+            branchId: "DEFAULT",
+            title: "Option Low",
+            rationale: "low expected value",
+            confidence: 0.8,
+            policyPatch: {
+              name: "Option Low",
+            },
+          },
+          {
+            templateId: "acquisition_welcome_gift",
+            branchId: "CHANNEL",
+            title: "Option High",
+            rationale: "higher expected value",
+            confidence: 0.6,
+            policyPatch: {
+              name: "Option High",
             },
           },
         ],
       }),
-      {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      },
-    );
+    ].join("\n");
+    if (requestJson.stream) {
+      return createStreamingCompletionResponse(content);
+    }
+    return createNonStreamingCompletionResponse(content);
+  };
 
   try {
     const service = createAiStrategyService({
@@ -281,7 +352,7 @@ test("ai strategy provider: unary graph ranks proposals with evaluation tool and
       criticEnabled: false,
     });
 
-    const result = await service.generateStrategyChatTurn({
+    const result = await collectStreamTurn(service, {
       merchantId: "m_store_001",
       sessionId: "sc_graph_rank",
       userMessage: "Please propose two options and rank by expected value.",
@@ -336,53 +407,43 @@ test("ai strategy provider: unary graph ranks proposals with evaluation tool and
 
 test("ai strategy provider: publish intent requires approval and can invoke publish tool", async () => {
   const originalFetch = global.fetch;
-  global.fetch = async () =>
-    new Response(
+  global.fetch = async (input, init) => {
+    const requestJson = await parseRequestJson(input, init);
+    const content = [
+      "Drafted two options for publish.",
       JSON.stringify({
-        choices: [
+        schemaVersion: "2026-02-27",
+        assistantMessage: "Drafted two options for publish.",
+        mode: "PROPOSAL",
+        proposals: [
           {
-            message: {
-              content: [
-                "Drafted two options for publish.",
-                JSON.stringify({
-                  schemaVersion: "2026-02-27",
-                  assistantMessage: "Drafted two options for publish.",
-                  mode: "PROPOSAL",
-                  proposals: [
-                    {
-                      templateId: "acquisition_welcome_gift",
-                      branchId: "DEFAULT",
-                      title: "Publish A",
-                      rationale: "base plan",
-                      confidence: 0.7,
-                      policyPatch: {
-                        name: "Publish A",
-                      },
-                    },
-                    {
-                      templateId: "acquisition_welcome_gift",
-                      branchId: "CHANNEL",
-                      title: "Publish B",
-                      rationale: "channel plan",
-                      confidence: 0.72,
-                      policyPatch: {
-                        name: "Publish B",
-                      },
-                    },
-                  ],
-                }),
-              ].join("\n"),
+            templateId: "acquisition_welcome_gift",
+            branchId: "DEFAULT",
+            title: "Publish A",
+            rationale: "base plan",
+            confidence: 0.7,
+            policyPatch: {
+              name: "Publish A",
+            },
+          },
+          {
+            templateId: "acquisition_welcome_gift",
+            branchId: "CHANNEL",
+            title: "Publish B",
+            rationale: "channel plan",
+            confidence: 0.72,
+            policyPatch: {
+              name: "Publish B",
             },
           },
         ],
       }),
-      {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      },
-    );
+    ].join("\n");
+    if (requestJson.stream) {
+      return createStreamingCompletionResponse(content);
+    }
+    return createNonStreamingCompletionResponse(content);
+  };
 
   try {
     const service = createAiStrategyService({
@@ -395,7 +456,7 @@ test("ai strategy provider: publish intent requires approval and can invoke publ
     });
 
     const publishedCalls = [];
-    const result = await service.generateStrategyChatTurn({
+    const result = await collectStreamTurn(service, {
       merchantId: "m_store_001",
       sessionId: "sc_publish_intent",
       userMessage: "publish this now",
@@ -445,43 +506,33 @@ test("ai strategy provider: publish intent requires approval and can invoke publ
 
 test("ai strategy provider: post-publish monitor and memory update hooks are attached", async () => {
   const originalFetch = global.fetch;
-  global.fetch = async () =>
-    new Response(
+  global.fetch = async (input, init) => {
+    const requestJson = await parseRequestJson(input, init);
+    const content = [
+      "Ready to publish.",
       JSON.stringify({
-        choices: [
+        schemaVersion: "2026-02-27",
+        assistantMessage: "Ready to publish.",
+        mode: "PROPOSAL",
+        proposals: [
           {
-            message: {
-              content: [
-                "Ready to publish.",
-                JSON.stringify({
-                  schemaVersion: "2026-02-27",
-                  assistantMessage: "Ready to publish.",
-                  mode: "PROPOSAL",
-                  proposals: [
-                    {
-                      templateId: "acquisition_welcome_gift",
-                      branchId: "DEFAULT",
-                      title: "Monitor Target",
-                      rationale: "monitor after publish",
-                      confidence: 0.75,
-                      policyPatch: {
-                        name: "Monitor Target",
-                      },
-                    },
-                  ],
-                }),
-              ].join("\n"),
+            templateId: "acquisition_welcome_gift",
+            branchId: "DEFAULT",
+            title: "Monitor Target",
+            rationale: "monitor after publish",
+            confidence: 0.75,
+            policyPatch: {
+              name: "Monitor Target",
             },
           },
         ],
       }),
-      {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      },
-    );
+    ].join("\n");
+    if (requestJson.stream) {
+      return createStreamingCompletionResponse(content);
+    }
+    return createNonStreamingCompletionResponse(content);
+  };
 
   try {
     const service = createAiStrategyService({
@@ -495,7 +546,7 @@ test("ai strategy provider: post-publish monitor and memory update hooks are att
 
     let monitorCalled = 0;
     let memoryCalled = 0;
-    const result = await service.generateStrategyChatTurn({
+    const result = await collectStreamTurn(service, {
       merchantId: "m_store_001",
       sessionId: "sc_post_publish",
       userMessage: "publish and monitor",
@@ -558,119 +609,81 @@ test("ai strategy provider: critic revise loop rewrites proposal candidates when
   const originalFetch = global.fetch;
   let callCount = 0;
 
-  global.fetch = async () => {
+  global.fetch = async (input, init) => {
     callCount += 1;
+    const requestJson = await parseRequestJson(input, init);
     if (callCount === 1) {
-      return new Response(
+      const content = [
+        "Drafted initial options.",
         JSON.stringify({
-          choices: [
+          schemaVersion: "2026-02-27",
+          assistantMessage: "Drafted initial options.",
+          mode: "PROPOSAL",
+          proposals: [
             {
-              message: {
-                content: [
-                  "Drafted initial options.",
-                  JSON.stringify({
-                    schemaVersion: "2026-02-27",
-                    assistantMessage: "Drafted initial options.",
-                    proposals: [
-                      {
-                        templateId: "acquisition_welcome_gift",
-                        branchId: "DEFAULT",
-                        title: "Initial A",
-                        rationale: "baseline",
-                        confidence: 0.61,
-                        policyPatch: {
-                          name: "Initial A",
-                        },
-                      },
-                      {
-                        templateId: "acquisition_welcome_gift",
-                        branchId: "CHANNEL",
-                        title: "Initial B",
-                        rationale: "close variant",
-                        confidence: 0.58,
-                        policyPatch: {
-                          name: "Initial B",
-                        },
-                      },
-                    ],
-                  }),
-                ].join("\n"),
+              templateId: "acquisition_welcome_gift",
+              branchId: "DEFAULT",
+              title: "Initial A",
+              rationale: "baseline",
+              confidence: 0.61,
+              policyPatch: {
+                name: "Initial A",
+              },
+            },
+            {
+              templateId: "acquisition_welcome_gift",
+              branchId: "CHANNEL",
+              title: "Initial B",
+              rationale: "close variant",
+              confidence: 0.58,
+              policyPatch: {
+                name: "Initial B",
               },
             },
           ],
         }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-          },
-        },
-      );
+      ].join("\n");
+      if (requestJson.stream) {
+        return createStreamingCompletionResponse(content);
+      }
+      return createNonStreamingCompletionResponse(content);
     }
     if (callCount === 2) {
-      return new Response(
+      return createNonStreamingCompletionResponse(
         JSON.stringify({
-          choices: [
-            {
-              message: {
-                content: JSON.stringify({
-                  needRevision: true,
-                  summary: "options too similar",
-                  issues: ["Increase differentiation", "Raise confidence with clearer intent"],
-                  focus: ["audience split", "budget clarity"],
-                }),
-              },
-            },
-          ],
-        }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-          },
-        },
+          needRevision: true,
+          summary: "options too similar",
+          issues: ["Increase differentiation", "Raise confidence with clearer intent"],
+          focus: ["audience split", "budget clarity"],
+        })
       );
     }
-    return new Response(
+    return createNonStreamingCompletionResponse(
       JSON.stringify({
-        choices: [
+        assistantMessage: "Revised options ready for review.",
+        proposals: [
           {
-            message: {
-              content: JSON.stringify({
-                assistantMessage: "Revised options ready for review.",
-                proposals: [
-                  {
-                    templateId: "acquisition_welcome_gift",
-                    branchId: "DEFAULT",
-                    title: "Refined Welcome Base",
-                    rationale: "Conservative baseline for all new users.",
-                    confidence: 0.76,
-                    policyPatch: {
-                      name: "Refined Welcome Base",
-                    },
-                  },
-                  {
-                    templateId: "acquisition_welcome_gift",
-                    branchId: "CHANNEL",
-                    title: "Refined Referral Boost",
-                    rationale: "Referral branch for higher conversion users.",
-                    confidence: 0.8,
-                    policyPatch: {
-                      name: "Refined Referral Boost",
-                    },
-                  },
-                ],
-              }),
+            templateId: "acquisition_welcome_gift",
+            branchId: "DEFAULT",
+            title: "Refined Welcome Base",
+            rationale: "Conservative baseline for all new users.",
+            confidence: 0.76,
+            policyPatch: {
+              name: "Refined Welcome Base",
+            },
+          },
+          {
+            templateId: "acquisition_welcome_gift",
+            branchId: "CHANNEL",
+            title: "Refined Referral Boost",
+            rationale: "Referral branch for higher conversion users.",
+            confidence: 0.8,
+            policyPatch: {
+              name: "Refined Referral Boost",
             },
           },
         ],
-      }),
-      {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      },
+      })
     );
   };
 
@@ -687,7 +700,7 @@ test("ai strategy provider: critic revise loop rewrites proposal candidates when
       criticMinConfidence: 0.72,
     });
 
-    const result = await service.generateStrategyChatTurn({
+    const result = await collectStreamTurn(service, {
       merchantId: "m_store_001",
       sessionId: "sc_critic",
       userMessage: "Give me two differentiated launch options.",
@@ -713,92 +726,67 @@ test("ai strategy provider: invalid policyPatch is revised before returning prop
   const originalFetch = global.fetch;
   let callCount = 0;
 
-  global.fetch = async () => {
+  global.fetch = async (input, init) => {
     callCount += 1;
+    const requestJson = await parseRequestJson(input, init);
     if (callCount === 1) {
-      return new Response(
+      const content = [
+        "Draft created.",
         JSON.stringify({
-          choices: [
-            {
-              message: {
-                content: [
-                  "Draft created.",
-                  JSON.stringify({
-                    schemaVersion: "2026-02-27",
-                    mode: "PROPOSAL",
-                    assistantMessage: "Draft created.",
-                    proposal: {
-                      templateId: "acquisition_welcome_gift",
-                      branchId: "DEFAULT",
-                      title: "Invalid Draft",
-                      rationale: "contains illegal field",
-                      confidence: 0.8,
-                      policyPatch: {
-                        name: "Invalid Draft",
-                        governance: {
-                          approval_required: false,
-                        },
-                      },
-                    },
-                  }),
-                ].join("\n"),
+          schemaVersion: "2026-02-27",
+          mode: "PROPOSAL",
+          assistantMessage: "Draft created.",
+          proposal: {
+            templateId: "acquisition_welcome_gift",
+            branchId: "DEFAULT",
+            title: "Invalid Draft",
+            rationale: "contains illegal field",
+            confidence: 0.8,
+            policyPatch: {
+              name: "Invalid Draft",
+              governance: {
+                approval_required: false,
               },
             },
-          ],
-        }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
           },
-        },
-      );
+        }),
+      ].join("\n");
+      if (requestJson.stream) {
+        return createStreamingCompletionResponse(content);
+      }
+      return createNonStreamingCompletionResponse(content);
     }
-    return new Response(
+    return createNonStreamingCompletionResponse(
       JSON.stringify({
-        choices: [
+        assistantMessage: "Compliant proposal ready.",
+        proposals: [
           {
-            message: {
-              content: JSON.stringify({
-                assistantMessage: "Compliant proposal ready.",
-                proposals: [
-                  {
-                    templateId: "acquisition_welcome_gift",
-                    branchId: "DEFAULT",
-                    title: "Compliant Draft",
-                    rationale: "removed illegal fields",
-                    confidence: 0.82,
-                    policyPatch: {
-                      name: "Compliant Draft",
-                      constraints: [
-                        { plugin: "kill_switch_v1", params: {} },
-                        {
-                          plugin: "budget_guard_v1",
-                          params: { cap: 150, cost_per_hit: 8 },
-                        },
-                        {
-                          plugin: "frequency_cap_v1",
-                          params: { daily: 1, window_sec: 86400 },
-                        },
-                        {
-                          plugin: "anti_fraud_hook_v1",
-                          params: { max_risk_score: 0.75 },
-                        },
-                      ],
-                    },
-                  },
-                ],
-              }),
+            templateId: "acquisition_welcome_gift",
+            branchId: "DEFAULT",
+            title: "Compliant Draft",
+            rationale: "removed illegal fields",
+            confidence: 0.82,
+            policyPatch: {
+              name: "Compliant Draft",
+              constraints: [
+                { plugin: "kill_switch_v1", params: {} },
+                {
+                  plugin: "budget_guard_v1",
+                  params: { cap: 150, cost_per_hit: 8 },
+                },
+                {
+                  plugin: "frequency_cap_v1",
+                  params: { daily: 1, window_sec: 86400 },
+                },
+                {
+                  plugin: "anti_fraud_hook_v1",
+                  params: { max_risk_score: 0.75 },
+                },
+              ],
             },
           },
         ],
-      }),
-      {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      },
+      })
     );
   };
 
@@ -813,7 +801,7 @@ test("ai strategy provider: invalid policyPatch is revised before returning prop
       criticMaxRounds: 1,
     });
 
-    const result = await service.generateStrategyChatTurn({
+    const result = await collectStreamTurn(service, {
       merchantId: "m_store_001",
       sessionId: "sc_invalid_patch",
       userMessage: "Please create a strategy.",
@@ -836,32 +824,12 @@ test("ai strategy provider: strategy chat payload includes sanitized sales snaps
   let capturedPayload = null;
 
   global.fetch = async (input, init) => {
-    let body = "";
-    if (init && typeof init.body === "string") {
-      body = init.body;
-    } else if (input && typeof input.text === "function") {
-      body = await input.text();
-    }
-    const requestJson = JSON.parse(String(body || "{}"));
+    const requestJson = await parseRequestJson(input, init);
     capturedPayload = extractAiUserPayload(requestJson.messages);
-
-    return new Response(
-      JSON.stringify({
-        choices: [
-          {
-            message: {
-              content: "snapshot received",
-            },
-          },
-        ],
-      }),
-      {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      },
-    );
+    if (requestJson.stream) {
+      return createStreamingCompletionResponse("snapshot received");
+    }
+    return createNonStreamingCompletionResponse("snapshot received");
   };
 
   try {
@@ -873,7 +841,7 @@ test("ai strategy provider: strategy chat payload includes sanitized sales snaps
       timeoutMs: 3000,
     });
 
-    const result = await service.generateStrategyChatTurn({
+    const result = await collectStreamTurn(service, {
       merchantId: "m_store_001",
       sessionId: "sc_sales",
       userMessage: "Suggest optimization based on sales.",
@@ -951,32 +919,12 @@ test("ai strategy provider: prompt payload includes parsed intent frame", async 
   let capturedPayload = null;
 
   global.fetch = async (input, init) => {
-    let body = "";
-    if (init && typeof init.body === "string") {
-      body = init.body;
-    } else if (input && typeof input.text === "function") {
-      body = await input.text();
-    }
-    const requestJson = JSON.parse(String(body || "{}"));
+    const requestJson = await parseRequestJson(input, init);
     capturedPayload = extractAiUserPayload(requestJson.messages);
-
-    return new Response(
-      JSON.stringify({
-        choices: [
-          {
-            message: {
-              content: "intent parsed",
-            },
-          },
-        ],
-      }),
-      {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      },
-    );
+    if (requestJson.stream) {
+      return createStreamingCompletionResponse("intent parsed");
+    }
+    return createNonStreamingCompletionResponse("intent parsed");
   };
 
   try {
@@ -988,7 +936,7 @@ test("ai strategy provider: prompt payload includes parsed intent frame", async 
       timeoutMs: 3000,
     });
 
-    const result = await service.generateStrategyChatTurn({
+    const result = await collectStreamTurn(service, {
       merchantId: "m_store_001",
       sessionId: "sc_intent",
       userMessage: "预算200，今天拉新，策略要稳健一些。",
@@ -1015,32 +963,12 @@ test("ai strategy provider: prompt history keeps MEMORY prefixes while trimming"
   let capturedPayload = null;
 
   global.fetch = async (input, init) => {
-    let body = "";
-    if (init && typeof init.body === "string") {
-      body = init.body;
-    } else if (input && typeof input.text === "function") {
-      body = await input.text();
-    }
-    const requestJson = JSON.parse(String(body || "{}"));
+    const requestJson = await parseRequestJson(input, init);
     capturedPayload = extractAiUserPayload(requestJson.messages);
-
-    return new Response(
-      JSON.stringify({
-        choices: [
-          {
-            message: {
-              content: "history received",
-            },
-          },
-        ],
-      }),
-      {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      },
-    );
+    if (requestJson.stream) {
+      return createStreamingCompletionResponse("history received");
+    }
+    return createNonStreamingCompletionResponse("history received");
   };
 
   try {
@@ -1078,7 +1006,7 @@ test("ai strategy provider: prompt history keeps MEMORY prefixes while trimming"
       });
     }
 
-    const result = await service.generateStrategyChatTurn({
+    const result = await collectStreamTurn(service, {
       merchantId: "m_store_001",
       sessionId: "sc_history_memory",
       userMessage: "ç»§ç»­ä¼˜åŒ–ç­–ç•¥ã€‚",
@@ -1110,5 +1038,6 @@ test("ai strategy provider: prompt history keeps MEMORY prefixes while trimming"
     global.fetch = originalFetch;
   }
 });
+
 
 

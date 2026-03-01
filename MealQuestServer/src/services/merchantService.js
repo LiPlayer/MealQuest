@@ -2059,7 +2059,7 @@ function createMerchantService(db, options = {}) {
       text
     });
 
-    if (!aiStrategyService || typeof aiStrategyService.generateStrategyChatTurn !== "function") {
+    if (!aiStrategyService || typeof aiStrategyService.streamStrategyChatTurn !== "function") {
       throw new Error("ai strategy chat service is not configured");
     }
 
@@ -2086,50 +2086,43 @@ function createMerchantService(db, options = {}) {
     // True streaming: text tokens arrive from the first LLM token and are broadcast via WS
     let aiTurn;
     const assistantMessageId = `msg_${Date.now()}_ai`;
-    if (typeof aiStrategyService.streamStrategyChatTurn === "function") {
-      try {
-        let fullText = "";
-        const gen = aiStrategyService.streamStrategyChatTurn(aiInput);
+    try {
+      let fullText = "";
+      const gen = aiStrategyService.streamStrategyChatTurn(aiInput);
 
-        let isFirstToken = true;
-        // Drain generator: yield = text token, done.value = parsed aiTurn
-        let next = await gen.next();
-        while (!next.done) {
-          const token = String(next.value || "");
-          if (token.length > 0) {
-            fullText += token;
-            if (wsHub) {
-              const deltaMsgs = [];
-              if (isFirstToken) {
-                deltaMsgs.push(userMessageWrapper);
-                isFirstToken = false;
-              }
-              deltaMsgs.push({
-                messageId: assistantMessageId,
-                role: "ASSISTANT",
-                type: "TEXT",
-                text: fullText,
-                isStreaming: true
-              });
-              wsHub.broadcast(merchantId, "STRATEGY_CHAT_DELTA", {
-                sessionId: session.sessionId,
-                deltaMessages: deltaMsgs
-              });
-            } else {
-              if (isFirstToken) isFirstToken = false;
+      let isFirstToken = true;
+      // Drain generator: yield = text token, done.value = parsed aiTurn
+      let next = await gen.next();
+      while (!next.done) {
+        const token = String(next.value || "");
+        if (token.length > 0) {
+          fullText += token;
+          if (wsHub) {
+            const deltaMsgs = [];
+            if (isFirstToken) {
+              deltaMsgs.push(userMessageWrapper);
+              isFirstToken = false;
             }
+            deltaMsgs.push({
+              messageId: assistantMessageId,
+              role: "ASSISTANT",
+              type: "TEXT",
+              text: fullText,
+              isStreaming: true
+            });
+            wsHub.broadcast(merchantId, "STRATEGY_CHAT_DELTA", {
+              sessionId: session.sessionId,
+              deltaMessages: deltaMsgs
+            });
+          } else {
+            if (isFirstToken) isFirstToken = false;
           }
-          next = await gen.next();
         }
-        aiTurn = next.value;
-      } catch (err) {
-        aiTurn = null;
+        next = await gen.next();
       }
-    }
-
-    // Fallback: non-streaming if streaming not available or failed
-    if (!aiTurn) {
-      aiTurn = await aiStrategyService.generateStrategyChatTurn(aiInput);
+      aiTurn = next.value;
+    } catch (err) {
+      aiTurn = null;
     }
 
     if (!aiTurn || aiTurn.status === "AI_UNAVAILABLE") {
@@ -2239,11 +2232,18 @@ function createMerchantService(db, options = {}) {
           ? `I drafted ${rankedPendingCreated.length} strategy proposals. I have ranked them by expected impact and risk.`
           : "Strategy proposal drafted. Please review now.";
       const assistantMessage = String(aiTurn.assistantMessage || defaultMessage);
+      const proposalCardMessageId = `msg_${Date.now()}_proposal_card`;
+      appendChatMessage(session, {
+        role: "ASSISTANT",
+        type: "TEXT",
+        text: assistantMessage,
+        messageId: assistantMessageId
+      });
       appendChatMessage(session, {
         role: "ASSISTANT",
         type: "PROPOSAL_CARD",
-        text: assistantMessage,
-        messageId: assistantMessageId,
+        text: "Strategy proposal card ready. Please review.",
+        messageId: proposalCardMessageId,
         proposalId: session.pendingProposalId || null,
         metadata: {
           proposals: proposalSummaries

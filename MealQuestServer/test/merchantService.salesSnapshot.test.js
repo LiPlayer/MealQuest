@@ -80,7 +80,7 @@ test("merchant strategy chat forwards payment-based sales snapshot", async () =>
   let capturedInput = null;
   const merchantService = createMerchantService(db, {
     aiStrategyService: {
-      async generateStrategyChatTurn(input) {
+      async *streamStrategyChatTurn(input) {
         capturedInput = input;
         return {
           status: "CHAT_REPLY",
