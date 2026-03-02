@@ -163,7 +163,8 @@ function createPreAuthRoutesHandler({
       }
 
       const merchantId = resolvedMerchants[0];
-      if (!(await tenantRepository.getMerchant(merchantId))) {
+      const merchant = await tenantRepository.getMerchant(merchantId);
+      if (!merchant) {
         sendJson(res, 404, { error: "merchant not found" });
         return true;
       }
@@ -184,6 +185,11 @@ function createPreAuthRoutesHandler({
           role: "OWNER",
           merchantId,
           phone,
+        },
+        merchant: {
+          merchantId,
+          name: merchant.name,
+          ownerPhone: merchant.ownerPhone || undefined,
         },
       });
       return true;

@@ -42,7 +42,11 @@ function Print-EnvChange {
     }
     $script:EnvStep += 1
     $upper = $Name.ToUpperInvariant()
-    $masked = $upper.Contains("SECRET") -or $upper.Contains("TOKEN") -or $upper.Contains("PASSWORD")
+    $masked =
+        $upper.Contains("SECRET") -or
+        $upper.Contains("TOKEN") -or
+        $upper.Contains("PASSWORD") -or
+        $upper.Contains("KEY")
     $displayValue = if ($masked) { "***" } else { $Value }
     if ($Action -eq "SET") {
         Write-Host "[ENV-$($script:EnvStep)] SET $Name=$displayValue" -ForegroundColor Yellow

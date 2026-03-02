@@ -35,6 +35,15 @@ function createStrategyChatService(options = {}) {
         if (typeof part.content === "string") {
           return part.content;
         }
+        if (typeof part.delta === "string") {
+          return part.delta;
+        }
+        if (typeof part.output_text === "string") {
+          return part.output_text;
+        }
+        if (part.kwargs && typeof part.kwargs === "object") {
+          return extractTokenText(part.kwargs);
+        }
         return "";
       })
       .join("");
@@ -65,6 +74,12 @@ function createStrategyChatService(options = {}) {
     }
     if (Array.isArray(messageChunk.contentBlocks)) {
       return extractChunkText(messageChunk.contentBlocks);
+    }
+    if (messageChunk.kwargs && typeof messageChunk.kwargs === "object") {
+      return extractTokenText(messageChunk.kwargs);
+    }
+    if (messageChunk.message && typeof messageChunk.message === "object") {
+      return extractTokenText(messageChunk.message);
     }
     return "";
   }
@@ -169,6 +184,14 @@ function createStrategyChatService(options = {}) {
         },
         {
           streamMode,
+          runName: "mq.strategy_chat.turn",
+          tags: ["mealquest", "merchant", "strategy-chat"],
+          metadata: {
+            merchantId,
+            sessionId,
+            channel: "sse",
+            streamMode,
+          },
         }
       );
 

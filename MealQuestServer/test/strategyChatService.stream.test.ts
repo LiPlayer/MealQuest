@@ -4,9 +4,13 @@ const assert = require("node:assert/strict");
 const { createStrategyChatService } = require("../src/services/strategyChatService");
 
 test("strategy chat service streams official mode/chunk tuples with chat reply", async () => {
+  let capturedInput = null;
+  let capturedConfig = null;
   const service = createStrategyChatService({
     loadAgent: async () => ({
-      async *stream() {
+      async *stream(input, config) {
+        capturedInput = input;
+        capturedConfig = config;
         yield ["custom", { phase: "AGENT_EXECUTION_START", status: "running" }];
         yield ["messages", [{ content: "hello " }, { node: "model" }]];
         yield ["messages", [{ content: "world" }, { node: "model" }]];
@@ -38,6 +42,22 @@ test("strategy chat service streams official mode/chunk tuples with chat reply",
   assert.equal(events[2].tokenText, "world");
   assert.equal(result.status, "CHAT_REPLY");
   assert.equal(result.assistantMessage, "hello world");
+  assert.deepEqual(capturedInput, {
+    messages: [
+      {
+        role: "user",
+        content: "say hello",
+      },
+    ],
+  });
+  assert.equal(capturedConfig.runName, "mq.strategy_chat.turn");
+  assert.deepEqual(capturedConfig.tags, ["mealquest", "merchant", "strategy-chat"]);
+  assert.deepEqual(capturedConfig.metadata, {
+    merchantId: "m_store_001",
+    sessionId: "sc_m_store_001",
+    channel: "sse",
+    streamMode: ["messages", "updates", "custom"],
+  });
 });
 
 test("strategy chat service returns AI_UNAVAILABLE when agent is missing", async () => {

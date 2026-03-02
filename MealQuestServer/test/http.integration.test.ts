@@ -1076,6 +1076,8 @@ test("merchant phone login returns bound status and enforces merchant scope", as
     assert.equal(login.data.profile.role, "OWNER");
     assert.equal(login.data.profile.merchantId, "m_store_001");
     assert.equal(login.data.profile.phone, bindPhone);
+    assert.equal(login.data.merchant.merchantId, "m_store_001");
+    assert.equal(login.data.merchant.name, "Fixture Merchant");
 
     const dashboard = await getJson(
       baseUrl,
@@ -1149,6 +1151,8 @@ test("merchant phone login resolves merchantId automatically by bound contact ph
     assert.equal(login.data.profile.role, "OWNER");
     assert.equal(login.data.profile.merchantId, "m_store_001");
     assert.equal(login.data.profile.phone, bindPhone);
+    assert.equal(login.data.merchant.merchantId, "m_store_001");
+    assert.equal(login.data.merchant.name, "Fixture Merchant");
 
     const dashboard = await getJson(
       baseUrl,
@@ -1373,6 +1377,7 @@ test("merchant onboarding is preserved across re-logins with persistence", async
     assert.equal(login.data.status, "BOUND");
     assert.ok(login.data.token);
     assert.equal(login.data.profile.merchantId, merchantId, "Login should automatically resolve to the existing merchantId");
+    assert.equal(login.data.merchant.name, "Persistence Store");
 
     // Verify access to the store
 

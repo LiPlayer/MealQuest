@@ -12,6 +12,11 @@ export type MerchantPhoneLoginResult =
     status: 'BOUND';
     token: string;
     profile: MerchantProfile;
+    merchant: {
+      merchantId: string;
+      name: string;
+      ownerPhone?: string;
+    };
   }
   | {
     status: 'ONBOARD_REQUIRED';

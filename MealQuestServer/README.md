@@ -52,9 +52,33 @@ MQ_AUTH_ALIPAY_APP_ID=
 MQ_AUTH_ALIPAY_APP_SECRET=
 MQ_AUTH_HTTP_TIMEOUT_MS=10000
 DEEPSEEK_MODEL=deepseek-chat
+LANGSMITH_TRACING=false
+LANGSMITH_PROJECT=mealquest-local
+LANGSMITH_ENDPOINT=
 ```
 
 Set `DEEPSEEK_API_KEY` via host environment injection (CI/CD secret or process manager), not in `.env`.
+Set `LANGSMITH_API_KEY` via host environment injection (CI/CD secret or process manager), not in `.env`.
+
+## LangSmith Observability (Local)
+
+LangChain `createAgent` tracing is enabled automatically when LangSmith env vars are set.
+
+1. Inject API key in your shell/process environment:
+
+```powershell
+$env:LANGSMITH_API_KEY="lsv2_pt_xxx"
+```
+
+2. Enable tracing for local run:
+
+```powershell
+$env:LANGSMITH_TRACING="true"
+$env:LANGSMITH_PROJECT="mealquest-local"
+```
+
+3. Start server and send one request to `POST /api/merchant/chat/stream`.
+4. Open LangSmith project and verify traces include strategy chat runs.
 
 Notes:
 

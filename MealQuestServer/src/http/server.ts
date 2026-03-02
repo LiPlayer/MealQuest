@@ -398,6 +398,14 @@ async function createAppServerAsync(options = {}) {
 
 if (require.main === module) {
   const runtimeEnv = resolveServerRuntimeEnv(process.env);
+  if (!runtimeEnv.ai.hasDeepseekApiKey) {
+    console.warn(
+      "[WARN] DEEPSEEK_API_KEY is not set. Merchant chat agent will return AI_UNAVAILABLE."
+    );
+    console.warn(
+      "[WARN] Inject DEEPSEEK_API_KEY as an environment variable before starting the server."
+    );
+  }
   let appInstance = null;
   let shuttingDown = false;
 

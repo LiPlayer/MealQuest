@@ -193,89 +193,92 @@ interface MerchantContextType {
 
 const MerchantContext = createContext<MerchantContextType | undefined>(undefined);
 
-function createDemoMerchantState(): MerchantState {
-  return {
-    ...createInitialMerchantState(),
-    merchantId: 'm_demo_001',
-    merchantName: 'Demo Bistro',
-    budgetCap: 1200,
-    budgetUsed: 180,
-    activePolicies: [
-      {
-        id: 'policy_demo_1',
-        name: 'Welcome Gift',
-        status: 'ACTIVE',
-        triggerEvent: 'USER_ENTER_SHOP',
-        condition: { field: 'isNewUser', equals: true },
-        budget: { cap: 300, used: 60, costPerHit: 6 },
-      },
-    ],
-  };
-}
-
 function extractTokenFromMessagesChunk(data: unknown): string {
+  const readContentParts = (parts: unknown[], depth: number): string =>
+    parts
+      .map(part => {
+        if (typeof part === 'string') {
+          return part;
+        }
+        if (!part || typeof part !== 'object') {
+          return '';
+        }
+        const piece = part as Record<string, unknown>;
+        if (typeof piece.text === 'string') {
+          return piece.text;
+        }
+        if (typeof piece.content === 'string') {
+          return piece.content;
+        }
+        if (typeof piece.delta === 'string') {
+          return piece.delta;
+        }
+        if (typeof piece.output_text === 'string') {
+          return piece.output_text;
+        }
+        return readToken(part, depth + 1);
+      })
+      .join('');
+
+  const readToken = (value: unknown, depth = 0): string => {
+    if (depth > 4 || value === null || value === undefined) {
+      return '';
+    }
+    if (typeof value === 'string') {
+      return value;
+    }
+    if (Array.isArray(value)) {
+      const direct = readContentParts(value, depth);
+      if (direct) {
+        return direct;
+      }
+      if (value.length > 0) {
+        return readToken(value[0], depth + 1);
+      }
+      return '';
+    }
+    if (typeof value !== 'object') {
+      return '';
+    }
+
+    const record = value as Record<string, unknown>;
+    for (const key of ['text', 'delta', 'content', 'output_text', 'input_text']) {
+      const candidate = record[key];
+      if (typeof candidate === 'string' && candidate) {
+        return candidate;
+      }
+      if (Array.isArray(candidate)) {
+        const joined = readContentParts(candidate, depth);
+        if (joined) {
+          return joined;
+        }
+      }
+    }
+    for (const key of ['contentBlocks', 'parts', 'messages']) {
+      const candidate = record[key];
+      if (!Array.isArray(candidate)) {
+        continue;
+      }
+      const joined = readContentParts(candidate, depth);
+      if (joined) {
+        return joined;
+      }
+    }
+    for (const key of ['message', 'chunk', 'kwargs', 'data', 'value']) {
+      if (!Object.prototype.hasOwnProperty.call(record, key)) {
+        continue;
+      }
+      const nested = readToken(record[key], depth + 1);
+      if (nested) {
+        return nested;
+      }
+    }
+    return '';
+  };
+
   const tuple = Array.isArray(data) ? data : [];
   const messageChunk = tuple.length >= 1 ? tuple[0] : data;
-  if (!messageChunk) {
-    return '';
-  }
-  if (typeof messageChunk === 'string') {
-    return messageChunk;
-  }
-  if (typeof messageChunk !== 'object') {
-    return '';
-  }
-  const record = messageChunk as Record<string, unknown>;
-  if (typeof record.text === 'string') {
-    return record.text;
-  }
-  if (typeof record.delta === 'string') {
-    return record.delta;
-  }
-  if (typeof record.content === 'string') {
-    return record.content;
-  }
-  if (Array.isArray(record.content)) {
-    return record.content
-      .map(part => {
-        if (typeof part === 'string') {
-          return part;
-        }
-        if (!part || typeof part !== 'object') {
-          return '';
-        }
-        const piece = part as Record<string, unknown>;
-        if (typeof piece.text === 'string') {
-          return piece.text;
-        }
-        if (typeof piece.content === 'string') {
-          return piece.content;
-        }
-        return '';
-      })
-      .join('');
-  }
-  if (Array.isArray(record.contentBlocks)) {
-    return record.contentBlocks
-      .map(part => {
-        if (typeof part === 'string') {
-          return part;
-        }
-        if (!part || typeof part !== 'object') {
-          return '';
-        }
-        const piece = part as Record<string, unknown>;
-        if (typeof piece.text === 'string') {
-          return piece.text;
-        }
-        if (typeof piece.content === 'string') {
-          return piece.content;
-        }
-        return '';
-      })
-      .join('');
-  }
-  return '';
+  return readToken(messageChunk);
 }
 
 function toProgress(data: unknown): AgentProgressEvent | null {
@@ -299,7 +302,7 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
   const [authSubmitting, setAuthSubmitting] = useState(false);
   const [authError, setAuthError] = useState('');
   const [pendingOnboardingSession, setPendingOnboardingSession] = useState<PendingOnboardingSession | null>(null);
-  const [merchantState, setMerchantState] = useState<MerchantState>(createDemoMerchantState);
+  const [merchantState, setMerchantState] = useState<MerchantState>(createInitialMerchantState);
   const [lastAction, setLastAction] = useState('Please login before entering chat.');
   const [realtimeEvents, setRealtimeEvents] = useState<RealtimeEventRow[]>([
     {
@@ -330,9 +333,9 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
     clusterId: 'demo-cluster',
     walletShared: false,
   });
-  const [allianceStores] = useState([{ merchantId: 'm_demo_001', name: 'Demo Bistro' }]);
+  const [allianceStores, setAllianceStores] = useState<{ merchantId: string; name: string }[]>([]);
   const [customerUserId, setCustomerUserId] = useState('u_demo_001');
-  const [qrStoreId, setQrStoreId] = useState('m_demo_001');
+  const [qrStoreId, setQrStoreId] = useState('');
   const [qrScene, setQrScene] = useState('entry');
   const [qrPayload, setQrPayload] = useState('');
   const [aiIntentDraft, setAiIntentDraft] = useState('');
@@ -394,6 +397,10 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
         if (!onboardingToken) {
           throw new Error('onboarding token missing');
         }
+        setAuthSession(null);
+        setMerchantState(createInitialMerchantState());
+        setAllianceStores([]);
+        setQrStoreId('');
         setPendingOnboardingSession({
           phone: String(result.profile?.phone || phone),
           onboardingToken,
@@ -405,6 +412,7 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
       if (!result.token || !resolvedMerchantId) {
         throw new Error('login response invalid');
       }
+      const resolvedMerchantName = String(result.merchant?.name || '').trim();
       setPendingOnboardingSession(null);
       setAuthSession({
         token: result.token,
@@ -415,7 +423,9 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
       setMerchantState(prev => ({
         ...prev,
         merchantId: resolvedMerchantId,
+        merchantName: resolvedMerchantName || resolvedMerchantId,
       }));
+      setAllianceStores([{ merchantId: resolvedMerchantId, name: resolvedMerchantName || resolvedMerchantId }]);
       setQrStoreId(resolvedMerchantId);
       setLastAction(`Logged in as ${resolvedMerchantId}`);
     } catch (error) {
@@ -457,6 +467,12 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
         merchantId: resolvedMerchantId,
         merchantName: String(result.merchant?.name || merchantName),
       }));
+      setAllianceStores([
+        {
+          merchantId: resolvedMerchantId,
+          name: String(result.merchant?.name || merchantName),
+        },
+      ]);
       setQrStoreId(resolvedMerchantId);
       setPendingOnboardingSession(null);
       setLastAction(`Store ${resolvedMerchantId} created.`);
@@ -476,6 +492,9 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
   const logout = () => {
     setAuthSession(null);
     setPendingOnboardingSession(null);
+    setMerchantState(createInitialMerchantState());
+    setAllianceStores([]);
+    setQrStoreId('');
     setStrategyChatMessages([]);
     setAgentProgressEvents([]);
     setStrategyChatPendingReview(null);
@@ -539,6 +558,7 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
     ]);
 
     let streamError = '';
+    let doneAssistantMessage = '';
     try {
       await streamMerchantChat({
         token: authSession.token,
@@ -594,6 +614,20 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
             }
             return;
           }
+          if (event.event === 'done') {
+            const data = event.data as {
+              assistantMessage?: string;
+              message?: string;
+            };
+            const messageCandidate =
+              data && typeof data.assistantMessage === 'string'
+                ? data.assistantMessage
+                : data && typeof data.message === 'string'
+                  ? data.message
+                  : '';
+            doneAssistantMessage = String(messageCandidate || '').trim();
+            return;
+          }
           if (event.event === 'error') {
             const data = event.data as {
               message?: string;
@@ -619,7 +653,14 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
             return { ...item, deliveryStatus: 'sent' };
           }
           if (item.messageId === assistantMessageId && item.role === 'ASSISTANT') {
-            return { ...item, isStreaming: false };
+            if (String(item.text || '').trim()) {
+              return { ...item, isStreaming: false };
+            }
+            return {
+              ...item,
+              text: doneAssistantMessage || 'AI returned empty response.',
+              isStreaming: false,
+            };
           }
           return item;
         }),
@@ -686,7 +727,11 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
   };
 
   const onGenerateMerchantQr = () => {
-    const storeId = String(qrStoreId || merchantState.merchantId || 'm_demo_001').trim();
+    const storeId = String(qrStoreId || merchantState.merchantId || '').trim();
+    if (!storeId) {
+      setLastAction('Store ID is required to generate QR.');
+      return;
+    }
     const scene = String(qrScene || 'entry').trim();
     const payload = `mealquest://merchant/pay?storeId=${encodeURIComponent(storeId)}&scene=${encodeURIComponent(scene)}`;
     setQrPayload(payload);

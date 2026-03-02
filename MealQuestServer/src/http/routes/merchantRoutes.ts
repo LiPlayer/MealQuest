@@ -198,6 +198,10 @@ function createMerchantRoutesHandler({
           status: result.status || "CHAT_REPLY",
           sessionId: result.sessionId || null,
           latestMessageId: result.latestMessageId || null,
+          assistantMessage:
+            result && typeof result.assistantMessage === "string"
+              ? result.assistantMessage
+              : null,
         });
         appendAuditLog({
           merchantId,

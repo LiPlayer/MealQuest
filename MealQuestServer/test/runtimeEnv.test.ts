@@ -20,6 +20,10 @@ test("runtime env resolves base config", () => {
   assert.equal(env.dbSchema, "public");
   assert.equal(env.dbPoolMax, 5);
   assert.equal(env.dbEnforceRls, true);
+  assert.equal(env.ai.hasDeepseekApiKey, false);
+  assert.equal(env.observability.langsmithTracing, false);
+  assert.equal(env.observability.langsmithProject, "");
+  assert.equal(env.observability.langsmithEndpoint, "");
 });
 
 test("runtime env: db rls enforcement defaults on and can be disabled", () => {
@@ -45,4 +49,26 @@ test("runtime env: production requires core secrets", () => {
       }),
     /MQ_JWT_SECRET is required/
   );
+});
+
+test("runtime env: langsmith observability flags can be enabled", () => {
+  const env = resolveServerRuntimeEnv(
+    createBaseEnv({
+      LANGSMITH_TRACING: "true",
+      LANGSMITH_PROJECT: "mealquest-local",
+      LANGSMITH_ENDPOINT: "https://api.smith.langchain.com",
+    })
+  );
+  assert.equal(env.observability.langsmithTracing, true);
+  assert.equal(env.observability.langsmithProject, "mealquest-local");
+  assert.equal(env.observability.langsmithEndpoint, "https://api.smith.langchain.com");
+});
+
+test("runtime env: deepseek api key presence is detected", () => {
+  const env = resolveServerRuntimeEnv(
+    createBaseEnv({
+      DEEPSEEK_API_KEY: "sk-test-key",
+    })
+  );
+  assert.equal(env.ai.hasDeepseekApiKey, true);
 });

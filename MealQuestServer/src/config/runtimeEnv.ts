@@ -68,7 +68,11 @@ function resolveServerRuntimeEnv(env = process.env) {
   const authAlipayVerifyUrl = asString(env.MQ_AUTH_ALIPAY_VERIFY_URL);
   const authAlipayAppId = asString(env.MQ_AUTH_ALIPAY_APP_ID);
   const authAlipayAppSecret = asString(env.MQ_AUTH_ALIPAY_APP_SECRET);
+  const deepseekApiKey = asString(env.DEEPSEEK_API_KEY);
   const aiDeepSeekModel = asString(env.DEEPSEEK_MODEL) || "deepseek-chat";
+  const langsmithTracing = parseBoolean(env.LANGSMITH_TRACING, false);
+  const langsmithProject = asString(env.LANGSMITH_PROJECT);
+  const langsmithEndpoint = asString(env.LANGSMITH_ENDPOINT);
 
   const errors = [];
   if (isProduction && !jwtSecret) {
@@ -120,7 +124,13 @@ function resolveServerRuntimeEnv(env = process.env) {
       }
     },
     ai: {
+      hasDeepseekApiKey: Boolean(deepseekApiKey),
       deepseekModel: aiDeepSeekModel,
+    },
+    observability: {
+      langsmithTracing,
+      langsmithProject,
+      langsmithEndpoint,
     },
   };
 }
