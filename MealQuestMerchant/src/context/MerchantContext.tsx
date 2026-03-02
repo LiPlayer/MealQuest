@@ -1,14 +1,28 @@
-import React, { createContext, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useStream } from '@langchain/langgraph-sdk/react';
 import { createInitialMerchantState, MerchantState } from '../domain/merchantEngine';
 import {
   completeMerchantOnboard,
+  getMerchantStores,
   getApiBaseUrl,
   loginMerchantByPhone,
   requestMerchantPhoneCode,
 } from '../services/apiClient';
+import {
+  clearMerchantAuthSession,
+  loadMerchantAuthSession,
+  saveMerchantAuthSession,
+} from '../services/authSessionStorage';
 
 export type MessageStatus = 'sending' | 'sent' | 'failed';
+export type ChatSendPhase = 'idle' | 'submitting' | 'failed';
+
+export type PendingOutgoingMessage = {
+  messageId: string;
+  text: string;
+  deliveryStatus: MessageStatus;
+  createdAt: string;
+};
 
 export type StrategyChatMessage = {
   messageId: string;
@@ -123,6 +137,7 @@ export type AuditTimeRange = '24H' | '7D' | 'ALL';
 interface MerchantContextType {
   authSession: MerchantAuthSession | null;
   isAuthenticated: boolean;
+  authHydrating: boolean;
   authSubmitting: boolean;
   authError: string;
   pendingOnboardingSession: PendingOnboardingSession | null;
@@ -164,6 +179,9 @@ interface MerchantContextType {
   aiIntentDraft: string;
   setAiIntentDraft: (val: string) => void;
   aiIntentSubmitting: boolean;
+  chatSendPhase: ChatSendPhase;
+  chatSendError: string;
+  pendingOutgoingMessages: PendingOutgoingMessage[];
   strategyChatMessages: StrategyChatMessageWithStatus[];
   strategyChatPendingReview: StrategyChatPendingReview | null;
   strategyChatEvaluation: PolicyDecisionResult | null;
@@ -262,6 +280,7 @@ function mapMessageRole(message: Record<string, unknown>): 'USER' | 'ASSISTANT' 
 function toStrategyMessages(
   messages: unknown[],
   isLoading: boolean,
+  pendingOutgoingMessages: PendingOutgoingMessage[],
 ): StrategyChatMessageWithStatus[] {
   const mapped = messages
     .map((item, index) => {
@@ -297,6 +316,29 @@ function toStrategyMessages(
     }
   }
 
+  const echoedUserTexts = new Set(
+    mapped
+      .filter(item => item.role === 'USER')
+      .map(item => item.text.trim())
+      .filter(Boolean),
+  );
+  const pending = pendingOutgoingMessages.map(item => ({
+    messageId: item.messageId,
+    role: 'USER' as const,
+    type: 'TEXT' as const,
+    text: item.text,
+    deliveryStatus: item.deliveryStatus,
+    isStreaming: false,
+  }));
+  for (const pendingItem of pending) {
+    const normalized = pendingItem.text.trim();
+    const isEchoed = Boolean(normalized && echoedUserTexts.has(normalized));
+    if (isEchoed && pendingItem.deliveryStatus !== 'failed') {
+      continue;
+    }
+    mapped.push(pendingItem);
+  }
+
   return mapped;
 }
 
@@ -306,6 +348,21 @@ function assertUseStreamRuntimeSupport() {
   if (!hasReadableStream || !hasTextDecoder) {
     throw new Error('Current RN runtime does not support official useStream requirements.');
   }
+}
+
+function createLocalMessageId() {
+  return `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function logMerchantStreamEvent(event: string, payload?: Record<string, unknown>) {
+  if (!__DEV__) {
+    return;
+  }
+  if (payload) {
+    console.log(`[merchant-stream] ${event}`, payload);
+    return;
+  }
+  console.log(`[merchant-stream] ${event}`);
 }
 
 function toProgress(data: unknown): AgentProgressEvent | null {
@@ -326,6 +383,7 @@ function toProgress(data: unknown): AgentProgressEvent | null {
 
 export function MerchantProvider({ children }: { children: React.ReactNode }) {
   const [authSession, setAuthSession] = useState<MerchantAuthSession | null>(null);
+  const [authHydrating, setAuthHydrating] = useState(true);
   const [authSubmitting, setAuthSubmitting] = useState(false);
   const [authError, setAuthError] = useState('');
   const [pendingOnboardingSession, setPendingOnboardingSession] = useState<PendingOnboardingSession | null>(null);
@@ -367,6 +425,9 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
   const [qrPayload, setQrPayload] = useState('');
   const [aiIntentDraft, setAiIntentDraft] = useState('');
   const [aiIntentSubmitting, setAiIntentSubmitting] = useState(false);
+  const [chatSendPhase, setChatSendPhase] = useState<ChatSendPhase>('idle');
+  const [chatSendError, setChatSendError] = useState('');
+  const [pendingOutgoingMessages, setPendingOutgoingMessages] = useState<PendingOutgoingMessage[]>([]);
   const [strategyThreadId, setStrategyThreadId] = useState<string | null>(null);
   const [strategyChatPendingReview, setStrategyChatPendingReview] = useState<StrategyChatPendingReview | null>(null);
   const [strategyChatPendingReviews, setStrategyChatPendingReviews] = useState<StrategyChatPendingReview[]>([]);
@@ -390,16 +451,29 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
       const progress = toProgress(data);
       if (progress) {
         setAgentProgressEvents(prev => [...prev.slice(-29), progress]);
+        logMerchantStreamEvent('custom_event', {
+          phase: progress.phase,
+          status: progress.status,
+          tokenCount: progress.tokenCount,
+        });
       }
     },
     onError: error => {
       const message = error instanceof Error ? error.message : 'chat stream failed';
+      setChatSendPhase('failed');
+      setChatSendError(message);
       setLastAction(`Chat failed: ${message}`);
+      logMerchantStreamEvent('onError', { message });
     },
   });
   const strategyChatMessages = useMemo(
-    () => toStrategyMessages(Array.isArray(stream.messages) ? stream.messages : [], stream.isLoading),
-    [stream.messages, stream.isLoading],
+    () =>
+      toStrategyMessages(
+        Array.isArray(stream.messages) ? stream.messages : [],
+        stream.isLoading,
+        pendingOutgoingMessages,
+      ),
+    [pendingOutgoingMessages, stream.messages, stream.isLoading],
   );
 
   const isAuthenticated = Boolean(authSession && authSession.token && authSession.merchantId);
@@ -414,6 +488,131 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
     () => (showOnlyAnomaly ? realtimeEvents.filter(item => item.isAnomaly) : realtimeEvents),
     [realtimeEvents, showOnlyAnomaly],
   );
+
+  const resetSessionScopedState = useCallback(() => {
+    setMerchantState(createInitialMerchantState());
+    setAllianceStores([]);
+    setQrStoreId('');
+    setAiIntentDraft('');
+    setStrategyThreadId(null);
+    setAgentProgressEvents([]);
+    setChatSendPhase('idle');
+    setChatSendError('');
+    setPendingOutgoingMessages([]);
+    setStrategyChatPendingReview(null);
+    setStrategyChatPendingReviews([]);
+    setStrategyChatEvaluation(null);
+  }, []);
+
+  const applyAuthenticatedSession = useCallback(
+    (session: MerchantAuthSession, merchantName: string, stores: { merchantId: string; name: string }[]) => {
+      setPendingOnboardingSession(null);
+      setAuthSession(session);
+      setMerchantState(prev => ({
+        ...prev,
+        merchantId: session.merchantId,
+        merchantName: merchantName || session.merchantId,
+      }));
+      setAllianceStores(stores.length > 0 ? stores : [{ merchantId: session.merchantId, name: merchantName }]);
+      setQrStoreId(session.merchantId);
+      setAiIntentDraft('');
+      setStrategyThreadId(null);
+      setAgentProgressEvents([]);
+      setChatSendPhase('idle');
+      setChatSendError('');
+      setPendingOutgoingMessages([]);
+      setStrategyChatPendingReview(null);
+      setStrategyChatPendingReviews([]);
+      setStrategyChatEvaluation(null);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const streamUserTexts = new Set(
+      (Array.isArray(stream.messages) ? stream.messages : [])
+        .map(item => (item && typeof item === 'object' ? (item as Record<string, unknown>) : null))
+        .filter((item): item is Record<string, unknown> => Boolean(item))
+        .filter(item => mapMessageRole(item) === 'USER')
+        .map(item => readMessageText(item.content).trim())
+        .filter(Boolean),
+    );
+    if (!streamUserTexts.size) {
+      return;
+    }
+    setPendingOutgoingMessages(prev => {
+      const next = prev.filter(item => {
+        if (item.deliveryStatus === 'failed') {
+          return true;
+        }
+        const normalized = item.text.trim();
+        if (!normalized) {
+          return true;
+        }
+        return !streamUserTexts.has(normalized);
+      });
+      return next.length === prev.length ? prev : next;
+    });
+  }, [stream.messages]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const hydrateAuthSession = async () => {
+      try {
+        const persisted = await loadMerchantAuthSession();
+        if (!persisted || !persisted.token || !persisted.merchantId) {
+          return;
+        }
+        const storesResponse = await getMerchantStores({
+          merchantId: persisted.merchantId,
+          token: persisted.token,
+        });
+        if (cancelled) {
+          return;
+        }
+        const stores = Array.isArray(storesResponse?.stores)
+          ? storesResponse.stores
+              .map(item => ({
+                merchantId: String(item.merchantId || '').trim(),
+                name: String(item.name || item.merchantId || '').trim(),
+              }))
+              .filter(item => item.merchantId)
+          : [];
+        const merchantName =
+          stores.find(item => item.merchantId === persisted.merchantId)?.name ||
+          persisted.merchantName ||
+          persisted.merchantId;
+        applyAuthenticatedSession(
+          {
+            token: persisted.token,
+            merchantId: persisted.merchantId,
+            role: persisted.role,
+            phone: persisted.phone,
+          },
+          merchantName,
+          stores,
+        );
+        setLastAction(`Session restored for ${persisted.merchantId}`);
+      } catch (_error) {
+        await clearMerchantAuthSession().catch(() => undefined);
+        if (cancelled) {
+          return;
+        }
+        setAuthSession(null);
+        setPendingOnboardingSession(null);
+        resetSessionScopedState();
+        setLastAction('Session expired. Please login again.');
+      } finally {
+        if (!cancelled) {
+          setAuthHydrating(false);
+        }
+      }
+    };
+    void hydrateAuthSession();
+    return () => {
+      cancelled = true;
+    };
+  }, [applyAuthenticatedSession, resetSessionScopedState]);
 
   const requestLoginCode = async (phone: string) => {
     const normalized = String(phone || '').trim();
@@ -452,15 +651,9 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
         if (!onboardingToken) {
           throw new Error('onboarding token missing');
         }
+        await clearMerchantAuthSession().catch(() => undefined);
         setAuthSession(null);
-        setMerchantState(createInitialMerchantState());
-        setAllianceStores([]);
-        setQrStoreId('');
-        setStrategyThreadId(null);
-        setAgentProgressEvents([]);
-        setStrategyChatEvaluation(null);
-        setStrategyChatPendingReview(null);
-        setStrategyChatPendingReviews([]);
+        resetSessionScopedState();
         setPendingOnboardingSession({
           phone: String(result.profile?.phone || phone),
           onboardingToken,
@@ -473,25 +666,19 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
         throw new Error('login response invalid');
       }
       const resolvedMerchantName = String(result.merchant?.name || '').trim();
-      setPendingOnboardingSession(null);
-      setAuthSession({
+      const nextSession = {
         token: result.token,
         merchantId: resolvedMerchantId,
         role: String(result.profile?.role || 'OWNER'),
         phone: String(result.profile?.phone || phone),
-      });
-      setMerchantState(prev => ({
-        ...prev,
-        merchantId: resolvedMerchantId,
+      };
+      applyAuthenticatedSession(nextSession, resolvedMerchantName || resolvedMerchantId, [
+        { merchantId: resolvedMerchantId, name: resolvedMerchantName || resolvedMerchantId },
+      ]);
+      await saveMerchantAuthSession({
+        ...nextSession,
         merchantName: resolvedMerchantName || resolvedMerchantId,
-      }));
-      setAllianceStores([{ merchantId: resolvedMerchantId, name: resolvedMerchantName || resolvedMerchantId }]);
-      setQrStoreId(resolvedMerchantId);
-      setStrategyThreadId(null);
-      setAgentProgressEvents([]);
-      setStrategyChatEvaluation(null);
-      setStrategyChatPendingReview(null);
-      setStrategyChatPendingReviews([]);
+      }).catch(() => undefined);
       setLastAction(`Logged in as ${resolvedMerchantId}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'login failed';
@@ -521,29 +708,23 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
       if (!result.token || !resolvedMerchantId) {
         throw new Error('onboarding result invalid');
       }
-      setAuthSession({
+      const resolvedMerchantName = String(result.merchant?.name || merchantName);
+      const nextSession = {
         token: result.token,
         merchantId: resolvedMerchantId,
         role: String(result.profile?.role || 'OWNER'),
         phone: String(result.profile?.phone || pendingOnboardingSession.phone),
-      });
-      setMerchantState(prev => ({
-        ...prev,
-        merchantId: resolvedMerchantId,
-        merchantName: String(result.merchant?.name || merchantName),
-      }));
-      setAllianceStores([
+      };
+      applyAuthenticatedSession(nextSession, resolvedMerchantName, [
         {
           merchantId: resolvedMerchantId,
-          name: String(result.merchant?.name || merchantName),
+          name: resolvedMerchantName,
         },
       ]);
-      setQrStoreId(resolvedMerchantId);
-      setStrategyThreadId(null);
-      setAgentProgressEvents([]);
-      setStrategyChatEvaluation(null);
-      setStrategyChatPendingReview(null);
-      setStrategyChatPendingReviews([]);
+      await saveMerchantAuthSession({
+        ...nextSession,
+        merchantName: resolvedMerchantName,
+      }).catch(() => undefined);
       setPendingOnboardingSession(null);
       setLastAction(`Store ${resolvedMerchantId} created.`);
     } catch (error) {
@@ -561,16 +742,10 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
 
   const logout = () => {
     void stream.stop();
+    void clearMerchantAuthSession().catch(() => undefined);
     setAuthSession(null);
     setPendingOnboardingSession(null);
-    setMerchantState(createInitialMerchantState());
-    setAllianceStores([]);
-    setQrStoreId('');
-    setStrategyThreadId(null);
-    setAgentProgressEvents([]);
-    setStrategyChatPendingReview(null);
-    setStrategyChatPendingReviews([]);
-    setStrategyChatEvaluation(null);
+    resetSessionScopedState();
     setLastAction('Logged out.');
   };
 
@@ -594,14 +769,36 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
   const onCreateIntentProposal = async () => {
     const draft = String(aiIntentDraft || '').trim();
     if (!draft) {
+      setChatSendPhase('failed');
+      setChatSendError('Please input your intent first.');
       setLastAction('Please input your intent first.');
       return;
     }
     if (!authSession) {
+      setChatSendPhase('failed');
+      setChatSendError('Please login first.');
       setLastAction('Please login first.');
       return;
     }
 
+    const localMessageId = createLocalMessageId();
+    const createdAt = new Date().toISOString();
+    logMerchantStreamEvent('send_click', {
+      merchantId: authSession.merchantId,
+      textLength: draft.length,
+    });
+    setAiIntentDraft('');
+    setChatSendPhase('submitting');
+    setChatSendError('');
+    setPendingOutgoingMessages(prev => [
+      ...prev.slice(-49),
+      {
+        messageId: localMessageId,
+        text: draft,
+        deliveryStatus: 'sending',
+        createdAt,
+      },
+    ]);
     setAiIntentSubmitting(true);
     setStrategyChatPendingReview(null);
     setStrategyChatPendingReviews([]);
@@ -609,6 +806,9 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
     setAgentProgressEvents([]);
     try {
       assertUseStreamRuntimeSupport();
+      logMerchantStreamEvent('submit_start', {
+        merchantId: authSession.merchantId,
+      });
       await stream.submit(
         {
           messages: [
@@ -635,11 +835,41 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
           streamMode: ['messages-tuple', 'values', 'updates', 'custom'],
         },
       );
-      setAiIntentDraft('');
+      setPendingOutgoingMessages(prev =>
+        prev.map(item =>
+          item.messageId === localMessageId
+            ? {
+                ...item,
+                deliveryStatus: 'sent',
+              }
+            : item,
+        ),
+      );
+      setChatSendPhase('idle');
+      setChatSendError('');
       setLastAction('Chat response received.');
+      logMerchantStreamEvent('submit_success', {
+        merchantId: authSession.merchantId,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'chat stream failed';
+      setPendingOutgoingMessages(prev =>
+        prev.map(item =>
+          item.messageId === localMessageId
+            ? {
+                ...item,
+                deliveryStatus: 'failed',
+              }
+            : item,
+        ),
+      );
+      setChatSendPhase('failed');
+      setChatSendError(message);
       setLastAction(`Chat failed: ${message}`);
+      logMerchantStreamEvent('submit_error', {
+        merchantId: authSession.merchantId,
+        message,
+      });
     } finally {
       setAiIntentSubmitting(false);
     }
@@ -651,6 +881,8 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
       setLastAction('No retry target found.');
       return;
     }
+    setChatSendPhase('idle');
+    setChatSendError('');
     setAiIntentDraft(target.text);
     setLastAction('Retry message loaded into input box.');
   };
@@ -704,6 +936,7 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
   const contextValue: MerchantContextType = {
     authSession,
     isAuthenticated,
+    authHydrating,
     authSubmitting,
     authError,
     pendingOnboardingSession,
@@ -745,6 +978,9 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
     aiIntentDraft,
     setAiIntentDraft,
     aiIntentSubmitting: resolvedAiIntentSubmitting,
+    chatSendPhase,
+    chatSendError,
+    pendingOutgoingMessages,
     strategyChatMessages,
     strategyChatPendingReview,
     strategyChatEvaluation,

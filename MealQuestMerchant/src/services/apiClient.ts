@@ -35,6 +35,17 @@ export type MerchantCompleteOnboardResult = {
   };
 };
 
+export type MerchantStoresResponse = {
+  merchantId: string;
+  clusterId: string;
+  walletShared: boolean;
+  tierShared: boolean;
+  stores: Array<{
+    merchantId: string;
+    name: string;
+  }>;
+};
+
 const DEFAULT_BASE_URL = Platform.select({
   android: 'http://10.0.2.2:3030',
   default: 'http://127.0.0.1:3030',
@@ -71,6 +82,28 @@ async function postJson<T>(
   return data as T;
 }
 
+async function getJson<T>(
+  path: string,
+  options: { token?: string } = {},
+): Promise<T> {
+  const baseUrl = getApiBaseUrl();
+  const headers: Record<string, string> = {};
+  if (options.token) {
+    headers.Authorization = `Bearer ${options.token}`;
+  }
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: 'GET',
+    headers,
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message =
+      data && typeof data.error === 'string' ? data.error : `request failed (${response.status})`;
+    throw new Error(message);
+  }
+  return data as T;
+}
+
 export async function requestMerchantPhoneCode(phone: string): Promise<void> {
   await postJson('/api/auth/merchant/request-code', { phone });
 }
@@ -95,5 +128,19 @@ export async function completeMerchantOnboard(params: {
       name: params.name,
     },
     { token: params.onboardingToken },
+  );
+}
+
+export async function getMerchantStores(params: {
+  merchantId: string;
+  token: string;
+}): Promise<MerchantStoresResponse> {
+  const merchantId = String(params.merchantId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  return getJson<MerchantStoresResponse>(
+    `/api/merchant/stores?merchantId=${encodeURIComponent(merchantId)}`,
+    { token: params.token },
   );
 }

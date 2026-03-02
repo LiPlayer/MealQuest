@@ -46,6 +46,8 @@ export default function StrategyScreen() {
         aiIntentDraft,
         setAiIntentDraft,
         aiIntentSubmitting,
+        chatSendPhase,
+        chatSendError,
         onTriggerProactiveScan,
         onCreateIntentProposal,
         onRetryMessage,
@@ -315,12 +317,22 @@ export default function StrategyScreen() {
                             onPress={onCreateIntentProposal}
                             disabled={aiIntentSubmitting || pendingReviewCount > 0 || !aiIntentDraft.trim()}
                         >
-                            <Send size={20} color="#ffffff" />
+                            {aiIntentSubmitting ? (
+                                <Loader2 size={20} color="#ffffff" />
+                            ) : (
+                                <Send size={20} color="#ffffff" />
+                            )}
                         </Pressable>
                     </View>
                     {pendingReviewCount > 0 && (
                         <Text style={styles.inputHint}>请先处理上方的待审核提案</Text>
                     )}
+                    {chatSendPhase === 'submitting' ? (
+                        <Text testID="ai-intent-status" style={styles.inputStatusInfo}>Sending...</Text>
+                    ) : null}
+                    {chatSendError ? (
+                        <Text testID="ai-intent-error" style={styles.inputStatusError}>{chatSendError}</Text>
+                    ) : null}
                 </View>
             </KeyboardAvoidingView>
         </SafeAreaView>
@@ -696,5 +708,19 @@ const styles = StyleSheet.create({
         marginTop: 8,
         textAlign: 'center',
         fontWeight: '600',
+    },
+    inputStatusInfo: {
+        fontSize: 11,
+        color: '#0369a1',
+        marginTop: 8,
+        textAlign: 'center',
+        fontWeight: '600',
+    },
+    inputStatusError: {
+        fontSize: 11,
+        color: '#b91c1c',
+        marginTop: 8,
+        textAlign: 'center',
+        fontWeight: '700',
     }
 });

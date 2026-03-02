@@ -1,1 +1,3 @@
-﻿// UI-only mode: no runtime native config or async-storage mocks are required.
+jest.mock('@react-native-async-storage/async-storage', () =>
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);
