@@ -77,7 +77,7 @@ $env:LANGSMITH_TRACING="true"
 $env:LANGSMITH_PROJECT="mealquest-local"
 ```
 
-3. Start server and send one request to `POST /api/merchant/chat/stream`.
+3. Start server and send one request to `POST /api/langgraph/threads/:threadId/runs/stream`.
 4. Open LangSmith project and verify traces include strategy chat runs.
 
 Notes:
@@ -152,19 +152,25 @@ POST /api/merchant/migration/cutover
 Strategy chat and operations:
 
 ```text
-POST /api/merchant/chat/stream
+POST /api/langgraph/threads
+POST /api/langgraph/threads/:threadId/runs/stream
+GET  /api/langgraph/threads/:threadId/state
+POST /api/langgraph/threads/:threadId/history
 POST /api/merchant/strategy-chat/proposals/:id/review
 POST /api/merchant/strategy-chat/proposals/:id/evaluate
 POST /api/merchant/strategy-chat/proposals/:id/publish
 POST /api/merchant/fire-sale
 ```
 
-`/api/merchant/chat/stream` now emits official LangChain stream tuples via SSE:
+`/api/langgraph/threads/:threadId/runs/stream` emits official LangGraph stream events via SSE:
 
 ```text
-event: stream   data: [mode, chunk]   // mode: messages | updates | custom
-event: done     data: { status, sessionId, latestMessageId, merchantId }
+event: messages data: [...]
+event: values   data: { messages: [...] }
+event: custom   data: { ... }
+event: updates  data: { ... }
 event: error    data: { message }
+event: end      data: { thread_id, run_id, status }
 ```
 
 Strategy chat behavior:

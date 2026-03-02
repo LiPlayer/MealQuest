@@ -138,7 +138,11 @@ function resolveAuditAction(method, pathname) {
   if (method === "POST" && pathname === "/api/merchant/kill-switch") {
     return "KILL_SWITCH_SET";
   }
-  if (method === "POST" && pathname === "/api/merchant/chat/stream") {
+  if (
+    method === "POST" &&
+    (pathname === "/api/langgraph/runs/stream" ||
+      /^\/api\/langgraph\/threads\/[^/]+\/runs\/stream$/.test(pathname))
+  ) {
     return "STRATEGY_CHAT_MESSAGE";
   }
   if (method === "POST" && /^\/api\/merchant\/strategy-chat\/proposals\/[^/]+\/review$/.test(pathname)) {

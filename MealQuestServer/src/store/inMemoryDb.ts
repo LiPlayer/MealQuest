@@ -11,6 +11,7 @@ function createDefaultState() {
     partnerOrders: {},
     strategyConfigs: {},
     strategyChats: {},
+    agentServer: {},
     allianceConfigs: {},
     phoneLoginCodes: {},
     socialAuth: {
@@ -79,6 +80,9 @@ function normalizeShape(state) {
   }
   if (!next.strategyChats || typeof next.strategyChats !== "object") {
     next.strategyChats = {};
+  }
+  if (!next.agentServer || typeof next.agentServer !== "object") {
+    next.agentServer = {};
   }
   if (!next.allianceConfigs || typeof next.allianceConfigs !== "object") {
     next.allianceConfigs = {};
@@ -189,6 +193,10 @@ function normalizeState(initialState = null) {
       ...defaults.strategyChats,
       ...(migrated.strategyChats || {})
     },
+    agentServer: {
+      ...defaults.agentServer,
+      ...(migrated.agentServer || {})
+    },
     allianceConfigs: {
       ...defaults.allianceConfigs,
       ...(migrated.allianceConfigs || {})
@@ -261,6 +269,7 @@ function createInMemoryDb(initialState = null) {
       partnerOrders: db.partnerOrders,
       strategyConfigs: db.strategyConfigs,
       strategyChats: db.strategyChats,
+      agentServer: db.agentServer,
       allianceConfigs: db.allianceConfigs,
       phoneLoginCodes: db.phoneLoginCodes,
       socialAuth: db.socialAuth,

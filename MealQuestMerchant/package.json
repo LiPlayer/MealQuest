@@ -12,6 +12,7 @@
     "test:regression:ui": "jest __tests__/merchant-engine.test.ts --runInBand"
   },
   "dependencies": {
+    "@langchain/core": "^1.1.29",
     "@langchain/langgraph-sdk": "^1.6.5",
     "@react-native/new-app-screen": "0.84.0",
     "@react-navigation/bottom-tabs": "^7.15.2",

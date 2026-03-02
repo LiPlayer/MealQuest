@@ -17,6 +17,7 @@ const { createPaymentService } = require("../services/paymentService");
 const { createPrivacyService } = require("../services/privacyService");
 const { createSupplierService } = require("../services/supplierService");
 const { createStrategyChatService } = require("../services/strategyChatService");
+const { createAgentServerService } = require("../services/agentServerService");
 const { createPolicyOsService } = require("../policyos/policyOsService");
 const {
   createSocialAuthService
@@ -120,6 +121,9 @@ function createAppServer({
         merchantService: createMerchantService(scopedDb, {
           policyOsService,
           wsHub,
+          strategyChatService,
+        }),
+        agentServerService: createAgentServerService(scopedDb, {
           strategyChatService,
         }),
         allianceService: createAllianceService(scopedDb),

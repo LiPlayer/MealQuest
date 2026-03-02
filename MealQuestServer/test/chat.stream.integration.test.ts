@@ -33,7 +33,7 @@ function seedMerchant(db, merchantId = "m_chat_001") {
   };
 }
 
-test("chat stream endpoint emits stream tuples and done", async () => {
+test("langgraph runs/stream emits values and messages events", async () => {
   const app = createAppServer({
     jwtSecret: TEST_JWT_SECRET,
     strategyChatOptions: {
@@ -65,27 +65,46 @@ test("chat stream endpoint emits stream tuples and done", async () => {
   );
 
   try {
-    const res = await fetch(`${baseUrl}/api/merchant/chat/stream`, {
+    const createThreadRes = await fetch(`${baseUrl}/api/langgraph/threads`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({}),
+    });
+    assert.equal(createThreadRes.status, 200);
+    const createdThread = await createThreadRes.json();
+    const threadId = String(createdThread && createdThread.thread_id ? createdThread.thread_id : "");
+    assert.ok(threadId);
+
+    const res = await fetch(`${baseUrl}/api/langgraph/threads/${threadId}/runs/stream`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        context: {
-          merchantId: "m_chat_001",
-        },
+        assistant_id: "merchant-agent",
         input: {
-          text: "hello",
+          messages: [
+            {
+              type: "human",
+              content: "hello",
+            },
+          ],
         },
+        stream_mode: ["messages-tuple", "values", "custom", "updates"],
       }),
     });
+
     assert.equal(res.status, 200);
     assert.match(String(res.headers.get("content-type")), /text\/event-stream/i);
+    assert.match(String(res.headers.get("content-location")), /\/threads\/.+\/runs\/.+/);
     const payload = await res.text();
-    assert.match(payload, /event: stream/);
-    assert.match(payload, /event: done/);
-    assert.doesNotMatch(payload, /event: metadata/);
+    assert.match(payload, /event: values/);
+    assert.match(payload, /event: messages/);
+    assert.match(payload, /event: end/);
     assert.match(payload, /hello /);
     assert.match(payload, /merchant/);
   } finally {
@@ -93,7 +112,7 @@ test("chat stream endpoint emits stream tuples and done", async () => {
   }
 });
 
-test("chat stream done event includes assistantMessage when no token chunk is emitted", async () => {
+test("langgraph thread state and history are queryable after stream", async () => {
   const app = createAppServer({
     jwtSecret: TEST_JWT_SECRET,
     strategyChatOptions: {
@@ -123,29 +142,78 @@ test("chat stream done event includes assistantMessage when no token chunk is em
   );
 
   try {
-    const res = await fetch(`${baseUrl}/api/merchant/chat/stream`, {
+    const createThreadRes = await fetch(`${baseUrl}/api/langgraph/threads`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({}),
+    });
+    assert.equal(createThreadRes.status, 200);
+    const createdThread = await createThreadRes.json();
+    const threadId = String(createdThread && createdThread.thread_id ? createdThread.thread_id : "");
+    assert.ok(threadId);
+
+    const streamRes = await fetch(`${baseUrl}/api/langgraph/threads/${threadId}/runs/stream`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        context: {
-          merchantId: "m_chat_002",
-        },
+        assistant_id: "merchant-agent",
         input: {
-          text: "hello",
+          messages: [
+            {
+              type: "human",
+              content: "hello",
+            },
+          ],
         },
+        stream_mode: ["values"],
       }),
     });
-    assert.equal(res.status, 200);
-    const payload = await res.text();
-    const doneMatch = payload.match(/event: done\r?\ndata: (.+)\r?\n\r?\n/);
-    assert.ok(doneMatch);
-    const donePayload = JSON.parse(doneMatch[1]);
-    assert.equal(donePayload.status, "CHAT_REPLY");
-    assert.equal(typeof donePayload.assistantMessage, "string");
-    assert.ok(donePayload.assistantMessage.length > 0);
+    assert.equal(streamRes.status, 200);
+    const contentLocation = String(streamRes.headers.get("content-location") || "");
+    const runMatch = contentLocation.match(/\/threads\/([^/]+)\/runs\/([^/]+)$/);
+    assert.ok(runMatch);
+    const runId = runMatch[2];
+    await streamRes.text();
+
+    const stateRes = await fetch(`${baseUrl}/api/langgraph/threads/${threadId}/state`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    assert.equal(stateRes.status, 200);
+    const statePayload = await stateRes.json();
+    assert.ok(statePayload && statePayload.values && Array.isArray(statePayload.values.messages));
+    assert.ok(statePayload.values.messages.length >= 2);
+
+    const historyRes = await fetch(`${baseUrl}/api/langgraph/threads/${threadId}/history`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ limit: 10 }),
+    });
+    assert.equal(historyRes.status, 200);
+    const historyPayload = await historyRes.json();
+    assert.ok(Array.isArray(historyPayload));
+    assert.ok(historyPayload.length >= 1);
+
+    const runRes = await fetch(`${baseUrl}/api/langgraph/threads/${threadId}/runs/${runId}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    assert.equal(runRes.status, 200);
+    const runPayload = await runRes.json();
+    assert.equal(runPayload.run_id, runId);
   } finally {
     await app.stop();
   }
