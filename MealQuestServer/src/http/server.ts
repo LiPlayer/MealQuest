@@ -1,0 +1,473 @@
+const http = require("node:http");
+const { URL } = require("node:url");
+const {
+  loadServerEnv,
+  resolveServerRuntimeEnv
+} = require("../config/runtimeEnv");
+
+loadServerEnv();
+
+const { createTenantPolicyManager } = require("../core/tenantPolicy");
+const { createTenantRouter } = require("../core/tenantRouter");
+const { createWebSocketHub } = require("../core/websocketHub");
+const { createInvoiceService } = require("../services/invoiceService");
+const { createMerchantService } = require("../services/merchantService");
+const { createAllianceService } = require("../services/allianceService");
+const { createPaymentService } = require("../services/paymentService");
+const { createPrivacyService } = require("../services/privacyService");
+const { createSupplierService } = require("../services/supplierService");
+const { createStrategyChatService } = require("../services/strategyChatService");
+const { createPolicyOsService } = require("../policyos/policyOsService");
+const {
+  createSocialAuthService
+} = require("../services/socialAuthService");
+const { createInMemoryDb } = require("../store/inMemoryDb");
+const { createPostgresDb } = require("../store/postgresDb");
+const { createTenantRepository } = require("../store/tenantRepository");
+const {
+  getUpgradeAuthContext,
+  uniqueDbs,
+} = require("./serverHelpers");
+const { createHttpRequestHandler } = require("./createHttpRequestHandler");
+
+const MERCHANT_ROLES = ["CLERK", "MANAGER", "OWNER"];
+const CASHIER_ROLES = ["CUSTOMER", "CLERK", "MANAGER", "OWNER"];
+function createAppServer({
+  db = null,
+  postgresOptions = {},
+  tenantDbMap = {},
+  tenantPolicyMap = {},
+  defaultTenantPolicy = {},
+  jwtSecret = process.env.MQ_JWT_SECRET || "mealquest-dev-secret",
+  paymentCallbackSecret =
+  process.env.MQ_PAYMENT_CALLBACK_SECRET || "mealquest-payment-callback-secret",
+  paymentProvider = null,
+  socialAuthService = null,
+  socialAuthOptions = {},
+  strategyChatOptions = {},
+} = {}) {
+  const actualDb = db || createInMemoryDb();
+  if (typeof actualDb.save !== "function") {
+    actualDb.save = () => { };
+  }
+  if (!actualDb.tenantRouteFiles || typeof actualDb.tenantRouteFiles !== "object") {
+    actualDb.tenantRouteFiles = {};
+  }
+  const hydratedTenantDbMap = {};
+  for (const [merchantId, snapshotRef] of Object.entries(actualDb.tenantRouteFiles)) {
+    if (!merchantId || !snapshotRef || typeof snapshotRef !== "object") {
+      continue;
+    }
+    if (snapshotRef.type !== "INLINE_SNAPSHOT") {
+      continue;
+    }
+    const tenantDb = createInMemoryDb(snapshotRef.state || null);
+    tenantDb.save = () => {
+      snapshotRef.state = tenantDb.serialize();
+      actualDb.tenantRouteFiles[merchantId] = snapshotRef;
+      actualDb.save();
+    };
+    hydratedTenantDbMap[merchantId] = tenantDb;
+  }
+  const mergedTenantDbMap = {
+    ...hydratedTenantDbMap,
+    ...(tenantDbMap || {})
+  };
+  const managedDbs = uniqueDbs([actualDb, ...Object.values(mergedTenantDbMap)]);
+
+  const tenantRouter = createTenantRouter({
+    defaultDb: actualDb,
+    tenantDbMap: mergedTenantDbMap
+  });
+  const tenantRepository = createTenantRepository({
+    tenantRouter
+  });
+  const persistedTenantPolicyMap =
+    actualDb.tenantPolicies && typeof actualDb.tenantPolicies === "object"
+      ? actualDb.tenantPolicies
+      : {};
+  const mergedTenantPolicyMap = {
+    ...persistedTenantPolicyMap,
+    ...(tenantPolicyMap || {})
+  };
+  actualDb.tenantPolicies = { ...mergedTenantPolicyMap };
+  const tenantPolicyManager = createTenantPolicyManager({
+    tenantPolicyMap: mergedTenantPolicyMap,
+    defaultTenantPolicy
+  });
+  actualDb.save();
+  const serviceCache = new WeakMap();
+  const activeSocialAuthService =
+    socialAuthService ||
+    createSocialAuthService({
+      timeoutMs: socialAuthOptions.timeoutMs,
+      providers: socialAuthOptions.providers
+    });
+  const wsHub = createWebSocketHub(); // wsHub needs to be defined before getServicesForDb
+  const strategyChatService = createStrategyChatService(strategyChatOptions);
+  const metrics = {
+    startedAt: new Date().toISOString(),
+    requestsTotal: 0,
+    requestsByPath: {},
+    errorsTotal: 0
+  };
+  const getServicesForDb = (scopedDb) => {
+    let services = serviceCache.get(scopedDb);
+    if (!services) {
+      const policyOsService = createPolicyOsService(scopedDb, { wsHub, metrics });
+      services = {
+        paymentService: createPaymentService(scopedDb, { paymentProvider }),
+        merchantService: createMerchantService(scopedDb, {
+          policyOsService,
+          wsHub,
+          strategyChatService,
+        }),
+        allianceService: createAllianceService(scopedDb),
+        invoiceService: createInvoiceService(scopedDb),
+        privacyService: createPrivacyService(scopedDb),
+        supplierService: createSupplierService(scopedDb),
+        policyOsService
+      };
+      serviceCache.set(scopedDb, services);
+    }
+    return services;
+  };
+  const getServicesForMerchant = (merchantId) => {
+    const scopedDb = tenantRouter.getDbForMerchant(merchantId);
+    return getServicesForDb(scopedDb);
+  };
+  const services = getServicesForDb(actualDb);
+  const allSockets = new Set();
+  const appendAuditLog = ({ merchantId, action, status, auth, details }) => {
+    tenantRepository.appendAuditLog({
+      merchantId,
+      action,
+      status,
+      role: auth && auth.role,
+      operatorId: auth && (auth.operatorId || auth.userId),
+      details
+    });
+  };
+
+  const server = http.createServer(
+    createHttpRequestHandler({
+      jwtSecret,
+      paymentCallbackSecret,
+      metrics,
+      tenantPolicyManager,
+      tenantRepository,
+      getServicesForDb,
+      getServicesForMerchant,
+      wsHub,
+      actualDb,
+      tenantRouter,
+      activeSocialAuthService,
+      appendAuditLog,
+      MERCHANT_ROLES,
+      CASHIER_ROLES,
+      postgresOptions,
+    })
+  );
+
+
+  server.on("upgrade", (req, socket) => {
+    try {
+      const parsedUrl = new URL(req.url || "/", "http://localhost");
+      if (parsedUrl.pathname !== "/ws") {
+        socket.write("HTTP/1.1 404 Not Found\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+
+      const auth = getUpgradeAuthContext(req, jwtSecret, parsedUrl);
+      const merchantId = parsedUrl.searchParams.get("merchantId");
+      if (merchantId && auth.merchantId && merchantId !== auth.merchantId) {
+        socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+      const scopedMerchantId = auth.merchantId || merchantId;
+      const wsPolicy = tenantPolicyManager.evaluate({
+        merchantId: scopedMerchantId,
+        operation: "WS_CONNECT"
+      });
+      if (!wsPolicy.allowed) {
+        const statusLine =
+          wsPolicy.statusCode === 429
+            ? "HTTP/1.1 429 Too Many Requests\r\n\r\n"
+            : "HTTP/1.1 403 Forbidden\r\n\r\n";
+        socket.write(statusLine);
+        socket.destroy();
+        return;
+      }
+
+      wsHub.handleUpgrade(req, socket, {
+        ...auth,
+        merchantId: scopedMerchantId
+      });
+    } catch (err) {
+      socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+      socket.destroy();
+    }
+  });
+
+  // Handle incoming WebSocket messages
+  wsHub.onMessage(async (client, data) => {
+    if (data.type === "STRATEGY_CHAT_SEND_MESSAGE") {
+      const merchantId = client.merchantId;
+      const { merchantService } = getServicesForMerchant(merchantId);
+      try {
+        const result = await merchantService.sendStrategyChatMessage({
+          merchantId,
+          operatorId: client.auth.operatorId || "system",
+          content: data.payload.content,
+        });
+        wsHub.broadcast(merchantId, "STRATEGY_CHAT_DELTA", result);
+      } catch (err) {
+      }
+    }
+  });
+
+  server.on("connection", (socket) => {
+    allSockets.add(socket);
+    socket.on("close", () => allSockets.delete(socket));
+  });
+
+  function start(port = 0, host) {
+    return new Promise((resolve, reject) => {
+      const listenHost =
+        typeof host === "string" && host.trim()
+          ? host.trim()
+          : "127.0.0.1";
+      const onListening = () => {
+        const address = server.address();
+        if (!address || typeof address === "string") {
+          reject(new Error("Failed to read server address"));
+          return;
+        }
+        resolve(address.port);
+      };
+      server.listen(port, listenHost, onListening);
+    });
+  }
+
+  function stop() {
+    return new Promise((resolve, reject) => {
+      wsHub.closeAll();
+      for (const socket of [...allSockets]) {
+        try {
+          socket.destroy();
+        } catch {
+          // ignore
+        }
+      }
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        const dynamicManaged = uniqueDbs([
+          ...managedDbs,
+          ...(tenantRouter.listOverrideDbs ? tenantRouter.listOverrideDbs() : []),
+        ]);
+        Promise.all(
+          dynamicManaged.map(async (dbItem) => {
+            if (dbItem && typeof dbItem.flush === "function") {
+              await dbItem.flush();
+            }
+            if (dbItem && typeof dbItem.close === "function") {
+              await dbItem.close();
+            }
+          }),
+        )
+          .then(() => resolve())
+          .catch(reject);
+      });
+    });
+  }
+
+  return {
+    db: actualDb,
+    server,
+    start,
+    stop,
+    wsHub,
+    tenantRouter,
+    tenantRepository,
+    tenantPolicyManager,
+    services: {
+      ...services,
+      getServicesForMerchant
+    }
+  };
+}
+
+async function createAppServerAsync(options = {}) {
+  const runtimeEnv = resolveServerRuntimeEnv(process.env);
+  const inputPostgresOptions = options.postgresOptions || {};
+  const socialAuthOptions = {
+    timeoutMs:
+      (options.socialAuthOptions && options.socialAuthOptions.timeoutMs) ||
+      runtimeEnv.authHttpTimeoutMs,
+    providers:
+      (options.socialAuthOptions && options.socialAuthOptions.providers) ||
+      runtimeEnv.authProviders
+  };
+
+  const postgresOptions = {
+    connectionString:
+      inputPostgresOptions.connectionString ||
+      runtimeEnv.dbUrl,
+    schema:
+      inputPostgresOptions.schema ||
+      runtimeEnv.dbSchema ||
+      "public",
+    snapshotKey:
+      inputPostgresOptions.snapshotKey ||
+      runtimeEnv.dbSnapshotKey ||
+      "main",
+    maxPoolSize:
+      inputPostgresOptions.maxPoolSize ||
+      runtimeEnv.dbPoolMax ||
+      5,
+    enforceRls:
+      inputPostgresOptions.enforceRls === undefined
+        ? runtimeEnv.dbEnforceRls
+        : Boolean(inputPostgresOptions.enforceRls),
+    autoCreateDatabase:
+      inputPostgresOptions.autoCreateDatabase === undefined
+        ? runtimeEnv.dbAutoCreate
+        : Boolean(inputPostgresOptions.autoCreateDatabase),
+    adminConnectionString:
+      (typeof inputPostgresOptions.adminConnectionString === "string" &&
+        inputPostgresOptions.adminConnectionString.trim()) ||
+      runtimeEnv.dbAdminUrl ||
+      null,
+  };
+
+  const rootDb =
+    options.db ||
+    (await createPostgresDb({
+      ...postgresOptions,
+      onPersistError: (error) => {
+      },
+    }));
+
+  if (!rootDb.tenantRouteFiles || typeof rootDb.tenantRouteFiles !== "object") {
+    rootDb.tenantRouteFiles = {};
+  }
+
+  const persistedTenantDbMap = {};
+  for (const [merchantId, snapshotRef] of Object.entries(rootDb.tenantRouteFiles)) {
+    if (!merchantId || typeof snapshotRef !== "string" || !snapshotRef.trim()) {
+      continue;
+    }
+    persistedTenantDbMap[merchantId] = await createPostgresDb({
+      ...postgresOptions,
+      snapshotKey: snapshotRef.trim(),
+      onPersistError: (error) => {
+      },
+    });
+  }
+
+  return createAppServer({
+    ...options,
+    db: rootDb,
+    postgresOptions,
+    socialAuthOptions,
+    strategyChatOptions: {
+      modelName:
+        options.strategyChatOptions && options.strategyChatOptions.modelName !== undefined
+          ? options.strategyChatOptions.modelName
+          : runtimeEnv.ai.deepseekModel,
+      timeoutMs:
+        options.strategyChatOptions && options.strategyChatOptions.timeoutMs !== undefined
+          ? options.strategyChatOptions.timeoutMs
+          : 45000,
+      temperature:
+        options.strategyChatOptions && options.strategyChatOptions.temperature !== undefined
+          ? options.strategyChatOptions.temperature
+          : 0.2,
+    },
+    tenantDbMap: {
+      ...persistedTenantDbMap,
+      ...(options.tenantDbMap || {}),
+    },
+  });
+}
+
+if (require.main === module) {
+  const runtimeEnv = resolveServerRuntimeEnv(process.env);
+  let appInstance = null;
+  let shuttingDown = false;
+
+  const shutdownGracefully = async (signal) => {
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
+
+    const forceExitTimer = setTimeout(() => {
+      process.exit(1);
+    }, 10000);
+    if (typeof forceExitTimer.unref === "function") {
+      forceExitTimer.unref();
+    }
+
+    try {
+      if (appInstance && typeof appInstance.stop === "function") {
+        await appInstance.stop();
+      }
+      clearTimeout(forceExitTimer);
+      process.exit(0);
+    } catch (error) {
+      clearTimeout(forceExitTimer);
+      process.exit(1);
+    }
+  };
+
+  process.once("SIGINT", () => {
+    shutdownGracefully("SIGINT");
+  });
+  process.once("SIGTERM", () => {
+    shutdownGracefully("SIGTERM");
+  });
+
+  createAppServerAsync({
+    postgresOptions: {
+      connectionString: runtimeEnv.dbUrl,
+      schema: runtimeEnv.dbSchema,
+      snapshotKey: runtimeEnv.dbSnapshotKey,
+      maxPoolSize: runtimeEnv.dbPoolMax,
+      enforceRls: runtimeEnv.dbEnforceRls,
+      autoCreateDatabase: runtimeEnv.dbAutoCreate,
+      adminConnectionString: runtimeEnv.dbAdminUrl || null,
+    },
+    jwtSecret: runtimeEnv.jwtSecret,
+    paymentCallbackSecret: runtimeEnv.paymentCallbackSecret,
+    socialAuthOptions: {
+      timeoutMs: runtimeEnv.authHttpTimeoutMs,
+      providers: runtimeEnv.authProviders
+    }
+  })
+    .then((app) => {
+      appInstance = app;
+      return app.start(runtimeEnv.port, runtimeEnv.host);
+    })
+    .catch(async (error) => {
+      console.error("[FATAL] Server failed to start:", error);
+      if (appInstance && typeof appInstance.stop === "function") {
+        try {
+          await appInstance.stop();
+        } catch {
+          // ignore stop errors during startup failure
+        }
+      }
+      process.exit(1);
+    });
+}
+
+module.exports = {
+  createAppServer,
+  createAppServerAsync,
+};

@@ -1,0 +1,88 @@
+# MealQuest 云服务器选型推荐报告 (更新至 2026年2月)
+
+针对"餐餐有戏 (MealQuest)"技术栈（Node.js + PostgreSQL + 微信小程序 + GLM AI API + WebSocket），以下是基于最新产品线的选型建议。
+
+---
+
+## 1. 项目技术画像摘要
+
+| 维度 | 描述 |
+| :--- | :--- |
+| **运行时** | Node.js + HTTP + WebSocket (长连接) |
+| **数据库** | PostgreSQL（核心资产、交易存储） |
+| **AI 服务** | 智谱 GLM API（外部调用，需稳定出站） |
+| **前端** | 微信小程序 + 支付宝小程序 (C端双平台) + React Native (B端) |
+| **容器化** | 已具备 `Dockerfile` + `docker-compose` |
+
+---
+
+## 2. 厂商推荐 (2026年2月产品线)
+
+### 🏆 首选：腾讯云（微信生态最优）
+
+微信小程序域名白名单、微信支付回调与腾讯云直连优势显著。支付宝小程序无平台限制，阿里云 / 腾讯云均可满足其 HTTPS 回调要求，不影响选型。
+
+**开发 / 测试环境**
+- **轻量应用服务器 (Lighthouse)**: 2核 4G 8M带宽
+  - 月付约 ¥50～80（活动价，持续领券可更低）
+
+**生产环境**
+| 服务 | 规格 | 月费估算 |
+| :--- | :--- | :--- |
+| **云服务器 CVM** | 2核 4G / S6/S7 系列 | ¥160～220 |
+| **TDSQL-C PostgreSQL** | Serverless 版（自动伸缩） | ¥0.05/ACU·时，按量计费 |
+| **Redis** | 1G 标准架构 | ¥50～80 |
+| **CLB 负载均衡** | 共享型（含 WebSocket 会话保持） | ¥15+流量 |
+| **CDN** | 用于 AI 生成资产发布 | ¥0.2/GB 起 |
+
+> **TDSQL-C Serverless PostgreSQL** 是腾讯云 2025年主推产品，兼容原生 PG，闲时自动缩容到 0，非常适合餐饮初期忽高忽低的流量模式。支付宝小程序接入同样需服务器持有有效 SSL 证书（各大云厂商均免费提供）。
+
+---
+
+### 方案 B：阿里云（弹性扩展首选）
+
+**生产/高增长阶段**
+| 服务 | 规格 | 月费估算 |
+| :--- | :--- | :--- |
+| **ECS 弹性计算** (g8a/g8i) | 2核 8G（AMD/Intel 第8代） | ¥200～350 |
+| **PolarDB for PG** | 1核 2G Serverless | 按 CU 计费，起步¥0.1/CU·时 |
+| **SAE Serverless 容器** | 0.5C 1G（弹性） | 按量，0成本闲时 |
+| **OSS 对象存储** | AI 资产存储 + CDN | ¥0.12/GB·月 |
+
+> 阿里云 SAE 在 **2025年底** 发布了对 Docker Compose 一键导入的支持，您现有的 `docker-compose.yml` 几乎可以零修改上云。
+
+---
+
+## 3. 架构建议
+
+```
+App Layer:        Docker Container (CVM/SAE Serverless)
+                        |
+Database:         Managed PostgreSQL (TDSQL-C / PolarDB)
+                        |
+Cache:            Redis (会话、Token缓存)
+                        |
+Assets:           OSS/COS + CDN (AI生成 2D 图片 / Lottie)
+                        |  
+AI Calls:         GLM API → (国内出口，延迟 <200ms)
+```
+
+1. **WebSocket 会话保持**: CLB/SLB 配置"一致性哈希"或"IP哈希"会话保持，确保 WebSocket 连接不断。
+2. **数据安全**: 务必启用 PostgreSQL 的 **行级安全策略 (RLS)**（`.env` 中已有 `MQ_DB_ENFORCE_RLS=true`），云托管 DB 请开启 SSL 连接。
+3. **AI 调用防超时**: AI 请求超时建议 45s，建议在 CDN/WAF 层同步调整上游超时为 60s，防止网关提前断链。
+
+---
+
+## 4. 成本对比 & 上线路径
+
+| 阶段 | 推荐方案 | 月费范围 |
+| :--- | :--- | :--- |
+| **开发测试** | 腾讯云 Lighthouse 2C4G + 自建 DB | ¥50 - ¥80 |
+| **内测/Beta** | CVM 2C4G + TDSQL-C Serverless PG | ¥200 - ¥350 |
+| **正式发布** | CVM/SAE + 托管 PG + Redis + CDN + WAF | ¥600 - ¥1000 |
+
+> 💡 **建议先行**: 从 **腾讯云轻量应用服务器** 开始，预装 Docker，直接 `docker compose up -d` 拉起您现有的环境，验证通路后再迁移到托管 DB。
+
+---
+
+*参考：腾讯云 [cloud.tencent.com](https://cloud.tencent.com) | 阿里云 [aliyun.com](https://aliyun.com)*
