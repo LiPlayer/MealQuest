@@ -39,10 +39,10 @@ export type MerchantStoresResponse = {
   clusterId: string;
   walletShared: boolean;
   tierShared: boolean;
-  stores: Array<{
+  stores: {
     merchantId: string;
     name: string;
-  }>;
+  }[];
 };
 
 const DEFAULT_BASE_URL = Platform.select({

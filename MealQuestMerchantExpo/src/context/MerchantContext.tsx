@@ -64,8 +64,8 @@ export type StrategyChatReviewProgress = {
 
 export type PolicyDecisionResult = {
   mode: string;
-  selected: Array<Record<string, unknown>>;
-  rejected: Array<Record<string, unknown>>;
+  selected: Record<string, unknown>[];
+  rejected: Record<string, unknown>[];
 };
 
 export type AgentProgressEvent = {
@@ -414,8 +414,8 @@ function toPolicyDecision(data: unknown): PolicyDecisionResult | null {
   const record = data as Record<string, unknown>;
   return {
     mode: typeof record.mode === 'string' ? record.mode : 'EVALUATE',
-    selected: Array.isArray(record.selected) ? (record.selected as Array<Record<string, unknown>>) : [],
-    rejected: Array.isArray(record.rejected) ? (record.rejected as Array<Record<string, unknown>>) : [],
+    selected: Array.isArray(record.selected) ? (record.selected as Record<string, unknown>[]) : [],
+    rejected: Array.isArray(record.rejected) ? (record.rejected as Record<string, unknown>[]) : [],
   };
 }
 
@@ -514,7 +514,7 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
   const [pendingOnboardingSession, setPendingOnboardingSession] = useState<PendingOnboardingSession | null>(null);
   const [merchantState, setMerchantState] = useState<MerchantState>(createInitialMerchantState);
   const [lastAction, setLastAction] = useState('Please login before entering chat.');
-  const [realtimeEvents, setRealtimeEvents] = useState<RealtimeEventRow[]>([
+  const [realtimeEvents] = useState<RealtimeEventRow[]>([
     {
       id: 'evt_1',
       label: 'System',
@@ -782,7 +782,7 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
           stores,
         );
         setLastAction(`Session restored for ${persisted.merchantId}`);
-      } catch (_error) {
+      } catch {
         await clearMerchantAuthSession().catch(() => undefined);
         if (cancelled) {
           return;
