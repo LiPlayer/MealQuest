@@ -31,12 +31,12 @@ export default function TabsLayout() {
         tabBarInactiveTintColor: '#94a3b8',
         tabBarLabelStyle: styles.tabLabel,
         tabBarIcon: ({ color, size }) => {
-          if (route.name === 'strategy') return <Ionicons name="sparkles-outline" size={size} color={color} />;
+          if (route.name === 'agent') return <Ionicons name="sparkles-outline" size={size} color={color} />;
           return null;
         },
       })}
     >
-      <Tabs.Screen name="strategy" options={{ title: 'Strategy' }} />
+      <Tabs.Screen name="agent" options={{ title: 'Agent' }} />
     </Tabs>
   );
 }

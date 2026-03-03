@@ -76,8 +76,8 @@ $env:LANGSMITH_TRACING="true"
 $env:LANGSMITH_PROJECT="mealquest-local"
 ```
 
-3. Start server and send one request to `POST /api/langgraph/threads/:threadId/runs/stream`.
-4. Open LangSmith project and verify traces include strategy chat runs.
+3. Start server and send one request to `POST /api/agent-os/sessions/:sessionId/tasks/stream`.
+4. Open LangSmith project and verify traces include AI Digital Operations Officer runs.
 
 Notes:
 
@@ -105,6 +105,7 @@ GET  /api/merchant/catalog
 ```
 
 Server starts with an empty merchant dataset by default. Use phone login and complete-onboard to create the first store.
+`GET /api/merchant/catalog` is currently not required by active business flows.
 
 ## Auth
 
@@ -148,33 +149,33 @@ POST /api/merchant/migration/cutover
 
 ## Business APIs
 
-Strategy chat and operations:
+AI Digital Operations Officer APIs:
 
 ```text
-POST /api/langgraph/threads
-POST /api/langgraph/threads/:threadId/runs/stream
-GET  /api/langgraph/threads/:threadId/state
-POST /api/langgraph/threads/:threadId/history
+POST /api/agent-os/agents/search
+POST /api/agent-os/sessions
+POST /api/agent-os/sessions/:sessionId/tasks/stream
+GET  /api/agent-os/sessions/:sessionId/state
+POST /api/agent-os/sessions/:sessionId/history
 ```
 
-`/api/langgraph/threads/:threadId/runs/stream` emits official LangGraph stream events via SSE:
+`/api/agent-os/sessions/:sessionId/tasks/stream` emits SSE events:
 
 ```text
-event: metadata data: { run_id, thread_id }
+event: metadata data: { task_id, session_id }
 event: messages data: [...]
 event: values   data: { messages: [...] }
 event: custom   data: { ... }
 event: updates  data: { ... }
 event: error    data: { error, message }
-event: end      data: { thread_id, run_id, status }
+event: end      data: { session_id, task_id, status }
 ```
 
-Strategy chat behavior:
+Agent runtime behavior:
 
-1. Strategy chat is fully managed by `/api/langgraph/*` thread state.
-2. When AI drafts a proposal card, run ends with `status=interrupted` and `values.pending_review`.
-3. Client resumes workflow by calling `runs/stream` with `command.resume` (for example: `evaluate`, `approve`, `reject`).
-4. No legacy `strategy-chat/proposals/*` APIs are used in the flow.
+1. Agent runtime state is fully managed by `/api/agent-os/*` session state.
+2. Agent tasks are executed via `tasks/stream` and persisted in session/task records.
+3. `command.resume` is currently rejected by runtime policy.
 
 Supplier verification:
 

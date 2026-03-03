@@ -1,10 +1,10 @@
-function createStrategyChatService(options = {}) {
+function createOmniAgentService(options = {}) {
   const {
     modelName = process.env.DEEPSEEK_MODEL || "deepseek-chat",
     temperature = 0.2,
     timeoutMs = 45000,
     systemPrompt =
-      "You are MealQuest's merchant operations copilot. Keep replies concise, practical, and action-oriented.",
+      "You are MealQuest AI Digital Operations Officer. Be concise, practical, and execution-oriented.",
     modelInstance = null,
     loadModel = null,
     agentInstance = null,
@@ -92,7 +92,6 @@ function createStrategyChatService(options = {}) {
       return loadModel();
     }
     const { ChatDeepSeek } = await import("@langchain/deepseek");
-    // Use LangChain official env variable handling (DEEPSEEK_API_KEY).
     return new ChatDeepSeek({
       model: modelName,
       temperature,
@@ -132,7 +131,9 @@ function createStrategyChatService(options = {}) {
   }
 
   function normalizeStreamMode(streamMode) {
-    const source = Array.isArray(streamMode) ? streamMode : ["messages", "updates", "custom"];
+    const source = Array.isArray(streamMode)
+      ? streamMode
+      : ["messages", "updates", "custom"];
     const deduped = [];
     for (const item of source) {
       const mode = String(item || "").trim();
@@ -144,7 +145,7 @@ function createStrategyChatService(options = {}) {
     return deduped.length > 0 ? deduped : ["messages", "updates", "custom"];
   }
 
-  async function* streamStrategyChatTurn(input = {}) {
+  async function* streamAgentTurn(input = {}) {
     const merchantId = String(input.merchantId || "").trim();
     const sessionId = String(input.sessionId || "").trim();
     const userMessage = String(input.userMessage || "").trim();
@@ -185,8 +186,8 @@ function createStrategyChatService(options = {}) {
         },
         {
           streamMode,
-          runName: "mq.strategy_chat.turn",
-          tags: ["mealquest", "merchant", "strategy-chat"],
+          runName: "mq.agent.task.turn",
+          tags: ["mealquest", "merchant", "agent-os"],
           metadata: {
             merchantId,
             sessionId,
@@ -218,7 +219,7 @@ function createStrategyChatService(options = {}) {
       }
 
       return {
-        status: "CHAT_REPLY",
+        status: "AGENT_REPLY",
         assistantMessage:
           fullText.trim() ||
           "Received. Please share more details about goals, budget, and timeline.",
@@ -237,10 +238,10 @@ function createStrategyChatService(options = {}) {
   }
 
   return {
-    streamStrategyChatTurn,
+    streamAgentTurn,
   };
 }
 
 module.exports = {
-  createStrategyChatService,
+  createOmniAgentService,
 };

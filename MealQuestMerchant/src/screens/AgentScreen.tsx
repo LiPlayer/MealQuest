@@ -24,7 +24,7 @@ const RichText = ({ text, isStreaming }: { text: string; isStreaming?: boolean }
   );
 };
 
-export default function StrategyScreen() {
+export default function AgentScreen() {
   const {
     aiIntentDraft,
     setAiIntentDraft,
@@ -32,9 +32,9 @@ export default function StrategyScreen() {
     chatSendPhase,
     chatSendError,
     onTriggerProactiveScan,
-    onSendStrategyMessage,
+    onSendAgentMessage,
     onRetryMessage,
-    strategyChatMessages,
+    agentMessages,
     activeAgentProgress,
   } = useMerchant();
 
@@ -45,7 +45,7 @@ export default function StrategyScreen() {
       scrollViewRef.current?.scrollToEnd({ animated: true });
     }, 80);
     return () => clearTimeout(timer);
-  }, [strategyChatMessages]);
+  }, [agentMessages]);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -58,8 +58,8 @@ export default function StrategyScreen() {
           <View style={styles.headerContent}>
             <MaterialIcons name="chat-bubble-outline" size={18} color="#0f766e" />
             <View style={styles.headerTextWrap}>
-              <Text style={styles.headerTitle}>AI 经营助手</Text>
-              <Text style={styles.headerSubtitle}>当前模式: 登录 + 开店 + 聊天</Text>
+              <Text style={styles.headerTitle}>AI数字运营官</Text>
+              <Text style={styles.headerSubtitle}>当前模式: 登录 + 开店 + 全能Agent</Text>
             </View>
             <Pressable testID="ai-proactive-scan" style={styles.proactiveBtn} onPress={onTriggerProactiveScan}>
               <Text style={styles.proactiveBtnText}>巡检</Text>
@@ -89,13 +89,13 @@ export default function StrategyScreen() {
             </View>
           ) : null}
 
-          {strategyChatMessages.length === 0 ? (
+          {agentMessages.length === 0 ? (
             <View style={styles.emptyState}>
               <MaterialIcons name="info-outline" size={32} color="#cbd5e1" />
               <Text style={styles.emptyText}>还没有对话，输入你的经营目标开始。</Text>
             </View>
           ) : (
-            strategyChatMessages.map((item: any) => (
+            agentMessages.map((item: any) => (
               <View key={item.messageId} style={styles.messageRow}>
                 <View
                   style={[
@@ -121,7 +121,7 @@ export default function StrategyScreen() {
 
         <View style={styles.composerWrap}>
           <TextInput
-            testID="strategy-intent-input"
+            testID="agent-intent-input"
             value={aiIntentDraft}
             onChangeText={setAiIntentDraft}
             placeholder="例如：帮我提升本周午餐复购率"
@@ -132,10 +132,10 @@ export default function StrategyScreen() {
           {chatSendPhase === 'failed' ? <Text style={styles.errorText}>{chatSendError}</Text> : null}
 
           <Pressable
-            testID="strategy-send"
+            testID="agent-send"
             style={[styles.sendBtn, (aiIntentSubmitting || !aiIntentDraft.trim()) && styles.sendBtnDisabled]}
             disabled={aiIntentSubmitting || !aiIntentDraft.trim()}
-            onPress={onSendStrategyMessage}
+            onPress={onSendAgentMessage}
           >
             <MaterialIcons name={aiIntentSubmitting ? 'hourglass-top' : 'send'} size={16} color="#ffffff" />
             <Text style={styles.sendBtnText}>{aiIntentSubmitting ? '发送中...' : '发送'}</Text>

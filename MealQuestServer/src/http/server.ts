@@ -16,8 +16,8 @@ const { createAllianceService } = require("../services/allianceService");
 const { createPaymentService } = require("../services/paymentService");
 const { createPrivacyService } = require("../services/privacyService");
 const { createSupplierService } = require("../services/supplierService");
-const { createStrategyChatService } = require("../services/strategyChatService");
-const { createAgentServerService } = require("../services/agentServerService");
+const { createOmniAgentService } = require("../services/omniAgentService");
+const { createAgentRuntimeService } = require("../services/agentRuntimeService");
 const { createPolicyOsService } = require("../policyos/policyOsService");
 const {
   createSocialAuthService
@@ -45,7 +45,8 @@ function createAppServer({
   paymentProvider = null,
   socialAuthService = null,
   socialAuthOptions = {},
-  strategyChatOptions = {},
+  omniAgentOptions = null,
+  strategyChatOptions = null,
 } = {}) {
   const actualDb = db || createInMemoryDb();
   if (typeof actualDb.save !== "function") {
@@ -105,7 +106,13 @@ function createAppServer({
       providers: socialAuthOptions.providers
     });
   const wsHub = createWebSocketHub(); // wsHub needs to be defined before getServicesForDb
-  const strategyChatService = createStrategyChatService(strategyChatOptions);
+  const resolvedOmniAgentOptions =
+    omniAgentOptions && typeof omniAgentOptions === "object"
+      ? omniAgentOptions
+      : strategyChatOptions && typeof strategyChatOptions === "object"
+        ? strategyChatOptions
+        : {};
+  const omniAgentService = createOmniAgentService(resolvedOmniAgentOptions);
   const metrics = {
     startedAt: new Date().toISOString(),
     requestsTotal: 0,
@@ -121,10 +128,11 @@ function createAppServer({
         merchantService: createMerchantService(scopedDb, {
           policyOsService,
           wsHub,
-          strategyChatService,
+          strategyChatService: omniAgentService,
+          omniAgentService,
         }),
-        agentServerService: createAgentServerService(scopedDb, {
-          strategyChatService,
+        agentRuntimeService: createAgentRuntimeService(scopedDb, {
+          omniAgentService,
         }),
         allianceService: createAllianceService(scopedDb),
         invoiceService: createInvoiceService(scopedDb),
@@ -217,16 +225,20 @@ function createAppServer({
 
   // Handle incoming WebSocket messages
   wsHub.onMessage(async (client, data) => {
-    if (data.type === "STRATEGY_CHAT_SEND_MESSAGE") {
+    if (data.type === "AGENT_SEND_MESSAGE" || data.type === "STRATEGY_CHAT_SEND_MESSAGE") {
       const merchantId = client.merchantId;
       const { merchantService } = getServicesForMerchant(merchantId);
       try {
-        const result = await merchantService.sendStrategyChatMessage({
+        const sendAgentMessage =
+          typeof merchantService.sendAgentMessage === "function"
+            ? merchantService.sendAgentMessage.bind(merchantService)
+            : merchantService.sendStrategyChatMessage.bind(merchantService);
+        const result = await sendAgentMessage({
           merchantId,
           operatorId: client.auth.operatorId || "system",
           content: data.payload.content,
         });
-        wsHub.broadcast(merchantId, "STRATEGY_CHAT_DELTA", result);
+        wsHub.broadcast(merchantId, "AGENT_STREAM_DELTA", result);
       } catch (err) {
       }
     }
@@ -379,18 +391,24 @@ async function createAppServerAsync(options = {}) {
     db: rootDb,
     postgresOptions,
     socialAuthOptions,
-    strategyChatOptions: {
+    omniAgentOptions: {
       modelName:
-        options.strategyChatOptions && options.strategyChatOptions.modelName !== undefined
-          ? options.strategyChatOptions.modelName
+        options.omniAgentOptions && options.omniAgentOptions.modelName !== undefined
+          ? options.omniAgentOptions.modelName
+          : options.strategyChatOptions && options.strategyChatOptions.modelName !== undefined
+            ? options.strategyChatOptions.modelName
           : runtimeEnv.ai.deepseekModel,
       timeoutMs:
-        options.strategyChatOptions && options.strategyChatOptions.timeoutMs !== undefined
-          ? options.strategyChatOptions.timeoutMs
+        options.omniAgentOptions && options.omniAgentOptions.timeoutMs !== undefined
+          ? options.omniAgentOptions.timeoutMs
+          : options.strategyChatOptions && options.strategyChatOptions.timeoutMs !== undefined
+            ? options.strategyChatOptions.timeoutMs
           : 45000,
       temperature:
-        options.strategyChatOptions && options.strategyChatOptions.temperature !== undefined
-          ? options.strategyChatOptions.temperature
+        options.omniAgentOptions && options.omniAgentOptions.temperature !== undefined
+          ? options.omniAgentOptions.temperature
+          : options.strategyChatOptions && options.strategyChatOptions.temperature !== undefined
+            ? options.strategyChatOptions.temperature
           : 0.2,
     },
     tenantDbMap: {
@@ -404,7 +422,7 @@ if (require.main === module) {
   const runtimeEnv = resolveServerRuntimeEnv(process.env);
   if (!runtimeEnv.ai.hasDeepseekApiKey) {
     console.warn(
-      "[WARN] DEEPSEEK_API_KEY is not set. Merchant chat agent will return AI_UNAVAILABLE."
+      "[WARN] DEEPSEEK_API_KEY is not set. AI Digital Operations Officer will return AI_UNAVAILABLE."
     );
     console.warn(
       "[WARN] Inject DEEPSEEK_API_KEY as an environment variable before starting the server."

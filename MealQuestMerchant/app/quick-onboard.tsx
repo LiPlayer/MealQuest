@@ -21,7 +21,7 @@ export default function QuickOnboardRoute() {
   }
 
   if (isAuthenticated) {
-    return <Redirect href="/(tabs)/strategy" />;
+    return <Redirect href="/(tabs)/agent" />;
   }
 
   if (!pendingOnboardingSession) {

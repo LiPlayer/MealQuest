@@ -17,7 +17,7 @@ Normative product/engineering source remains: `docs/specs/mealquest-spec.md`.
   - `POST /api/auth/customer/wechat-login`
   - `POST /api/auth/customer/alipay-login`
 - Merchant basic discovery:
-  - `GET /api/merchant/catalog`
+  - `GET /api/merchant/catalog` (currently no business flow dependency)
   - `GET /api/merchant/exists`
 
 ### 1.2 Payments, ledger, invoice, privacy
@@ -35,18 +35,22 @@ Normative product/engineering source remains: `docs/specs/mealquest-spec.md`.
   - `POST /api/privacy/delete-user`
   - `POST /api/privacy/cancel-account`
 
-### 1.3 Strategy chat / LangGraph bridge
-- LangGraph-compatible endpoints:
-  - `POST /api/langgraph/assistants/search`
-  - `POST /api/langgraph/threads`
-  - `GET /api/langgraph/threads/:threadId`
-  - `GET /api/langgraph/threads/:threadId/state`
-  - `POST /api/langgraph/threads/:threadId/history`
-  - `POST /api/langgraph/runs/stream`
-  - `POST /api/langgraph/threads/:threadId/runs/stream`
-  - `POST /api/langgraph/runs/:runId/cancel`
+### 1.3 AI Digital Operations Officer (`Agent OS`)
+- Agent OS endpoints:
+  - `POST /api/agent-os/agents/search`
+  - `GET /api/agent-os/agents/:agentId`
+  - `POST /api/agent-os/sessions`
+  - `GET /api/agent-os/sessions/:sessionId`
+  - `POST /api/agent-os/sessions/:sessionId/copy`
+  - `GET /api/agent-os/sessions/:sessionId/state`
+  - `POST /api/agent-os/sessions/:sessionId/history`
+  - `POST /api/agent-os/tasks/stream`
+  - `POST /api/agent-os/sessions/:sessionId/tasks/stream`
+  - `GET /api/agent-os/sessions/:sessionId/tasks/:taskId`
+  - `POST /api/agent-os/sessions/:sessionId/tasks/:taskId/cancel`
+  - `GET /api/agent-os/sessions/:sessionId/tasks/:taskId/stream`
 - Stream transport: Server-Sent Events with `metadata/values/messages/end/error`.
-- Current strategy workflow is chat-oriented.
+- Current implementation focuses on conversation-first execution over the unified Agent runtime contract.
 
 ### 1.4 Policy OS lifecycle and runtime
 - Schemas/plugins:
@@ -97,8 +101,9 @@ Normative product/engineering source remains: `docs/specs/mealquest-spec.md`.
 ### 2.1 Implemented screens and flows
 - `LoginScreen`
 - `QuickOnboardScreen`
-- `StrategyScreen` (chat mode)
-- `StrategyScreen` includes:
+- `AgentScreen` (AI数字运营官入口)
+- Merchant tab route: `/(tabs)/agent`
+- `AgentScreen` includes:
   - Chat UI with streaming progress display
   - Retry for failed user message
   - Goal input and send flow

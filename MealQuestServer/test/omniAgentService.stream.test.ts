@@ -1,12 +1,12 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { createStrategyChatService } = require("../src/services/strategyChatService");
+const { createOmniAgentService } = require("../src/services/omniAgentService");
 
-test("strategy chat service streams official mode/chunk tuples with chat reply", async () => {
+test("omni agent service streams official mode/chunk tuples with agent reply", async () => {
   let capturedInput = null;
   let capturedConfig = null;
-  const service = createStrategyChatService({
+  const service = createOmniAgentService({
     loadAgent: async () => ({
       async *stream(input, config) {
         capturedInput = input;
@@ -18,9 +18,9 @@ test("strategy chat service streams official mode/chunk tuples with chat reply",
     }),
   });
 
-  const gen = service.streamStrategyChatTurn({
+  const gen = service.streamAgentTurn({
     merchantId: "m_store_001",
-    sessionId: "sc_m_store_001",
+    sessionId: "session_m_store_001",
     userMessage: "say hello",
   });
 
@@ -40,8 +40,9 @@ test("strategy chat service streams official mode/chunk tuples with chat reply",
   assert.equal(events[2].type, "STREAM_CHUNK");
   assert.equal(events[2].mode, "messages");
   assert.equal(events[2].tokenText, "world");
-  assert.equal(result.status, "CHAT_REPLY");
+  assert.equal(result.status, "AGENT_REPLY");
   assert.equal(result.assistantMessage, "hello world");
+
   assert.deepEqual(capturedInput, {
     messages: [
       {
@@ -50,24 +51,24 @@ test("strategy chat service streams official mode/chunk tuples with chat reply",
       },
     ],
   });
-  assert.equal(capturedConfig.runName, "mq.strategy_chat.turn");
-  assert.deepEqual(capturedConfig.tags, ["mealquest", "merchant", "strategy-chat"]);
+  assert.equal(capturedConfig.runName, "mq.agent.task.turn");
+  assert.deepEqual(capturedConfig.tags, ["mealquest", "merchant", "agent-os"]);
   assert.deepEqual(capturedConfig.metadata, {
     merchantId: "m_store_001",
-    sessionId: "sc_m_store_001",
+    sessionId: "session_m_store_001",
     channel: "sse",
     streamMode: ["messages", "updates", "custom"],
   });
 });
 
-test("strategy chat service returns AI_UNAVAILABLE when agent is missing", async () => {
-  const service = createStrategyChatService({
+test("omni agent service returns AI_UNAVAILABLE when agent is missing", async () => {
+  const service = createOmniAgentService({
     loadAgent: async () => null,
   });
 
-  const gen = service.streamStrategyChatTurn({
+  const gen = service.streamAgentTurn({
     merchantId: "m_store_001",
-    sessionId: "sc_m_store_001",
+    sessionId: "session_m_store_001",
     userMessage: "hello",
   });
   const first = await gen.next();

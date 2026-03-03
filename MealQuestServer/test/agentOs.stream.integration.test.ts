@@ -34,10 +34,10 @@ function seedMerchant(db, merchantId = "m_chat_001") {
   };
 }
 
-test("langgraph runs/stream emits values and messages events", async () => {
+test("agent-os tasks/stream emits values and messages events", async () => {
   const app = createAppServer({
     jwtSecret: TEST_JWT_SECRET,
-    strategyChatOptions: {
+    omniAgentOptions: {
       loadAgent: async () => ({
         async *stream() {
           yield [
@@ -62,11 +62,11 @@ test("langgraph runs/stream emits values and messages events", async () => {
       merchantId: "m_chat_001",
       operatorId: "staff_owner",
     },
-    TEST_JWT_SECRET
+    TEST_JWT_SECRET,
   );
 
   try {
-    const createThreadRes = await fetch(`${baseUrl}/api/langgraph/threads`, {
+    const createSessionRes = await fetch(`${baseUrl}/api/agent-os/sessions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -74,19 +74,21 @@ test("langgraph runs/stream emits values and messages events", async () => {
       },
       body: JSON.stringify({}),
     });
-    assert.equal(createThreadRes.status, 200);
-    const createdThread = await createThreadRes.json();
-    const threadId = String(createdThread && createdThread.thread_id ? createdThread.thread_id : "");
-    assert.ok(threadId);
+    assert.equal(createSessionRes.status, 200);
+    const createdSession = await createSessionRes.json();
+    const sessionId = String(
+      createdSession && createdSession.session_id ? createdSession.session_id : "",
+    );
+    assert.ok(sessionId);
 
-    const res = await fetch(`${baseUrl}/api/langgraph/threads/${threadId}/runs/stream`, {
+    const res = await fetch(`${baseUrl}/api/agent-os/sessions/${sessionId}/tasks/stream`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        assistant_id: "merchant-agent",
+        agent_id: "merchant-omni-agent",
         input: {
           messages: [
             {
@@ -101,7 +103,7 @@ test("langgraph runs/stream emits values and messages events", async () => {
 
     assert.equal(res.status, 200);
     assert.match(String(res.headers.get("content-type")), /text\/event-stream/i);
-    assert.match(String(res.headers.get("content-location")), /\/threads\/.+\/runs\/.+/);
+    assert.match(String(res.headers.get("content-location")), /\/sessions\/.+\/tasks\/.+/);
     const payload = await res.text();
     assert.match(payload, /event: metadata/);
     assert.match(payload, /event: values/);
@@ -116,10 +118,10 @@ test("langgraph runs/stream emits values and messages events", async () => {
   }
 });
 
-test("langgraph thread state and history are queryable after stream", async () => {
+test("agent-os session state and history are queryable after stream", async () => {
   const app = createAppServer({
     jwtSecret: TEST_JWT_SECRET,
-    strategyChatOptions: {
+    omniAgentOptions: {
       loadAgent: async () => ({
         async *stream() {
           yield [
@@ -142,11 +144,11 @@ test("langgraph thread state and history are queryable after stream", async () =
       merchantId: "m_chat_002",
       operatorId: "staff_owner",
     },
-    TEST_JWT_SECRET
+    TEST_JWT_SECRET,
   );
 
   try {
-    const createThreadRes = await fetch(`${baseUrl}/api/langgraph/threads`, {
+    const createSessionRes = await fetch(`${baseUrl}/api/agent-os/sessions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -154,19 +156,21 @@ test("langgraph thread state and history are queryable after stream", async () =
       },
       body: JSON.stringify({}),
     });
-    assert.equal(createThreadRes.status, 200);
-    const createdThread = await createThreadRes.json();
-    const threadId = String(createdThread && createdThread.thread_id ? createdThread.thread_id : "");
-    assert.ok(threadId);
+    assert.equal(createSessionRes.status, 200);
+    const createdSession = await createSessionRes.json();
+    const sessionId = String(
+      createdSession && createdSession.session_id ? createdSession.session_id : "",
+    );
+    assert.ok(sessionId);
 
-    const streamRes = await fetch(`${baseUrl}/api/langgraph/threads/${threadId}/runs/stream`, {
+    const streamRes = await fetch(`${baseUrl}/api/agent-os/sessions/${sessionId}/tasks/stream`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        assistant_id: "merchant-agent",
+        agent_id: "merchant-omni-agent",
         input: {
           messages: [
             {
@@ -180,12 +184,12 @@ test("langgraph thread state and history are queryable after stream", async () =
     });
     assert.equal(streamRes.status, 200);
     const contentLocation = String(streamRes.headers.get("content-location") || "");
-    const runMatch = contentLocation.match(/\/threads\/([^/]+)\/runs\/([^/]+)$/);
-    assert.ok(runMatch);
-    const runId = runMatch[2];
+    const taskMatch = contentLocation.match(/\/sessions\/([^/]+)\/tasks\/([^/]+)$/);
+    assert.ok(taskMatch);
+    const taskId = taskMatch[2];
     await streamRes.text();
 
-    const stateRes = await fetch(`${baseUrl}/api/langgraph/threads/${threadId}/state`, {
+    const stateRes = await fetch(`${baseUrl}/api/agent-os/sessions/${sessionId}/state`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -196,7 +200,7 @@ test("langgraph thread state and history are queryable after stream", async () =
     assert.ok(statePayload && statePayload.values && Array.isArray(statePayload.values.messages));
     assert.ok(statePayload.values.messages.length >= 2);
 
-    const historyRes = await fetch(`${baseUrl}/api/langgraph/threads/${threadId}/history`, {
+    const historyRes = await fetch(`${baseUrl}/api/agent-os/sessions/${sessionId}/history`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -209,16 +213,16 @@ test("langgraph thread state and history are queryable after stream", async () =
     assert.ok(Array.isArray(historyPayload));
     assert.ok(historyPayload.length >= 1);
 
-    const runRes = await fetch(`${baseUrl}/api/langgraph/threads/${threadId}/runs/${runId}`, {
+    const taskRes = await fetch(`${baseUrl}/api/agent-os/sessions/${sessionId}/tasks/${taskId}`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,
       },
     });
-    assert.equal(runRes.status, 200);
-    const runPayload = await runRes.json();
-    assert.equal(runPayload.run_id, runId);
-    assert.equal(String(runPayload.status), "success");
+    assert.equal(taskRes.status, 200);
+    const taskPayload = await taskRes.json();
+    assert.equal(taskPayload.task_id, taskId);
+    assert.equal(String(taskPayload.status), "success");
     assert.equal(statePayload.values.pending_review, undefined);
     assert.equal(statePayload.values.__interrupt__.length, 0);
   } finally {
@@ -226,10 +230,10 @@ test("langgraph thread state and history are queryable after stream", async () =
   }
 });
 
-test("langgraph run cancel endpoint and join stream return official metadata/events", async () => {
+test("agent-os task cancel endpoint and join stream return metadata/events", async () => {
   const app = createAppServer({
     jwtSecret: TEST_JWT_SECRET,
-    strategyChatOptions: {
+    omniAgentOptions: {
       loadAgent: async () => ({
         async *stream() {
           await sleep(300);
@@ -251,11 +255,11 @@ test("langgraph run cancel endpoint and join stream return official metadata/eve
       merchantId: "m_chat_003",
       operatorId: "staff_owner",
     },
-    TEST_JWT_SECRET
+    TEST_JWT_SECRET,
   );
 
   try {
-    const createThreadRes = await fetch(`${baseUrl}/api/langgraph/threads`, {
+    const createSessionRes = await fetch(`${baseUrl}/api/agent-os/sessions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -263,19 +267,21 @@ test("langgraph run cancel endpoint and join stream return official metadata/eve
       },
       body: JSON.stringify({}),
     });
-    assert.equal(createThreadRes.status, 200);
-    const createdThread = await createThreadRes.json();
-    const threadId = String(createdThread && createdThread.thread_id ? createdThread.thread_id : "");
-    assert.ok(threadId);
+    assert.equal(createSessionRes.status, 200);
+    const createdSession = await createSessionRes.json();
+    const sessionId = String(
+      createdSession && createdSession.session_id ? createdSession.session_id : "",
+    );
+    assert.ok(sessionId);
 
-    const streamRes = await fetch(`${baseUrl}/api/langgraph/threads/${threadId}/runs/stream`, {
+    const streamRes = await fetch(`${baseUrl}/api/agent-os/sessions/${sessionId}/tasks/stream`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        assistant_id: "merchant-agent",
+        agent_id: "merchant-omni-agent",
         input: {
           messages: [
             {
@@ -289,11 +295,11 @@ test("langgraph run cancel endpoint and join stream return official metadata/eve
     });
     assert.equal(streamRes.status, 200);
     const contentLocation = String(streamRes.headers.get("content-location") || "");
-    const runMatch = contentLocation.match(/\/threads\/([^/]+)\/runs\/([^/]+)$/);
-    assert.ok(runMatch);
-    const runId = runMatch[2];
+    const taskMatch = contentLocation.match(/\/sessions\/([^/]+)\/tasks\/([^/]+)$/);
+    assert.ok(taskMatch);
+    const taskId = taskMatch[2];
 
-    const cancelRes = await fetch(`${baseUrl}/api/langgraph/threads/${threadId}/runs/${runId}/cancel`, {
+    const cancelRes = await fetch(`${baseUrl}/api/agent-os/sessions/${sessionId}/tasks/${taskId}/cancel`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -308,17 +314,17 @@ test("langgraph run cancel endpoint and join stream return official metadata/eve
     assert.match(streamPayload, /event: end/);
     assert.match(streamPayload, /"status":"(interrupted|success)"/);
 
-    const runRes = await fetch(`${baseUrl}/api/langgraph/threads/${threadId}/runs/${runId}`, {
+    const taskRes = await fetch(`${baseUrl}/api/agent-os/sessions/${sessionId}/tasks/${taskId}`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,
       },
     });
-    assert.equal(runRes.status, 200);
-    const runPayload = await runRes.json();
-    assert.ok(["interrupted", "success"].includes(String(runPayload.status)));
+    assert.equal(taskRes.status, 200);
+    const taskPayload = await taskRes.json();
+    assert.ok(["interrupted", "success"].includes(String(taskPayload.status)));
 
-    const joinRes = await fetch(`${baseUrl}/api/langgraph/threads/${threadId}/runs/${runId}/stream`, {
+    const joinRes = await fetch(`${baseUrl}/api/agent-os/sessions/${sessionId}/tasks/${taskId}/stream`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -335,10 +341,10 @@ test("langgraph run cancel endpoint and join stream return official metadata/eve
   }
 });
 
-test("langgraph resume command is rejected in chat-only mode", async () => {
+test("agent-os resume command is rejected in current agent runtime", async () => {
   const app = createAppServer({
     jwtSecret: TEST_JWT_SECRET,
-    strategyChatOptions: {
+    omniAgentOptions: {
       loadAgent: async () => ({
         async *stream() {
           yield ["messages", [{ content: "draft " }, { node: "model" }]];
@@ -360,7 +366,7 @@ test("langgraph resume command is rejected in chat-only mode", async () => {
   );
 
   try {
-    const createThreadRes = await fetch(`${baseUrl}/api/langgraph/threads`, {
+    const createSessionRes = await fetch(`${baseUrl}/api/agent-os/sessions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -368,19 +374,21 @@ test("langgraph resume command is rejected in chat-only mode", async () => {
       },
       body: JSON.stringify({}),
     });
-    assert.equal(createThreadRes.status, 200);
-    const createdThread = await createThreadRes.json();
-    const threadId = String(createdThread && createdThread.thread_id ? createdThread.thread_id : "");
-    assert.ok(threadId);
+    assert.equal(createSessionRes.status, 200);
+    const createdSession = await createSessionRes.json();
+    const sessionId = String(
+      createdSession && createdSession.session_id ? createdSession.session_id : "",
+    );
+    assert.ok(sessionId);
 
-    const resumeRes = await fetch(`${baseUrl}/api/langgraph/threads/${threadId}/runs/stream`, {
+    const resumeRes = await fetch(`${baseUrl}/api/agent-os/sessions/${sessionId}/tasks/stream`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        assistant_id: "merchant-agent",
+        agent_id: "merchant-omni-agent",
         command: {
           resume: {
             action: "evaluate",
@@ -393,7 +401,7 @@ test("langgraph resume command is rejected in chat-only mode", async () => {
     assert.equal(resumeRes.status, 200);
     const resumePayload = await resumeRes.text();
     assert.match(resumePayload, /event: error/);
-    assert.match(resumePayload, /chat-only mode/i);
+    assert.match(resumePayload, /current agent runtime/i);
   } finally {
     await app.stop();
   }

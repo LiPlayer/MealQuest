@@ -10,7 +10,7 @@ const { createPaymentRoutesHandler } = require("./routes/paymentRoutes");
 const { createInvoiceRoutesHandler } = require("./routes/invoiceRoutes");
 const { createPrivacyRoutesHandler } = require("./routes/privacyRoutes");
 const { createMerchantRoutesHandler } = require("./routes/merchantRoutes");
-const { createAgentServerRoutesHandler } = require("./routes/agentServerRoutes");
+const { createAgentOsRoutesHandler } = require("./routes/agentOsRoutes");
 const { createAllianceRoutesHandler } = require("./routes/allianceRoutes");
 const { createTenantRoutesHandler } = require("./routes/tenantRoutes");
 const { createPolicyOsRoutesHandler } = require("./routes/policyOsRoutes");
@@ -87,7 +87,7 @@ function createHttpRequestHandler(deps) {
       appendAuditLog,
       wsHub,
     }),
-    createAgentServerRoutesHandler({
+    createAgentOsRoutesHandler({
       tenantPolicyManager,
       getServicesForMerchant,
       MERCHANT_ROLES,

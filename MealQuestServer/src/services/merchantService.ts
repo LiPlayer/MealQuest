@@ -1,5 +1,5 @@
 function createMerchantService(db, options = {}) {
-  const strategyChatService = options.strategyChatService;
+  const agentService = options.omniAgentService || options.strategyChatService;
   const policyOsService = options.policyOsService;
   const wsHub = options.wsHub;
   const fromFreshState = Boolean(options.__fromFreshState);
@@ -26,8 +26,8 @@ function createMerchantService(db, options = {}) {
     Math.floor(Number(process.env.POLICY_EVALUATION_CACHE_MAX_AGE_SEC) || 900)
   );
   const EVALUATION_CACHE_MAX_AGE_MS = EVALUATION_CACHE_MAX_AGE_SEC * 1000;
-  const STRATEGY_CHAT_PROTOCOL = {
-    name: "MQ_STRATEGY_CHAT",
+  const AGENT_PROTOCOL = {
+    name: "MQ_AGENT_RUNTIME",
     mode: "DUAL_CHANNEL_STRICT",
   };
   const MEMORY_FACT_KEYS = ["goals", "constraints", "audience", "timing", "decisions"];
@@ -45,7 +45,8 @@ function createMerchantService(db, options = {}) {
     }
     return db.runWithFreshState(async (workingDb) => {
       const scopedService = createMerchantService(workingDb, {
-        strategyChatService,
+        strategyChatService: agentService,
+        omniAgentService: agentService,
         policyOsService,
         wsHub,
         __fromFreshState: true
@@ -60,7 +61,8 @@ function createMerchantService(db, options = {}) {
     }
     return db.runWithFreshRead(async (workingDb) => {
       const scopedService = createMerchantService(workingDb, {
-        strategyChatService,
+        strategyChatService: agentService,
+        omniAgentService: agentService,
         policyOsService,
         wsHub,
         __fromFreshState: true
@@ -1048,7 +1050,7 @@ function createMerchantService(db, options = {}) {
       return [];
     }
     const allowedActions = new Set([
-      "STRATEGY_CHAT_MESSAGE",
+      "AGENT_TASK_RUN",
       "POLICY_DRAFT_CREATE",
       "POLICY_DRAFT_SUBMIT",
       "POLICY_DRAFT_APPROVE",
@@ -1157,7 +1159,7 @@ function createMerchantService(db, options = {}) {
     const sessionMessages = session && Array.isArray(session.messages) ? session.messages : [];
     return {
       merchantId,
-      protocol: STRATEGY_CHAT_PROTOCOL,
+      protocol: AGENT_PROTOCOL,
       sessionId: session ? session.sessionId : null,
       pendingReview: null,
       pendingReviews: [],
@@ -1924,14 +1926,14 @@ function createMerchantService(db, options = {}) {
     };
   }
 
-  async function sendStrategyChatMessage({
+  async function sendAgentMessage({
     merchantId,
     operatorId = "system",
     content = "",
     streamMode = ["messages", "updates", "custom"],
     streamObserver = null,
   }) {
-    const freshResult = await runWithFreshState("sendStrategyChatMessage", {
+    const freshResult = await runWithFreshState("sendAgentMessage", {
       merchantId,
       operatorId,
       content
@@ -1962,7 +1964,7 @@ function createMerchantService(db, options = {}) {
         deltaFrom: baselineMessageCount
       });
     const buildBaseProtocolResponse = (extras = {}) => ({
-      protocol: STRATEGY_CHAT_PROTOCOL,
+      protocol: AGENT_PROTOCOL,
       ...extras,
     });
 
@@ -1972,7 +1974,14 @@ function createMerchantService(db, options = {}) {
       text
     });
 
-    if (!strategyChatService || typeof strategyChatService.streamStrategyChatTurn !== "function") {
+    const runAgentTurn =
+      agentService && typeof agentService.streamAgentTurn === "function"
+        ? agentService.streamAgentTurn.bind(agentService)
+        : agentService && typeof agentService.streamStrategyChatTurn === "function"
+          ? agentService.streamStrategyChatTurn.bind(agentService)
+          : null;
+
+    if (!runAgentTurn) {
       const assistantMessage = "Agent is unavailable. Chat mode is still available.";
       appendChatMessage(session, {
         role: "ASSISTANT",
@@ -2040,7 +2049,7 @@ function createMerchantService(db, options = {}) {
       if (!wsHub || !shouldBroadcastToWs) {
         return;
       }
-      wsHub.broadcast(merchantId, "STRATEGY_CHAT_STREAM_EVENT", payload);
+      wsHub.broadcast(merchantId, "AGENT_STREAM_EVENT", payload);
     };
     const emitProgress = (phase, status = "running", extras = {}) => {
       if (!activeStreamModes.includes("custom")) {
@@ -2060,7 +2069,7 @@ function createMerchantService(db, options = {}) {
       let streamedAssistantText = "";
       emitProgress("REQUEST_ACCEPTED");
       emitProgress("AGENT_EXECUTION_START");
-      const gen = strategyChatService.streamStrategyChatTurn(aiInput);
+      const gen = runAgentTurn(aiInput);
       let next = await gen.next();
       while (!next.done) {
         if (!next || !next.value || typeof next.value !== "object") {
@@ -2176,7 +2185,8 @@ function createMerchantService(db, options = {}) {
     createStrategyChatSession,
     getStrategyChatSession,
     listStrategyChatMessages,
-    sendStrategyChatMessage
+    sendAgentMessage,
+    sendStrategyChatMessage: sendAgentMessage
   };
 }
 

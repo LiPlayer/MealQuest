@@ -12,7 +12,7 @@ export default function IndexRoute() {
   }
 
   if (isAuthenticated) {
-    return <Redirect href="/(tabs)/strategy" />;
+    return <Redirect href="/(tabs)/agent" />;
   }
 
   if (pendingOnboardingSession) {

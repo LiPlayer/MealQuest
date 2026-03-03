@@ -12,7 +12,7 @@ const TENANT_LIMIT_OPERATIONS = [
   "INVOICE_ISSUE",
   "KILL_SWITCH_SET",
   "PRIVACY_CANCEL",
-  "STRATEGY_CHAT_WRITE",
+  "AGENT_WRITE",
   "SUPPLIER_VERIFY",
   "ALLIANCE_CONFIG_SET",
   "ALLIANCE_SYNC_USER",
@@ -140,10 +140,10 @@ function resolveAuditAction(method, pathname) {
   }
   if (
     method === "POST" &&
-    (pathname === "/api/langgraph/runs/stream" ||
-      /^\/api\/langgraph\/threads\/[^/]+\/runs\/stream$/.test(pathname))
+    (pathname === "/api/agent-os/tasks/stream" ||
+      /^\/api\/agent-os\/sessions\/[^/]+\/tasks\/stream$/.test(pathname))
   ) {
-    return "STRATEGY_CHAT_MESSAGE";
+    return "AGENT_TASK_RUN";
   }
   if (method === "POST" && pathname === "/api/supplier/verify-order") {
     return "SUPPLIER_VERIFY";
