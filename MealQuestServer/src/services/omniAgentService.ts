@@ -1,6 +1,7 @@
 function createOmniAgentService(options = {}) {
   const {
-    modelName = process.env.DEEPSEEK_MODEL || "deepseek-chat",
+    provider = "deepseek",
+    modelName = process.env.MQ_AI_MODEL || "deepseek-chat",
     temperature = 0.2,
     timeoutMs = 45000,
     systemPrompt =
@@ -9,7 +10,9 @@ function createOmniAgentService(options = {}) {
     loadModel = null,
     agentInstance = null,
     loadAgent = null,
+    memoryCompressor = null,
   } = options;
+  const normalizedProvider = String(provider || "").trim().toLowerCase() || "deepseek";
 
   let cachedModelPromise = null;
   let cachedAgentPromise = null;
@@ -116,13 +119,19 @@ function createOmniAgentService(options = {}) {
     if (typeof loadModel === "function") {
       return loadModel();
     }
-    const { ChatDeepSeek } = await import("@langchain/deepseek");
-    return new ChatDeepSeek({
-      model: modelName,
-      temperature,
-      timeout: timeoutMs,
-      streaming: true,
-    });
+    if (normalizedProvider === "deepseek") {
+      const { ChatDeepSeek } = await import("@langchain/deepseek");
+      return new ChatDeepSeek({
+        apiKey: process.env.DEEPSEEK_API_KEY,
+        model: modelName,
+        temperature,
+        timeout: timeoutMs,
+        streaming: true,
+      });
+    }
+    throw new Error(
+      `unsupported ai provider: ${normalizedProvider}; provide loadModel/modelInstance`,
+    );
   }
 
   async function getModel() {
@@ -250,7 +259,7 @@ function createOmniAgentService(options = {}) {
           "Received. Please share more details about goals, budget, and timeline.",
         protocol: {
           name: "LANGCHAIN_AGENT_STREAM",
-          provider: "deepseek",
+          provider: normalizedProvider,
           streamMode,
         },
       };
@@ -271,18 +280,33 @@ function createOmniAgentService(options = {}) {
       throw new Error("invalid memory compression input");
     }
 
+    if (typeof memoryCompressor === "function") {
+      const compressed = await memoryCompressor({
+        merchantId,
+        sessionId,
+        archiveText,
+        previousSummary,
+        provider: normalizedProvider,
+      });
+      const customSummary = extractModelText(compressed).trim();
+      if (!customSummary) {
+        throw new Error("memory compression returned empty summary");
+      }
+      return customSummary;
+    }
+
     let model = null;
     try {
       model = await getModel();
     } catch (error) {
       throw new Error(
         error && error.message
-          ? `deepseek model unavailable: ${String(error.message)}`
-          : "deepseek model unavailable",
+          ? `${normalizedProvider} model unavailable: ${String(error.message)}`
+          : `${normalizedProvider} model unavailable`,
       );
     }
     if (!model || typeof model.invoke !== "function") {
-      throw new Error("deepseek model unavailable");
+      throw new Error(`${normalizedProvider} model unavailable`);
     }
 
     const archiveSnippet = archiveText.slice(-20000);
@@ -320,13 +344,13 @@ function createOmniAgentService(options = {}) {
         metadata: {
           merchantId,
           sessionId,
-          provider: "deepseek",
+          provider: normalizedProvider,
         },
       },
     );
     const summary = extractModelText(response).trim();
     if (!summary) {
-      throw new Error("deepseek memory compression returned empty summary");
+      throw new Error("memory compression returned empty summary");
     }
     return summary;
   }

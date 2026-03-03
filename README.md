@@ -36,7 +36,7 @@ Root automation scripts are intentionally minimal:
 Normative source of truth:
 - `docs/specs/mealquest-spec.md`
 
-Implementation snapshot:
-- `docs/implemented-features.md`
+Execution and delivery tracking:
+- `docs/roadmap.md`
 
 All previous split docs were removed to support a clean rebuild from one canonical spec.

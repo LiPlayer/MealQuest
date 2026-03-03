@@ -287,7 +287,7 @@ function createAgentRuntimeService(db, { omniAgentService } = {}) {
     archiveText,
   }) {
     if (!omniAgentService || typeof omniAgentService.summarizeSessionMemory !== "function") {
-      throw new Error("deepseek memory compression is unavailable");
+      throw new Error("agent memory compression is unavailable");
     }
     return omniAgentService.summarizeSessionMemory({
       merchantId,

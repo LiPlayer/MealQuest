@@ -69,7 +69,7 @@ function resolveServerRuntimeEnv(env = process.env) {
   const authAlipayAppId = asString(env.MQ_AUTH_ALIPAY_APP_ID);
   const authAlipayAppSecret = asString(env.MQ_AUTH_ALIPAY_APP_SECRET);
   const deepseekApiKey = asString(env.DEEPSEEK_API_KEY);
-  const aiDeepSeekModel = asString(env.DEEPSEEK_MODEL) || "deepseek-chat";
+  const aiModel = asString(env.MQ_AI_MODEL) || "deepseek-chat";
   const langsmithTracing = parseBoolean(env.LANGSMITH_TRACING, false);
   const langsmithProject = asString(env.LANGSMITH_PROJECT);
   const langsmithEndpoint = asString(env.LANGSMITH_ENDPOINT);
@@ -92,6 +92,9 @@ function resolveServerRuntimeEnv(env = process.env) {
     errors.push(
       "At least one customer auth provider is required in production (WeChat or Alipay)"
     );
+  }
+  if (!deepseekApiKey) {
+    errors.push("DEEPSEEK_API_KEY is required");
   }
   if (errors.length > 0) {
     throw new Error(`Invalid server env: ${errors.join("; ")}`);
@@ -124,8 +127,9 @@ function resolveServerRuntimeEnv(env = process.env) {
       }
     },
     ai: {
-      hasDeepseekApiKey: Boolean(deepseekApiKey),
-      deepseekModel: aiDeepSeekModel,
+      provider: "deepseek",
+      hasApiKey: Boolean(deepseekApiKey),
+      model: aiModel,
     },
     observability: {
       langsmithTracing,

@@ -46,8 +46,8 @@ Project examples:
 - During development run targeted tests, then run `npm run verify` before pushing.
 
 ## Implementation Sync Requirement (Required)
-- For every code change (feature, refactor, removal, API/contract change), update `docs/implemented-features.md` in the same work pass.
-- Treat `docs/implemented-features.md` as the mandatory implementation snapshot sync document for AI and human contributors.
+- For every code change (feature, refactor, removal, API/contract change), update `docs/roadmap.md` in the same work pass.
+- Treat `docs/roadmap.md` as the mandatory implementation and delivery status sync document for AI and human contributors.
 
 ## Commit & Pull Request Guidelines
 - Use Conventional Commit prefixes used in history: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`.

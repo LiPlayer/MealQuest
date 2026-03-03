@@ -387,7 +387,7 @@ async function createAppServerAsync(options = {}) {
       modelName:
         options.omniAgentOptions && options.omniAgentOptions.modelName !== undefined
           ? options.omniAgentOptions.modelName
-          : runtimeEnv.ai.deepseekModel,
+          : runtimeEnv.ai.model,
       timeoutMs:
         options.omniAgentOptions && options.omniAgentOptions.timeoutMs !== undefined
           ? options.omniAgentOptions.timeoutMs
@@ -406,14 +406,6 @@ async function createAppServerAsync(options = {}) {
 
 if (require.main === module) {
   const runtimeEnv = resolveServerRuntimeEnv(process.env);
-  if (!runtimeEnv.ai.hasDeepseekApiKey) {
-    console.warn(
-      "[WARN] DEEPSEEK_API_KEY is not set. AI Digital Operations Officer will return AI_UNAVAILABLE."
-    );
-    console.warn(
-      "[WARN] Inject DEEPSEEK_API_KEY as an environment variable before starting the server."
-    );
-  }
   let appInstance = null;
   let shuttingDown = false;
 

@@ -42,13 +42,13 @@ MQ_AUTH_ALIPAY_VERIFY_URL=
 MQ_AUTH_ALIPAY_APP_ID=
 MQ_AUTH_ALIPAY_APP_SECRET=
 MQ_AUTH_HTTP_TIMEOUT_MS=10000
-DEEPSEEK_MODEL=deepseek-chat
+MQ_AI_MODEL=deepseek-chat
 LANGSMITH_TRACING=false
 LANGSMITH_PROJECT=mealquest-local
 LANGSMITH_ENDPOINT=
 ```
 
-Set `DEEPSEEK_API_KEY` via host environment injection (CI/CD secret or process manager), not in `.env`.
+Set `DEEPSEEK_API_KEY` via host environment injection (CI/CD secret or process manager), not in `.env`. Server startup fails when `DEEPSEEK_API_KEY` is missing.
 Set `LANGSMITH_API_KEY` via host environment injection (CI/CD secret or process manager), not in `.env`.
 
 ## LangSmith Observability (Local)
