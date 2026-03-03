@@ -605,21 +605,38 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
       keys: updateKeys,
     });
   }, []);
-  const stream = useStream<{ messages: unknown[] }>({
-    assistantId: OFFICIAL_ASSISTANT_ID,
-    apiUrl: streamApiUrl,
-    messagesKey: 'messages',
-    callerOptions: {
+  const streamCallerOptions = useMemo(
+    () => ({
       fetch: expoFetch,
-    },
-    threadId: strategyThreadId,
-    onThreadId: setStrategyThreadId,
-    defaultHeaders: streamHeaders,
-    fetchStateHistory: true,
-    onCustomEvent: handleCustomStreamEvent,
-    onUpdateEvent: handleUpdateStreamEvent,
-    onError: handleStreamError,
-  });
+    }),
+    [],
+  );
+  const streamOptions = useMemo(
+    () => ({
+      assistantId: OFFICIAL_ASSISTANT_ID,
+      apiUrl: streamApiUrl,
+      messagesKey: 'messages',
+      callerOptions: streamCallerOptions,
+      threadId: strategyThreadId,
+      onThreadId: setStrategyThreadId,
+      defaultHeaders: streamHeaders,
+      fetchStateHistory: true,
+      throttle: 16,
+      onCustomEvent: handleCustomStreamEvent,
+      onUpdateEvent: handleUpdateStreamEvent,
+      onError: handleStreamError,
+    }),
+    [
+      streamApiUrl,
+      streamCallerOptions,
+      strategyThreadId,
+      streamHeaders,
+      handleCustomStreamEvent,
+      handleUpdateStreamEvent,
+      handleStreamError,
+    ],
+  );
+  const stream = useStream<{ messages: unknown[] }>(streamOptions);
   const stopStreamRef = useRef(() => {});
   useEffect(() => {
     stopStreamRef.current = () => {
