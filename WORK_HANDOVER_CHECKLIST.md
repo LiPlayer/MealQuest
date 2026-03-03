@@ -22,7 +22,11 @@
 - WebSocket 仅保留 `AGENT_SEND_MESSAGE`。
 - 存储字段统一为 `agentSessions`（替代旧 chat 字段命名）。
 - Agent 线程模型为“每个 merchant+operator 单线程”。
-- 上下文压缩仅走 DeepSeek，失败即中断（无 fallback）。
+- 记忆策略为短期记忆（进程内）：
+  - 消息总量 `>200` 时触发压缩，仅保留最新 `40` 条消息
+  - 历史消息必须经 DeepSeek 压缩为 `memory_summary`
+  - DeepSeek 压缩失败或空结果时，当前请求直接失败（无 fallback）
+- 旧兼容流接口已移除：`POST /api/agent-os/sessions/:sessionId/tasks/stream`（返回 404）。
 
 ### 2.2 商户端
 - Agent 页面与路由已统一：
@@ -38,11 +42,17 @@
   - `check-encoding.js`
 - 根 `package.json` 已切换到上述脚本路径。
 
+### 2.4 验证快照（本机）
+- `cd MealQuestServer && npm test -- agentOs.stream.integration.test.ts` -> pass (`62/62`)
+- `cd MealQuestMerchant && npm run typecheck` -> pass
+- `npm run check:encoding` -> pass
+
 ## 3. 关键文件（优先阅读）
 - `docs/specs/mealquest-spec.md`（唯一规范真源）
 - `docs/implemented-features.md`（实现快照）
 - `MealQuestServer/src/http/routes/agentOsRoutes.ts`
 - `MealQuestServer/src/services/agentRuntimeService.ts`
+- `MealQuestServer/src/services/omniAgentService.ts`
 - `MealQuestServer/src/services/merchantService.ts`
 - `MealQuestMerchant/src/context/MerchantContext.tsx`
 
@@ -50,7 +60,7 @@
 ```bash
 cd /path/to/MealQuest
 npm run bootstrap
-cd MealQuestServer && npm test
+cd MealQuestServer && npm test -- agentOs.stream.integration.test.ts
 cd ../MealQuestMerchant && npm run typecheck
 cd .. && npm run check:encoding
 ```
