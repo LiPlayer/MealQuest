@@ -1,55 +1,41 @@
 {
   "name": "MealQuestMerchant",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
+  "main": "expo-router/entry",
   "scripts": {
-    "android": "react-native run-android",
-    "ios": "react-native run-ios",
+    "app:android": "expo run:android",
+    "app:ios": "expo run:ios",
+    "dev:android": "expo start --dev-client --android",
+    "dev:ios": "expo start --dev-client --ios",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
-    "start": "react-native start",
-    "test": "jest",
-    "test:regression:ui": "jest __tests__/merchant-engine.test.ts --runInBand"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@expo/vector-icons": "^15.0.3",
     "@langchain/core": "^1.1.29",
     "@langchain/langgraph-sdk": "^1.6.5",
-    "@react-native-async-storage/async-storage": "^2.2.0",
-    "@react-native/new-app-screen": "0.84.0",
-    "@react-navigation/bottom-tabs": "^7.15.2",
-    "@react-navigation/native": "^7.1.31",
-    "lucide-react-native": "^0.575.0",
-    "nativewind": "^4.2.1",
-    "react": "19.2.3",
-    "react-native": "0.84.0",
-    "react-native-config": "^1.6.1",
+    "expo": "^55.0.0",
+    "expo-dev-client": "~55.0.10",
+    "expo-router": "~55.0.3",
+    "expo-secure-store": "~55.0.8",
+    "react": "19.2.4",
+    "react-native": "0.83.2",
     "react-native-qrcode-svg": "^6.3.21",
-    "react-native-safe-area-context": "^5.7.0",
-    "react-native-screens": "^4.24.0",
-    "react-native-svg": "^15.15.3",
-    "tailwindcss": "^3.4.19"
+    "react-native-safe-area-context": "~5.6.2",
+    "react-native-screens": "~4.23.0",
+    "react-native-svg": "^15.15.3"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
-    "@babel/preset-env": "^7.25.3",
-    "@babel/runtime": "^7.25.0",
-    "@react-native-community/cli": "20.1.0",
-    "@react-native-community/cli-platform-android": "20.1.0",
-    "@react-native-community/cli-platform-ios": "20.1.0",
-    "@react-native/babel-preset": "0.84.0",
-    "@react-native/eslint-config": "0.84.0",
-    "@react-native/metro-config": "0.84.0",
-    "@react-native/typescript-config": "0.84.0",
-    "@types/jest": "^29.5.13",
-    "@types/react": "^19.2.0",
-    "@types/react-test-renderer": "^19.1.0",
-    "eslint": "^8.19.0",
-    "jest": "^29.6.3",
-    "prettier": "2.8.8",
-    "react-test-renderer": "19.2.3",
+    "@types/react": "^19.2.4",
+    "babel-preset-expo": "^55.0.10",
+    "dotenv": "^17.3.1",
+    "eslint": "^8.57.1",
+    "eslint-config-expo": "~55.0.0",
     "typescript": "^5.8.3"
   },
   "engines": {
-    "node": ">= 22.11.0"
+    "node": ">=22.11.0"
   }
 }

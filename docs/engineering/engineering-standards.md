@@ -2,7 +2,7 @@
 
 ## Repository Structure
 - `MealQuestServer`: HTTP/API server and domain services.
-- `MealQuestMerchant`: React Native merchant app.
+- `MealQuestMerchant`: Expo merchant app.
 - `meal-quest-customer`: Taro customer app.
 - `scripts`: repository-level automation.
 

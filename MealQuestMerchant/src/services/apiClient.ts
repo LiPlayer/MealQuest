@@ -1,5 +1,4 @@
 import { Platform } from 'react-native';
-import Config from 'react-native-config';
 
 export type MerchantProfile = {
   role: string;
@@ -40,10 +39,10 @@ export type MerchantStoresResponse = {
   clusterId: string;
   walletShared: boolean;
   tierShared: boolean;
-  stores: Array<{
+  stores: {
     merchantId: string;
     name: string;
-  }>;
+  }[];
 };
 
 const DEFAULT_BASE_URL = Platform.select({
@@ -52,7 +51,10 @@ const DEFAULT_BASE_URL = Platform.select({
 });
 
 export function getApiBaseUrl(): string {
-  const envUrl = typeof Config.MQ_SERVER_URL === 'string' ? Config.MQ_SERVER_URL.trim() : '';
+  const envUrl =
+    typeof process.env.EXPO_PUBLIC_MQ_SERVER_URL === 'string'
+      ? process.env.EXPO_PUBLIC_MQ_SERVER_URL.trim()
+      : '';
   return envUrl || String(DEFAULT_BASE_URL || 'http://127.0.0.1:3030');
 }
 

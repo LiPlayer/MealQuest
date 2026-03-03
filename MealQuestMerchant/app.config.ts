@@ -2,18 +2,18 @@ import 'dotenv/config';
 import type { ExpoConfig } from 'expo/config';
 
 const config: ExpoConfig = {
-  name: 'MealQuestMerchantExpo',
-  slug: 'mealquest-merchant-expo',
-  scheme: 'mealquestmerchantexpo',
+  name: 'MealQuestMerchant',
+  slug: 'mealquest-merchant',
+  scheme: 'mealquestmerchant',
   version: '1.0.0',
   orientation: 'portrait',
   userInterfaceStyle: 'light',
   plugins: ['expo-router', 'expo-dev-client'],
   android: {
-    package: 'com.mealquestmerchant.expo',
+    package: 'com.mealquestmerchant',
   },
   ios: {
-    bundleIdentifier: 'com.mealquestmerchant.expo',
+    bundleIdentifier: 'com.mealquestmerchant',
     supportsTablet: true,
   },
   extra: {

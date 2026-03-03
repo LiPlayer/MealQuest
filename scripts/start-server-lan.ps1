@@ -56,7 +56,7 @@ $ips = Get-LanIpv4Candidates
 if ($ips.Count -gt 0) {
     Write-Host "[lan-server] LAN IP candidates:"
     $ips | ForEach-Object { Write-Host "  - $_" }
-    Write-Host "[lan-server] Customer/Merchant MQ_SERVER_URL example: http://$($ips[0]):<PORT>"
+    Write-Host "[lan-server] Merchant EXPO_PUBLIC_MQ_SERVER_URL example: http://$($ips[0]):<PORT>"
 } else {
     Write-Host "[lan-server] No LAN IPv4 detected automatically. Please run ipconfig and use your Wi-Fi IPv4."
 }

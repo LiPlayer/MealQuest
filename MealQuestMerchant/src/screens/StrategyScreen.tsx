@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useMerchant } from '../context/MerchantContext';
 import { SectionCard } from '../components/SectionCard';
-import { MessageSquare, Send, Check, X, Info, AlertCircle, Loader2 } from 'lucide-react-native';
+import { MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const RichText = ({ text, style, isStreaming }: { text: string; style?: object; isStreaming?: boolean }) => {
@@ -36,6 +36,7 @@ const RichText = ({ text, style, isStreaming }: { text: string; style?: object; 
                 }
                 return part;
             })}
+            {isStreaming ? <Text style={{ opacity: 0.65 }}>▍</Text> : null}
         </Text>
     );
 };
@@ -81,12 +82,12 @@ export default function StrategyScreen() {
     }, [strategyChatMessages]);
 
     // Live scroll during typewriter animation (simplified as we removed cursor and specialized typewriter if not needed)
-    const lastMessageText = strategyChatMessages[strategyChatMessages.length - 1]?.text;
+    const lastMessage = strategyChatMessages[strategyChatMessages.length - 1];
     useEffect(() => {
-        if (strategyChatMessages[strategyChatMessages.length - 1]?.role === 'ASSISTANT') {
+        if (lastMessage?.role === 'ASSISTANT') {
             scrollViewRef.current?.scrollToEnd({ animated: false });
         }
-    }, [lastMessageText]);
+    }, [lastMessage?.role, lastMessage?.text]);
 
     return (
         <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -98,7 +99,7 @@ export default function StrategyScreen() {
                 {/* Header Information */}
                 <View style={styles.header}>
                     <View style={styles.headerContent}>
-                        <MessageSquare size={18} color="#0f766e" />
+                        <MaterialIcons name="chat-bubble-outline" size={18} color="#0f766e" />
                         <View style={styles.headerText}>
                             <Text style={styles.headerTitle}>AI 经营助手</Text>
                             <Text style={styles.headerSubtitle}>
@@ -135,7 +136,7 @@ export default function StrategyScreen() {
                     ) : null}
                     {strategyChatMessages.length === 0 ? (
                         <View style={styles.emptyState}>
-                            <Info size={32} color="#cbd5e1" />
+                            <MaterialIcons name="info-outline" size={32} color="#cbd5e1" />
                             <Text style={styles.emptyText}>尚未开始对话。试着告诉 AI 您的目标。</Text>
                         </View>
                     ) : (
@@ -163,7 +164,7 @@ export default function StrategyScreen() {
                                     )}
                                     {item.role === 'USER' && item.deliveryStatus === 'failed' && (
                                         <View style={styles.statusIndicator}>
-                                            <AlertCircle size={12} color="#fee2e2" />
+                                            <MaterialIcons name="error-outline" size={12} color="#fee2e2" />
                                             <Text style={[styles.statusText, { color: '#fca5a5' }]}>发送失败</Text>
                                             <Pressable onPress={() => onRetryMessage(item.messageId)} style={styles.retryBtn}>
                                                 <Text style={styles.retryText}>重试</Text>
@@ -248,7 +249,7 @@ export default function StrategyScreen() {
                                             style={[styles.opButton, styles.evaluateBtn]}
                                             onPress={onEvaluatePendingStrategy}
                                         >
-                                            <Loader2 size={18} color="#ffffff" />
+                                            <MaterialIcons name="autorenew" size={18} color="#ffffff" />
                                             <Text style={styles.opButtonText}>{strategyChatEvaluationReady ? 'Re-Evaluate' : 'Evaluate'}</Text>
                                         </Pressable>
                                         <Pressable
@@ -257,7 +258,7 @@ export default function StrategyScreen() {
                                             onPress={() => onReviewPendingStrategy('APPROVE')}
                                             disabled={!strategyChatEvaluationReady}
                                         >
-                                            <Check size={18} color="#ffffff" />
+                                            <MaterialIcons name="check" size={18} color="#ffffff" />
                                             <Text style={styles.opButtonText}>Approve</Text>
                                         </Pressable>
                                         <Pressable
@@ -265,7 +266,7 @@ export default function StrategyScreen() {
                                             style={[styles.opButton, styles.rejectBtn]}
                                             onPress={() => onReviewPendingStrategy('REJECT')}
                                         >
-                                            <X size={18} color="#ffffff" />
+                                            <MaterialIcons name="close" size={18} color="#ffffff" />
                                             <Text style={styles.opButtonText}>Reject</Text>
                                         </Pressable>
                                     </View>
@@ -318,9 +319,9 @@ export default function StrategyScreen() {
                             disabled={aiIntentSubmitting || pendingReviewCount > 0 || !aiIntentDraft.trim()}
                         >
                             {aiIntentSubmitting ? (
-                                <Loader2 size={20} color="#ffffff" />
+                                <MaterialIcons name="autorenew" size={20} color="#ffffff" />
                             ) : (
-                                <Send size={20} color="#ffffff" />
+                                <MaterialIcons name="send" size={20} color="#ffffff" />
                             )}
                         </Pressable>
                     </View>

@@ -12,9 +12,9 @@
         "MQ_AUTH_WECHAT_MINI_APP_SECRET"
       ]
     },
-    "merchant_rn": {
-      "source": "react-native-config (.env)",
-      "requiredKeys": ["MQ_SERVER_URL"]
+    "merchant_app": {
+      "source": "expo env (.env)",
+      "requiredKeys": ["EXPO_PUBLIC_MQ_SERVER_URL"]
     },
     "customer_taro": {
       "source": "taro env (.env.development*)",
@@ -25,7 +25,7 @@
     }
   },
   "lintRules": {
-    "merchant_src_forbid": ["process.env."],
+    "merchant_src_forbid": ["react-native-config", "process.env.MQ_", "process.env.TARO_APP_"],
     "customer_src_forbid": ["process.env.MQ_"],
     "server_src_forbid": ["TARO_APP_", "react-native-config"]
   }

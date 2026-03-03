@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 
 import type { MerchantAuthSession } from '../context/MerchantContext';
 
@@ -31,11 +31,11 @@ function normalizeStoredSession(input: unknown): PersistedMerchantAuthSession | 
 }
 
 export async function saveMerchantAuthSession(session: PersistedMerchantAuthSession): Promise<void> {
-  await AsyncStorage.setItem(MERCHANT_AUTH_SESSION_KEY, JSON.stringify(session));
+  await SecureStore.setItemAsync(MERCHANT_AUTH_SESSION_KEY, JSON.stringify(session));
 }
 
 export async function loadMerchantAuthSession(): Promise<PersistedMerchantAuthSession | null> {
-  const raw = await AsyncStorage.getItem(MERCHANT_AUTH_SESSION_KEY);
+  const raw = await SecureStore.getItemAsync(MERCHANT_AUTH_SESSION_KEY);
   if (!raw || typeof raw !== 'string') {
     return null;
   }
@@ -44,14 +44,14 @@ export async function loadMerchantAuthSession(): Promise<PersistedMerchantAuthSe
     if (normalized) {
       return normalized;
     }
-    await AsyncStorage.removeItem(MERCHANT_AUTH_SESSION_KEY);
+    await SecureStore.deleteItemAsync(MERCHANT_AUTH_SESSION_KEY);
     return null;
   } catch {
-    await AsyncStorage.removeItem(MERCHANT_AUTH_SESSION_KEY);
+    await SecureStore.deleteItemAsync(MERCHANT_AUTH_SESSION_KEY);
     return null;
   }
 }
 
 export async function clearMerchantAuthSession(): Promise<void> {
-  await AsyncStorage.removeItem(MERCHANT_AUTH_SESSION_KEY);
+  await SecureStore.deleteItemAsync(MERCHANT_AUTH_SESSION_KEY);
 }

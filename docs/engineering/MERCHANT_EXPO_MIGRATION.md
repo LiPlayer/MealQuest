@@ -1,30 +1,21 @@
-# Merchant Expo Migration Layout
+# Merchant App Consolidation
 
-## Purpose
+## Status
 
-`MealQuestMerchantExpo/` is a parallel migration track for the merchant app.
-It coexists with `MealQuestMerchant/` so rollback remains immediate.
+Completed on March 3, 2026:
+- Removed parallel `MealQuestMerchantExpo/`.
+- Consolidated to a single app at `MealQuestMerchant/`.
+- Unified startup entry: `scripts/start-merchant-app.ps1` and `scripts/start-merchant-app.sh`.
 
-## Directory Layout
+## Runtime Baseline
 
-- `MealQuestMerchant/`: legacy React Native CLI app (kept during migration)
-- `MealQuestMerchantExpo/`: Expo Dev Client migration app
-- `scripts/start-merchant-app.ps1`: legacy RN launch entry
-- `scripts/start-merchant-expo-app.ps1`: Expo launch entry
-
-## Runtime Strategy
-
-`MealQuestMerchantExpo/src/context/MerchantContext.tsx` uses:
-
-1. Official `useStream` path when runtime stream APIs are available.
-2. SSE fallback path when runtime support is incomplete.
-
-This removes hard runtime failure while preserving streaming behavior.
+`MealQuestMerchant/src/context/MerchantContext.tsx` uses:
+1. Official `useStream` from `@langchain/langgraph-sdk/react`.
+2. Expo network runtime via `expo/fetch` injected in `callerOptions.fetch`.
 
 ## Verification Baseline
 
-For Expo migration changes:
-
-1. `cd MealQuestMerchantExpo && npm run typecheck`
-2. `cd MealQuestMerchantExpo && npm run lint` (warnings currently tolerated)
-3. `npm run check:encoding` from repo root
+Run from repo root:
+1. `cd MealQuestMerchant && npm run lint`
+2. `cd MealQuestMerchant && npm run typecheck`
+3. `npm run check:encoding`

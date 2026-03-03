@@ -3,7 +3,7 @@
 ## Project Structure & Module Organization
 This is a monorepo with three runtime apps:
 - `MealQuestServer/`: Node.js backend (`src/http`, `src/services`, `src/store`, `test`).
-- `MealQuestMerchant/`: React Native merchant app (`App.tsx`, `src/`, `__tests__/`).
+- `MealQuestMerchant/`: Expo merchant app (`app/`, `src/`).
 - `meal-quest-customer/`: Taro customer app (`src/`, `config/`, `test/`).
 
 Shared automation and references are in `scripts/` and `docs/` (`docs/specs`, `docs/engineering`, `docs/ops`, `docs/qa`).
@@ -21,7 +21,7 @@ Run from repository root:
 
 Project examples:
 - Server: `cd MealQuestServer && npm start`, `npm test`, `npm run test:smoke`.
-- Merchant RN: `cd MealQuestMerchant && npm start`, `npm run android`, `npm run test:regression:ui`.
+- Merchant App: `cd MealQuestMerchant && npm run dev:android`, `npm run lint`, `npm run typecheck`.
 - Customer Taro: `cd meal-quest-customer && npm run dev:weapp`, `npm run test:e2e`.
 
 ## Coding Style & Naming Conventions
@@ -39,7 +39,8 @@ Project examples:
 
 ## Testing Guidelines
 - Server tests use Node's built-in runner (`node --test`) in `MealQuestServer/test`.
-- Merchant and customer projects use Jest.
+- Customer project uses Jest.
+- Merchant project uses lint + typecheck as the baseline local gate.
 - Add or update regression tests for every user-visible bug fix.
 - During development run targeted tests, then run `npm run verify` before pushing.
 

@@ -110,7 +110,7 @@ if [[ ${#ips[@]} -gt 0 ]]; then
   for ip in "${ips[@]}"; do
     printf '  - %s\n' "$ip"
   done
-  printf '[lan-server] Customer/Merchant MQ_SERVER_URL example: http://%s:<PORT>\n' "${ips[0]}"
+  printf '[lan-server] Merchant EXPO_PUBLIC_MQ_SERVER_URL example: http://%s:<PORT>\n' "${ips[0]}"
 else
   printf '[lan-server] No LAN IPv4 detected automatically. Please run "ip -4 addr" and use your LAN IPv4.\n'
 fi

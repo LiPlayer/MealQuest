@@ -3,59 +3,24 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=lib/common.sh
-source "${SCRIPT_DIR}/lib/common.sh"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+MERCHANT_DIR="${REPO_ROOT}/MealQuestMerchant"
 
 PLATFORM="android"
-ANDROID_SDK_PATH=""
-AUTO_START_SERVER=false
-NO_METRO=false
-NO_LAUNCH=false
-WAIT_METRO_SECONDS=6
-METRO_PORT=8081
-USE_NEW_WINDOW=true
-CLEANUP_DONE=false
+NO_INSTALL=false
+NO_START_SERVER=false
+NO_DEV_CLIENT=false
 
 usage() {
   cat <<'USAGE'
 Usage: scripts/start-merchant-app.sh [options]
 
 Options:
-  --platform android|ios        Target platform (default: android)
-  --android-sdk-path <path>     Explicit Android SDK path
-  --auto-start-server           Start MealQuestServer in background
-  --no-metro                    Do not start Metro bundler
-  --no-launch                   Skip app install/launch
-  --wait-metro-seconds <n>      Wait time after starting Metro (default: 6)
-  --no-new-window               Do not open new terminal windows on Linux
+  --platform android|ios
+  --no-install
+  --no-start-server
+  --no-dev-client
 USAGE
-}
-
-cleanup_on_exit() {
-  local pid
-  if [[ "$CLEANUP_DONE" == true ]]; then
-    return
-  fi
-  CLEANUP_DONE=true
-
-  if [[ ${#TRACKED_PIDS[@]} -gt 0 ]]; then
-    printf '[merchant-app] cleaning up child processes...\n'
-    for pid in "${TRACKED_PIDS[@]}"; do
-      if is_pid_alive "$pid"; then
-        printf '[merchant-app] killing process tree for PID %s...\n' "$pid"
-      fi
-    done
-    cleanup_tracked_processes
-  fi
-}
-trap cleanup_on_exit EXIT INT TERM
-
-track_process() {
-  local pid="$1"
-  local name="$2"
-  if add_tracked_pid "$pid"; then
-    printf '[merchant-app] tracked %s pid=%s\n' "$name" "$pid"
-  fi
 }
 
 resolve_env_file() {
@@ -68,39 +33,35 @@ resolve_env_file() {
     printf '%s\n' "${project_dir}/.env"
     return 0
   fi
-  return 1
-}
-
-ensure_android_setup() {
-  local merchant_dir="$1"
-  local preferred_sdk="${2-}"
-  local sdk_path local_properties
-
-  if ! sdk_path="$(resolve_android_sdk_path "$preferred_sdk")"; then
-    printf 'Android SDK not found. Install Android Studio SDK or pass --android-sdk-path.\n' >&2
-    exit 1
+  if [[ -f "${project_dir}/.env.example" ]]; then
+    printf '%s\n' "${project_dir}/.env.example"
+    return 0
   fi
-
-  export ANDROID_SDK_ROOT="$sdk_path"
-  export ANDROID_HOME="$sdk_path"
-  ensure_path_contains "${sdk_path}/platform-tools"
-  ensure_path_contains "${sdk_path}/cmdline-tools/latest/bin"
-
-  local_properties="${merchant_dir}/android/local.properties"
-  printf 'sdk.dir=%s\n' "$sdk_path" > "$local_properties"
-
-  printf '[merchant-app] ANDROID_SDK_ROOT=%s\n' "$ANDROID_SDK_ROOT"
-  printf '[merchant-app] android/local.properties generated.\n'
+  return 1
 }
 
-any_tracked_alive() {
-  local pid
-  for pid in "${TRACKED_PIDS[@]}"; do
-    if is_pid_alive "$pid"; then
-      return 0
+import_env_file() {
+  local env_file="$1"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    [[ -z "$line" || "${line:0:1}" == "#" ]] && continue
+    if [[ "$line" =~ ^export[[:space:]]+ ]]; then
+      line="${line#export }"
     fi
-  done
-  return 1
+    if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
+      local key="${BASH_REMATCH[1]}"
+      local value="${BASH_REMATCH[2]}"
+      if [[ "$value" =~ ^\"(.*)\"$ ]]; then
+        value="${BASH_REMATCH[1]}"
+      elif [[ "$value" =~ ^\'(.*)\'$ ]]; then
+        value="${BASH_REMATCH[1]}"
+      else
+        value="${value%%#*}"
+        value="${value%"${value##*[![:space:]]}"}"
+      fi
+      export "${key}=${value}"
+    fi
+  done < "$env_file"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -109,28 +70,16 @@ while [[ $# -gt 0 ]]; do
       PLATFORM="${2-}"
       shift 2
       ;;
-    --android-sdk-path)
-      ANDROID_SDK_PATH="${2-}"
-      shift 2
-      ;;
-    --auto-start-server)
-      AUTO_START_SERVER=true
+    --no-install)
+      NO_INSTALL=true
       shift
       ;;
-    --no-metro)
-      NO_METRO=true
+    --no-start-server)
+      NO_START_SERVER=true
       shift
       ;;
-    --no-launch)
-      NO_LAUNCH=true
-      shift
-      ;;
-    --wait-metro-seconds)
-      WAIT_METRO_SECONDS="${2-}"
-      shift 2
-      ;;
-    --no-new-window)
-      USE_NEW_WINDOW=false
+    --no-dev-client)
+      NO_DEV_CLIENT=true
       shift
       ;;
     -h|--help)
@@ -143,174 +92,50 @@ while [[ $# -gt 0 ]]; do
       exit 1
       ;;
   esac
- done
+done
 
 if [[ "$PLATFORM" != "android" && "$PLATFORM" != "ios" ]]; then
   printf 'Invalid --platform: %s\n' "$PLATFORM" >&2
   exit 1
 fi
-if ! [[ "$WAIT_METRO_SECONDS" =~ ^[0-9]+$ ]]; then
-  printf 'Invalid --wait-metro-seconds: %s\n' "$WAIT_METRO_SECONDS" >&2
-  exit 1
-fi
 
-MERCHANT_DIR="${REPO_ROOT}/MealQuestMerchant"
 if [[ ! -d "$MERCHANT_DIR" ]]; then
   printf 'Merchant app directory not found: %s\n' "$MERCHANT_DIR" >&2
   exit 1
 fi
 
 if ! ENV_FILE="$(resolve_env_file "$MERCHANT_DIR")"; then
-  printf 'Env file not found. Expected one of: %s, %s\n' \
-    "${MERCHANT_DIR}/.env.local" \
-    "${MERCHANT_DIR}/.env" >&2
+  printf 'Env file not found. Expected .env.local/.env/.env.example in %s\n' "$MERCHANT_DIR" >&2
   exit 1
 fi
 import_env_file "$ENV_FILE"
-
-if [[ "$PLATFORM" == "android" ]]; then
-  ensure_android_setup "$MERCHANT_DIR" "$ANDROID_SDK_PATH"
-fi
-
 printf '[merchant-app] envFile=%s\n' "$ENV_FILE"
-printf '[merchant-app] metro=localhost:%s\n' "$METRO_PORT"
 
-if [[ "$AUTO_START_SERVER" == true ]]; then
-  server_script="${SCRIPT_DIR}/start-server.sh"
-  if [[ ! -f "$server_script" ]]; then
-    printf 'Server startup script not found: %s\n' "$server_script" >&2
-    exit 1
+if [[ "$NO_START_SERVER" == false ]]; then
+  SERVER_SCRIPT="${SCRIPT_DIR}/start-server.sh"
+  if [[ -f "$SERVER_SCRIPT" ]]; then
+    printf '[merchant-app] starting local server...\n'
+    (cd "$REPO_ROOT" && bash "$SERVER_SCRIPT" --profile dev) &
+    sleep 2
   fi
-  printf '[merchant-app] starting local server...\n'
-  server_cmd="bash ${server_script} --profile dev"
-  if [[ "$USE_NEW_WINDOW" == true ]]; then
-    if run_in_new_terminal "MealQuestServer" "$REPO_ROOT" "$server_cmd"; then
-      track_process "$RUN_IN_NEW_TERMINAL_PID" "MealQuestServer"
-    else
-      log_step "$REPO_ROOT" "$server_cmd"
-      ( cd "$REPO_ROOT" && $server_cmd ) &
-      track_process "$!" "MealQuestServer"
-    fi
-  else
-    log_step "$REPO_ROOT" "$server_cmd"
-    ( cd "$REPO_ROOT" && $server_cmd ) &
-    track_process "$!" "MealQuestServer"
-  fi
-  sleep 2
-fi
-
-METRO_INJECTED_OR_PREEXISTING=false
-if [[ "$NO_METRO" == false ]]; then
-  if port_is_occupied "$METRO_PORT"; then
-    printf '\n'
-    printf '*******************************************************************************\n'
-    printf '  WARNING: Metro port %s is already occupied!\n' "$METRO_PORT"
-    printf '  The existing Metro process might NOT have the current environment variables.\n'
-    printf "  If app shows 'Connection Failed' or wrong 'BaseUrl', please restart Metro.\n"
-    printf '*******************************************************************************\n'
-    printf '\n'
-    METRO_INJECTED_OR_PREEXISTING=true
-  fi
-fi
-
-if [[ "$NO_METRO" == false && "$METRO_INJECTED_OR_PREEXISTING" == false ]]; then
-  metro_cmd="npx react-native start --port $METRO_PORT"
-  if [[ "$USE_NEW_WINDOW" == true ]]; then
-    if run_in_new_terminal "Metro Bundler" "$MERCHANT_DIR" "$metro_cmd"; then
-      track_process "$RUN_IN_NEW_TERMINAL_PID" "Metro Bundler"
-    else
-      log_step "$MERCHANT_DIR" "$metro_cmd"
-      ( cd "$MERCHANT_DIR" && $metro_cmd ) &
-      track_process "$!" "Metro Bundler"
-    fi
-  else
-    log_step "$MERCHANT_DIR" "$metro_cmd"
-    ( cd "$MERCHANT_DIR" && $metro_cmd ) &
-    track_process "$!" "Metro Bundler"
-  fi
-  METRO_INJECTED_OR_PREEXISTING=true
-  if (( WAIT_METRO_SECONDS > 0 )); then
-    sleep "$WAIT_METRO_SECONDS"
-  fi
-fi
-
-if [[ "$NO_LAUNCH" == true ]]; then
-  printf '[merchant-app] NoLaunch=true, skipped app install/launch.\n'
-  exit 0
 fi
 
 cd "$MERCHANT_DIR"
-printf '[merchant-app] building + launching %s debug app...\n' "$PLATFORM"
+
+if [[ "$NO_INSTALL" == false ]]; then
+  printf '[merchant-app] npm install\n'
+  npm install
+fi
+
+if [[ "$NO_DEV_CLIENT" == true ]]; then
+  printf '[merchant-app] expo start\n'
+  exec npx expo start
+fi
 
 if [[ "$PLATFORM" == "android" ]]; then
-  if ! command -v adb >/dev/null 2>&1; then
-    printf "adb not found. Ensure Android SDK platform-tools is installed and in PATH.\n" >&2
-    exit 1
-  fi
-
-  mapfile -t devices < <(adb devices | awk 'NR>1 && $2 == "device" {print $1}')
-  if [[ ${#devices[@]} -eq 0 ]]; then
-    printf "No real Android devices connected (adb devices). Connect your phone by USB or Wireless ADB.\n" >&2
-    exit 1
-  fi
-
-  printf '[merchant-app] Target devices detected:\n'
-  for device in "${devices[@]}"; do
-    printf '  %s\n' "$device"
-  done
+  printf '[merchant-app] expo start --dev-client --android\n'
+  exec npx expo start --dev-client --android
 fi
 
-SKIP_PACKAGER=false
-if [[ "$METRO_INJECTED_OR_PREEXISTING" == true || "$NO_METRO" == true ]]; then
-  SKIP_PACKAGER=true
-fi
-
-tmp_log="$(mktemp)"
-set +e
-if [[ "$PLATFORM" == "android" ]]; then
-  if [[ "$SKIP_PACKAGER" == true ]]; then
-    log_step "$MERCHANT_DIR" "npm run android -- --no-packager"
-    npm run android -- --no-packager 2>&1 | tee "$tmp_log"
-    run_rc=${PIPESTATUS[0]}
-  else
-    log_step "$MERCHANT_DIR" "npm run android"
-    npm run android 2>&1 | tee "$tmp_log"
-    run_rc=${PIPESTATUS[0]}
-  fi
-else
-  if [[ "$SKIP_PACKAGER" == true ]]; then
-    log_step "$MERCHANT_DIR" "npm run ios -- --no-packager"
-    npm run ios -- --no-packager 2>&1 | tee "$tmp_log"
-    run_rc=${PIPESTATUS[0]}
-  else
-    log_step "$MERCHANT_DIR" "npm run ios"
-    npm run ios 2>&1 | tee "$tmp_log"
-    run_rc=${PIPESTATUS[0]}
-  fi
-fi
-set -e
-
-if (( run_rc != 0 )); then
-  if grep -q 'INSTALL_FAILED_USER_RESTRICTED' "$tmp_log"; then
-    print_install_restricted_guidance
-  fi
-  rm -f "$tmp_log"
-  exit "$run_rc"
-fi
-rm -f "$tmp_log"
-
-if [[ ${#TRACKED_PIDS[@]} -gt 0 ]]; then
-  printf '\n'
-  printf '[merchant-app] Startup sequence finished. Child processes are running:\n'
-  for pid in "${TRACKED_PIDS[@]}"; do
-    if is_pid_alive "$pid"; then
-      printf '  - PID %s\n' "$pid"
-    fi
-  done
-  printf '[merchant-app] SCRIPT IS ACTIVE. Press Ctrl+C to kill child processes and exit.\n'
-
-  while any_tracked_alive; do
-    sleep 2
-  done
-  printf '[merchant-app] All child processes have exited.\n'
-fi
+printf '[merchant-app] expo start --dev-client --ios\n'
+exec npx expo start --dev-client --ios

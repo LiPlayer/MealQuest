@@ -110,7 +110,7 @@
 
 ## 5. 工程实现要求
 
-1. `React Native` 单工程兼容 iOS/Android。
+1. `Expo` 单工程兼容 iOS/Android。
 2. 领域逻辑与 UI 解耦：
    - UI 只触发动作。
    - 规则计算由 `merchantEngine` 纯函数完成。
@@ -118,13 +118,13 @@
 
 ## 5.1 运行模式 (Professional Configuration)
 
-采用了基于 `.env` 的全链路配置驱动模式（集成 `react-native-config`）：
+采用了基于 Expo Public Env 的配置驱动模式（`.env` + `EXPO_PUBLIC_*`）：
 
 1. **配置驱动**：商户端通过 `MealQuestMerchant/.env` 获取配置。
 2. **核心变量**：
-   - `MQ_SERVER_URL`：后端服务端点。
+   - `EXPO_PUBLIC_MQ_SERVER_URL`：后端服务端点。
    - `MQ_ENABLE_ENTRY_FLOW`：是否开启扫码/链接入店引导流。
-3. **优势**：JS 层与原生 Android 层共享配置，支持在 `AndroidManifest.xml` 或 Gradle 中引用变量。
+3. **优势**：JS 层读取统一的 Expo Public Env，避免双端配置分叉。
 4. **实时事件**：通过 WebSocket 订阅支付、退款、策略变更等实时事件。
 5. **故障处理**：远程 API 失败时显示明确错误，不再降级到本地引擎。
 2. 实时事件流支持点击单条事件展开 payload 明细，便于店长排查现场问题。

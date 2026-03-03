@@ -1,92 +1,59 @@
-# MealQuest 运维与发布总手册
+# MealQuest Operations Runbook
 
-Last updated: 2026-02-25
+Last updated: March 3, 2026
 
-本文件合并以下历史文档：
-- `MealQuest_Release_Runbook.md`
-- `MealQuest_PreLaunch_Checklist.md`
-- `MealQuest_Full_Lifecycle_Handbook.md`
+## 1. Environment
 
-目标：统一“启动、联调、发布、放行标准”。
-
-## 1. 环境准备
-
-关键环境变量（Server）：
+Server required variables:
 - `MQ_DB_URL`
-- `MQ_DB_ADMIN_URL`（可选）
 - `MQ_JWT_SECRET`
 - `MQ_PAYMENT_CALLBACK_SECRET`
 - `HOST`
 - `PORT`
+- `MQ_AUTH_WECHAT_MINI_APP_ID`
+- `MQ_AUTH_WECHAT_MINI_APP_SECRET`
 
-建议：
-- 开发联调使用 `HOST=0.0.0.0`（便于局域网真机访问）
-- 自动化验证使用 `HOST=127.0.0.1`
-- 若启用自动建库（`MQ_DB_AUTO_CREATE=true`），`MQ_DB_ADMIN_URL` 应指向现有管理库（如 `/postgres`），不要与 `MQ_DB_URL` 指向同一业务库名。
+Merchant app required variable:
+- `EXPO_PUBLIC_MQ_SERVER_URL`
 
-## 2. 本地启动（推荐顺序）
+Customer app required variables:
+- `TARO_APP_SERVER_URL`
+- `TARO_APP_DEFAULT_STORE_ID`
 
-1. 启动服务端
+## 2. Local Startup Order
+
+1. Start server:
 ```bash
 cd MealQuestServer
 npm start
 ```
-
-2. 启动商户端
+2. Start merchant app:
 ```bash
 cd MealQuestMerchant
-npm start
+npm run dev:android
 ```
-
-3. 启动顾客端（按 taro 目标）
+3. Start customer app:
 ```bash
 cd meal-quest-customer
 npm run dev:weapp
-# 或 npm run dev:alipay
 ```
 
-## 3. 发布前放行流程
+## 3. Pre-Release Gate
 
-在仓库根目录：
-
+From repo root:
 ```bash
 npm run verify
 ```
 
-然后执行：
-
+Then run server smoke test:
 ```bash
 cd MealQuestServer
 npm run test:smoke
 ```
 
-## 4. 上线前检查清单（精简版）
+## 4. Incident Recovery
 
-### 4.1 安全
-- JWT 与回调密钥已替换。
-- 生产环境未使用默认示例密钥。
-
-### 4.2 业务完整性
-- 支付/退款/发票/隐私链路通过。
-- 商户策略链路通过（提案、确认、启停、熔断）。
-- 租户隔离与审计可追溯。
-
-### 4.3 稳定性
-- 所有测试通过。
-- Smoke 通过。
-- 关键页面可用，无阻塞 bug。
-
-## 5. 应急恢复策略
-
-出现阻塞级问题时：
-1. 停止增量变更发布。
-2. 恢复到最近一次 `npm run verify` 全绿版本。
-3. 优先恢复支付、鉴权、租户隔离能力。
-4. 恢复后重新跑 `verify + smoke`。
-
-## 6. 历史详细版本
-
-旧版详表已归档：
-- `docs/archive/MealQuest_Release_Runbook.md`
-- `docs/archive/MealQuest_PreLaunch_Checklist.md`
-- `docs/archive/MealQuest_Full_Lifecycle_Handbook.md`
+1. Stop rollout for the affected service.
+2. Roll back to the latest build that passed `npm run verify`.
+3. Restore auth/payment/tenant-isolation first.
+4. Re-run `verify` and `test:smoke` before reopening rollout.

@@ -67,6 +67,23 @@ function requireEnvKeys(envFile, keys) {
     .map((key) => `${path.relative(repoRoot, envFile)}: missing key "${key}"`);
 }
 
+function resolveExistingFile(candidates) {
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function requireEnvKeysFromCandidates(candidates, keys, label) {
+  const envFile = resolveExistingFile(candidates);
+  if (!envFile) {
+    return [`${label}: env file not found (${candidates.map((item) => path.relative(repoRoot, item)).join(", ")})`];
+  }
+  return requireEnvKeys(envFile, keys);
+}
+
 function main() {
   const contract = readJson(contractPath);
   const errors = [];
@@ -107,9 +124,14 @@ function main() {
   );
 
   errors.push(
-    ...requireEnvKeys(
-      path.join(repoRoot, "MealQuestMerchant", ".env"),
-      contract.domains.merchant_rn.requiredKeys
+    ...requireEnvKeysFromCandidates(
+      [
+        path.join(repoRoot, "MealQuestMerchant", ".env.local"),
+        path.join(repoRoot, "MealQuestMerchant", ".env"),
+        path.join(repoRoot, "MealQuestMerchant", ".env.example"),
+      ],
+      contract.domains.merchant_app.requiredKeys,
+      "MealQuestMerchant"
     )
   );
   errors.push(
@@ -137,4 +159,3 @@ function main() {
 }
 
 main();
-

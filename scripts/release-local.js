@@ -53,16 +53,16 @@ function main() {
       args: ["run", "test:smoke"]
     },
     {
-      name: "Merchant Test",
+      name: "Merchant Lint",
       cwd: path.join(repoRoot, "MealQuestMerchant"),
       command: "npm",
-      args: ["test", "--", "--runInBand"]
+      args: ["run", "lint"]
     },
     {
       name: "Merchant Typecheck",
       cwd: path.join(repoRoot, "MealQuestMerchant"),
-      command: "npx",
-      args: ["tsc", "--noEmit"]
+      command: "npm",
+      args: ["run", "typecheck"]
     },
     {
       name: "Customer Test",

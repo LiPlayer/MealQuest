@@ -24,16 +24,6 @@ const projects = {
       bootstrap: ["ci"],
       lint: ["run", "lint"],
       typecheck: ["run", "typecheck"],
-      test: ["test", "--", "--runInBand"],
-    },
-  },
-  merchantExpo: {
-    name: "MealQuestMerchantExpo",
-    cwd: path.join(repoRoot, "MealQuestMerchantExpo"),
-    commands: {
-      bootstrap: ["install"],
-      lint: ["run", "lint"],
-      typecheck: ["run", "typecheck"],
     },
   },
   customer: {

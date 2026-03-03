@@ -12,6 +12,3 @@ Use this folder as the single documentation entry point.
 - `docs/engineering/MERCHANT_EXPO_MIGRATION.md`
 - `docs/ops/operations-runbook.md`
 - `docs/qa/test-validation.md`
-
-## Archive
-- `docs/archive/` keeps superseded long-form documents for history and audit traceability.
