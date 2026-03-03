@@ -19,13 +19,13 @@ npm install
 ## Run (Android dev client)
 
 ```powershell
-npm run dev:client:android
+npm run dev:android
 ```
 
 ## Run (iOS dev client)
 
 ```powershell
-npm run dev:client:ios
+npm run dev:ios
 ```
 
 ## Lint / Typecheck
