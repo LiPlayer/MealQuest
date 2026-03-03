@@ -328,22 +328,24 @@
 
 ### S210 - 商户经营看板最小可用
 
-- Objective：交付商户可用的经营看板最小版本。
+- Objective：交付老板可用的经营看板与 Agent 建议协同最小版本。
 - Dependency：S130 done。
 
 | task_id | lane | task | status | output |
 | --- | --- | --- | --- | --- |
 | S210-SRV-01 | server | 提供看板指标接口与口径稳定性保障 | todo | 指标接口 |
-| S210-MER-01 | merchant | 完成看板展示、缺失字段降级与刷新机制 | todo | 商户看板页面 |
+| S210-MER-01 | merchant | 完成看板展示、Agent 建议入口、缺失字段降级与刷新机制 | todo | 商户看板页面 |
 | S210-CUS-01 | customer | 验证看板相关变更不影响顾客主路径兼容 | todo | 兼容验证记录 |
 
 - Deliverables：
 1. 看板字段说明。
 2. 商户端看板验收记录。
+3. 看板到 Agent 建议入口可用性记录。
 
 - Done Definition：
 1. 看板关键字段完整。
 2. 商户端页面稳定可用。
+3. 老板可从看板进入 Agent 建议并完成一次建议确认。
 
 - Acceptance Commands：
 1. `cd MealQuestServer && npm test`
@@ -353,27 +355,30 @@
 - Failure Signals：
 1. 指标缺值或口径冲突。
 2. 页面崩溃。
+3. 看板与 Agent 建议上下文不一致。
 
 - Triage Key：`RB-COCKPIT-210`
 
 ### S220 - 审批中心与执行回放
 
-- Objective：让商户完成审批确认、执行查看、历史回放。
+- Objective：让商户完成 Agent 建议确认、审批执行、历史回放。
 - Dependency：S210 done。
 
 | task_id | lane | task | status | output |
 | --- | --- | --- | --- | --- |
 | S220-SRV-01 | server | 提供审批队列、执行结果、回放查询接口 | todo | 审批回放接口 |
-| S220-MER-01 | merchant | 完成审批中心与回放页面主流程 | todo | 审批中心页面 |
+| S220-MER-01 | merchant | 完成 Agent 建议确认、审批中心与回放页面主流程 | todo | 审批中心页面 |
 | S220-CUS-01 | customer | 顾客端承接审批执行结果的可见状态变化 | todo | 状态一致性 |
 
 - Deliverables：
 1. 审批流程回归证据。
 2. 回放链路证据。
+3. Agent 建议到审批执行的一体化证据。
 
 - Done Definition：
 1. 审批状态在服务端与商户端一致。
 2. 回放链路具备 `approvalId` 与 `traceId`。
+3. 至少一条“Agent 建议 -> 人工确认 -> 执行 -> 回放”链路可追溯。
 
 - Acceptance Commands：
 1. `cd MealQuestServer && node --test test/policyOs.http.integration.test.ts`
@@ -384,29 +389,32 @@
 - Failure Signals：
 1. 审批状态错乱。
 2. 回放断链。
+3. Agent 建议与审批执行无法关联。
 
 - Triage Key：`RB-APPROVAL-220`
 
 ### S230 - KPI 可观测与 Go/No-Go 判定
 
-- Objective：把商用 KPI 与上线门固化为可执行判定流程。
+- Objective：把商用 KPI、Agent 经营成效与上线门固化为可执行判定流程。
 - Dependency：S220 done。
 
 | task_id | lane | task | status | output |
 | --- | --- | --- | --- | --- |
 | S230-SRV-01 | server | 在 dashboard 与审计域固化 KPI 所需指标与 trace 链路 | todo | KPI 数据基线 |
-| S230-MER-01 | merchant | 看板提供 KPI 达标状态、趋势、告警可见性 | todo | KPI 运营视图 |
+| S230-MER-01 | merchant | 看板提供 KPI 达标状态、趋势、告警与 Agent 建议成效可见性 | todo | KPI 运营视图 |
 | S230-CUS-01 | customer | 保证顾客链路埋点可支持 KPI 计算口径 | todo | 埋点兼容记录 |
 
 - Deliverables：
 1. KPI 指标口径说明。
 2. Go/No-Go 判定清单。
 3. 看板与审计对账证据。
+4. 老板端 Agent 闭环验收记录。
 
 - Done Definition：
 1. Spec 8.1 KPI 字段可查询、可解释、可追溯。
 2. Go/No-Go 判定流程可重复执行。
 3. 指标异常可触发告警与定位路径。
+4. 老板可通过 Agent 完成一次策略执行并查看回放解释。
 
 - Acceptance Commands：
 1. `cd MealQuestServer && npm test`
@@ -618,8 +626,10 @@
 1. 手机号登录链路可用，未绑定时可进入开店流程。
 2. 完成开店后可进入工作台，重启应用可恢复会话。
 3. 看板可见核心 KPI、趋势与异常告警。
-4. 审批中心可执行确认、查看结果、回放历史。
-5. Kill Switch 可生效且影响可观测。
+4. 可通过 Agent 发起经营建议并完成一次策略确认。
+5. 审批中心可执行确认、查看结果、回放历史。
+6. Agent 建议、审批执行与回放结果可关联追溯。
+7. Kill Switch 可生效且影响可观测。
 
 ---
 
