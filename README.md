@@ -31,11 +31,10 @@ Script catalog:
 - `scripts/README.md`
 
 ## Docs
-All project documentation is under `docs/`:
-- `docs/specs/` product and technical specs
-- `docs/engineering/` engineering standards
-- `docs/ops/` operational runbook
-- `docs/qa/` validation and test guide
-- `docs/archive/` legacy documents
+Normative source of truth:
+- `docs/specs/mealquest-spec.md`
 
-See `docs/README.md` for the full index.
+Implementation snapshot:
+- `docs/implemented-features.md`
+
+All previous split docs were removed to support a clean rebuild from one canonical spec.

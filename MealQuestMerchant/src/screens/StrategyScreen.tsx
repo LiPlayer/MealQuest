@@ -1,727 +1,337 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
-    KeyboardAvoidingView,
-    Platform,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
-import { useMerchant } from '../context/MerchantContext';
-import { SectionCard } from '../components/SectionCard';
 import { MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const RichText = ({ text, style, isStreaming }: { text: string; style?: object; isStreaming?: boolean }) => {
-    if (!text && !isStreaming) return null;
-    if (!text && isStreaming) {
-        return (
-            <Text style={[style, { color: '#94a3b8' }]}>
-                思考中...
-            </Text>
-        );
-    }
-    const parts = (text || '').split(/(\*\*.*?\*\*)/g);
-    return (
-        <Text style={style}>
-            {parts.map((part, i) => {
-                if (part.startsWith('**') && part.endsWith('**')) {
-                    return (
-                        <Text key={i} style={{ fontWeight: '800' }}>
-                            {part.slice(2, -2)}
-                        </Text>
-                    );
-                }
-                return part;
-            })}
-            {isStreaming ? <Text style={{ opacity: 0.65 }}>▍</Text> : null}
-        </Text>
-    );
+import { useMerchant } from '../context/MerchantContext';
+
+const RichText = ({ text, isStreaming }: { text: string; isStreaming?: boolean }) => {
+  if (!text && !isStreaming) return null;
+  return (
+    <Text style={styles.messageText}>
+      {text || ''}
+      {isStreaming ? <Text style={styles.streamingCursor}>▍</Text> : null}
+    </Text>
+  );
 };
 
 export default function StrategyScreen() {
-    const {
-        merchantState,
-        aiIntentDraft,
-        setAiIntentDraft,
-        aiIntentSubmitting,
-        chatSendPhase,
-        chatSendError,
-        onTriggerProactiveScan,
-        onCreateIntentProposal,
-        onRetryMessage,
-        strategyChatMessages,
-        activeAgentProgress,
-        strategyChatPendingReview,
-        strategyChatEvaluation,
-        strategyChatEvaluationReady,
-        onEvaluatePendingStrategy,
-        onReviewPendingStrategy,
-        onPublishApprovedProposal,
-        totalReviewCount,
-        currentReviewIndex,
-        pendingReviewCount,
-        customerUserId,
-        setCustomerUserId,
-    } = useMerchant();
-    const pendingEvaluation = strategyChatPendingReview?.evaluation || null;
-    const hasAutoEvaluation = Boolean(
-        pendingEvaluation?.evaluatedAt &&
-        !pendingEvaluation?.evaluateError,
-    );
+  const {
+    aiIntentDraft,
+    setAiIntentDraft,
+    aiIntentSubmitting,
+    chatSendPhase,
+    chatSendError,
+    onTriggerProactiveScan,
+    onSendStrategyMessage,
+    onRetryMessage,
+    strategyChatMessages,
+    activeAgentProgress,
+  } = useMerchant();
 
-    const scrollViewRef = useRef<ScrollView>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
 
-    // Auto-scroll when new messages arrive
-    useEffect(() => {
-        setTimeout(() => {
-            scrollViewRef.current?.scrollToEnd({ animated: true });
-        }, 100);
-    }, [strategyChatMessages]);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [strategyChatMessages]);
 
-    // Live scroll during typewriter animation (simplified as we removed cursor and specialized typewriter if not needed)
-    const lastMessage = strategyChatMessages[strategyChatMessages.length - 1];
-    useEffect(() => {
-        if (lastMessage?.role === 'ASSISTANT') {
-            scrollViewRef.current?.scrollToEnd({ animated: false });
-        }
-    }, [lastMessage?.role, lastMessage?.text]);
+  return (
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 20}
+      >
+        <View style={styles.header}>
+          <View style={styles.headerContent}>
+            <MaterialIcons name="chat-bubble-outline" size={18} color="#0f766e" />
+            <View style={styles.headerTextWrap}>
+              <Text style={styles.headerTitle}>AI 经营助手</Text>
+              <Text style={styles.headerSubtitle}>当前模式: 登录 + 开店 + 聊天</Text>
+            </View>
+            <Pressable testID="ai-proactive-scan" style={styles.proactiveBtn} onPress={onTriggerProactiveScan}>
+              <Text style={styles.proactiveBtnText}>巡检</Text>
+            </Pressable>
+          </View>
+        </View>
 
-    return (
-        <SafeAreaView style={styles.safeArea} edges={['top']}>
-            <KeyboardAvoidingView
-                style={styles.container}
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 20}
-            >
-                {/* Header Information */}
-                <View style={styles.header}>
-                    <View style={styles.headerContent}>
-                        <MaterialIcons name="chat-bubble-outline" size={18} color="#0f766e" />
-                        <View style={styles.headerText}>
-                            <Text style={styles.headerTitle}>AI 经营助手</Text>
-                            <Text style={styles.headerSubtitle}>
-                                描述营销目标，AI 为您实时生成策略
-                            </Text>
-                        </View>
-                        <Pressable testID="ai-proactive-scan" style={styles.proactiveBtn} onPress={onTriggerProactiveScan}>
-                            <Text style={styles.proactiveBtnText}>主动巡检</Text>
-                        </Pressable>
-                    </View>
-                </View>
+        <ScrollView
+          ref={scrollViewRef}
+          style={styles.chatScroll}
+          contentContainerStyle={styles.chatContent}
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
+        >
+          {activeAgentProgress ? (
+            <View style={styles.progressWrap}>
+              <Text style={styles.progressTitle}>Agent Progress</Text>
+              <Text style={styles.progressText}>
+                {activeAgentProgress.phase} | {activeAgentProgress.status}
+              </Text>
+              <Text style={styles.progressText}>
+                Tokens {activeAgentProgress.tokenCount} | {Math.max(0, Math.round(activeAgentProgress.elapsedMs))}ms
+              </Text>
+              {activeAgentProgress.error ? (
+                <Text style={styles.progressError}>{activeAgentProgress.error}</Text>
+              ) : null}
+            </View>
+          ) : null}
 
-                {/* Chat Messages Scrolling Area */}
-                <ScrollView
-                    ref={scrollViewRef}
-                    style={styles.chatScroll}
-                    contentContainerStyle={styles.chatContent}
-                    keyboardDismissMode="on-drag"
-                    keyboardShouldPersistTaps="handled"
+          {strategyChatMessages.length === 0 ? (
+            <View style={styles.emptyState}>
+              <MaterialIcons name="info-outline" size={32} color="#cbd5e1" />
+              <Text style={styles.emptyText}>还没有对话，输入你的经营目标开始。</Text>
+            </View>
+          ) : (
+            strategyChatMessages.map((item: any) => (
+              <View key={item.messageId} style={styles.messageRow}>
+                <View
+                  style={[
+                    styles.messageBubble,
+                    item.role === 'USER' ? styles.userBubble : styles.botBubble,
+                  ]}
                 >
-                    {activeAgentProgress ? (
-                        <View style={styles.progressWrap}>
-                            <Text style={styles.progressTitle}>Agent Progress</Text>
-                            <Text style={styles.progressText}>
-                                {activeAgentProgress.phase} | {activeAgentProgress.status}
-                            </Text>
-                            <Text style={styles.progressText}>
-                                Tokens {activeAgentProgress.tokenCount} | {Math.max(0, Math.round(activeAgentProgress.elapsedMs))}ms
-                            </Text>
-                            {activeAgentProgress.error ? (
-                                <Text style={styles.progressError}>{activeAgentProgress.error}</Text>
-                            ) : null}
-                        </View>
-                    ) : null}
-                    {strategyChatMessages.length === 0 ? (
-                        <View style={styles.emptyState}>
-                            <MaterialIcons name="info-outline" size={32} color="#cbd5e1" />
-                            <Text style={styles.emptyText}>尚未开始对话。试着告诉 AI 您的目标。</Text>
-                        </View>
-                    ) : (
-                        strategyChatMessages.map((item: any) => (
-                            <View key={item.messageId} style={styles.messageRow}>
-                                <View
-                                    style={[
-                                        styles.messageBubble,
-                                        item.role === 'USER' ? styles.userBubble : styles.botBubble
-                                    ]}
-                                >
-                                    <Text style={styles.roleLabel}>{item.role === 'USER' ? '您' : 'AI 助手'}</Text>
-                                    <RichText
-                                        text={item.text}
-                                        isStreaming={item.isStreaming}
-                                        style={[
-                                            styles.messageText,
-                                            item.role === 'USER' ? styles.userText : styles.botText
-                                        ]}
-                                    />
-                                    {item.role === 'USER' && item.deliveryStatus === 'sending' && (
-                                        <View style={styles.statusIndicator}>
-                                            <Text style={styles.statusText}>发送中</Text>
-                                        </View>
-                                    )}
-                                    {item.role === 'USER' && item.deliveryStatus === 'failed' && (
-                                        <View style={styles.statusIndicator}>
-                                            <MaterialIcons name="error-outline" size={12} color="#fee2e2" />
-                                            <Text style={[styles.statusText, { color: '#fca5a5' }]}>发送失败</Text>
-                                            <Pressable onPress={() => onRetryMessage(item.messageId)} style={styles.retryBtn}>
-                                                <Text style={styles.retryText}>重试</Text>
-                                            </Pressable>
-                                        </View>
-                                    )}
-                                </View>
-                            </View>
-                        ))
-                    )}
-
-                    {strategyChatPendingReview && (
-                        <View style={styles.proposalContainer}>
-                            <SectionCard title="待审核提案">
-                                <View style={styles.proposalCard}>
-                                    <View style={styles.proposalBadge}>
-                                        <Text style={styles.proposalBadgeText}>PROPOSAL</Text>
-                                    </View>
-                                    <Text style={styles.proposalTitle}>{strategyChatPendingReview.title}</Text>
-                                    <View style={styles.proposalMeta}>
-                                        <Text style={styles.metaLabel}>序列: </Text>
-                                        <Text style={styles.metaValue}>{currentReviewIndex} / {totalReviewCount}</Text>
-                                    </View>
-                                    {pendingEvaluation && (
-                                        <View style={styles.evaluationPanel}>
-                                            <View style={styles.evaluationHeader}>
-                                                <Text style={styles.evaluationTitle}>Auto Evaluation</Text>
-                                                {pendingEvaluation.recommended ? (
-                                                    <Text style={styles.evaluationBadge}>RECOMMENDED</Text>
-                                                ) : null}
-                                            </View>
-                                            <Text style={styles.evaluationText}>
-                                                Rank #{pendingEvaluation.rank || '-'} | Score {pendingEvaluation.score.toFixed(2)}
-                                            </Text>
-                                            <Text style={styles.evaluationText}>
-                                                Est Revenue {pendingEvaluation.expectedRevenue.toFixed(2)} | Est Cost {pendingEvaluation.estimatedCost.toFixed(2)}
-                                            </Text>
-                                            <Text style={styles.evaluationText}>
-                                                Risk {pendingEvaluation.riskCount} | Rejected {pendingEvaluation.rejectedCount}
-                                            </Text>
-                                            {pendingEvaluation.evaluateError ? (
-                                                <Text style={styles.evaluationError}>Evaluate error: {pendingEvaluation.evaluateError}</Text>
-                                            ) : null}
-                                        </View>
-                                    )}
-
-                                    <View style={styles.executeInputWrap}>
-                                        <Text style={styles.executeInputLabel}>User ID for evaluation (optional)</Text>
-                                        <TextInput
-                                            testID="strategy-review-user-id-input"
-                                            value={customerUserId}
-                                            onChangeText={setCustomerUserId}
-                                            placeholder="u_xxx"
-                                            style={styles.executeInput}
-                                        />
-                                    </View>
-                                    {strategyChatEvaluation ? (
-                                        <View style={styles.evaluationSummary}>
-                                            <Text style={styles.evaluationSummaryTitle}>Evaluation Summary</Text>
-                                            <Text style={styles.evaluationSummaryText}>
-                                                Selected {Array.isArray(strategyChatEvaluation.selected) ? strategyChatEvaluation.selected.length : 0},
-                                                Rejected {Array.isArray(strategyChatEvaluation.rejected) ? strategyChatEvaluation.rejected.length : 0},
-                                                Mode {String(strategyChatEvaluation.mode || 'EVALUATE')}
-                                            </Text>
-                                        </View>
-                                    ) : hasAutoEvaluation ? (
-                                        <View style={styles.evaluationSummary}>
-                                            <Text style={styles.evaluationSummaryTitle}>Auto Evaluation Ready</Text>
-                                            <Text style={styles.evaluationSummaryText}>
-                                                Selected {pendingEvaluation?.selectedCount || 0},
-                                                Rejected {pendingEvaluation?.rejectedCount || 0},
-                                                Score {(pendingEvaluation?.score || 0).toFixed(2)}
-                                            </Text>
-                                        </View>
-                                    ) : (
-                                        <Text style={styles.evaluationHint}>Evaluation is required before approve.</Text>
-                                    )}
-
-                                    <View style={styles.actionRow}>
-                                        <Pressable
-                                            testID="ai-review-evaluate"
-                                            style={[styles.opButton, styles.evaluateBtn]}
-                                            onPress={onEvaluatePendingStrategy}
-                                        >
-                                            <MaterialIcons name="autorenew" size={18} color="#ffffff" />
-                                            <Text style={styles.opButtonText}>{strategyChatEvaluationReady ? 'Re-Evaluate' : 'Evaluate'}</Text>
-                                        </Pressable>
-                                        <Pressable
-                                            testID="ai-review-approve"
-                                            style={[styles.opButton, styles.approveBtn, !strategyChatEvaluationReady && styles.disabledOpButton]}
-                                            onPress={() => onReviewPendingStrategy('APPROVE')}
-                                            disabled={!strategyChatEvaluationReady}
-                                        >
-                                            <MaterialIcons name="check" size={18} color="#ffffff" />
-                                            <Text style={styles.opButtonText}>Approve</Text>
-                                        </Pressable>
-                                        <Pressable
-                                            testID="ai-review-reject"
-                                            style={[styles.opButton, styles.rejectBtn]}
-                                            onPress={() => onReviewPendingStrategy('REJECT')}
-                                        >
-                                            <MaterialIcons name="close" size={18} color="#ffffff" />
-                                            <Text style={styles.opButtonText}>Reject</Text>
-                                        </Pressable>
-                                    </View>
-                                </View>
-                            </SectionCard>
-                        </View>
-                    )}
-
-                    {merchantState.approvedPendingPublish.length > 0 && (
-                        <View style={styles.proposalContainer}>
-                            <SectionCard title="Approved - Ready to Publish">
-                                {merchantState.approvedPendingPublish.map(item => (
-                                    <View key={item.id} style={styles.approvedRow}>
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={styles.proposalTitle}>{item.title}</Text>
-                                            <Text style={styles.approvedMeta}>Proposal: {item.id}</Text>
-                                        </View>
-                                        <Pressable
-                                            testID={`ai-publish-${item.id}`}
-                                            style={[styles.opButton, styles.publishBtn]}
-                                            onPress={() => onPublishApprovedProposal(item.id)}
-                                        >
-                                            <Text style={styles.opButtonText}>Publish</Text>
-                                        </Pressable>
-                                    </View>
-                                ))}
-                            </SectionCard>
-                        </View>
-                    )}
-                </ScrollView>
-
-                {/* Input Area (Fixed at bottom) */}
-                <View style={styles.inputArea}>
-                    <View style={styles.inputRow}>
-                        <TextInput
-                            testID="ai-intent-input"
-                            value={aiIntentDraft}
-                            onChangeText={setAiIntentDraft}
-                            placeholder="输入经营需求..."
-                            style={[styles.textInput, { maxHeight: 100 }]}
-                            multiline
-                        />
-                        <Pressable
-                            testID="ai-intent-submit"
-                            style={[
-                                styles.sendButton,
-                                (aiIntentSubmitting || pendingReviewCount > 0 || !aiIntentDraft.trim()) && styles.disabledButton
-                            ]}
-                            onPress={onCreateIntentProposal}
-                            disabled={aiIntentSubmitting || pendingReviewCount > 0 || !aiIntentDraft.trim()}
-                        >
-                            {aiIntentSubmitting ? (
-                                <MaterialIcons name="autorenew" size={20} color="#ffffff" />
-                            ) : (
-                                <MaterialIcons name="send" size={20} color="#ffffff" />
-                            )}
-                        </Pressable>
+                  <Text style={styles.roleLabel}>{item.role === 'USER' ? '您' : 'AI 助手'}</Text>
+                  <RichText text={item.text} isStreaming={item.isStreaming} />
+                  {item.role === 'USER' && item.deliveryStatus === 'failed' ? (
+                    <View style={styles.failedRow}>
+                      <Text style={styles.failedText}>发送失败</Text>
+                      <Pressable onPress={() => onRetryMessage(item.messageId)} style={styles.retryBtn}>
+                        <Text style={styles.retryText}>重试</Text>
+                      </Pressable>
                     </View>
-                    {pendingReviewCount > 0 && (
-                        <Text style={styles.inputHint}>请先处理上方的待审核提案</Text>
-                    )}
-                    {chatSendPhase === 'submitting' ? (
-                        <Text testID="ai-intent-status" style={styles.inputStatusInfo}>Sending...</Text>
-                    ) : null}
-                    {chatSendError ? (
-                        <Text testID="ai-intent-error" style={styles.inputStatusError}>{chatSendError}</Text>
-                    ) : null}
+                  ) : null}
                 </View>
-            </KeyboardAvoidingView>
-        </SafeAreaView>
-    );
+              </View>
+            ))
+          )}
+        </ScrollView>
+
+        <View style={styles.composerWrap}>
+          <TextInput
+            testID="strategy-intent-input"
+            value={aiIntentDraft}
+            onChangeText={setAiIntentDraft}
+            placeholder="例如：帮我提升本周午餐复购率"
+            multiline
+            style={styles.input}
+          />
+
+          {chatSendPhase === 'failed' ? <Text style={styles.errorText}>{chatSendError}</Text> : null}
+
+          <Pressable
+            testID="strategy-send"
+            style={[styles.sendBtn, (aiIntentSubmitting || !aiIntentDraft.trim()) && styles.sendBtnDisabled]}
+            disabled={aiIntentSubmitting || !aiIntentDraft.trim()}
+            onPress={onSendStrategyMessage}
+          >
+            <MaterialIcons name={aiIntentSubmitting ? 'hourglass-top' : 'send'} size={16} color="#ffffff" />
+            <Text style={styles.sendBtnText}>{aiIntentSubmitting ? '发送中...' : '发送'}</Text>
+          </Pressable>
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
 }
 
 const styles = StyleSheet.create({
-    safeArea: {
-        flex: 1,
-        backgroundColor: '#f8fafc',
-    },
-    container: {
-        flex: 1,
-        backgroundColor: '#f8fafc',
-    },
-    header: {
-        backgroundColor: '#ffffff',
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: '#f1f5f9',
-    },
-    headerContent: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-    },
-    headerText: {
-        flex: 1,
-    },
-    proactiveBtn: {
-        backgroundColor: '#0f766e',
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        borderRadius: 10,
-    },
-    proactiveBtnText: {
-        color: '#ffffff',
-        fontSize: 12,
-        fontWeight: '700',
-    },
-    headerTitle: {
-        fontSize: 16,
-        fontWeight: '800',
-        color: '#0f172a',
-    },
-    headerSubtitle: {
-        fontSize: 12,
-        color: '#94a3b8',
-        marginTop: 2,
-    },
-    chatScroll: {
-        flex: 1,
-    },
-    chatContent: {
-        padding: 16,
-        gap: 16,
-        paddingBottom: 24,
-    },
-    progressWrap: {
-        backgroundColor: '#f0fdfa',
-        borderWidth: 1,
-        borderColor: '#99f6e4',
-        borderRadius: 10,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-        marginBottom: 4,
-    },
-    progressTitle: {
-        fontSize: 12,
-        fontWeight: '800',
-        color: '#0f766e',
-        marginBottom: 2,
-    },
-    progressText: {
-        fontSize: 12,
-        color: '#134e4a',
-    },
-    progressError: {
-        marginTop: 4,
-        fontSize: 12,
-        color: '#b91c1c',
-        fontWeight: '700',
-    },
-    messageRow: {
-        width: '100%',
-    },
-    messageBubble: {
-        padding: 14,
-        borderRadius: 20,
-        maxWidth: '85%',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-        elevation: 1,
-    },
-    userBubble: {
-        alignSelf: 'flex-end',
-        backgroundColor: '#0f766e',
-        borderBottomRightRadius: 4,
-    },
-    botBubble: {
-        alignSelf: 'flex-start',
-        backgroundColor: '#ffffff',
-        borderBottomLeftRadius: 4,
-    },
-    roleLabel: {
-        fontSize: 10,
-        fontWeight: '800',
-        color: '#94a3b8',
-        marginBottom: 6,
-        textTransform: 'uppercase',
-        letterSpacing: 0.5,
-    },
-    messageText: {
-        fontSize: 15,
-        lineHeight: 22,
-    },
-    userText: {
-        color: '#ffffff',
-        fontWeight: '500',
-    },
-    botText: {
-        color: '#1e293b',
-    },
-    statusIndicator: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginTop: 6,
-        gap: 4,
-    },
-    statusText: {
-        fontSize: 10,
-        color: 'rgba(255,255,255,0.7)',
-        fontWeight: '600',
-    },
-    retryBtn: {
-        backgroundColor: 'rgba(255,255,255,0.2)',
-        paddingHorizontal: 8,
-        paddingVertical: 2,
-        borderRadius: 4,
-        marginLeft: 4,
-    },
-    retryText: {
-        fontSize: 10,
-        color: '#ffffff',
-        fontWeight: '800',
-    },
-    emptyState: {
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: 80,
-        gap: 16,
-    },
-    emptyText: {
-        fontSize: 14,
-        color: '#94a3b8',
-        textAlign: 'center',
-        paddingHorizontal: 50,
-        lineHeight: 20,
-    },
-    proposalContainer: {
-        marginTop: 8,
-    },
-    proposalCard: {
-        gap: 12,
-    },
-    proposalBadge: {
-        alignSelf: 'flex-start',
-        backgroundColor: '#fef3c7',
-        paddingHorizontal: 8,
-        paddingVertical: 3,
-        borderRadius: 6,
-    },
-    proposalBadgeText: {
-        fontSize: 10,
-        fontWeight: '800',
-        color: '#92400e',
-    },
-    proposalTitle: {
-        fontSize: 18,
-        fontWeight: '800',
-        color: '#0f172a',
-    },
-    proposalMeta: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    metaLabel: {
-        fontSize: 13,
-        color: '#64748b',
-    },
-    metaValue: {
-        fontSize: 13,
-        fontWeight: '700',
-        color: '#1e293b',
-    },
-    evaluationPanel: {
-        backgroundColor: '#ecfeff',
-        borderWidth: 1,
-        borderColor: '#99f6e4',
-        borderRadius: 10,
-        paddingHorizontal: 10,
-        paddingVertical: 8,
-        gap: 2,
-    },
-    evaluationHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-    },
-    evaluationTitle: {
-        fontSize: 12,
-        fontWeight: '700',
-        color: '#134e4a',
-    },
-    evaluationBadge: {
-        fontSize: 10,
-        fontWeight: '800',
-        color: '#065f46',
-        backgroundColor: '#ccfbf1',
-        borderRadius: 6,
-        paddingHorizontal: 6,
-        paddingVertical: 2,
-    },
-    evaluationText: {
-        fontSize: 12,
-        color: '#0f766e',
-        lineHeight: 18,
-    },
-    evaluationError: {
-        fontSize: 12,
-        color: '#b91c1c',
-    },
-    executeInputWrap: {
-        gap: 6,
-    },
-    executeInputLabel: {
-        fontSize: 12,
-        color: '#64748b',
-        fontWeight: '600',
-    },
-    executeInput: {
-        borderWidth: 1,
-        borderColor: '#e2e8f0',
-        borderRadius: 10,
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        fontSize: 13,
-        color: '#0f172a',
-        backgroundColor: '#f8fafc',
-    },
-    evaluationSummary: {
-        backgroundColor: '#eef2ff',
-        borderWidth: 1,
-        borderColor: '#c7d2fe',
-        borderRadius: 10,
-        paddingHorizontal: 10,
-        paddingVertical: 8,
-        gap: 4,
-    },
-    evaluationSummaryTitle: {
-        fontSize: 12,
-        fontWeight: '700',
-        color: '#3730a3',
-    },
-    evaluationSummaryText: {
-        fontSize: 12,
-        color: '#1e1b4b',
-        lineHeight: 18,
-    },
-    evaluationHint: {
-        fontSize: 12,
-        color: '#64748b',
-        fontStyle: 'italic',
-    },
-    actionRow: {
-        flexDirection: 'row',
-        gap: 12,
-        marginTop: 4,
-    },
-    opButton: {
-        flex: 1,
-        flexDirection: 'row',
-        borderRadius: 12,
-        paddingVertical: 12,
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 6,
-    },
-    evaluateBtn: {
-        backgroundColor: '#2563eb',
-    },
-    approveBtn: {
-        backgroundColor: '#059669',
-    },
-    rejectBtn: {
-        backgroundColor: '#ef4444',
-    },
-    publishBtn: {
-        backgroundColor: '#7c3aed',
-        flex: 0,
-        paddingHorizontal: 14,
-    },
-    disabledOpButton: {
-        opacity: 0.45,
-    },
-    opButtonText: {
-        color: '#ffffff',
-        fontWeight: '700',
-        fontSize: 13,
-    },
-    approvedRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-        paddingVertical: 8,
-        borderBottomWidth: 1,
-        borderBottomColor: '#e2e8f0',
-    },
-    approvedMeta: {
-        marginTop: 2,
-        fontSize: 12,
-        color: '#64748b',
-    },
-    inputArea: {
-        backgroundColor: 'transparent',
-        paddingHorizontal: 12,
-        paddingTop: 8,
-        paddingBottom: Platform.OS === 'ios' ? 28 : 16,
-    },
-    inputRow: {
-        flexDirection: 'row',
-        alignItems: 'flex-end',
-        gap: 8,
-        backgroundColor: '#ffffff',
-        borderRadius: 28,
-        paddingLeft: 4,
-        paddingRight: 6,
-        paddingVertical: 6,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-        elevation: 4,
-        borderWidth: 1,
-        borderColor: 'rgba(226, 232, 240, 0.5)',
-    },
-    textInput: {
-        flex: 1,
-        paddingHorizontal: 16,
-        paddingTop: 10,
-        paddingBottom: 10,
-        color: '#1e293b',
-        fontSize: 15,
-        minHeight: 40,
-    },
-    sendButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: '#0f766e',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    disabledButton: {
-        backgroundColor: '#e2e8f0',
-    },
-    inputHint: {
-        fontSize: 11,
-        color: '#ef4444',
-        marginTop: 8,
-        textAlign: 'center',
-        fontWeight: '600',
-    },
-    inputStatusInfo: {
-        fontSize: 11,
-        color: '#0369a1',
-        marginTop: 8,
-        textAlign: 'center',
-        fontWeight: '600',
-    },
-    inputStatusError: {
-        fontSize: 11,
-        color: '#b91c1c',
-        marginTop: 8,
-        textAlign: 'center',
-        fontWeight: '700',
-    }
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
+  },
+  container: {
+    flex: 1,
+  },
+  header: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 8,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  headerTextWrap: {
+    flex: 1,
+  },
+  headerTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  headerSubtitle: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  proactiveBtn: {
+    backgroundColor: '#0f766e',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  proactiveBtnText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  chatScroll: {
+    flex: 1,
+  },
+  chatContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    gap: 10,
+  },
+  progressWrap: {
+    backgroundColor: '#eef2ff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#c7d2fe',
+    padding: 10,
+  },
+  progressTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#3730a3',
+    marginBottom: 3,
+  },
+  progressText: {
+    fontSize: 12,
+    color: '#4338ca',
+  },
+  progressError: {
+    marginTop: 4,
+    fontSize: 12,
+    color: '#b91c1c',
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    padding: 18,
+    backgroundColor: '#ffffff',
+  },
+  emptyText: {
+    marginTop: 8,
+    color: '#64748b',
+    fontSize: 13,
+  },
+  messageRow: {
+    width: '100%',
+  },
+  messageBubble: {
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  userBubble: {
+    backgroundColor: '#0f766e',
+    borderColor: '#0f766e',
+  },
+  botBubble: {
+    backgroundColor: '#ffffff',
+    borderColor: '#e2e8f0',
+  },
+  roleLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748b',
+    marginBottom: 4,
+  },
+  messageText: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#0f172a',
+  },
+  streamingCursor: {
+    opacity: 0.65,
+  },
+  failedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  failedText: {
+    fontSize: 12,
+    color: '#fca5a5',
+  },
+  retryBtn: {
+    backgroundColor: '#fee2e2',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  retryText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#b91c1c',
+  },
+  composerWrap: {
+    backgroundColor: '#ffffff',
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 12,
+    gap: 8,
+  },
+  input: {
+    minHeight: 64,
+    maxHeight: 140,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 14,
+    color: '#0f172a',
+    textAlignVertical: 'top',
+    backgroundColor: '#ffffff',
+  },
+  errorText: {
+    color: '#b91c1c',
+    fontSize: 12,
+  },
+  sendBtn: {
+    height: 42,
+    borderRadius: 10,
+    backgroundColor: '#0f766e',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  sendBtnDisabled: {
+    backgroundColor: '#94a3b8',
+  },
+  sendBtnText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
 });

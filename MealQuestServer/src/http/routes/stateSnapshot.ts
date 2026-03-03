@@ -83,7 +83,6 @@ async function buildStateSnapshot({
     user,
     dashboard,
     policies: activePolicyViews,
-    proposals: await tenantRepository.listProposals(merchantId),
     strategyConfigs: await tenantRepository.listStrategyConfigs(merchantId),
     activities: buildCustomerActivities(activePolicyViews),
     allianceConfig,

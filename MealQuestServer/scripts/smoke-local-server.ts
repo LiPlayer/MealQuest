@@ -225,23 +225,11 @@ async function runSmoke(baseUrl, options = {}) {
   assert.equal(wsMessage.type, "PAYMENT_VERIFIED");
   ws.close();
 
-  console.log("[smoke] scenario C: proposal + kill switch");
+  console.log("[smoke] scenario C: dashboard + kill switch");
   const dashboard = await getJson(baseUrl, "/api/merchant/dashboard?merchantId=m_store_001", {
     Authorization: `Bearer ${ownerToken}`
   });
   expectStatus(dashboard, 200, "dashboard");
-  const hasPendingRainy = (dashboard.data.pendingProposals || []).some(
-    (item) => item.id === "proposal_rainy"
-  );
-  if (hasPendingRainy) {
-    const confirm = await postJson(
-      baseUrl,
-      "/api/merchant/proposals/proposal_rainy/confirm",
-      { merchantId: "m_store_001", operatorId: "staff_owner" },
-      { Authorization: `Bearer ${ownerToken}` }
-    );
-    expectStatus(confirm, 200, "owner confirm proposal");
-  }
 
   const killSwitchOff = await postJson(
     baseUrl,
@@ -394,7 +382,7 @@ async function runSmoke(baseUrl, options = {}) {
   expectStatus(statusAfterCutover, 200, "migration status after cutover");
   assert.equal(statusAfterCutover.data.dedicatedDbAttached, true);
 
-  console.log("[smoke] scenario G: strategy chat proposal + review + status");
+  console.log("[smoke] scenario G: strategy chat turn");
 
   const strategySession = await postJson(
     baseUrl,
@@ -418,43 +406,10 @@ async function runSmoke(baseUrl, options = {}) {
     { Authorization: `Bearer ${ownerToken}` }
   );
   expectStatus(strategyTurn, 200, "strategy chat message");
-  if (strategyTurn.data.status === "AI_UNAVAILABLE") {
-    console.log("[smoke] scenario G fallback: AI_UNAVAILABLE, skipping proposal review/status checks.");
-  } else if (strategyTurn.data.status === "CHAT_REPLY") {
-    console.log("[smoke] scenario G fallback: CHAT_REPLY only, skipping proposal review/status checks.");
-  } else if (strategyTurn.data.status === "BLOCKED") {
-    console.log("[smoke] scenario G fallback: BLOCKED by guardrail, skipping proposal review/status checks.");
-  } else if (strategyTurn.data.status === "REVIEW_REQUIRED") {
-    console.log("[smoke] scenario G fallback: REVIEW_REQUIRED without new draft, skipping proposal review/status checks.");
-  } else {
-    assert.equal(strategyTurn.data.status, "PENDING_REVIEW");
-    assert.ok(
-      strategyTurn.data.pendingReview && strategyTurn.data.pendingReview.proposalId,
-      "strategy chat pending proposal should exist"
-    );
-
-    const strategyReview = await postJson(
-      baseUrl,
-      `/api/merchant/strategy-chat/proposals/${encodeURIComponent(strategyTurn.data.pendingReview.proposalId)}/review`,
-      {
-        merchantId: "m_store_001",
-        sessionId: strategySession.data.sessionId,
-        decision: "APPROVE"
-      },
-      { Authorization: `Bearer ${ownerToken}` }
-    );
-    expectStatus(strategyReview, 200, "strategy chat proposal review approve");
-    assert.equal(strategyReview.data.status, "APPROVED");
-
-    const publishPolicy = await postJson(
-      baseUrl,
-      `/api/merchant/strategy-chat/proposals/${encodeURIComponent(strategyTurn.data.pendingReview.proposalId)}/publish`,
-      { merchantId: "m_store_001" },
-      { Authorization: `Bearer ${ownerToken}` }
-    );
-    expectStatus(publishPolicy, 200, "strategy chat proposal publish");
-    assert.ok(publishPolicy.data.policyId, "published policy id should exist");
-  }
+  assert.ok(
+    ["CHAT_REPLY", "AI_UNAVAILABLE"].includes(String(strategyTurn.data.status || "")),
+    "strategy chat status should be chat-only"
+  );
 
   console.log("[smoke] scenario H: supplier verify");
   const supplierVerifyPass = await postJson(

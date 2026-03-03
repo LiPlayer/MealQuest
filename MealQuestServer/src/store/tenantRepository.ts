@@ -168,10 +168,6 @@ function createTenantRepository({ tenantRouter }) {
         const bucket = db.merchantUsers && db.merchantUsers[merchantId];
         return bucket ? bucket[userId] || null : null;
       }),
-    listProposals: async (merchantId) =>
-      withFreshRead(merchantId, async (db) =>
-        ((db && db.proposals) || []).filter((item) => item.merchantId === merchantId)
-      ),
     listStrategyConfigs: async (merchantId) =>
       withFreshRead(merchantId, async (db) => {
         if (!db || !db.strategyConfigs || !db.strategyConfigs[merchantId]) {

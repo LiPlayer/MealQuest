@@ -23,7 +23,6 @@ const TABLES = {
   idempotencyRecords: "mq_idempotency_records",
   ledgerEntries: "mq_ledger_entries",
   auditLogs: "mq_audit_logs",
-  proposals: "mq_proposals",
 };
 
 const RELATIONAL_TENANT_TABLES = Object.values(TABLES);
@@ -389,16 +388,8 @@ async function ensureRelationalTables(pool, schema, { enforceRls = true } = {}) 
     )
   `);
 
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS ${schemaSql}.${qIdent(TABLES.proposals)} (
-      tenant_id TEXT NOT NULL,
-      proposal_id TEXT NOT NULL,
-      seq_no BIGINT NOT NULL,
-      payload JSONB NOT NULL,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      PRIMARY KEY (tenant_id, proposal_id)
-    )
-  `);
+  // Chat-only cleanup: remove legacy proposal storage table.
+  await pool.query(`DROP TABLE IF EXISTS ${schemaSql}.${qIdent("mq_proposals")}`);
 
   for (const table of RELATIONAL_TENANT_TABLES) {
     await renameScopeKeyColumnIfNeeded(pool, schema, table);
@@ -411,10 +402,6 @@ async function ensureRelationalTables(pool, schema, { enforceRls = true } = {}) 
   await pool.query(`
     CREATE INDEX IF NOT EXISTS ${qIdent(`${TABLES.auditLogs}_tenant_seq_idx`)}
     ON ${schemaSql}.${qIdent(TABLES.auditLogs)} (tenant_id, seq_no)
-  `);
-  await pool.query(`
-    CREATE INDEX IF NOT EXISTS ${qIdent(`${TABLES.proposals}_tenant_seq_idx`)}
-    ON ${schemaSql}.${qIdent(TABLES.proposals)} (tenant_id, seq_no)
   `);
   if (!enforceRls) {
     return;
@@ -506,7 +493,6 @@ function createEmptyState() {
     idempotencyRecords: {},
     ledger: [],
     auditLogs: [],
-    proposals: [],
   };
 }
 
@@ -756,17 +742,6 @@ async function readRelationalStateWithClient(client, schema, tenantId) {
     [tenantId],
   );
   state.auditLogs = auditRows.rows.map((row) => row.payload);
-
-  const proposalRows = await client.query(
-    `
-      SELECT payload
-      FROM ${schemaSql}.${qIdent(TABLES.proposals)}
-      WHERE tenant_id = $1
-      ORDER BY seq_no ASC
-    `,
-    [tenantId],
-  );
-  state.proposals = proposalRows.rows.map((row) => row.payload);
 
   return state;
 }
@@ -1035,21 +1010,6 @@ async function replaceTenantState(client, schema, tenantId, rawState) {
     );
   }
 
-  const proposals = Array.isArray(normalizedState.proposals) ? normalizedState.proposals : [];
-  for (let index = 0; index < proposals.length; index += 1) {
-    const payload = proposals[index];
-    const proposalId =
-      payload && payload.id
-        ? String(payload.id)
-        : `proposal_${index + 1}`;
-    await insertRow(
-      client,
-      schema,
-      TABLES.proposals,
-      ["tenant_id", "proposal_id", "seq_no", "payload"],
-      [tenantId, proposalId, index + 1, toJsonb(payload)],
-    );
-  }
 }
 
 async function writeRelationalState(pool, schema, tenantId, state) {

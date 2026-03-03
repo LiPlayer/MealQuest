@@ -1,4 +1,4 @@
-﻿const test = require("node:test");
+const test = require("node:test");
 const assert = require("node:assert/strict");
 const crypto = require("node:crypto");
 const http = require("node:http");
@@ -157,87 +157,10 @@ function seedLegacyTestUsers(db) {
       templateId: "acquisition_welcome_gift",
       branchId: "DEFAULT",
       status: "ACTIVE",
-      lastProposalId: "proposal_rainy",
+      lastProposalId: null,
       lastPolicyId: null,
       updatedAt: nowIso,
     };
-  }
-  if (!Array.isArray(db.proposals)) {
-    db.proposals = [];
-  }
-  if (!db.proposals.find((item) => item && item.id === "proposal_rainy")) {
-    const { spec: rainySpec } = createPolicySpecFromTemplate({
-      merchantId: "m_store_001",
-      templateId: "acquisition_welcome_gift",
-      branchId: "DEFAULT",
-      policyPatch: {
-        name: "Rainy Day Promotion",
-        triggers: [
-          {
-            plugin: "event_trigger_v1",
-            event: "WEATHER_CHANGE",
-            params: {}
-          }
-        ],
-        segment: {
-          plugin: "condition_segment_v1",
-          params: {
-            logic: "AND",
-            conditions: [{ field: "weather", op: "eq", value: "RAIN" }]
-          }
-        },
-        constraints: [
-          {
-            plugin: "kill_switch_v1",
-            params: {}
-          },
-          {
-            plugin: "budget_guard_v1",
-            params: {
-              cap: 60,
-              cost_per_hit: 12
-            }
-          },
-          {
-            plugin: "frequency_cap_v1",
-            params: {
-              daily: 1,
-              window_sec: 24 * 60 * 60
-            }
-          },
-          {
-            plugin: "anti_fraud_hook_v1",
-            params: {
-              max_risk_score: 0.75
-            }
-          }
-        ]
-      }
-    });
-    db.proposals.push({
-      id: "proposal_rainy",
-      merchantId: "m_store_001",
-      status: "PENDING",
-      title: "Rainy Day Promotion",
-      createdAt: nowIso,
-      strategyMeta: {
-        templateId: "acquisition_welcome_gift",
-        templateName: "New User Welcome Gift",
-        category: "ACQUISITION",
-        phase: "P1",
-        branchId: "DEFAULT",
-        branchName: "Standard Welcome",
-        source: "FIXTURE"
-      },
-      suggestedPolicySpec: rainySpec,
-      policyWorkflow: {
-        draftId: null,
-        policyId: null,
-        approvalId: null,
-        status: "DRAFT",
-        publishedAt: null
-      }
-    });
   }
 
   const partnerOrders = ensureObjectMap("partnerOrders");
@@ -372,66 +295,6 @@ async function getJson(baseUrl, targetPath, headers = {}) {
   return {
     status: res.status,
     data: await res.json()
-  };
-}
-
-async function createStrategyProposalThroughChat(
-  baseUrl,
-  token,
-  {
-    merchantId = "m_store_001",
-    content = "Please create a strategy proposal now."
-  } = {}
-) {
-  const session = await postJson(
-    baseUrl,
-    "/api/merchant/strategy-chat/sessions",
-    { merchantId },
-    { Authorization: `Bearer ${token}` }
-  );
-  if (session.status !== 200 || !session.data.sessionId) {
-    return {
-      status: session.status,
-      data: session.data
-    };
-  }
-
-  const turn = await postJson(
-    baseUrl,
-    "/api/merchant/strategy-chat/messages",
-    {
-      merchantId,
-      content
-    },
-    { Authorization: `Bearer ${token}` }
-  );
-
-  if (
-    turn.status === 200 &&
-    turn.data &&
-    turn.data.status === "PENDING_REVIEW" &&
-    turn.data.pendingReview
-  ) {
-    return {
-      status: 200,
-      data: {
-        status: "PENDING",
-        proposalId: turn.data.pendingReview.proposalId || null,
-        policyId: turn.data.pendingReview.policyId || null,
-        templateId: turn.data.pendingReview.templateId || null,
-        branchId: turn.data.pendingReview.branchId || null,
-        sessionId: session.data.sessionId,
-        _rawChatTurn: turn.data
-      }
-    };
-  }
-
-  return {
-    status: turn.status,
-    data: {
-      ...turn.data,
-      sessionId: session.data.sessionId
-    }
   };
 }
 
@@ -621,9 +484,7 @@ function extractAiUserPayload(requestPayload) {
     return {
       task: "STRATEGY_CHAT",
       userMessage,
-      approvedStrategies: Array.isArray(context.approvedStrategies)
-        ? context.approvedStrategies
-        : [],
+      activePolicies: Array.isArray(context.activePolicies) ? context.activePolicies : [],
     };
   }
   const parsed = safeParseJson(rawContent);
@@ -670,74 +531,20 @@ function pickAiDecision(payload) {
 
 function pickAiChatDecision(payload) {
   const message = String(payload.userMessage || "").toLowerCase();
-  const approvedCount = Array.isArray(payload.approvedStrategies)
-    ? payload.approvedStrategies.length
+  const activePolicyCount = Array.isArray(payload.activePolicies)
+    ? payload.activePolicies.length
     : 0;
 
-  const shouldDraft =
-    message.includes("generate") ||
-    message.includes("create") ||
-    message.includes("draft") ||
-    message.includes("strategy");
-  const wantsExtreme =
-    message.includes("extreme") ||
-    message.includes("huge budget") ||
-    message.includes("aggressive");
-
-  if (!shouldDraft) {
-    return {
-      mode: "CHAT_REPLY",
-      assistantMessage:
-        approvedCount > 0
-          ? `Noted. You already approved ${approvedCount} strategy(ies). Tell me what to optimize next.`
-          : "Please share goal, budget, and time window. I can then draft a strategy.",
-    };
-  }
-
-  const proposalBranch = approvedCount > 0 ? "CHANNEL" : "DEFAULT";
-  const proposalTitle = approvedCount > 0 ? "Second Wave Strategy" : "First Wave Strategy";
-
   return {
-    mode: "PROPOSAL",
-    assistantMessage: "I drafted a strategy proposal card. Please approve or reject now.",
-    proposal: {
-      templateId: "acquisition_welcome_gift",
-      branchId: proposalBranch,
-      title: proposalTitle,
-      rationale: "Mock chat strategy proposal.",
-      confidence: 0.81,
-      policyPatch: {
-        name: proposalTitle,
-        lane: approvedCount > 0 ? "GUARDED" : "NORMAL",
-        constraints: [
-          { plugin: "kill_switch_v1", params: {} },
-          {
-            plugin: "budget_guard_v1",
-            params: {
-              cap: wantsExtreme ? 9999 : approvedCount > 0 ? 140 : 120,
-              cost_per_hit: wantsExtreme ? 500 : 10,
-            },
-          },
-          { plugin: "frequency_cap_v1", params: { daily: 1, window_sec: 86400 } },
-          { plugin: "anti_fraud_hook_v1", params: { max_risk_score: 0.75 } },
-        ],
-      },
-    },
+    mode: "CHAT_REPLY",
+    assistantMessage: message.includes("strategy")
+      ? `Understood. Focus areas recorded. Active policy count: ${activePolicyCount}.`
+      : "Please share goal, budget, and time window.",
   };
 }
 
 function toMockAiContent(payload, decision) {
   if (payload && payload.task === "STRATEGY_CHAT") {
-    if (decision && decision.mode === "PROPOSAL" && decision.proposal) {
-      return [
-        String(decision.assistantMessage || "Strategy proposal drafted."),
-        JSON.stringify({
-          schemaVersion: "2026-02-27",
-          assistantMessage: String(decision.assistantMessage || "Strategy proposal drafted."),
-          proposals: [decision.proposal],
-        }),
-      ].join("\n");
-    }
     return String(
       (decision && decision.assistantMessage) ||
       "Please share goal, budget, and time window."
@@ -878,7 +685,7 @@ async function stopServer(server) {
 }
 
 
-test("rbac: clerk cannot confirm proposal, manager can refund", async () => {
+test("rbac: clerk cannot toggle kill switch, manager can refund", async () => {
   const app = createAppServer({ persist: false });
   const port = await app.start(0);
   const baseUrl = `http://127.0.0.1:${port}`;
@@ -899,14 +706,14 @@ test("rbac: clerk cannot confirm proposal, manager can refund", async () => {
     );
     assert.equal(verify.status, 200);
 
-    const confirmByClerk = await postJson(
+    const killSwitchByClerk = await postJson(
       baseUrl,
-      "/api/merchant/strategy-chat/proposals/proposal_rainy/review",
-      { merchantId: "m_store_001", decision: "APPROVE" },
+      "/api/merchant/kill-switch",
+      { merchantId: "m_store_001", enabled: true },
       { Authorization: `Bearer ${clerkToken}` }
     );
-    assert.equal(confirmByClerk.status, 403);
-    assert.equal(confirmByClerk.data.error, "permission denied");
+    assert.equal(killSwitchByClerk.status, 403);
+    assert.equal(killSwitchByClerk.data.error, "permission denied");
 
     const refundByManager = await postJson(
       baseUrl,
@@ -1828,13 +1635,13 @@ test("audit log records success and denied high-risk operations", async () => {
     );
     assert.equal(verify.status, 200);
 
-    const deniedConfirm = await postJson(
+    const deniedKillSwitch = await postJson(
       baseUrl,
-      "/api/merchant/strategy-chat/proposals/proposal_rainy/review",
-      { merchantId: "m_store_001", decision: "APPROVE" },
+      "/api/merchant/kill-switch",
+      { merchantId: "m_store_001", enabled: true },
       { Authorization: `Bearer ${clerkToken}` }
     );
-    assert.equal(deniedConfirm.status, 403);
+    assert.equal(deniedKillSwitch.status, 403);
 
     const killSwitch = await postJson(
       baseUrl,
@@ -1846,7 +1653,7 @@ test("audit log records success and denied high-risk operations", async () => {
 
     const logs = app.db.auditLogs.filter((item) => item.merchantId === "m_store_001");
     assert.ok(logs.some((item) => item.action === "PAYMENT_VERIFY" && item.status === "SUCCESS"));
-    assert.ok(logs.some((item) => item.action === "STRATEGY_CHAT_REVIEW" && item.status === "DENIED"));
+    assert.ok(logs.some((item) => item.action === "KILL_SWITCH_SET" && item.status === "DENIED"));
     assert.ok(logs.some((item) => item.action === "KILL_SWITCH_SET" && item.status === "SUCCESS"));
   } finally {
     await app.stop();
@@ -1874,8 +1681,8 @@ test("audit log endpoint supports pagination and denies customer access", async 
     );
     await postJson(
       baseUrl,
-      "/api/merchant/strategy-chat/proposals/proposal_rainy/review",
-      { merchantId: "m_store_001", decision: "APPROVE" },
+      "/api/merchant/kill-switch",
+      { merchantId: "m_store_001", enabled: true },
       { Authorization: `Bearer ${clerkToken}` }
     );
     await postJson(

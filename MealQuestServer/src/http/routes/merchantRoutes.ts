@@ -49,16 +49,6 @@ function createMerchantRoutesHandler({
       return true;
     }
 
-    if (
-      method === "POST" &&
-      /^\/api\/merchant\/strategy-chat\/proposals\/[^/]+\/(review|evaluate|publish)$/.test(url.pathname)
-    ) {
-      sendJson(res, 404, {
-        error: "deprecated endpoint; use /api/langgraph runs with interrupt/command resume",
-      });
-      return true;
-    }
-
     if (method === "GET" && url.pathname === "/api/merchant/contract/status") {
       ensureRole(auth, ["OWNER", "MANAGER"]);
       const merchantId = url.searchParams.get("merchantId") || auth.merchantId;

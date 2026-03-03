@@ -16,31 +16,12 @@ export interface ActivePolicy {
   };
 }
 
-export interface Proposal {
-  id: string;
-  title: string;
-  status: 'PENDING' | 'APPROVED';
-  templateId?: string;
-  branchId?: string;
-  policyDraft: ActivePolicy;
-}
-
-export interface ApprovedProposal {
-  id: string;
-  title: string;
-  draftId: string | null;
-  approvalId: string | null;
-  approvedAt: string | null;
-}
-
 export interface MerchantState {
   merchantId: string;
   merchantName: string;
   killSwitchEnabled: boolean;
   budgetCap: number;
   budgetUsed: number;
-  pendingProposals: Proposal[];
-  approvedPendingPublish: ApprovedProposal[];
   activePolicies: ActivePolicy[];
 }
 
@@ -69,28 +50,8 @@ export const createInitialMerchantState = (): MerchantState => ({
   killSwitchEnabled: false,
   budgetCap: 0,
   budgetUsed: 0,
-  pendingProposals: [],
-  approvedPendingPublish: [],
   activePolicies: [],
 });
-
-export const approveProposal = (
-  state: MerchantState,
-  proposalId: string,
-): MerchantState => {
-  const proposal = state.pendingProposals.find(item => item.id === proposalId);
-  if (!proposal || proposal.status !== 'PENDING') {
-    return state;
-  }
-
-  return {
-    ...state,
-    pendingProposals: state.pendingProposals.map(item =>
-      item.id === proposalId ? { ...item, status: 'APPROVED' } : item,
-    ),
-    activePolicies: [...state.activePolicies, { ...proposal.policyDraft }],
-  };
-};
 
 export const toggleKillSwitch = (
   state: MerchantState,
@@ -176,4 +137,3 @@ export const smartCashierVerify = (input: CashierInput): CashierSettlement => {
     payable: roundMoney(Math.max(remain, 0)),
   };
 };
-

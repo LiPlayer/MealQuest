@@ -25,7 +25,6 @@ function createDefaultState() {
     idempotencyRecords: {},
     ledger: [],
     auditLogs: [],
-    proposals: [],
     policyOs: {
       templates: {},
       drafts: {},
@@ -239,7 +238,6 @@ function normalizeState(initialState = null) {
     auditLogs: Array.isArray(migrated.auditLogs)
       ? migrated.auditLogs
       : defaults.auditLogs,
-    proposals: Array.isArray(migrated.proposals) ? migrated.proposals : defaults.proposals,
     policyOs: {
       ...defaults.policyOs,
       ...(migrated.policyOs || {})
@@ -280,7 +278,6 @@ function createInMemoryDb(initialState = null) {
       idempotencyRecords: db.idempotencyRecords,
       ledger: db.ledger,
       auditLogs: db.auditLogs,
-      proposals: db.proposals,
       policyOs: db.policyOs
     }),
     getMerchantUser: (merchantId, userId) => {

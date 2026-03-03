@@ -6,7 +6,7 @@ This is a monorepo with three runtime apps:
 - `MealQuestMerchant/`: Expo merchant app (`app/`, `src/`).
 - `meal-quest-customer/`: Taro customer app (`src/`, `config/`, `test/`).
 
-Shared automation and references are in `scripts/` and `docs/` (`docs/specs`, `docs/engineering`, `docs/ops`, `docs/qa`).
+Shared automation and references are in `scripts/` and `docs/`.
 
 ## Build, Test, and Development Commands
 Run from repository root:

@@ -212,114 +212,12 @@ function ensureThreadValues(thread) {
   if (!Array.isArray(thread.values.messages)) {
     thread.values.messages = thread.messages;
   }
-  if (!("pending_review" in thread.values)) {
-    thread.values.pending_review = null;
-  }
-  if (!("evaluation_result" in thread.values)) {
-    thread.values.evaluation_result = null;
-  }
-  if (!("publish_result" in thread.values)) {
-    thread.values.publish_result = null;
-  }
-  if (!thread.values.review_progress || typeof thread.values.review_progress !== "object") {
-    thread.values.review_progress = {
-      total: 0,
-      reviewed: 0,
-    };
-  }
-  const reviewInterrupt =
-    thread.interrupts &&
-    typeof thread.interrupts === "object" &&
-    thread.interrupts.review &&
-    typeof thread.interrupts.review === "object"
-      ? thread.interrupts.review
-      : null;
-  const pendingReview =
-    thread.values.pending_review && typeof thread.values.pending_review === "object"
-      ? thread.values.pending_review
-      : null;
-  if (reviewInterrupt) {
-    thread.values.__interrupt__ = [{ value: reviewInterrupt }];
-  } else if (pendingReview) {
-    thread.values.__interrupt__ = [
-      {
-        value: {
-          type: "pending_review",
-          proposal_id: safeString(pendingReview.proposal_id),
-          title: safeString(pendingReview.title),
-          summary: safeString(pendingReview.summary),
-        },
-      },
-    ];
-  } else {
+  if (!Array.isArray(thread.values.__interrupt__)) {
     thread.values.__interrupt__ = [];
   }
   thread.values.messages = thread.messages;
   thread.values.memory_summary = safeString(thread.memory_summary);
   return thread.values;
-}
-
-function buildPendingReview(assistantText = "") {
-  const normalized = safeString(assistantText).trim();
-  const titleBase = normalized.slice(0, 36) || "Generated strategy proposal";
-  return {
-    proposal_id: randomId("proposal"),
-    title: titleBase,
-    summary: normalized || "Please review generated strategy.",
-    score: 0.82,
-    risk_count: 0,
-  };
-}
-
-function extractProposalCandidate(finalResult) {
-  if (!finalResult || typeof finalResult !== "object") {
-    return null;
-  }
-  if (Array.isArray(finalResult.proposals) && finalResult.proposals.length > 0) {
-    const first = finalResult.proposals[0];
-    return first && typeof first === "object" ? first : null;
-  }
-  if (finalResult.proposal && typeof finalResult.proposal === "object") {
-    return finalResult.proposal;
-  }
-  return null;
-}
-
-function buildPendingReviewFromResult(finalResult, assistantText = "") {
-  const fromResult = extractProposalCandidate(finalResult);
-  if (fromResult) {
-    const proposalId = safeString(fromResult.proposal_id || fromResult.id).trim();
-    const title = safeString(fromResult.title).trim();
-    const summary = safeString(fromResult.summary || assistantText).trim();
-    const score = Number(fromResult.score);
-    const riskCount = Number(fromResult.risk_count || fromResult.riskCount);
-    if (proposalId || title || summary) {
-      return {
-        proposal_id: proposalId || randomId("proposal"),
-        title: title || "Generated strategy proposal",
-        summary: summary || "Please review generated strategy.",
-        score: Number.isFinite(score) ? score : 0.82,
-        risk_count: Number.isFinite(riskCount) ? riskCount : 0,
-      };
-    }
-  }
-  return buildPendingReview(assistantText);
-}
-
-function shouldInterruptForReview({ finalResult }) {
-  const status = String(finalResult && finalResult.status ? finalResult.status : "")
-    .trim()
-    .toUpperCase();
-  if (status === "PROPOSAL_READY" || status === "PENDING_REVIEW" || status === "REVIEW_REQUIRED") {
-    return true;
-  }
-  if (finalResult && finalResult.requiresReview === true) {
-    return true;
-  }
-  if (extractProposalCandidate(finalResult)) {
-    return true;
-  }
-  return false;
 }
 
 function compactThreadMemory(thread) {
@@ -407,13 +305,6 @@ function createAgentServerService(db, { strategyChatService } = {}) {
       status: "idle",
       values: {
         messages: [],
-        pending_review: null,
-        evaluation_result: null,
-        publish_result: null,
-        review_progress: {
-          total: 0,
-          reviewed: 0,
-        },
         __interrupt__: [],
         memory_summary: "",
       },
@@ -586,84 +477,9 @@ function createAgentServerService(db, { strategyChatService } = {}) {
         ? command.resume
         : null;
     if (resume) {
-      const action = String(resume.action || "").trim().toLowerCase();
-      const proposalId = String(resume.proposal_id || resume.proposalId || "").trim();
-      const pendingReview =
-        thread.values && thread.values.pending_review && typeof thread.values.pending_review === "object"
-          ? thread.values.pending_review
-          : null;
-      const pendingProposalId = pendingReview ? String(pendingReview.proposal_id || "").trim() : "";
-      if (!pendingReview || !pendingProposalId) {
-        updateRunStatus(run, "error");
-        db.save();
-        throw new Error("no pending review to resume");
-      }
-      if (proposalId && proposalId !== pendingProposalId) {
-        updateRunStatus(run, "error");
-        db.save();
-        throw new Error("proposal_id mismatch");
-      }
-
-      if (action === "evaluate") {
-        const score = Number(pendingReview.score);
-        const safeScore = Number.isFinite(score) ? score : 0.82;
-        thread.values.evaluation_result = {
-          mode: "EVALUATE",
-          selected: [{ proposal_id: pendingProposalId, score: safeScore }],
-          rejected: [],
-          decision_id: randomId("decision"),
-        };
-        updateRunStatus(run, "interrupted");
-        thread.updated_at = nowIso();
-        thread.state_updated_at = thread.updated_at;
-        db.save();
-        emitValues();
-        return { run, thread };
-      }
-
-      if (action === "approve" || action === "reject") {
-        const reviewed = Number(
-          thread.values.review_progress && thread.values.review_progress.reviewed,
-        ) || 0;
-        const total = Number(
-          thread.values.review_progress && thread.values.review_progress.total,
-        ) || 1;
-        thread.values.review_progress = {
-          total: Math.max(total, 1),
-          reviewed: Math.min(Math.max(reviewed + 1, 1), Math.max(total, 1)),
-        };
-        thread.values.pending_review = null;
-        thread.interrupts = {};
-        if (action === "approve") {
-          thread.values.publish_result = {
-            policy_id: randomId("policy"),
-            draft_id: randomId("draft"),
-            published_at: nowIso(),
-          };
-          appendThreadMessage(thread, {
-            id: randomId("msg_ai"),
-            type: "ai",
-            content: "Proposal approved and published.",
-          });
-        } else {
-          thread.values.publish_result = null;
-          appendThreadMessage(thread, {
-            id: randomId("msg_ai"),
-            type: "ai",
-            content: "Proposal rejected. You can submit a new intent.",
-          });
-        }
-        updateRunStatus(run, "success");
-        thread.updated_at = nowIso();
-        thread.state_updated_at = thread.updated_at;
-        db.save();
-        emitValues();
-        return { run, thread };
-      }
-
       updateRunStatus(run, "error");
       db.save();
-      throw new Error("unsupported resume action");
+      throw new Error("resume command is not supported in chat-only mode");
     }
 
     const input = payload && payload.input ? payload.input : {};
@@ -680,7 +496,6 @@ function createAgentServerService(db, { strategyChatService } = {}) {
       content: userText,
     };
     appendThreadMessage(thread, userMessage);
-    thread.values.publish_result = null;
     emitValues();
 
     const aiMessageId = randomId("msg_ai");
@@ -794,35 +609,7 @@ function createAgentServerService(db, { strategyChatService } = {}) {
         aiMessage.content = finalAssistantText || "Received.";
       }
       ensureThreadValues(thread);
-      const shouldInterrupt = shouldInterruptForReview({
-        finalResult,
-      });
-      if (shouldInterrupt) {
-        thread.values.pending_review = buildPendingReviewFromResult(finalResult, finalAssistantText || aiText);
-        thread.values.evaluation_result = null;
-        thread.values.publish_result = null;
-        thread.values.review_progress = {
-          total: 1,
-          reviewed: 0,
-        };
-        thread.interrupts = {
-          review: {
-            type: "pending_review",
-            proposal_id: thread.values.pending_review.proposal_id,
-            title: thread.values.pending_review.title,
-            summary: thread.values.pending_review.summary,
-          },
-        };
-      } else {
-        thread.values.pending_review = null;
-        thread.values.evaluation_result = null;
-        thread.values.publish_result = null;
-        thread.values.review_progress = {
-          total: 0,
-          reviewed: 0,
-        };
-        thread.interrupts = {};
-      }
+      thread.interrupts = {};
       thread.updated_at = nowIso();
       thread.state_updated_at = thread.updated_at;
       if (run.status === "interrupted") {
@@ -833,7 +620,7 @@ function createAgentServerService(db, { strategyChatService } = {}) {
           thread,
         };
       }
-      updateRunStatus(run, shouldInterrupt ? "interrupted" : "success");
+      updateRunStatus(run, "success");
       db.save();
       emitValues();
     } catch (error) {

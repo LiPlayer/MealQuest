@@ -1,16 +1,6 @@
 ﻿# “餐餐有戏/MealQuest”平台产品全景定义白皮书 (V12.0 - 结构优化版)
 
-> **关联文档**:
-> *   [餐餐有戏 - 顾客端产品全景需求 (Master Customer Spec)](./customer-spec.md)
-> *   [有戏掌柜 - 商户端产品全景需求 (Master Merchant Spec)](./merchant-spec.md)
-> *   [餐餐有戏 - 服务端技术架构规范 (Master Server Spec)](./server-spec.md)
-> *   [餐餐有戏 - 游戏化全景需求 (Master Game Spec)](./game-spec.md)
-> *   [MealQuest 测试与验证总册](../qa/test-validation.md)
-> *   [MealQuest 运维与发布总手册](../ops/operations-runbook.md)
-> *   [MealQuest Engineering Standards](../engineering/engineering-standards.md)
-> *   [归档文档说明](../README.md)
->
-> **推荐阅读顺序**: `mealquest-spec.md` -> 三端 Master Spec -> `test-validation.md` -> `operations-runbook.md`
+> **文档治理声明**: 本文件是当前仓库唯一产品与工程规范真源。原先专项文档已下线，待新架构稳定后按模块重新补建。
 
 
 ## 一、 项目愿景与核心治理原则 (Vision & Principles)
@@ -280,3 +270,10 @@ Story JSON 是连接 AI 决策大脑与小程序盲渲染层的**可移植内容
 
 > 支付不是结束，而是私域资产关系的开始。
 
+---
+
+## 九、 重建状态 (Rebuild Status)
+
+1. **Phase A - 文档收敛 (已完成)**：统一为单一真源规范，移除分叉文档入口。
+2. **Phase B - 工程重建 (进行中)**：按本规范从零搭建可运行主链路与最小闭环。
+3. **Phase C - 模块文档回补 (待开始)**：在主链路稳定后，按模块补建工程/运维/测试细则。

@@ -1,4 +1,4 @@
-﻿function createMerchantService(db, options = {}) {
+function createMerchantService(db, options = {}) {
   const strategyChatService = options.strategyChatService;
   const policyOsService = options.policyOsService;
   const wsHub = options.wsHub;
@@ -16,7 +16,6 @@
   const MAX_MEMORY_PREFIX_CHARS = 1600;
   const MAX_MEMORY_FACTS_PER_CATEGORY = 8;
   const MAX_MEMORY_FACT_CHARS = 160;
-  const MAX_APPROVED_STRATEGY_CONTEXT = 12;
   const MAX_ACTIVE_POLICY_CONTEXT = 12;
   const MAX_EXECUTION_HISTORY_CONTEXT = 20;
   const MAX_EXECUTION_DETAIL_VALUE_LEN = 80;
@@ -416,7 +415,7 @@
   function splitTextToFacts(text) {
     return String(text || "")
       .replace(/\s+/g, " ")
-      .split(/[\nã€‚ï¼ï¼Ÿ!?ï¼›;]+/g)
+      .split(/[\n.!?;]+/g)
       .map((item) => item.trim())
       .filter(Boolean);
   }
@@ -444,30 +443,22 @@
       const fragments = splitTextToFacts(text);
       for (const fragment of fragments) {
         const lower = fragment.toLowerCase();
-        if (
-          /(ç›®æ ‡|å¸Œæœ›|æƒ³è¦|æå‡|å¢žé•¿|æ‹‰æ–°|å¤è´­|gmv|è½¬åŒ–|roi|goal|grow|increase|improve|boost)/i.test(
-            fragment
-          )
-        ) {
+        if (/(goal|target|grow|increase|improve|boost|gmv|roi|retention|conversion)/i.test(fragment)) {
           appendMemoryFact(facts, "goals", fragment);
         }
-        if (
-          /(é¢„ç®—|ä¸Šé™|ä¸èƒ½|ä¸è¦|é¿å…|é™åˆ¶|æˆæœ¬|æ¯›åˆ©|æŠ˜æ‰£|é£Žé™©|budget|cap|limit|avoid|must not|constraint)/i.test(
-            fragment
-          )
-        ) {
+        if (/(budget|cap|limit|avoid|must not|constraint|cost|margin|discount|risk)/i.test(fragment)) {
           appendMemoryFact(facts, "constraints", fragment);
         }
-        if (/(æ–°å®¢|è€å®¢|ä¼šå‘˜|å®¢ç¾¤|å­¦ç”Ÿ|ç™½é¢†|ç”¨æˆ·|ç”¨æˆ·ç¾¤|audience|segment|user)/i.test(fragment)) {
+        if (/(audience|segment|user|customer|member|new customer|returning)/i.test(fragment)) {
           appendMemoryFact(facts, "audience", fragment);
         }
-        if (/(ä»Šå¤©|æœ¬å‘¨|æœ¬æœˆ|èŠ‚å‡æ—¥|å‘¨æœ«|æ™šé«˜å³°|åˆé¤|æ™šé¤|å¤©|å‘¨|æœˆ|hour|day|week|month|timeline)/i.test(fragment)) {
+        if (/(hour|day|week|month|timeline|weekend|lunch|dinner|holiday|today|tonight)/i.test(fragment)) {
           appendMemoryFact(facts, "timing", fragment);
         }
         if (!/[0-9]/.test(lower)) {
           continue;
         }
-        if (/(é¢„ç®—|cap|é¢„ç®—ä¸Šé™|æˆæœ¬|æŠ˜æ‰£|coupon|voucher|ttl|å°æ—¶|å¤©|å‘¨|æœˆ|%)/i.test(lower)) {
+        if (/(budget|cap|cost|discount|coupon|voucher|ttl|hour|day|week|month|%)/i.test(lower)) {
           appendMemoryFact(facts, "constraints", fragment);
         }
       }
@@ -1057,7 +1048,6 @@
       return [];
     }
     const allowedActions = new Set([
-      "STRATEGY_CHAT_REVIEW",
       "STRATEGY_CHAT_MESSAGE",
       "POLICY_DRAFT_CREATE",
       "POLICY_DRAFT_SUBMIT",
@@ -1078,11 +1068,9 @@
         const details = item && typeof item.details === "object" && item.details ? item.details : {};
         const compactDetails = {};
         for (const key of [
-          "proposalId",
           "policyId",
           "templateId",
           "branchId",
-          "reviewStatus",
           "turnStatus",
           "sessionId",
           "targetSku",
@@ -1105,20 +1093,6 @@
           details: compactDetails
         };
       });
-  }
-
-  function getApprovedStrategyContext(merchantId) {
-    return db.proposals
-      .filter((item) => item.merchantId === merchantId && item.status === "APPROVED")
-      .slice(-MAX_APPROVED_STRATEGY_CONTEXT)
-      .map((item) => ({
-        proposalId: item.id,
-        policyId: (item.policyWorkflow && item.policyWorkflow.policyId) || null,
-        title: item.title,
-        templateId: item.strategyMeta && item.strategyMeta.templateId,
-        branchId: item.strategyMeta && item.strategyMeta.branchId,
-        approvedAt: item.approvedAt || null
-      }));
   }
 
   function getActivePolicyContext(merchantId) {
@@ -1159,9 +1133,6 @@
       merchantId,
       status: "ACTIVE",
       messageSeq: 0,
-      pendingProposalIds: [],
-      reviewTotalCandidates: 0,
-      reviewProcessedCandidates: 0,
       memorySummary: "",
       memoryFacts: createEmptyMemoryFacts(),
       createdBy: operatorId || "system",
@@ -1176,7 +1147,7 @@
     appendChatMessage(session, {
       role: "SYSTEM",
       type: "TEXT",
-      text: "New strategy session created. You can discuss goals and request a strategy proposal."
+      text: "New strategy session created. You can discuss goals with the assistant."
     });
     ensureSessionMemoryState(session);
     return session;
@@ -1184,23 +1155,17 @@
 
   function buildStrategyChatSessionResponse({ merchantId, session }) {
     const sessionMessages = session && Array.isArray(session.messages) ? session.messages : [];
-    const pendingProposals = resolvePendingProposals({ merchantId, session });
-    const pendingReviews = pendingProposals.map((proposal) =>
-      summarizeProposalForReview(proposal)
-    ).filter(Boolean);
-    const reviewProgress = buildReviewProgress(session);
     return {
       merchantId,
       protocol: STRATEGY_CHAT_PROTOCOL,
       sessionId: session ? session.sessionId : null,
-      pendingReview: pendingReviews[0] || null,
-      pendingReviews,
-      reviewProgress,
+      pendingReview: null,
+      pendingReviews: [],
+      reviewProgress: null,
       latestMessageId:
         sessionMessages.length > 0 ? sessionMessages[sessionMessages.length - 1].messageId : null,
       messageCount: sessionMessages.length,
-      activePolicies: getActivePolicyContext(merchantId),
-      approvedStrategies: getApprovedStrategyContext(merchantId)
+      activePolicies: getActivePolicyContext(merchantId)
     };
   }
 
@@ -1348,15 +1313,6 @@
       throw new Error("merchant not found");
     }
 
-    const pendingProposals = db.proposals.filter(
-      (proposal) => proposal.merchantId === merchantId && proposal.status === "PENDING"
-    );
-    const approvedProposals = db.proposals.filter(
-      (proposal) =>
-        proposal.merchantId === merchantId &&
-        proposal.status === "APPROVED" &&
-        !(proposal.policyWorkflow && proposal.policyWorkflow.policyId)
-    );
     const activeStrategyCount = getActivePolicyContext(merchantId).length;
 
     return {
@@ -1365,24 +1321,6 @@
       killSwitchEnabled: merchant.killSwitchEnabled,
       budgetCap: merchant.budgetCap,
       budgetUsed: merchant.budgetUsed,
-      pendingProposals: pendingProposals.map((item) => ({
-        id: item.id,
-        title: item.title,
-        createdAt: item.createdAt
-      })),
-      approvedPendingPublish: approvedProposals.map((item) => ({
-        id: item.id,
-        title: item.title,
-        draftId:
-          item.policyWorkflow && item.policyWorkflow.draftId
-            ? item.policyWorkflow.draftId
-            : null,
-        approvalId:
-          item.policyWorkflow && item.policyWorkflow.approvalId
-            ? item.policyWorkflow.approvalId
-            : null,
-        approvedAt: item.approvedAt || null
-      })),
       activePolicyCount: activeStrategyCount
     };
   }
@@ -1781,10 +1719,6 @@
     };
   }
 
-  async function publishProposalPolicy(payload) {
-    return publishApprovedProposalPolicy(payload);
-  }
-
   async function setKillSwitch({ merchantId, enabled }) {
     const freshResult = await runWithFreshState("setKillSwitch", { merchantId, enabled });
     if (freshResult !== FRESH_NOT_USED) {
@@ -1887,9 +1821,6 @@
       merchantId,
       status: "ACTIVE",
       messageSeq: 0,
-      pendingProposalIds: [],
-      reviewTotalCandidates: 0,
-      reviewProcessedCandidates: 0,
       memorySummary: "",
       memoryFacts: createEmptyMemoryFacts(),
       createdBy: operatorId || "system",
@@ -1904,7 +1835,7 @@
     appendChatMessage(session, {
       role: "SYSTEM",
       type: "TEXT",
-      text: "New strategy session created. You can discuss goals and request a strategy proposal."
+      text: "New strategy session created. You can discuss goals with the assistant."
     });
     ensureSessionMemoryState(session);
     // db.save(); // Removed persistence
@@ -2023,21 +1954,6 @@
       autoCreate: true,
       operatorId
     });
-    const unresolved = resolvePendingProposals({ merchantId, session });
-    if (unresolved.length > 0) {
-      return {
-        status: "REVIEW_REQUIRED",
-        message: "Pending strategy proposals require review (approve/reject) before continuing.",
-        assistantMessage:
-          "Pending strategy proposals require review (approve/reject) before continuing.",
-        ...buildStrategyChatDeltaResponse({
-          merchantId,
-          session,
-          deltaFrom: Array.isArray(session.messages) ? session.messages.length : 0
-        })
-      };
-    }
-
     const baselineMessageCount = Array.isArray(session.messages) ? session.messages.length : 0;
     const buildChatResponse = () =>
       buildStrategyChatDeltaResponse({
@@ -2057,7 +1973,7 @@
     });
 
     if (!strategyChatService || typeof strategyChatService.streamStrategyChatTurn !== "function") {
-      const assistantMessage = "Agent æœªå¯ç”¨ï¼Œå½“å‰ä»…æ”¯æŒéž Agent çš„è¿è¥èƒ½åŠ›ã€‚";
+      const assistantMessage = "Agent is unavailable. Chat mode is still available.";
       appendChatMessage(session, {
         role: "ASSISTANT",
         type: "TEXT",
@@ -2235,105 +2151,9 @@
       };
     }
 
-    const proposalCandidates = Array.isArray(aiTurn && aiTurn.proposals)
-      ? aiTurn.proposals
-      : aiTurn && aiTurn.proposal
-        ? [aiTurn.proposal]
-        : [];
-    if (aiTurn.status === "PROPOSAL_READY" && proposalCandidates.length > 0) {
-      const pendingCreated = [];
-      const blockedReasons = [];
-      for (const candidate of proposalCandidates.slice(0, MAX_TOTAL_PROPOSAL_CANDIDATES)) {
-        const createdProposal = createProposalFromAiCandidate({
-          merchantId,
-          aiResult: candidate,
-          operatorId,
-          intent: text,
-          source: "CHAT_SESSION",
-          sourceSessionId: session.sessionId
-        });
-        if (createdProposal.status === "PENDING") {
-          pendingCreated.push(createdProposal);
-        } else if (Array.isArray(createdProposal.reasons) && createdProposal.reasons.length > 0) {
-          blockedReasons.push(...createdProposal.reasons);
-        }
-      }
-
-      if (pendingCreated.length === 0) {
-        const blockedReasonText = blockedReasons.join("; ");
-        const assistantMessage = blockedReasonText
-          ? `I drafted strategies but they are blocked by guardrails: ${blockedReasonText}`
-          : "I drafted strategies but they are blocked by risk guardrails.";
-        appendChatMessage(session, {
-          role: "ASSISTANT",
-          type: "TEXT",
-          text: assistantMessage
-        });
-        // db.save();
-        return {
-          status: "BLOCKED",
-          reasons: blockedReasons,
-          assistantMessage,
-          proposalCandidates: proposalCandidates
-            .map((candidate) => summarizeCandidateFromAiResult(candidate))
-            .filter(Boolean),
-          ...buildBaseProtocolResponse({
-            aiProtocol: aiTurn.protocol || null,
-          }),
-          ...buildChatResponse()
-        };
-      }
-
-      const rankedPendingCreated = await autoEvaluateProposalsForReview({
-        merchantId,
-        operatorId,
-        pendingCreated
-      });
-
-      session.pendingProposalIds = rankedPendingCreated.map((item) => item.proposal.id);
-      session.pendingProposalId = session.pendingProposalIds[0] || null;
-      session.reviewTotalCandidates = rankedPendingCreated.length;
-      session.reviewProcessedCandidates = 0;
-
-      const proposalSummaries = rankedPendingCreated.map((item) =>
-        summarizeProposalForReview(item.proposal)
-      ).filter(Boolean);
-      const defaultMessage =
-        rankedPendingCreated.length > 1
-          ? `I drafted ${rankedPendingCreated.length} strategy proposals. I have ranked them by expected impact and risk.`
-          : "Strategy proposal drafted. Please review now.";
-      const assistantMessage = String(aiTurn.assistantMessage || defaultMessage);
-      const proposalCardMessageId = `msg_${Date.now()}_proposal_card`;
-      appendChatMessage(session, {
-        role: "ASSISTANT",
-        type: "TEXT",
-        text: assistantMessage,
-        messageId: assistantMessageId
-      });
-      appendChatMessage(session, {
-        role: "ASSISTANT",
-        type: "PROPOSAL_CARD",
-        text: "Strategy proposal card ready. Please review.",
-        messageId: proposalCardMessageId,
-        proposalId: session.pendingProposalId || null,
-        metadata: {
-          proposals: proposalSummaries
-        }
-      });
-      // db.save();
-      return {
-        status: "PENDING_REVIEW",
-        reasons: blockedReasons.length > 0 ? blockedReasons : undefined,
-        assistantMessage,
-        proposalCandidates: proposalSummaries,
-        ...buildBaseProtocolResponse({
-          aiProtocol: aiTurn.protocol || null,
-        }),
-        ...buildChatResponse()
-      };
-    }
-
-    const fallbackAssistantMessage = "I can continue helping with strategy details.";
+    const fallbackAssistantMessage = String(
+      (aiTurn && aiTurn.assistantMessage) || "I can continue helping with strategy details."
+    );
     appendChatMessage(session, {
       role: "ASSISTANT",
       type: "TEXT",
@@ -2350,145 +2170,16 @@
     };
   }
 
-  async function reviewStrategyChatProposal({
-    merchantId,
-    proposalId,
-    decision,
-    operatorId = "system"
-  }) {
-    const freshResult = await runWithFreshState("reviewStrategyChatProposal", {
-      merchantId,
-      proposalId,
-      decision,
-      operatorId
-    });
-    if (freshResult !== FRESH_NOT_USED) {
-      return freshResult;
-    }
-
-    const merchant = db.merchants[merchantId];
-    if (!merchant) {
-      throw new Error("merchant not found");
-    }
-    const normalizedDecision = String(decision || "").trim().toUpperCase();
-    if (!["APPROVE", "REJECT"].includes(normalizedDecision)) {
-      throw new Error("decision must be APPROVE or REJECT");
-    }
-
-    const session = resolveStrategyChatSession({
-      merchantId,
-      autoCreate: false,
-      operatorId
-    });
-    if (!session) {
-      throw new Error("strategy chat session not found");
-    }
-
-    const targetProposalId = String(proposalId || "").trim();
-    if (!targetProposalId) {
-      throw new Error("proposalId is required");
-    }
-    const pendingQueue = resolvePendingProposals({ merchantId, session });
-    const pendingProposalIds = pendingQueue.map((item) => item.id);
-    if (!pendingProposalIds.includes(targetProposalId)) {
-      throw new Error("proposal is not pending in current strategy session");
-    }
-
-    const proposal = db.proposals.find(
-      (item) => item.id === targetProposalId && item.merchantId === merchantId
-    );
-    if (!proposal) {
-      throw new Error("proposal not found");
-    }
-    if (proposal.status !== "PENDING") {
-      throw new Error("proposal already handled");
-    }
-    const baselineMessageCount = Array.isArray(session.messages) ? session.messages.length : 0;
-    const buildReviewResponse = () =>
-      buildStrategyChatDeltaResponse({
-        merchantId,
-        session,
-        deltaFrom: baselineMessageCount
-      });
-
-    if (normalizedDecision === "APPROVE") {
-      const confirm = await approveProposalPolicy({
-        merchantId,
-        proposalId: targetProposalId,
-        operatorId
-      });
-      session.pendingProposalIds = pendingProposalIds.filter((id) => id !== targetProposalId);
-      session.pendingProposalId = session.pendingProposalIds[0] || null;
-      session.reviewProcessedCandidates = Math.max(
-        0,
-        Math.floor(Number(session.reviewProcessedCandidates) || 0) + 1
-      );
-      appendChatMessage(session, {
-        role: "SYSTEM",
-        type: "PROPOSAL_REVIEW",
-        text: `Proposal approved. Ready for publish: ${proposal.title}`,
-        proposalId: targetProposalId
-      });
-      db.save();
-      return {
-        status: "APPROVED",
-        policyId: null,
-        draftId: confirm.draftId,
-        approvalId: confirm.approvalId,
-        publishReady: true,
-        ...buildReviewResponse()
-      };
-    }
-
-    proposal.status = "REJECTED";
-    proposal.rejectedBy = operatorId;
-    proposal.rejectedAt = new Date().toISOString();
-    if (proposal.strategyMeta && proposal.strategyMeta.templateId) {
-      setStrategyConfig(merchantId, proposal.strategyMeta.templateId, {
-        branchId: proposal.strategyMeta.branchId,
-        status: "REJECTED",
-        lastProposalId: proposal.id
-      });
-    }
-    proposal.policyWorkflow = {
-      ...(proposal.policyWorkflow || {}),
-      status: "REJECTED"
-    };
-    session.pendingProposalIds = pendingProposalIds.filter((id) => id !== targetProposalId);
-    session.pendingProposalId = session.pendingProposalIds[0] || null;
-    session.reviewProcessedCandidates = Math.max(
-      0,
-      Math.floor(Number(session.reviewProcessedCandidates) || 0) + 1
-    );
-    appendChatMessage(session, {
-      role: "SYSTEM",
-      type: "PROPOSAL_REVIEW",
-      text: `Proposal rejected: ${proposal.title}`,
-      proposalId: targetProposalId
-    });
-    db.save();
-    return {
-      status: "REJECTED",
-      ...buildReviewResponse()
-    };
-  }
-
   return {
     getDashboard,
-    publishProposalPolicy,
-    approveProposalPolicy,
-    publishApprovedProposalPolicy,
-    evaluateProposalPolicy,
     setKillSwitch,
     createStrategyChatSession,
     getStrategyChatSession,
     listStrategyChatMessages,
-    sendStrategyChatMessage,
-    reviewStrategyChatProposal
+    sendStrategyChatMessage
   };
 }
 
 module.exports = {
   createMerchantService
 };
-

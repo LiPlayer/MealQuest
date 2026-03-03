@@ -219,7 +219,7 @@ test("langgraph thread state and history are queryable after stream", async () =
     const runPayload = await runRes.json();
     assert.equal(runPayload.run_id, runId);
     assert.equal(String(runPayload.status), "success");
-    assert.equal(statePayload.values.pending_review, null);
+    assert.equal(statePayload.values.pending_review, undefined);
     assert.equal(statePayload.values.__interrupt__.length, 0);
   } finally {
     await app.stop();
@@ -335,7 +335,7 @@ test("langgraph run cancel endpoint and join stream return official metadata/eve
   }
 });
 
-test("langgraph command resume evaluate/approve works with interrupt state", async () => {
+test("langgraph resume command is rejected in chat-only mode", async () => {
   const app = createAppServer({
     jwtSecret: TEST_JWT_SECRET,
     strategyChatOptions: {
@@ -373,36 +373,7 @@ test("langgraph command resume evaluate/approve works with interrupt state", asy
     const threadId = String(createdThread && createdThread.thread_id ? createdThread.thread_id : "");
     assert.ok(threadId);
 
-    const proposalId = "proposal_test_001";
-    const thread = app.db.agentServer.threads[threadId];
-    assert.ok(thread);
-    thread.values = {
-      ...(thread.values || {}),
-      pending_review: {
-        proposal_id: proposalId,
-        title: "Generated strategy proposal",
-        summary: "Please review generated strategy.",
-        score: 0.82,
-        risk_count: 0,
-      },
-      evaluation_result: null,
-      publish_result: null,
-      review_progress: {
-        total: 1,
-        reviewed: 0,
-      },
-    };
-    thread.interrupts = {
-      review: {
-        type: "pending_review",
-        proposal_id: proposalId,
-        title: "Generated strategy proposal",
-        summary: "Please review generated strategy.",
-      },
-    };
-    app.db.save();
-
-    const evaluateRes = await fetch(`${baseUrl}/api/langgraph/threads/${threadId}/runs/stream`, {
+    const resumeRes = await fetch(`${baseUrl}/api/langgraph/threads/${threadId}/runs/stream`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -413,69 +384,22 @@ test("langgraph command resume evaluate/approve works with interrupt state", asy
         command: {
           resume: {
             action: "evaluate",
-            proposal_id: proposalId,
             user_id: "u_demo_001",
           },
         },
-        stream_mode: ["values"],
+        stream_mode: ["values", "messages-tuple"],
       }),
     });
-    assert.equal(evaluateRes.status, 200);
-    const evaluatePayload = await evaluateRes.text();
-    assert.match(evaluatePayload, /event: values/);
-    assert.match(evaluatePayload, /evaluation_result/);
-    assert.match(evaluatePayload, /"status":"interrupted"/);
-
-    const approveRes = await fetch(`${baseUrl}/api/langgraph/threads/${threadId}/runs/stream`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        assistant_id: "merchant-agent",
-        command: {
-          resume: {
-            action: "approve",
-            proposal_id: proposalId,
-            user_id: "u_demo_001",
-          },
-        },
-        stream_mode: ["values"],
-      }),
-    });
-    assert.equal(approveRes.status, 200);
-    const approvePayload = await approveRes.text();
-    assert.match(approvePayload, /event: values/);
-    assert.match(approvePayload, /publish_result/);
-    assert.match(approvePayload, /"status":"success"/);
-
-    const stateAfterApproveRes = await fetch(`${baseUrl}/api/langgraph/threads/${threadId}/state`, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-    assert.equal(stateAfterApproveRes.status, 200);
-    const stateAfterApprove = await stateAfterApproveRes.json();
-    assert.equal(stateAfterApprove.values.pending_review, null);
-    assert.ok(stateAfterApprove.values.publish_result);
-    assert.ok(Array.isArray(stateAfterApprove.values.__interrupt__));
-    assert.equal(stateAfterApprove.values.__interrupt__.length, 0);
-    assert.ok(Array.isArray(stateAfterApprove.values.messages));
-    assert.ok(
-      stateAfterApprove.values.messages.some(
-        (item: { content?: string }) =>
-          typeof item.content === "string" &&
-          item.content.includes("Proposal approved and published."),
-      ),
-    );
+    assert.equal(resumeRes.status, 200);
+    const resumePayload = await resumeRes.text();
+    assert.match(resumePayload, /event: error/);
+    assert.match(resumePayload, /chat-only mode/i);
   } finally {
     await app.stop();
   }
 });
 
-test("legacy strategy proposal APIs are deprecated with 404", async () => {
+test("legacy strategy proposal APIs return 404", async () => {
   const app = createAppServer({
     jwtSecret: TEST_JWT_SECRET,
   });
@@ -510,7 +434,7 @@ test("legacy strategy proposal APIs are deprecated with 404", async () => {
       );
       assert.equal(res.status, 404);
       const payload = await res.json();
-      assert.match(String(payload.error || ""), /deprecated endpoint/i);
+      assert.match(String(payload.error || ""), /not found/i);
     }
   } finally {
     await app.stop();

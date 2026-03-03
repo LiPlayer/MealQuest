@@ -347,7 +347,6 @@ function buildMerchantSnapshotSummary(db, merchantId) {
       item.resource_scope.merchant_id === merchantId &&
       item.status === "PUBLISHED"
   );
-  const proposals = (db.proposals || []).filter((item) => item.merchantId === merchantId);
   const strategyConfigs =
     (db.strategyConfigs &&
       db.strategyConfigs[merchantId] &&
@@ -398,7 +397,6 @@ function buildMerchantSnapshotSummary(db, merchantId) {
     paymentsCount: Object.keys(payments).length,
     invoicesCount: Object.keys(invoices).length,
     activePoliciesCount: activePolicies.length,
-    proposalsCount: proposals.length,
     strategyConfigCount: strategyConfigs.length,
     strategyChatSessionsCount,
     strategyChatMessageCount,
@@ -959,11 +957,6 @@ function copyMerchantSlice({ sourceDb, targetDb, merchantId }) {
     (sourceDb.invoicesByMerchant && sourceDb.invoicesByMerchant[merchantId]) || {}
   );
 
-  targetDb.proposals = upsertMerchantRows(
-    targetDb.proposals,
-    merchantId,
-    jsonClone((sourceDb.proposals || []).filter((item) => item.merchantId === merchantId))
-  );
   if (!targetDb.strategyConfigs || typeof targetDb.strategyConfigs !== "object") {
     targetDb.strategyConfigs = {};
   }
