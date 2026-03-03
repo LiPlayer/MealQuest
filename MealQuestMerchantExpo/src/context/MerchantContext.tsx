@@ -1,0 +1,1268 @@
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useStream } from '@langchain/langgraph-sdk/react';
+import type { StreamMode } from '@langchain/langgraph-sdk';
+import { createInitialMerchantState, MerchantState } from '../domain/merchantEngine';
+import {
+  completeMerchantOnboard,
+  getMerchantStores,
+  getApiBaseUrl,
+  loginMerchantByPhone,
+  requestMerchantPhoneCode,
+} from '../services/apiClient';
+import {
+  clearMerchantAuthSession,
+  loadMerchantAuthSession,
+  saveMerchantAuthSession,
+} from '../services/authSessionStorage';
+
+export type MessageStatus = 'sending' | 'sent' | 'failed';
+export type ChatSendPhase = 'idle' | 'submitting' | 'failed';
+
+export type PendingOutgoingMessage = {
+  messageId: string;
+  text: string;
+  deliveryStatus: MessageStatus;
+  createdAt: string;
+};
+
+export type StrategyChatMessage = {
+  messageId: string;
+  role: 'USER' | 'ASSISTANT';
+  type?: 'TEXT' | 'PROPOSAL_CARD';
+  text: string;
+  proposalId?: string | null;
+  isStreaming?: boolean;
+};
+
+export type StrategyChatMessageWithStatus = StrategyChatMessage & {
+  deliveryStatus?: MessageStatus;
+};
+
+export type StrategyChatPendingReview = {
+  proposalId: string;
+  title: string;
+  templateId?: string;
+  branchId?: string;
+  evaluation?: {
+    evaluatedAt?: string;
+    evaluateError?: string;
+    recommended?: boolean;
+    rank?: number;
+    score: number;
+    expectedRevenue: number;
+    estimatedCost: number;
+    riskCount: number;
+    rejectedCount: number;
+    selectedCount?: number;
+  };
+};
+
+export type StrategyChatReviewProgress = {
+  totalCandidates: number;
+  reviewedCandidates: number;
+};
+
+export type PolicyDecisionResult = {
+  mode: string;
+  selected: Array<Record<string, unknown>>;
+  rejected: Array<Record<string, unknown>>;
+};
+
+export type AgentProgressEvent = {
+  phase: string;
+  status: string;
+  tokenCount: number;
+  elapsedMs: number;
+  at: string;
+  resultStatus?: string;
+  error?: string;
+};
+
+export type RealtimeEventRow = {
+  id: string;
+  label: string;
+  summary: string;
+  detail: string;
+  severity: 'info' | 'warn' | 'error';
+  isAnomaly: boolean;
+};
+
+export type AuditLogRow = {
+  id: string;
+  title: string;
+  summary: string;
+  detail: string;
+  severity: 'info' | 'warn' | 'error';
+};
+
+export type AllianceConfig = {
+  clusterId: string;
+  walletShared: boolean;
+};
+
+export type MerchantAuthSession = {
+  token: string;
+  merchantId: string;
+  role: string;
+  phone: string;
+};
+
+export type PendingOnboardingSession = {
+  phone: string;
+  onboardingToken: string;
+};
+
+export type AuditActionFilter =
+  | 'ALL'
+  | 'PAYMENT_VERIFY'
+  | 'PAYMENT_REFUND'
+  | 'STRATEGY_CHAT_SESSION_CREATE'
+  | 'STRATEGY_CHAT_MESSAGE'
+  | 'STRATEGY_CHAT_REVIEW'
+  | 'STRATEGY_CHAT_EVALUATE'
+  | 'STRATEGY_CHAT_PUBLISH'
+  | 'POLICY_DRAFT_CREATE'
+  | 'POLICY_DRAFT_SUBMIT'
+  | 'POLICY_DRAFT_APPROVE'
+  | 'POLICY_PUBLISH'
+  | 'POLICY_EVALUATE'
+  | 'POLICY_EXECUTE'
+  | 'SUPPLIER_VERIFY'
+  | 'ALLIANCE_CONFIG_SET'
+  | 'ALLIANCE_SYNC_USER'
+  | 'KILL_SWITCH_SET';
+
+export type AuditStatusFilter = 'ALL' | 'SUCCESS' | 'DENIED' | 'BLOCKED' | 'FAILED';
+export type AuditTimeRange = '24H' | '7D' | 'ALL';
+
+interface MerchantContextType {
+  authSession: MerchantAuthSession | null;
+  isAuthenticated: boolean;
+  authHydrating: boolean;
+  authSubmitting: boolean;
+  authError: string;
+  pendingOnboardingSession: PendingOnboardingSession | null;
+  requestLoginCode: (phone: string) => Promise<void>;
+  loginWithPhone: (params: { phone: string; code: string }) => Promise<void>;
+  completeOnboarding: (params: { name: string }) => Promise<void>;
+  clearPendingOnboardingSession: () => void;
+  logout: () => void;
+  merchantState: MerchantState;
+  lastAction: string;
+  setLastAction: (action: string) => void;
+  realtimeEvents: RealtimeEventRow[];
+  visibleRealtimeEvents: RealtimeEventRow[];
+  expandedEventId: string | null;
+  setExpandedEventId: (id: string | null) => void;
+  showOnlyAnomaly: boolean;
+  setShowOnlyAnomaly: (val: boolean) => void;
+  auditLogs: AuditLogRow[];
+  expandedAuditId: string | null;
+  setExpandedAuditId: (id: string | null) => void;
+  auditCursor: string | null;
+  auditHasMore: boolean;
+  auditLoading: boolean;
+  auditActionFilter: AuditActionFilter;
+  setAuditActionFilter: (val: AuditActionFilter) => void;
+  auditStatusFilter: AuditStatusFilter;
+  setAuditStatusFilter: (val: AuditStatusFilter) => void;
+  auditTimeRange: AuditTimeRange;
+  setAuditTimeRange: (val: AuditTimeRange) => void;
+  allianceConfig: AllianceConfig | null;
+  allianceStores: { merchantId: string; name: string }[];
+  customerUserId: string;
+  setCustomerUserId: (val: string) => void;
+  qrStoreId: string;
+  setQrStoreId: (val: string) => void;
+  qrScene: string;
+  setQrScene: (val: string) => void;
+  qrPayload: string;
+  aiIntentDraft: string;
+  setAiIntentDraft: (val: string) => void;
+  aiIntentSubmitting: boolean;
+  chatSendPhase: ChatSendPhase;
+  chatSendError: string;
+  pendingOutgoingMessages: PendingOutgoingMessage[];
+  strategyChatMessages: StrategyChatMessageWithStatus[];
+  strategyChatPendingReview: StrategyChatPendingReview | null;
+  strategyChatEvaluation: PolicyDecisionResult | null;
+  strategyChatEvaluationReady: boolean;
+  agentProgressEvents: AgentProgressEvent[];
+  activeAgentProgress: AgentProgressEvent | null;
+  pendingReviewCount: number;
+  totalReviewCount: number;
+  currentReviewIndex: number;
+  contractStatus: 'LOADING' | 'NOT_SUBMITTED' | 'SUBMITTED';
+  setContractStatus: (val: 'LOADING' | 'NOT_SUBMITTED' | 'SUBMITTED') => void;
+  wsConnected: boolean;
+  onCopyEventDetail: (detail: string) => Promise<void>;
+  onTriggerProactiveScan: () => Promise<void>;
+  onCreateIntentProposal: () => Promise<void>;
+  onRetryMessage: (messageId: string) => Promise<void>;
+  onEvaluatePendingStrategy: () => Promise<void>;
+  onReviewPendingStrategy: (decision: 'APPROVE' | 'REJECT') => Promise<void>;
+  onPublishApprovedProposal: (proposalId: string) => Promise<void>;
+  onToggleAllianceWalletShared: () => Promise<void>;
+  onSyncAllianceUser: () => Promise<void>;
+  onToggleKillSwitch: () => Promise<void>;
+  onGenerateMerchantQr: () => void;
+  refreshAuditLogs: (_?: { append?: boolean; cursor?: string | null; forceReset?: boolean }) => Promise<void>;
+  refreshRemoteState: (_?: { force?: boolean }) => Promise<void>;
+}
+
+const MerchantContext = createContext<MerchantContextType | undefined>(undefined);
+
+const OFFICIAL_ASSISTANT_ID = 'merchant-agent';
+
+function readMessageText(content: unknown): string {
+  if (typeof content === 'string') {
+    return content;
+  }
+  if (!Array.isArray(content)) {
+    if (!content || typeof content !== 'object') {
+      return '';
+    }
+    const record = content as Record<string, unknown>;
+    if (typeof record.text === 'string') {
+      return record.text;
+    }
+    if (typeof record.content === 'string') {
+      return record.content;
+    }
+    if (typeof record.delta === 'string') {
+      return record.delta;
+    }
+    if (typeof record.output_text === 'string') {
+      return record.output_text;
+    }
+    return '';
+  }
+  return content
+    .map(part => {
+      if (typeof part === 'string') {
+        return part;
+      }
+      if (!part || typeof part !== 'object') {
+        return '';
+      }
+      const piece = part as Record<string, unknown>;
+      if (typeof piece.text === 'string') {
+        return piece.text;
+      }
+      if (typeof piece.content === 'string') {
+        return piece.content;
+      }
+      if (typeof piece.delta === 'string') {
+        return piece.delta;
+      }
+      if (typeof piece.output_text === 'string') {
+        return piece.output_text;
+      }
+      return '';
+    })
+    .join('');
+}
+
+function mapMessageRole(message: Record<string, unknown>): 'USER' | 'ASSISTANT' | null {
+  const rawType =
+    (typeof message.type === 'string' && message.type) ||
+    (typeof message.role === 'string' && message.role) ||
+    '';
+  const normalized = rawType.trim().toLowerCase();
+  if (normalized === 'human' || normalized === 'user') {
+    return 'USER';
+  }
+  if (normalized === 'ai' || normalized === 'assistant') {
+    return 'ASSISTANT';
+  }
+  return null;
+}
+
+function toStrategyMessages(
+  messages: unknown[],
+  isLoading: boolean,
+  pendingOutgoingMessages: PendingOutgoingMessage[],
+): StrategyChatMessageWithStatus[] {
+  const mapped = messages
+    .map((item, index) => {
+      if (!item || typeof item !== 'object') {
+        return null;
+      }
+      const message = item as Record<string, unknown>;
+      const role = mapMessageRole(message);
+      if (!role) {
+        return null;
+      }
+      return {
+        messageId:
+          (typeof message.id === 'string' && message.id) || `msg_${index}`,
+        role,
+        type: 'TEXT' as const,
+        text: readMessageText(message.content),
+        deliveryStatus: role === 'USER' ? ('sent' as const) : undefined,
+        isStreaming: false,
+      };
+    })
+    .filter(Boolean) as StrategyChatMessageWithStatus[];
+
+  if (isLoading) {
+    for (let idx = mapped.length - 1; idx >= 0; idx -= 1) {
+      if (mapped[idx].role === 'ASSISTANT') {
+        mapped[idx] = {
+          ...mapped[idx],
+          isStreaming: true,
+        };
+        break;
+      }
+    }
+  }
+
+  const echoedUserTexts = new Set(
+    mapped
+      .filter(item => item.role === 'USER')
+      .map(item => item.text.trim())
+      .filter(Boolean),
+  );
+  const pending = pendingOutgoingMessages.map(item => ({
+    messageId: item.messageId,
+    role: 'USER' as const,
+    type: 'TEXT' as const,
+    text: item.text,
+    deliveryStatus: item.deliveryStatus,
+    isStreaming: false,
+  }));
+  for (const pendingItem of pending) {
+    const normalized = pendingItem.text.trim();
+    const isEchoed = Boolean(normalized && echoedUserTexts.has(normalized));
+    if (isEchoed && pendingItem.deliveryStatus !== 'failed') {
+      continue;
+    }
+    mapped.push(pendingItem);
+  }
+
+  return mapped;
+}
+
+type StreamSubmitOptions = {
+  context?: Record<string, unknown>;
+  config?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  multitaskStrategy?: string;
+  streamMode?: StreamMode[];
+};
+
+function hasUseStreamRuntimeSupport() {
+  const hasReadableStream = typeof globalThis.ReadableStream === 'function';
+  const hasTextDecoder = typeof globalThis.TextDecoder === 'function';
+  return hasReadableStream && hasTextDecoder;
+}
+
+function parseSseEventFrame(frame: string): { eventName: string; payload: unknown } | null {
+  const normalized = frame.replace(/\r/g, '');
+  const lines = normalized.split('\n');
+  let eventName = 'message';
+  const dataLines: string[] = [];
+  for (const line of lines) {
+    if (line.startsWith('event:')) {
+      eventName = line.slice(6).trim() || 'message';
+      continue;
+    }
+    if (line.startsWith('data:')) {
+      dataLines.push(line.slice(5).trimStart());
+    }
+  }
+  if (!dataLines.length) {
+    return null;
+  }
+  const dataText = dataLines.join('\n');
+  try {
+    return {
+      eventName,
+      payload: JSON.parse(dataText),
+    };
+  } catch {
+    return {
+      eventName,
+      payload: dataText,
+    };
+  }
+}
+
+async function readResponseError(response: Response, fallback: string): Promise<string> {
+  const payload = await response.json().catch(() => null);
+  if (payload && typeof payload === 'object' && typeof (payload as Record<string, unknown>).error === 'string') {
+    return String((payload as Record<string, unknown>).error);
+  }
+  return fallback;
+}
+
+function createLocalMessageId() {
+  return `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function logMerchantStreamEvent(event: string, payload?: Record<string, unknown>) {
+  if (!__DEV__) {
+    return;
+  }
+  if (payload) {
+    console.log(`[merchant-stream] ${event}`, payload);
+    return;
+  }
+  console.log(`[merchant-stream] ${event}`);
+}
+
+function toProgress(data: unknown): AgentProgressEvent | null {
+  if (!data || typeof data !== 'object') {
+    return null;
+  }
+  const record = data as Record<string, unknown>;
+  return {
+    phase: typeof record.phase === 'string' ? record.phase : 'UNKNOWN',
+    status: typeof record.status === 'string' ? record.status : 'running',
+    tokenCount: Number(record.tokenCount) || 0,
+    elapsedMs: Number(record.elapsedMs) || 0,
+    at: typeof record.at === 'string' ? record.at : new Date().toISOString(),
+    resultStatus: typeof record.resultStatus === 'string' ? record.resultStatus : undefined,
+    error: typeof record.error === 'string' ? record.error : undefined,
+  };
+}
+
+export function MerchantProvider({ children }: { children: React.ReactNode }) {
+  const [authSession, setAuthSession] = useState<MerchantAuthSession | null>(null);
+  const [authHydrating, setAuthHydrating] = useState(true);
+  const [authSubmitting, setAuthSubmitting] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [pendingOnboardingSession, setPendingOnboardingSession] = useState<PendingOnboardingSession | null>(null);
+  const [merchantState, setMerchantState] = useState<MerchantState>(createInitialMerchantState);
+  const [lastAction, setLastAction] = useState('Please login before entering chat.');
+  const [realtimeEvents, setRealtimeEvents] = useState<RealtimeEventRow[]>([
+    {
+      id: 'evt_1',
+      label: 'System',
+      summary: 'Auth-gated mode active',
+      detail: '{"mode":"auth_gated"}',
+      severity: 'info',
+      isAnomaly: false,
+    },
+  ]);
+  const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
+  const [showOnlyAnomaly, setShowOnlyAnomaly] = useState(false);
+  const [auditLogs] = useState<AuditLogRow[]>([
+    {
+      id: 'audit_1',
+      title: 'System',
+      summary: 'Waiting for backend actions',
+      detail: 'Login then start chat to generate runtime records.',
+      severity: 'info',
+    },
+  ]);
+  const [expandedAuditId, setExpandedAuditId] = useState<string | null>(null);
+  const [auditActionFilter, setAuditActionFilter] = useState<AuditActionFilter>('ALL');
+  const [auditStatusFilter, setAuditStatusFilter] = useState<AuditStatusFilter>('ALL');
+  const [auditTimeRange, setAuditTimeRange] = useState<AuditTimeRange>('7D');
+  const [allianceConfig, setAllianceConfig] = useState<AllianceConfig | null>({
+    clusterId: 'demo-cluster',
+    walletShared: false,
+  });
+  const [allianceStores, setAllianceStores] = useState<{ merchantId: string; name: string }[]>([]);
+  const [customerUserId, setCustomerUserId] = useState('u_demo_001');
+  const [qrStoreId, setQrStoreId] = useState('');
+  const [qrScene, setQrScene] = useState('entry');
+  const [qrPayload, setQrPayload] = useState('');
+  const [aiIntentDraft, setAiIntentDraft] = useState('');
+  const [aiIntentSubmitting, setAiIntentSubmitting] = useState(false);
+  const [chatSendPhase, setChatSendPhase] = useState<ChatSendPhase>('idle');
+  const [chatSendError, setChatSendError] = useState('');
+  const [pendingOutgoingMessages, setPendingOutgoingMessages] = useState<PendingOutgoingMessage[]>([]);
+  const [strategyThreadId, setStrategyThreadId] = useState<string | null>(null);
+  const [strategyChatPendingReview, setStrategyChatPendingReview] = useState<StrategyChatPendingReview | null>(null);
+  const [strategyChatPendingReviews, setStrategyChatPendingReviews] = useState<StrategyChatPendingReview[]>([]);
+  const [strategyChatReviewProgress] = useState<StrategyChatReviewProgress | null>(null);
+  const [strategyChatEvaluation, setStrategyChatEvaluation] = useState<PolicyDecisionResult | null>(null);
+  const [agentProgressEvents, setAgentProgressEvents] = useState<AgentProgressEvent[]>([]);
+  const [contractStatus, setContractStatus] = useState<'LOADING' | 'NOT_SUBMITTED' | 'SUBMITTED'>('NOT_SUBMITTED');
+  const [fallbackMessages, setFallbackMessages] = useState<unknown[]>([]);
+  const [fallbackStreamLoading, setFallbackStreamLoading] = useState(false);
+  const fallbackAbortRef = useRef<AbortController | null>(null);
+  const officialStreamSupported = useMemo(() => hasUseStreamRuntimeSupport(), []);
+  const streamApiUrl = useMemo(() => `${getApiBaseUrl()}/api/langgraph`, []);
+  const streamHeaders = useMemo(
+    () => (authSession && authSession.token ? { Authorization: `Bearer ${authSession.token}` } : undefined),
+    [authSession?.token],
+  );
+  const handleStreamError = useCallback((error: unknown) => {
+    const message = error instanceof Error ? error.message : 'chat stream failed';
+    setChatSendPhase('failed');
+    setChatSendError(message);
+    setLastAction(`Chat failed: ${message}`);
+    logMerchantStreamEvent('onError', { message });
+  }, []);
+  const handleCustomStreamEvent = useCallback((data: unknown) => {
+    const progress = toProgress(data);
+    if (progress) {
+      setAgentProgressEvents(prev => [...prev.slice(-29), progress]);
+      logMerchantStreamEvent('custom_event', {
+        phase: progress.phase,
+        status: progress.status,
+        tokenCount: progress.tokenCount,
+      });
+    }
+  }, []);
+  const stream = useStream<{ messages: unknown[] }>({
+    assistantId: OFFICIAL_ASSISTANT_ID,
+    apiUrl: streamApiUrl,
+    threadId: strategyThreadId,
+    onThreadId: setStrategyThreadId,
+    defaultHeaders: streamHeaders,
+    fetchStateHistory: true,
+    onCustomEvent: handleCustomStreamEvent,
+    onError: handleStreamError,
+  });
+  const stopFallbackStream = useCallback(() => {
+    if (!fallbackAbortRef.current) {
+      return;
+    }
+    fallbackAbortRef.current.abort();
+    fallbackAbortRef.current = null;
+    setFallbackStreamLoading(false);
+  }, []);
+  const submitFallbackStream = useCallback(
+    async (input: Record<string, unknown>, options: StreamSubmitOptions = {}) => {
+      const abortController = new AbortController();
+      fallbackAbortRef.current = abortController;
+      setFallbackStreamLoading(true);
+      try {
+        let threadId = String(strategyThreadId || '').trim();
+        if (!threadId) {
+          const createThreadRes = await fetch(`${streamApiUrl}/threads`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(streamHeaders || {}),
+            },
+            body: JSON.stringify({
+              context: options.context || (authSession ? { merchantId: authSession.merchantId } : {}),
+              metadata: options.metadata || (authSession ? { merchantId: authSession.merchantId } : {}),
+            }),
+            signal: abortController.signal,
+          });
+          if (!createThreadRes.ok) {
+            throw new Error(await readResponseError(createThreadRes, `request failed (${createThreadRes.status})`));
+          }
+          const createdThread = await createThreadRes.json().catch(() => ({}));
+          threadId =
+            createdThread && typeof createdThread.thread_id === 'string'
+              ? String(createdThread.thread_id).trim()
+              : '';
+          if (!threadId) {
+            throw new Error('thread_id missing');
+          }
+          setStrategyThreadId(threadId);
+        }
+
+        const runRes = await fetch(`${streamApiUrl}/threads/${encodeURIComponent(threadId)}/runs/stream`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(streamHeaders || {}),
+          },
+          body: JSON.stringify({
+            assistant_id: OFFICIAL_ASSISTANT_ID,
+            input,
+            context: options.context || (authSession ? { merchantId: authSession.merchantId } : {}),
+            config:
+              options.config ||
+              (authSession
+                ? {
+                    configurable: {
+                      merchantId: authSession.merchantId,
+                    },
+                  }
+                : {}),
+            metadata:
+              options.metadata ||
+              (authSession
+                ? {
+                    merchantId: authSession.merchantId,
+                    source: 'merchant-app-expo',
+                  }
+                : {}),
+            multitask_strategy: options.multitaskStrategy || 'interrupt',
+            stream_mode:
+              Array.isArray(options.streamMode) && options.streamMode.length
+                ? options.streamMode
+                : ['messages-tuple', 'values', 'updates', 'custom'],
+          }),
+          signal: abortController.signal,
+        });
+        if (!runRes.ok) {
+          throw new Error(await readResponseError(runRes, `request failed (${runRes.status})`));
+        }
+
+        let buffer = '';
+        const dispatchFrame = (frame: string) => {
+          const parsed = parseSseEventFrame(frame);
+          if (!parsed) {
+            return;
+          }
+          const { eventName, payload } = parsed;
+          if (
+            eventName === 'values' &&
+            payload &&
+            typeof payload === 'object' &&
+            Array.isArray((payload as Record<string, unknown>).messages)
+          ) {
+            setFallbackMessages((payload as Record<string, unknown>).messages as unknown[]);
+            return;
+          }
+          if (eventName === 'custom') {
+            handleCustomStreamEvent(payload);
+            return;
+          }
+          if (eventName === 'error') {
+            const message =
+              payload && typeof payload === 'object' && typeof (payload as Record<string, unknown>).message === 'string'
+                ? String((payload as Record<string, unknown>).message)
+                : 'chat stream failed';
+            throw new Error(message);
+          }
+        };
+
+        const body = runRes.body as
+          | {
+              getReader?: () => {
+                read: () => Promise<{ value?: Uint8Array; done: boolean }>;
+              };
+            }
+          | null;
+        if (body && typeof body.getReader === 'function' && typeof globalThis.TextDecoder === 'function') {
+          const reader = body.getReader();
+          const decoder = new TextDecoder();
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) {
+              break;
+            }
+            if (!value) {
+              continue;
+            }
+            buffer += decoder.decode(value, { stream: true });
+            let boundary = buffer.indexOf('\n\n');
+            while (boundary >= 0) {
+              const frame = buffer.slice(0, boundary);
+              buffer = buffer.slice(boundary + 2);
+              dispatchFrame(frame);
+              boundary = buffer.indexOf('\n\n');
+            }
+          }
+          buffer += decoder.decode();
+          if (buffer.trim()) {
+            dispatchFrame(buffer);
+          }
+          return;
+        }
+
+        const textPayload = await runRes.text();
+        const frames = textPayload.split(/\r?\n\r?\n/);
+        for (const frame of frames) {
+          if (!frame.trim()) {
+            continue;
+          }
+          dispatchFrame(frame);
+        }
+      } finally {
+        if (fallbackAbortRef.current === abortController) {
+          fallbackAbortRef.current = null;
+        }
+        setFallbackStreamLoading(false);
+      }
+    },
+    [
+      authSession,
+      handleCustomStreamEvent,
+      strategyThreadId,
+      streamApiUrl,
+      streamHeaders,
+    ],
+  );
+  const streamMessages = useMemo(
+    () => (officialStreamSupported ? (Array.isArray(stream.messages) ? stream.messages : []) : fallbackMessages),
+    [fallbackMessages, officialStreamSupported, stream.messages],
+  );
+  const streamIsLoading = officialStreamSupported ? stream.isLoading : fallbackStreamLoading;
+  const strategyChatMessages = useMemo(
+    () =>
+      toStrategyMessages(
+        streamMessages,
+        streamIsLoading,
+        pendingOutgoingMessages,
+      ),
+    [pendingOutgoingMessages, streamIsLoading, streamMessages],
+  );
+
+  const isAuthenticated = Boolean(authSession && authSession.token && authSession.merchantId);
+  const pendingReviewCount = strategyChatPendingReviews.length;
+  const totalReviewCount = Math.max(pendingReviewCount, Number(strategyChatReviewProgress?.totalCandidates || 0));
+  const reviewedReviewCount = Math.max(0, Number(strategyChatReviewProgress?.reviewedCandidates || 0));
+  const currentReviewIndex = pendingReviewCount > 0 ? Math.min(totalReviewCount, reviewedReviewCount + 1) : 0;
+  const strategyChatEvaluationReady = Boolean(strategyChatEvaluation);
+  const activeAgentProgress = agentProgressEvents.length > 0 ? agentProgressEvents[agentProgressEvents.length - 1] : null;
+  const resolvedAiIntentSubmitting = aiIntentSubmitting || streamIsLoading;
+  const visibleRealtimeEvents = useMemo(
+    () => (showOnlyAnomaly ? realtimeEvents.filter(item => item.isAnomaly) : realtimeEvents),
+    [realtimeEvents, showOnlyAnomaly],
+  );
+
+  const resetSessionScopedState = useCallback(() => {
+    stopFallbackStream();
+    setMerchantState(createInitialMerchantState());
+    setAllianceStores([]);
+    setQrStoreId('');
+    setAiIntentDraft('');
+    setStrategyThreadId(null);
+    setFallbackMessages([]);
+    setFallbackStreamLoading(false);
+    setAgentProgressEvents([]);
+    setChatSendPhase('idle');
+    setChatSendError('');
+    setPendingOutgoingMessages([]);
+    setStrategyChatPendingReview(null);
+    setStrategyChatPendingReviews([]);
+    setStrategyChatEvaluation(null);
+  }, [stopFallbackStream]);
+
+  const applyAuthenticatedSession = useCallback(
+    (session: MerchantAuthSession, merchantName: string, stores: { merchantId: string; name: string }[]) => {
+      stopFallbackStream();
+      setPendingOnboardingSession(null);
+      setAuthSession(session);
+      setMerchantState(prev => ({
+        ...prev,
+        merchantId: session.merchantId,
+        merchantName: merchantName || session.merchantId,
+      }));
+      setAllianceStores(stores.length > 0 ? stores : [{ merchantId: session.merchantId, name: merchantName }]);
+      setQrStoreId(session.merchantId);
+      setAiIntentDraft('');
+      setStrategyThreadId(null);
+      setFallbackMessages([]);
+      setFallbackStreamLoading(false);
+      setAgentProgressEvents([]);
+      setChatSendPhase('idle');
+      setChatSendError('');
+      setPendingOutgoingMessages([]);
+      setStrategyChatPendingReview(null);
+      setStrategyChatPendingReviews([]);
+      setStrategyChatEvaluation(null);
+    },
+    [stopFallbackStream],
+  );
+
+  useEffect(() => {
+    const streamUserTexts = new Set(
+      streamMessages
+        .map(item => (item && typeof item === 'object' ? (item as Record<string, unknown>) : null))
+        .filter((item): item is Record<string, unknown> => Boolean(item))
+        .filter(item => mapMessageRole(item) === 'USER')
+        .map(item => readMessageText(item.content).trim())
+        .filter(Boolean),
+    );
+    if (!streamUserTexts.size) {
+      return;
+    }
+    setPendingOutgoingMessages(prev => {
+      const next = prev.filter(item => {
+        if (item.deliveryStatus === 'failed') {
+          return true;
+        }
+        const normalized = item.text.trim();
+        if (!normalized) {
+          return true;
+        }
+        return !streamUserTexts.has(normalized);
+      });
+      return next.length === prev.length ? prev : next;
+    });
+  }, [streamMessages]);
+
+  useEffect(
+    () => () => {
+      stopFallbackStream();
+    },
+    [stopFallbackStream],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    const hydrateAuthSession = async () => {
+      try {
+        const persisted = await loadMerchantAuthSession();
+        if (!persisted || !persisted.token || !persisted.merchantId) {
+          return;
+        }
+        const storesResponse = await getMerchantStores({
+          merchantId: persisted.merchantId,
+          token: persisted.token,
+        });
+        if (cancelled) {
+          return;
+        }
+        const stores = Array.isArray(storesResponse?.stores)
+          ? storesResponse.stores
+              .map(item => ({
+                merchantId: String(item.merchantId || '').trim(),
+                name: String(item.name || item.merchantId || '').trim(),
+              }))
+              .filter(item => item.merchantId)
+          : [];
+        const merchantName =
+          stores.find(item => item.merchantId === persisted.merchantId)?.name ||
+          persisted.merchantName ||
+          persisted.merchantId;
+        applyAuthenticatedSession(
+          {
+            token: persisted.token,
+            merchantId: persisted.merchantId,
+            role: persisted.role,
+            phone: persisted.phone,
+          },
+          merchantName,
+          stores,
+        );
+        setLastAction(`Session restored for ${persisted.merchantId}`);
+      } catch (_error) {
+        await clearMerchantAuthSession().catch(() => undefined);
+        if (cancelled) {
+          return;
+        }
+        setAuthSession(null);
+        setPendingOnboardingSession(null);
+        resetSessionScopedState();
+        setLastAction('Session expired. Please login again.');
+      } finally {
+        if (!cancelled) {
+          setAuthHydrating(false);
+        }
+      }
+    };
+    void hydrateAuthSession();
+    return () => {
+      cancelled = true;
+    };
+  }, [applyAuthenticatedSession, resetSessionScopedState]);
+
+  const requestLoginCode = async (phone: string) => {
+    const normalized = String(phone || '').trim();
+    if (!normalized) {
+      throw new Error('phone is required');
+    }
+    setAuthSubmitting(true);
+    setAuthError('');
+    try {
+      await requestMerchantPhoneCode(normalized);
+      setLastAction('Verification code requested. Check server log output.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'request code failed';
+      setAuthError(message);
+      throw error;
+    } finally {
+      setAuthSubmitting(false);
+    }
+  };
+
+  const loginWithPhone = async (params: { phone: string; code: string }) => {
+    const phone = String(params.phone || '').trim();
+    const code = String(params.code || '').trim();
+    if (!phone || !code) {
+      throw new Error('phone and code are required');
+    }
+    setAuthSubmitting(true);
+    setAuthError('');
+    try {
+      const result = await loginMerchantByPhone({
+        phone,
+        code,
+      });
+      if (result.status === 'ONBOARD_REQUIRED') {
+        const onboardingToken = String(result.onboardingToken || '').trim();
+        if (!onboardingToken) {
+          throw new Error('onboarding token missing');
+        }
+        await clearMerchantAuthSession().catch(() => undefined);
+        setAuthSession(null);
+        resetSessionScopedState();
+        setPendingOnboardingSession({
+          phone: String(result.profile?.phone || phone),
+          onboardingToken,
+        });
+        setLastAction('Phone verified. Please complete store registration.');
+        return;
+      }
+      const resolvedMerchantId = String(result.profile?.merchantId || '').trim();
+      if (!result.token || !resolvedMerchantId) {
+        throw new Error('login response invalid');
+      }
+      const resolvedMerchantName = String(result.merchant?.name || '').trim();
+      const nextSession = {
+        token: result.token,
+        merchantId: resolvedMerchantId,
+        role: String(result.profile?.role || 'OWNER'),
+        phone: String(result.profile?.phone || phone),
+      };
+      applyAuthenticatedSession(nextSession, resolvedMerchantName || resolvedMerchantId, [
+        { merchantId: resolvedMerchantId, name: resolvedMerchantName || resolvedMerchantId },
+      ]);
+      await saveMerchantAuthSession({
+        ...nextSession,
+        merchantName: resolvedMerchantName || resolvedMerchantId,
+      }).catch(() => undefined);
+      setLastAction(`Logged in as ${resolvedMerchantId}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'login failed';
+      setAuthError(message);
+      throw error;
+    } finally {
+      setAuthSubmitting(false);
+    }
+  };
+
+  const completeOnboarding = async (params: { name: string }) => {
+    const merchantName = String(params.name || '').trim();
+    if (!merchantName) {
+      throw new Error('store name is required');
+    }
+    if (!pendingOnboardingSession || !pendingOnboardingSession.onboardingToken) {
+      throw new Error('onboarding session missing');
+    }
+    setAuthSubmitting(true);
+    setAuthError('');
+    try {
+      const result = await completeMerchantOnboard({
+        onboardingToken: pendingOnboardingSession.onboardingToken,
+        name: merchantName,
+      });
+      const resolvedMerchantId = String(result.profile?.merchantId || '').trim();
+      if (!result.token || !resolvedMerchantId) {
+        throw new Error('onboarding result invalid');
+      }
+      const resolvedMerchantName = String(result.merchant?.name || merchantName);
+      const nextSession = {
+        token: result.token,
+        merchantId: resolvedMerchantId,
+        role: String(result.profile?.role || 'OWNER'),
+        phone: String(result.profile?.phone || pendingOnboardingSession.phone),
+      };
+      applyAuthenticatedSession(nextSession, resolvedMerchantName, [
+        {
+          merchantId: resolvedMerchantId,
+          name: resolvedMerchantName,
+        },
+      ]);
+      await saveMerchantAuthSession({
+        ...nextSession,
+        merchantName: resolvedMerchantName,
+      }).catch(() => undefined);
+      setPendingOnboardingSession(null);
+      setLastAction(`Store ${resolvedMerchantId} created.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'onboarding failed';
+      setAuthError(message);
+      throw error;
+    } finally {
+      setAuthSubmitting(false);
+    }
+  };
+
+  const clearPendingOnboardingSession = () => {
+    setPendingOnboardingSession(null);
+  };
+
+  const logout = () => {
+    if (officialStreamSupported) {
+      void stream.stop();
+    } else {
+      stopFallbackStream();
+    }
+    void clearMerchantAuthSession().catch(() => undefined);
+    setAuthSession(null);
+    setPendingOnboardingSession(null);
+    resetSessionScopedState();
+    setLastAction('Logged out.');
+  };
+
+  const onCopyEventDetail = async (_detail: string) => {
+    setLastAction('Copy action triggered.');
+  };
+
+  const onTriggerProactiveScan = async () => {
+    setAgentProgressEvents([
+      {
+        phase: 'scan',
+        status: 'completed',
+        tokenCount: 0,
+        elapsedMs: 10,
+        at: new Date().toISOString(),
+      },
+    ]);
+    setLastAction('Proactive scan simulated.');
+  };
+
+  const onCreateIntentProposal = async () => {
+    const draft = String(aiIntentDraft || '').trim();
+    if (!draft) {
+      setChatSendPhase('failed');
+      setChatSendError('Please input your intent first.');
+      setLastAction('Please input your intent first.');
+      return;
+    }
+    if (!authSession) {
+      setChatSendPhase('failed');
+      setChatSendError('Please login first.');
+      setLastAction('Please login first.');
+      return;
+    }
+
+    const localMessageId = createLocalMessageId();
+    const createdAt = new Date().toISOString();
+    logMerchantStreamEvent('send_click', {
+      merchantId: authSession.merchantId,
+      textLength: draft.length,
+    });
+    setAiIntentDraft('');
+    setChatSendPhase('submitting');
+    setChatSendError('');
+    setPendingOutgoingMessages(prev => [
+      ...prev.slice(-49),
+      {
+        messageId: localMessageId,
+        text: draft,
+        deliveryStatus: 'sending',
+        createdAt,
+      },
+    ]);
+    setAiIntentSubmitting(true);
+    setStrategyChatPendingReview(null);
+    setStrategyChatPendingReviews([]);
+    setStrategyChatEvaluation(null);
+    setAgentProgressEvents([]);
+    try {
+      logMerchantStreamEvent('submit_start', {
+        merchantId: authSession.merchantId,
+      });
+      const inputPayload = {
+        messages: [
+          {
+            type: 'human',
+            content: draft,
+          },
+        ],
+      };
+      const streamModes: StreamMode[] = ['messages-tuple', 'values', 'updates', 'custom'];
+      const optionsPayload = {
+        context: {
+          merchantId: authSession.merchantId,
+        },
+        config: {
+          configurable: {
+            merchantId: authSession.merchantId,
+          },
+        },
+        metadata: {
+          merchantId: authSession.merchantId,
+          source: 'merchant-app',
+        },
+        multitaskStrategy: 'interrupt' as const,
+        streamMode: streamModes,
+      };
+      if (officialStreamSupported) {
+        await stream.submit(
+          inputPayload,
+          optionsPayload,
+        );
+      } else {
+        await submitFallbackStream(inputPayload, optionsPayload);
+      }
+      setPendingOutgoingMessages(prev =>
+        prev.map(item =>
+          item.messageId === localMessageId
+            ? {
+                ...item,
+                deliveryStatus: 'sent',
+              }
+            : item,
+        ),
+      );
+      setChatSendPhase('idle');
+      setChatSendError('');
+      setLastAction('Chat response received.');
+      logMerchantStreamEvent('submit_success', {
+        merchantId: authSession.merchantId,
+        transport: officialStreamSupported ? 'official_useStream' : 'fallback_sse',
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'chat stream failed';
+      setPendingOutgoingMessages(prev =>
+        prev.map(item =>
+          item.messageId === localMessageId
+            ? {
+                ...item,
+                deliveryStatus: 'failed',
+              }
+            : item,
+        ),
+      );
+      setChatSendPhase('failed');
+      setChatSendError(message);
+      setLastAction(`Chat failed: ${message}`);
+      logMerchantStreamEvent('submit_error', {
+        merchantId: authSession.merchantId,
+        message,
+      });
+    } finally {
+      setAiIntentSubmitting(false);
+    }
+  };
+
+  const onRetryMessage = async (messageId: string) => {
+    const target = strategyChatMessages.find(item => item.messageId === messageId && item.role === 'USER');
+    if (!target || !target.text) {
+      setLastAction('No retry target found.');
+      return;
+    }
+    setChatSendPhase('idle');
+    setChatSendError('');
+    setAiIntentDraft(target.text);
+    setLastAction('Retry message loaded into input box.');
+  };
+
+  const onEvaluatePendingStrategy = async () => {
+    setLastAction('No pending proposal in text-only mode.');
+  };
+
+  const onReviewPendingStrategy = async (_decision: 'APPROVE' | 'REJECT') => {
+    setLastAction('No pending proposal in text-only mode.');
+  };
+
+  const onPublishApprovedProposal = async (_proposalId: string) => {
+    setLastAction('Publish is disabled in text-only mode.');
+  };
+
+  const onToggleAllianceWalletShared = async () => {
+    setAllianceConfig(prev => (prev ? { ...prev, walletShared: !prev.walletShared } : prev));
+    setLastAction('Alliance wallet switch toggled locally.');
+  };
+
+  const onSyncAllianceUser = async () => {
+    setLastAction(`Alliance sync simulated for user ${customerUserId || '(empty)'}.`);
+  };
+
+  const onToggleKillSwitch = async () => {
+    setMerchantState(prev => ({ ...prev, killSwitchEnabled: !prev.killSwitchEnabled }));
+    setLastAction('Kill switch toggled locally.');
+  };
+
+  const onGenerateMerchantQr = () => {
+    const storeId = String(qrStoreId || merchantState.merchantId || '').trim();
+    if (!storeId) {
+      setLastAction('Store ID is required to generate QR.');
+      return;
+    }
+    const scene = String(qrScene || 'entry').trim();
+    const payload = `mealquest://merchant/pay?storeId=${encodeURIComponent(storeId)}&scene=${encodeURIComponent(scene)}`;
+    setQrPayload(payload);
+    setLastAction('Merchant QR generated locally.');
+  };
+
+  const refreshAuditLogs = async () => {
+    setLastAction('Audit refresh simulated.');
+  };
+
+  const refreshRemoteState = async () => {
+    setLastAction('Remote state refresh not implemented in this build.');
+  };
+
+  const contextValue: MerchantContextType = {
+    authSession,
+    isAuthenticated,
+    authHydrating,
+    authSubmitting,
+    authError,
+    pendingOnboardingSession,
+    requestLoginCode,
+    loginWithPhone,
+    completeOnboarding,
+    clearPendingOnboardingSession,
+    logout,
+    merchantState,
+    lastAction,
+    setLastAction,
+    realtimeEvents,
+    visibleRealtimeEvents,
+    expandedEventId,
+    setExpandedEventId,
+    showOnlyAnomaly,
+    setShowOnlyAnomaly,
+    auditLogs,
+    expandedAuditId,
+    setExpandedAuditId,
+    auditCursor: null,
+    auditHasMore: false,
+    auditLoading: false,
+    auditActionFilter,
+    setAuditActionFilter,
+    auditStatusFilter,
+    setAuditStatusFilter,
+    auditTimeRange,
+    setAuditTimeRange,
+    allianceConfig,
+    allianceStores,
+    customerUserId,
+    setCustomerUserId,
+    qrStoreId,
+    setQrStoreId,
+    qrScene,
+    setQrScene,
+    qrPayload,
+    aiIntentDraft,
+    setAiIntentDraft,
+    aiIntentSubmitting: resolvedAiIntentSubmitting,
+    chatSendPhase,
+    chatSendError,
+    pendingOutgoingMessages,
+    strategyChatMessages,
+    strategyChatPendingReview,
+    strategyChatEvaluation,
+    strategyChatEvaluationReady,
+    agentProgressEvents,
+    activeAgentProgress,
+    pendingReviewCount,
+    totalReviewCount,
+    currentReviewIndex,
+    contractStatus,
+    setContractStatus,
+    wsConnected: false,
+    onCopyEventDetail,
+    onTriggerProactiveScan,
+    onCreateIntentProposal,
+    onRetryMessage,
+    onEvaluatePendingStrategy,
+    onReviewPendingStrategy,
+    onPublishApprovedProposal,
+    onToggleAllianceWalletShared,
+    onSyncAllianceUser,
+    onToggleKillSwitch,
+    onGenerateMerchantQr,
+    refreshAuditLogs,
+    refreshRemoteState,
+  };
+
+  return <MerchantContext.Provider value={contextValue}>{children}</MerchantContext.Provider>;
+}
+
+export function useMerchant() {
+  const context = useContext(MerchantContext);
+  if (!context) {
+    throw new Error('useMerchant must be used within MerchantProvider');
+  }
+  return context;
+}

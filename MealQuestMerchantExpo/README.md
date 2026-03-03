@@ -1,0 +1,36 @@
+# MealQuestMerchantExpo
+
+Parallel Expo migration app for merchant cockpit.
+
+## Setup
+
+1. Copy env file and set backend URL:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+2. Install deps:
+
+```powershell
+npm install
+```
+
+## Run (Android dev client)
+
+```powershell
+npm run dev:client:android
+```
+
+## Run (iOS dev client)
+
+```powershell
+npm run dev:client:ios
+```
+
+## Lint / Typecheck
+
+```powershell
+npm run lint
+npm run typecheck
+```

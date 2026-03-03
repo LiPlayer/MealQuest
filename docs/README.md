@@ -9,6 +9,7 @@ Use this folder as the single documentation entry point.
 - `docs/specs/customer-spec.md`
 - `docs/specs/game-spec.md`
 - `docs/engineering/engineering-standards.md`
+- `docs/engineering/MERCHANT_EXPO_MIGRATION.md`
 - `docs/ops/operations-runbook.md`
 - `docs/qa/test-validation.md`
 

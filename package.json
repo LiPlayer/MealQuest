@@ -4,14 +4,24 @@
   "version": "1.0.0",
   "description": "MealQuest monorepo engineering entrypoint",
   "scripts": {
-    "bootstrap": "node scripts/repo-task.js bootstrap",
-    "lint": "node scripts/repo-task.js lint",
-    "typecheck": "node scripts/repo-task.js typecheck",
-    "test": "node scripts/repo-task.js test",
+    "repo:bootstrap": "node scripts/repo-task.js bootstrap",
+    "repo:lint": "node scripts/repo-task.js lint",
+    "repo:typecheck": "node scripts/repo-task.js typecheck",
+    "repo:test": "node scripts/repo-task.js test",
+    "repo:verify": "npm run check:encoding && node scripts/repo-task.js verify",
+    "repo:verify:ci": "npm run check:encoding && node scripts/repo-task.js ci",
+    "bootstrap": "npm run repo:bootstrap",
+    "lint": "npm run repo:lint",
+    "typecheck": "npm run repo:typecheck",
+    "test": "npm run repo:test",
+    "verify": "npm run repo:verify",
+    "verify:ci": "npm run repo:verify:ci",
+    "app:merchant:rn:android": "powershell -ExecutionPolicy Bypass -File scripts/start-merchant-app.ps1 -Platform android",
+    "app:merchant:rn:ios": "powershell -ExecutionPolicy Bypass -File scripts/start-merchant-app.ps1 -Platform ios",
+    "app:merchant:expo:android": "powershell -ExecutionPolicy Bypass -File scripts/start-merchant-expo-app.ps1 -Platform android",
+    "app:merchant:expo:ios": "powershell -ExecutionPolicy Bypass -File scripts/start-merchant-expo-app.ps1 -Platform ios",
     "check:encoding": "node scripts/check-encoding.js",
     "check:encoding:staged": "node scripts/check-encoding.js --staged",
-    "hooks:install": "git config core.hooksPath .githooks",
-    "verify": "npm run check:encoding && node scripts/repo-task.js verify",
-    "verify:ci": "npm run check:encoding && node scripts/repo-task.js ci"
+    "hooks:install": "git config core.hooksPath .githooks"
   }
 }

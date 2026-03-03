@@ -3,6 +3,7 @@
 MealQuest contains three applications in one repository:
 - `MealQuestServer` (Node.js API/backend)
 - `MealQuestMerchant` (React Native merchant app)
+- `MealQuestMerchantExpo` (Expo merchant app migration track)
 - `meal-quest-customer` (Taro customer app)
 
 ## Quick Start
@@ -20,8 +21,17 @@ Key commands:
 - `npm run check:encoding:staged`
 - `npm run verify:ci`
 
+Merchant app launch commands:
+- `npm run app:merchant:rn:android`
+- `npm run app:merchant:rn:ios`
+- `npm run app:merchant:expo:android`
+- `npm run app:merchant:expo:ios`
+
 Optional (recommended once per clone):
 - `npm run hooks:install` to enable `.githooks/pre-commit`.
+
+Script catalog:
+- `scripts/README.md`
 
 ## Docs
 All project documentation is under `docs/`:

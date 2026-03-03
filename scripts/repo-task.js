@@ -27,6 +27,15 @@ const projects = {
       test: ["test", "--", "--runInBand"],
     },
   },
+  merchantExpo: {
+    name: "MealQuestMerchantExpo",
+    cwd: path.join(repoRoot, "MealQuestMerchantExpo"),
+    commands: {
+      bootstrap: ["install"],
+      lint: ["run", "lint"],
+      typecheck: ["run", "typecheck"],
+    },
+  },
   customer: {
     name: "meal-quest-customer",
     cwd: path.join(repoRoot, "meal-quest-customer"),

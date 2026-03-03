@@ -1,0 +1,48 @@
+{
+  "name": "MealQuestMerchantExpo",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.ts",
+  "scripts": {
+    "app:start": "expo start",
+    "app:android": "expo run:android",
+    "app:ios": "expo run:ios",
+    "dev:client:android": "expo start --dev-client --android",
+    "dev:client:ios": "expo start --dev-client --ios",
+    "start": "npm run app:start",
+    "android": "npm run app:android",
+    "ios": "npm run app:ios",
+    "dev:android": "npm run dev:client:android",
+    "dev:ios": "npm run dev:client:ios",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@langchain/core": "^1.1.29",
+    "@langchain/langgraph-sdk": "^1.6.5",
+    "@react-native-async-storage/async-storage": "^2.2.0",
+    "@react-navigation/bottom-tabs": "^7.15.2",
+    "@react-navigation/native": "^7.1.31",
+    "expo": "~53.0.0",
+    "expo-dev-client": "~5.0.0",
+    "lucide-react-native": "^0.575.0",
+    "nativewind": "^4.2.1",
+    "react": "19.0.0",
+    "react-native": "0.79.5",
+    "react-native-safe-area-context": "^5.7.0",
+    "react-native-screens": "^4.24.0",
+    "react-native-svg": "^15.15.3",
+    "react-native-qrcode-svg": "^6.3.21",
+    "tailwindcss": "^3.4.19"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@types/react": "^19.2.0",
+    "eslint": "^8.57.1",
+    "eslint-config-expo": "~9.0.0",
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=22.11.0"
+  }
+}
