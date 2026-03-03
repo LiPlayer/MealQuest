@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { useMerchant } from '../context/MerchantContext';
 import { SectionCard } from '../components/SectionCard';
-import { Shield, ShieldAlert } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function HomeScreen() {
@@ -16,7 +16,6 @@ export default function HomeScreen() {
         merchantState,
         onToggleKillSwitch,
         contractStatus,
-        onReviewPendingStrategy, // Actually not needed here but kept for context if needed
     } = useMerchant();
 
     const activePolicyCount = merchantState.activePolicies.filter(
@@ -38,7 +37,11 @@ export default function HomeScreen() {
                             <Text style={styles.appSubtitle}>聚合收银、策略确认、商业洞察一体化</Text>
                         </View>
                         <View style={[styles.statusBadge, merchantState.killSwitchEnabled ? styles.statusBadgeWarn : styles.statusBadgeSuccess]}>
-                            {merchantState.killSwitchEnabled ? <ShieldAlert size={14} color="#fef3c7" /> : <Shield size={14} color="#ccfbf1" />}
+                            {merchantState.killSwitchEnabled ? (
+                                <Ionicons name="warning-outline" size={14} color="#fef3c7" />
+                            ) : (
+                                <Ionicons name="shield-checkmark-outline" size={14} color="#ccfbf1" />
+                            )}
                             <Text style={styles.statusBadgeText}>
                                 {merchantState.killSwitchEnabled ? '熔断中' : '运行中'}
                             </Text>

@@ -8,7 +8,7 @@ const config: ExpoConfig = {
   version: '1.0.0',
   orientation: 'portrait',
   userInterfaceStyle: 'light',
-  plugins: ['expo-dev-client'],
+  plugins: ['expo-router', 'expo-dev-client'],
   android: {
     package: 'com.mealquestmerchant.expo',
   },

@@ -10,7 +10,7 @@ import {
 import QRCode from 'react-native-qrcode-svg';
 import { useMerchant } from '../context/MerchantContext';
 import { SectionCard } from '../components/SectionCard';
-import { Users, QrCode, Clipboard } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function OperationsScreen() {
@@ -61,7 +61,7 @@ export default function OperationsScreen() {
                     ) : (
                         <View style={styles.allianceView}>
                             <View style={styles.allianceHeader}>
-                                <Users size={18} color="#2563eb" />
+                                <Ionicons name="people-outline" size={18} color="#2563eb" />
                                 <Text style={styles.allianceTitle}>集群：{allianceConfig.clusterId || '未命名'}</Text>
                             </View>
 
@@ -109,7 +109,7 @@ export default function OperationsScreen() {
 
                 <SectionCard title="商户付款码">
                     <View style={styles.qrHeader}>
-                        <QrCode size={18} color="#64748b" />
+                        <Ionicons name="qr-code-outline" size={18} color="#64748b" />
                         <Text style={styles.qrSubtitle}>生成专属聚合支付二维码，支持微信/支付宝扫码即付。</Text>
                     </View>
 
@@ -140,7 +140,7 @@ export default function OperationsScreen() {
                                 testID="merchant-qr-copy"
                                 style={styles.secondaryButton}
                                 onPress={() => onCopyEventDetail(qrPayload)}>
-                                <Clipboard size={16} color="#334155" />
+                                <Ionicons name="copy-outline" size={16} color="#334155" />
                                 <Text style={styles.secondaryButtonText}>复制链接</Text>
                             </Pressable>
                         ) : null}

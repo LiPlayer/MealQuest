@@ -430,6 +430,82 @@ function toReviewProgress(data: unknown): StrategyChatReviewProgress | null {
   };
 }
 
+function isPendingReviewEqual(
+  left: StrategyChatPendingReview | null,
+  right: StrategyChatPendingReview | null,
+): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (!left || !right) {
+    return false;
+  }
+  return (
+    left.proposalId === right.proposalId &&
+    left.title === right.title &&
+    Number(left.evaluation?.score || 0) === Number(right.evaluation?.score || 0) &&
+    Number(left.evaluation?.riskCount || 0) === Number(right.evaluation?.riskCount || 0)
+  );
+}
+
+function isPendingReviewListEqual(
+  left: StrategyChatPendingReview[],
+  right: StrategyChatPendingReview[],
+): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (left.length !== right.length) {
+    return false;
+  }
+  if (left.length === 0) {
+    return true;
+  }
+  return left[0].proposalId === right[0].proposalId;
+}
+
+function readDecisionId(input: PolicyDecisionResult | null): string {
+  if (!input) {
+    return '';
+  }
+  const record = input as unknown as Record<string, unknown>;
+  return typeof record.decision_id === 'string' ? record.decision_id : '';
+}
+
+function isPolicyDecisionEqual(
+  left: PolicyDecisionResult | null,
+  right: PolicyDecisionResult | null,
+): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (!left || !right) {
+    return false;
+  }
+  return (
+    left.mode === right.mode &&
+    left.selected.length === right.selected.length &&
+    left.rejected.length === right.rejected.length &&
+    readDecisionId(left) === readDecisionId(right)
+  );
+}
+
+function isReviewProgressEqual(
+  left: StrategyChatReviewProgress | null,
+  right: StrategyChatReviewProgress | null,
+): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (!left || !right) {
+    return false;
+  }
+  return (
+    Number(left.totalCandidates) === Number(right.totalCandidates) &&
+    Number(left.reviewedCandidates) === Number(right.reviewedCandidates)
+  );
+}
+
 export function MerchantProvider({ children }: { children: React.ReactNode }) {
   const [authSession, setAuthSession] = useState<MerchantAuthSession | null>(null);
   const [authHydrating, setAuthHydrating] = useState(true);
@@ -555,6 +631,9 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
     () => (Array.isArray(stream.messages) ? stream.messages : []),
     [stream.messages],
   );
+  const streamPendingReviewRaw = streamValues.pending_review;
+  const streamEvaluationRaw = streamValues.evaluation_result;
+  const streamReviewProgressRaw = streamValues.review_progress;
   const streamIsLoading = stream.isLoading;
   const strategyChatMessages = useMemo(
     () =>
@@ -648,14 +727,15 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
   }, [streamMessages]);
 
   useEffect(() => {
-    const pending = toPendingReview(streamInterruptValue) || toPendingReview(streamValues.pending_review);
-    const evaluation = toPolicyDecision(streamValues.evaluation_result);
-    const reviewProgress = toReviewProgress(streamValues.review_progress);
-    setStrategyChatPendingReview(pending);
-    setStrategyChatPendingReviews(pending ? [pending] : []);
-    setStrategyChatEvaluation(evaluation);
-    setStrategyChatReviewProgress(reviewProgress);
-  }, [streamInterruptValue, streamValues]);
+    const pending = toPendingReview(streamInterruptValue) || toPendingReview(streamPendingReviewRaw);
+    const evaluation = toPolicyDecision(streamEvaluationRaw);
+    const reviewProgress = toReviewProgress(streamReviewProgressRaw);
+    const pendingList = pending ? [pending] : [];
+    setStrategyChatPendingReview(prev => (isPendingReviewEqual(prev, pending) ? prev : pending));
+    setStrategyChatPendingReviews(prev => (isPendingReviewListEqual(prev, pendingList) ? prev : pendingList));
+    setStrategyChatEvaluation(prev => (isPolicyDecisionEqual(prev, evaluation) ? prev : evaluation));
+    setStrategyChatReviewProgress(prev => (isReviewProgressEqual(prev, reviewProgress) ? prev : reviewProgress));
+  }, [streamInterruptValue, streamPendingReviewRaw, streamEvaluationRaw, streamReviewProgressRaw]);
 
   useEffect(
     () => () => {

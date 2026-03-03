@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { useMerchant } from '../context/MerchantContext';
 import { SectionCard } from '../components/SectionCard';
-import { Activity, History, Filter, ChevronDown, ChevronUp, Copy, AlertCircle } from 'lucide-react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const AUDIT_ACTION_OPTIONS = [
@@ -81,13 +81,17 @@ export default function AuditScreen() {
                                         <View style={[styles.severityDot, { backgroundColor: item.severity === 'error' ? '#ef4444' : item.severity === 'warn' ? '#f59e0b' : '#10b981' }]} />
                                         <Text style={styles.logTitle}>{item.label}</Text>
                                         <Text style={styles.logSummary} numberOfLines={1}>{item.summary}</Text>
-                                        {item.id === expandedEventId ? <ChevronUp size={14} color="#94a3b8" /> : <ChevronDown size={14} color="#94a3b8" />}
+                                        {item.id === expandedEventId ? (
+                                            <Ionicons name="chevron-up" size={14} color="#94a3b8" />
+                                        ) : (
+                                            <Ionicons name="chevron-down" size={14} color="#94a3b8" />
+                                        )}
                                     </View>
                                     {expandedEventId === item.id && (
                                         <View style={styles.detailWrap}>
                                             <Text selectable style={styles.detailText}>{item.detail}</Text>
                                             <Pressable style={styles.copyBtn} onPress={() => onCopyEventDetail(item.detail)}>
-                                                <Copy size={12} color="#64748b" />
+                                                <Ionicons name="copy-outline" size={12} color="#64748b" />
                                                 <Text style={styles.copyBtnText}>复制 Payload</Text>
                                             </Pressable>
                                         </View>
@@ -135,7 +139,11 @@ export default function AuditScreen() {
                                         style={[styles.logItem, item.id === expandedAuditId && styles.logItemExpanded]}
                                         onPress={() => setExpandedAuditId(expandedAuditId === item.id ? null : item.id)}>
                                         <View style={styles.logHeader}>
-                                            <AlertCircle size={14} color={item.severity === 'error' ? '#ef4444' : '#64748b'} />
+                                            <Ionicons
+                                                name="alert-circle-outline"
+                                                size={14}
+                                                color={item.severity === 'error' ? '#ef4444' : '#64748b'}
+                                            />
                                             <Text style={styles.logTitle}>{item.title}</Text>
                                             <Text style={styles.logSummary} numberOfLines={1}>{item.summary}</Text>
                                         </View>

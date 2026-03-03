@@ -109,6 +109,8 @@ test("langgraph runs/stream emits values and messages events", async () => {
     assert.match(payload, /event: end/);
     assert.match(payload, /hello /);
     assert.match(payload, /merchant/);
+    const messageEventCount = (payload.match(/event: messages/g) || []).length;
+    assert.ok(messageEventCount >= 2);
   } finally {
     await app.stop();
   }
