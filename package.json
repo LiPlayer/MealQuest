@@ -16,8 +16,6 @@
     "test": "npm run repo:test",
     "verify": "npm run repo:verify",
     "verify:ci": "npm run repo:verify:ci",
-    "app:merchant:android": "powershell -ExecutionPolicy Bypass -File scripts/start-merchant-app.ps1 -Platform android",
-    "app:merchant:ios": "powershell -ExecutionPolicy Bypass -File scripts/start-merchant-app.ps1 -Platform ios",
     "check:encoding": "node scripts/check-encoding.js",
     "check:encoding:staged": "node scripts/check-encoding.js --staged",
     "hooks:install": "git config core.hooksPath .githooks"

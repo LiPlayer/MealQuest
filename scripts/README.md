@@ -1,27 +1,16 @@
-# Scripts Catalog
+# Scripts Catalog (Minimal)
 
-This directory contains repository automation scripts grouped by purpose.
+This directory is intentionally minimal at root level.
 
-## Repository
+## Retained scripts
 
 - `repo-task.js`: monorepo bootstrap/lint/typecheck/test orchestration.
-- `check-encoding.js`: UTF-8 encoding guard.
-- `verify-all.ps1` / `verify-all.sh`: local full verification shortcuts.
+- `check-encoding.js`: UTF-8 encoding guard for changed/staged files.
 
-## Server
+## Notes
 
-- `start-server.ps1` / `start-server.sh`: local backend startup.
-- `start-server-lan.ps1` / `start-server-lan.sh`: LAN-accessible backend startup.
-
-## Merchant App
-
-- `start-merchant-app.ps1` / `start-merchant-app.sh`: Expo merchant app startup (dev client).
-
-## Customer App
-
-- `start-customer-weapp.ps1`: Taro WeApp startup.
-
-## Release / Contract
-
-- `release-local.js`: local release helper.
-- `verify-config-contract.js`: config contract verification.
+- Runtime/startup scripts are no longer provided at root `scripts/`.
+- Start each app directly from its project directory:
+  - `MealQuestServer`: `npm start`
+  - `MealQuestMerchant`: `npm run dev:android` / `npm run dev:ios`
+  - `meal-quest-customer`: `npm run dev:weapp`

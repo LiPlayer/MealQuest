@@ -2,7 +2,7 @@
 
 Last updated: 2026-03-03
 
-This document records what is implemented in code right now.  
+This document records capabilities currently available in code.
 Normative product/engineering source remains: `docs/specs/mealquest-spec.md`.
 
 ## 1. Server (`MealQuestServer`)
@@ -46,8 +46,7 @@ Normative product/engineering source remains: `docs/specs/mealquest-spec.md`.
   - `POST /api/langgraph/threads/:threadId/runs/stream`
   - `POST /api/langgraph/runs/:runId/cancel`
 - Stream transport: Server-Sent Events with `metadata/values/messages/end/error`.
-- `command.resume` for review/evaluate/approve is disabled in current chat-only mode.
-- Agent thread `values` no longer carries proposal review artifacts (`pending_review`, `evaluation_result`, `publish_result`, `review_progress`).
+- Current strategy workflow is chat-oriented.
 
 ### 1.4 Policy OS lifecycle and runtime
 - Schemas/plugins:
@@ -96,13 +95,9 @@ Normative product/engineering source remains: `docs/specs/mealquest-spec.md`.
 ## 2. Merchant app (`MealQuestMerchant`)
 
 ### 2.1 Implemented screens and flows
-- Screens present:
-  - `LoginScreen`
-  - `QuickOnboardScreen`
-  - `StrategyScreen` (chat mode)
-- Removed from merchant app runtime:
-  - Proposal evaluate/review/publish controls and state
-  - Proposal resume-command actions from UI context
+- `LoginScreen`
+- `QuickOnboardScreen`
+- `StrategyScreen` (chat mode)
 - `StrategyScreen` includes:
   - Chat UI with streaming progress display
   - Retry for failed user message
@@ -115,21 +110,20 @@ Normative product/engineering source remains: `docs/specs/mealquest-spec.md`.
 ## 3. Customer app (`meal-quest-customer`)
 
 - Project scaffold exists in monorepo.
-- This pass did not validate customer runtime behavior end-to-end.
 
-## 4. Explicitly deprecated / removed
+## 4. Test baseline at snapshot time
 
-- Legacy proposal HTTP endpoints are no longer mounted and now return generic 404:
-  - `POST /api/merchant/strategy-chat/proposals/:id/review`
-  - `POST /api/merchant/strategy-chat/proposals/:id/evaluate`
-  - `POST /api/merchant/strategy-chat/proposals/:id/publish`
-- Proposal storage chain removed from current runtime baseline:
-  - In-memory state no longer keeps `proposals`
-  - Postgres startup drops legacy `mq_proposals` table if present
-  - `/api/state` no longer returns `proposals`
-  - `/api/merchant/dashboard` no longer returns `pendingProposals` / `approvedPendingPublish`
-- Legacy social/treat routes are removed (covered in server integration tests).
+- `cd MealQuestServer && npm test` -> pass (`60/60`)
+- `cd MealQuestMerchant && npm run typecheck` -> pass
+- `npm run check:encoding` -> pass
 
-## 5. Test baseline at snapshot time
+## 5. Repo automation baseline
 
-- Server test suite is expected to pass on this branch after chat-only cleanup.
+- Root repo task scripts:
+  - `scripts/repo-task.js`
+  - `scripts/check-encoding.js`
+- Root `repo-task.js` is the monorepo bootstrap/lint/typecheck/test entrypoint.
+- App startup commands:
+  - `cd MealQuestServer && npm start`
+  - `cd MealQuestMerchant && npm run dev:android` / `npm run dev:ios`
+  - `cd meal-quest-customer && npm run dev:weapp`

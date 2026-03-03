@@ -20,14 +20,15 @@ Key commands:
 - `npm run check:encoding:staged`
 - `npm run verify:ci`
 
-Merchant app launch commands:
-- `npm run app:merchant:android`
-- `npm run app:merchant:ios`
+App startup (run inside each project):
+- Server: `cd MealQuestServer && npm start`
+- Merchant: `cd MealQuestMerchant && npm run dev:android` (or `npm run dev:ios`)
+- Customer: `cd meal-quest-customer && npm run dev:weapp`
 
 Optional (recommended once per clone):
 - `npm run hooks:install` to enable `.githooks/pre-commit`.
 
-Script catalog:
+Root scripts are intentionally minimal (`repo-task.js`, `check-encoding.js`):
 - `scripts/README.md`
 
 ## Docs

@@ -6,7 +6,7 @@ This is a monorepo with three runtime apps:
 - `MealQuestMerchant/`: Expo merchant app (`app/`, `src/`).
 - `meal-quest-customer/`: Taro customer app (`src/`, `config/`, `test/`).
 
-Shared automation and references are in `scripts/` and `docs/`.
+Shared references are in `docs/`; root `scripts/` is intentionally minimal (`repo-task.js`, `check-encoding.js`).
 
 ## Build, Test, and Development Commands
 Run from repository root:
@@ -23,6 +23,7 @@ Project examples:
 - Server: `cd MealQuestServer && npm start`, `npm test`, `npm run test:smoke`.
 - Merchant App: `cd MealQuestMerchant && npm run dev:android`, `npm run lint`, `npm run typecheck`.
 - Customer Taro: `cd meal-quest-customer && npm run dev:weapp`, `npm run test:e2e`.
+- Root no longer provides app startup scripts; launch apps from each project directory.
 
 ## Coding Style & Naming Conventions
 - Use 2-space indentation and keep functions small and explicit.
@@ -43,6 +44,10 @@ Project examples:
 - Merchant project uses lint + typecheck as the baseline local gate.
 - Add or update regression tests for every user-visible bug fix.
 - During development run targeted tests, then run `npm run verify` before pushing.
+
+## Implementation Sync Requirement (Required)
+- For every code change (feature, refactor, removal, API/contract change), update `docs/implemented-features.md` in the same work pass.
+- Treat `docs/implemented-features.md` as the mandatory implementation snapshot sync document for AI and human contributors.
 
 ## Commit & Pull Request Guidelines
 - Use Conventional Commit prefixes used in history: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`.
