@@ -145,15 +145,6 @@ function resolveAuditAction(method, pathname) {
   ) {
     return "STRATEGY_CHAT_MESSAGE";
   }
-  if (method === "POST" && /^\/api\/merchant\/strategy-chat\/proposals\/[^/]+\/review$/.test(pathname)) {
-    return "STRATEGY_CHAT_REVIEW";
-  }
-  if (method === "POST" && /^\/api\/merchant\/strategy-chat\/proposals\/[^/]+\/evaluate$/.test(pathname)) {
-    return "STRATEGY_CHAT_EVALUATE";
-  }
-  if (method === "POST" && /^\/api\/merchant\/strategy-chat\/proposals\/[^/]+\/publish$/.test(pathname)) {
-    return "STRATEGY_CHAT_PUBLISH";
-  }
   if (method === "POST" && pathname === "/api/supplier/verify-order") {
     return "SUPPLIER_VERIFY";
   }

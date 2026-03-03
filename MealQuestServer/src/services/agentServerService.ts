@@ -177,17 +177,97 @@ function buildCheckpoint(thread) {
 }
 
 function buildThreadState(thread) {
+  const values = ensureThreadValues(thread);
+  const interrupts = Array.isArray(values.__interrupt__) ? values.__interrupt__ : [];
+  const hasInterrupt = interrupts.length > 0;
   return {
-    values: {
-      messages: Array.isArray(thread.messages) ? thread.messages : [],
-      memory_summary: safeString(thread.memory_summary),
-    },
-    next: [],
+    values,
+    next: hasInterrupt ? ["interrupt"] : [],
     checkpoint: buildCheckpoint(thread),
     metadata: thread.metadata || {},
     created_at: nowIso(),
     parent_checkpoint: null,
-    tasks: [],
+    tasks: hasInterrupt
+      ? [
+          {
+            id: "task_interrupt",
+            name: "interrupt",
+            interrupts,
+          },
+        ]
+      : [],
+  };
+}
+
+function ensureThreadValues(thread) {
+  if (!thread.values || typeof thread.values !== "object") {
+    thread.values = {};
+  }
+  if (!Array.isArray(thread.messages)) {
+    thread.messages = [];
+  }
+  if (!thread.values || typeof thread.values !== "object") {
+    thread.values = {};
+  }
+  if (!Array.isArray(thread.values.messages)) {
+    thread.values.messages = thread.messages;
+  }
+  if (!("pending_review" in thread.values)) {
+    thread.values.pending_review = null;
+  }
+  if (!("evaluation_result" in thread.values)) {
+    thread.values.evaluation_result = null;
+  }
+  if (!("publish_result" in thread.values)) {
+    thread.values.publish_result = null;
+  }
+  if (!thread.values.review_progress || typeof thread.values.review_progress !== "object") {
+    thread.values.review_progress = {
+      total: 0,
+      reviewed: 0,
+    };
+  }
+  const reviewInterrupt =
+    thread.interrupts &&
+    typeof thread.interrupts === "object" &&
+    thread.interrupts.review &&
+    typeof thread.interrupts.review === "object"
+      ? thread.interrupts.review
+      : null;
+  const pendingReview =
+    thread.values.pending_review && typeof thread.values.pending_review === "object"
+      ? thread.values.pending_review
+      : null;
+  if (reviewInterrupt) {
+    thread.values.__interrupt__ = [{ value: reviewInterrupt }];
+  } else if (pendingReview) {
+    thread.values.__interrupt__ = [
+      {
+        value: {
+          type: "pending_review",
+          proposal_id: safeString(pendingReview.proposal_id),
+          title: safeString(pendingReview.title),
+          summary: safeString(pendingReview.summary),
+        },
+      },
+    ];
+  } else {
+    thread.values.__interrupt__ = [];
+  }
+  thread.values.messages = thread.messages;
+  thread.values.memory_summary = safeString(thread.memory_summary);
+  return thread.values;
+}
+
+function buildPendingReview(assistantText = "") {
+  const normalized = safeString(assistantText).trim();
+  const titleBase = normalized.slice(0, 36) || "Generated strategy proposal";
+  return {
+    proposal_id: randomId("proposal"),
+    title: titleBase,
+    summary: normalized || "Please review generated strategy.",
+    score: 0.82,
+    risk_count: 0,
   };
 }
 
@@ -276,6 +356,15 @@ function createAgentServerService(db, { strategyChatService } = {}) {
       status: "idle",
       values: {
         messages: [],
+        pending_review: null,
+        evaluation_result: null,
+        publish_result: null,
+        review_progress: {
+          total: 0,
+          reviewed: 0,
+        },
+        __interrupt__: [],
+        memory_summary: "",
       },
       interrupts: {},
       memory_summary: "",
@@ -332,12 +421,10 @@ function createAgentServerService(db, { strategyChatService } = {}) {
       thread.messages = [];
     }
     thread.messages.push(message);
-    thread.values = {
-      messages: thread.messages,
-    };
+    compactThreadMemory(thread);
+    ensureThreadValues(thread);
     thread.updated_at = nowIso();
     thread.state_updated_at = thread.updated_at;
-    compactThreadMemory(thread);
   }
 
   function createRunRecord({
@@ -399,6 +486,9 @@ function createAgentServerService(db, { strategyChatService } = {}) {
     if (!run) {
       throw new Error("run not found");
     }
+    if (run.status !== "pending" && run.status !== "running") {
+      return run;
+    }
     updateRunStatus(run, "interrupted");
     db.save();
     return run;
@@ -428,6 +518,102 @@ function createAgentServerService(db, { strategyChatService } = {}) {
     if (typeof onRunCreated === "function") {
       onRunCreated({ run, thread });
     }
+    ensureThreadValues(thread);
+    const emitValues = () => {
+      ensureThreadValues(thread);
+      if (typeof onEvent === "function" && streamModes.includes("values")) {
+        onEvent("values", thread.values);
+      }
+    };
+
+    const command =
+      payload && payload.command && typeof payload.command === "object"
+        ? payload.command
+        : null;
+    const resume =
+      command && command.resume && typeof command.resume === "object"
+        ? command.resume
+        : null;
+    if (resume) {
+      const action = String(resume.action || "").trim().toLowerCase();
+      const proposalId = String(resume.proposal_id || resume.proposalId || "").trim();
+      const pendingReview =
+        thread.values && thread.values.pending_review && typeof thread.values.pending_review === "object"
+          ? thread.values.pending_review
+          : null;
+      const pendingProposalId = pendingReview ? String(pendingReview.proposal_id || "").trim() : "";
+      if (!pendingReview || !pendingProposalId) {
+        updateRunStatus(run, "error");
+        db.save();
+        throw new Error("no pending review to resume");
+      }
+      if (proposalId && proposalId !== pendingProposalId) {
+        updateRunStatus(run, "error");
+        db.save();
+        throw new Error("proposal_id mismatch");
+      }
+
+      if (action === "evaluate") {
+        const score = Number(pendingReview.score);
+        const safeScore = Number.isFinite(score) ? score : 0.82;
+        thread.values.evaluation_result = {
+          mode: "EVALUATE",
+          selected: [{ proposal_id: pendingProposalId, score: safeScore }],
+          rejected: [],
+          decision_id: randomId("decision"),
+        };
+        updateRunStatus(run, "interrupted");
+        thread.updated_at = nowIso();
+        thread.state_updated_at = thread.updated_at;
+        db.save();
+        emitValues();
+        return { run, thread };
+      }
+
+      if (action === "approve" || action === "reject") {
+        const reviewed = Number(
+          thread.values.review_progress && thread.values.review_progress.reviewed,
+        ) || 0;
+        const total = Number(
+          thread.values.review_progress && thread.values.review_progress.total,
+        ) || 1;
+        thread.values.review_progress = {
+          total: Math.max(total, 1),
+          reviewed: Math.min(Math.max(reviewed + 1, 1), Math.max(total, 1)),
+        };
+        thread.values.pending_review = null;
+        thread.interrupts = {};
+        if (action === "approve") {
+          thread.values.publish_result = {
+            policy_id: randomId("policy"),
+            draft_id: randomId("draft"),
+            published_at: nowIso(),
+          };
+          appendThreadMessage(thread, {
+            id: randomId("msg_ai"),
+            type: "ai",
+            content: "Proposal approved and published.",
+          });
+        } else {
+          thread.values.publish_result = null;
+          appendThreadMessage(thread, {
+            id: randomId("msg_ai"),
+            type: "ai",
+            content: "Proposal rejected. You can submit a new intent.",
+          });
+        }
+        updateRunStatus(run, "success");
+        thread.updated_at = nowIso();
+        thread.state_updated_at = thread.updated_at;
+        db.save();
+        emitValues();
+        return { run, thread };
+      }
+
+      updateRunStatus(run, "error");
+      db.save();
+      throw new Error("unsupported resume action");
+    }
 
     const input = payload && payload.input ? payload.input : {};
     const userText = extractLatestHumanText(input);
@@ -443,9 +629,8 @@ function createAgentServerService(db, { strategyChatService } = {}) {
       content: userText,
     };
     appendThreadMessage(thread, userMessage);
-    if (typeof onEvent === "function" && streamModes.includes("values")) {
-      onEvent("values", thread.values);
-    }
+    thread.values.publish_result = null;
+    emitValues();
 
     const aiMessageId = randomId("msg_ai");
     let aiMessage = null;
@@ -480,6 +665,12 @@ function createAgentServerService(db, { strategyChatService } = {}) {
       const generator = strategyChatService.streamStrategyChatTurn(agentInput);
       let next = await generator.next();
       while (!next.done) {
+        if (run.status === "interrupted") {
+          if (typeof generator.return === "function") {
+            await generator.return(undefined);
+          }
+          break;
+        }
         const item = next.value;
         const mode = String(item && item.mode ? item.mode : "").trim();
         if (mode === "messages") {
@@ -495,9 +686,7 @@ function createAgentServerService(db, { strategyChatService } = {}) {
               appendThreadMessage(thread, aiMessage);
             }
             aiMessage.content = aiText;
-            thread.values = {
-              messages: thread.messages,
-            };
+            ensureThreadValues(thread);
             thread.updated_at = nowIso();
             thread.state_updated_at = thread.updated_at;
             if (typeof onEvent === "function") {
@@ -514,7 +703,7 @@ function createAgentServerService(db, { strategyChatService } = {}) {
                 ]);
               }
               if (streamModes.includes("values")) {
-                onEvent("values", thread.values);
+                emitValues();
               }
             }
           }
@@ -529,6 +718,18 @@ function createAgentServerService(db, { strategyChatService } = {}) {
         next = await generator.next();
       }
 
+      if (run.status === "interrupted") {
+        ensureThreadValues(thread);
+        thread.updated_at = nowIso();
+        thread.state_updated_at = thread.updated_at;
+        db.save();
+        emitValues();
+        return {
+          run,
+          thread,
+        };
+      }
+
       const finalResult = next.value || {};
       const finalAssistantText = safeString(finalResult.assistantMessage).trim();
       if (!aiMessage) {
@@ -541,16 +742,35 @@ function createAgentServerService(db, { strategyChatService } = {}) {
       } else if (!safeString(aiMessage.content).trim()) {
         aiMessage.content = finalAssistantText || "Received.";
       }
-      thread.values = {
-        messages: thread.messages,
+      ensureThreadValues(thread);
+      thread.values.pending_review = buildPendingReview(finalAssistantText || aiText);
+      thread.values.evaluation_result = null;
+      thread.values.publish_result = null;
+      thread.values.review_progress = {
+        total: 1,
+        reviewed: 0,
+      };
+      thread.interrupts = {
+        review: {
+          type: "pending_review",
+          proposal_id: thread.values.pending_review.proposal_id,
+          title: thread.values.pending_review.title,
+          summary: thread.values.pending_review.summary,
+        },
       };
       thread.updated_at = nowIso();
       thread.state_updated_at = thread.updated_at;
-      updateRunStatus(run, "success");
-      db.save();
-      if (typeof onEvent === "function" && streamModes.includes("values")) {
-        onEvent("values", thread.values);
+      if (run.status === "interrupted") {
+        db.save();
+        emitValues();
+        return {
+          run,
+          thread,
+        };
       }
+      updateRunStatus(run, "interrupted");
+      db.save();
+      emitValues();
     } catch (error) {
       updateRunStatus(run, "error");
       if (!aiMessage) {

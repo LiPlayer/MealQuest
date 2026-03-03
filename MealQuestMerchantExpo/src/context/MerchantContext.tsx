@@ -384,6 +384,52 @@ function toProgress(data: unknown): AgentProgressEvent | null {
   };
 }
 
+function toPendingReview(data: unknown): StrategyChatPendingReview | null {
+  if (!data || typeof data !== 'object') {
+    return null;
+  }
+  const record = data as Record<string, unknown>;
+  const proposalId = typeof record.proposal_id === 'string' ? record.proposal_id.trim() : '';
+  if (!proposalId) {
+    return null;
+  }
+  return {
+    proposalId,
+    title: typeof record.title === 'string' && record.title.trim() ? record.title.trim() : 'Generated proposal',
+    evaluation: {
+      score: Number(record.score) || 0,
+      expectedRevenue: 0,
+      estimatedCost: 0,
+      riskCount: Number(record.risk_count) || 0,
+      rejectedCount: 0,
+      selectedCount: 0,
+    },
+  };
+}
+
+function toPolicyDecision(data: unknown): PolicyDecisionResult | null {
+  if (!data || typeof data !== 'object') {
+    return null;
+  }
+  const record = data as Record<string, unknown>;
+  return {
+    mode: typeof record.mode === 'string' ? record.mode : 'EVALUATE',
+    selected: Array.isArray(record.selected) ? (record.selected as Array<Record<string, unknown>>) : [],
+    rejected: Array.isArray(record.rejected) ? (record.rejected as Array<Record<string, unknown>>) : [],
+  };
+}
+
+function toReviewProgress(data: unknown): StrategyChatReviewProgress | null {
+  if (!data || typeof data !== 'object') {
+    return null;
+  }
+  const record = data as Record<string, unknown>;
+  return {
+    totalCandidates: Number(record.total) || 0,
+    reviewedCandidates: Number(record.reviewed) || 0,
+  };
+}
+
 export function MerchantProvider({ children }: { children: React.ReactNode }) {
   const [authSession, setAuthSession] = useState<MerchantAuthSession | null>(null);
   const [authHydrating, setAuthHydrating] = useState(true);
@@ -434,7 +480,7 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
   const [strategyThreadId, setStrategyThreadId] = useState<string | null>(null);
   const [strategyChatPendingReview, setStrategyChatPendingReview] = useState<StrategyChatPendingReview | null>(null);
   const [strategyChatPendingReviews, setStrategyChatPendingReviews] = useState<StrategyChatPendingReview[]>([]);
-  const [strategyChatReviewProgress] = useState<StrategyChatReviewProgress | null>(null);
+  const [strategyChatReviewProgress, setStrategyChatReviewProgress] = useState<StrategyChatReviewProgress | null>(null);
   const [strategyChatEvaluation, setStrategyChatEvaluation] = useState<PolicyDecisionResult | null>(null);
   const [agentProgressEvents, setAgentProgressEvents] = useState<AgentProgressEvent[]>([]);
   const [contractStatus, setContractStatus] = useState<'LOADING' | 'NOT_SUBMITTED' | 'SUBMITTED'>('NOT_SUBMITTED');
@@ -478,19 +524,36 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
       void stream.stop();
     };
   }, [stream]);
-  const streamValuesMessages = useMemo(() => {
-    if (!stream.values || typeof stream.values !== 'object') {
-      return [];
+  const streamValues = useMemo(
+    () => (stream.values && typeof stream.values === 'object' ? (stream.values as Record<string, unknown>) : {}),
+    [stream.values],
+  );
+  const streamInterruptValue = useMemo(() => {
+    const interrupt = stream.interrupt as unknown;
+    if (!interrupt) {
+      return null;
     }
-    const values = stream.values as Record<string, unknown>;
-    return Array.isArray(values.messages) ? values.messages : [];
-  }, [stream.values]);
+    if (Array.isArray(interrupt)) {
+      const first = interrupt[0];
+      if (!first || typeof first !== 'object') {
+        return null;
+      }
+      const firstRecord = first as Record<string, unknown>;
+      return firstRecord.value && typeof firstRecord.value === 'object'
+        ? (firstRecord.value as Record<string, unknown>)
+        : null;
+    }
+    if (typeof interrupt !== 'object') {
+      return null;
+    }
+    const record = interrupt as Record<string, unknown>;
+    return record.value && typeof record.value === 'object'
+      ? (record.value as Record<string, unknown>)
+      : null;
+  }, [stream.interrupt]);
   const streamMessages = useMemo(
-    () =>
-      streamValuesMessages.length > 0
-        ? streamValuesMessages
-        : (Array.isArray(stream.messages) ? stream.messages : []),
-    [stream.messages, streamValuesMessages],
+    () => (Array.isArray(stream.messages) ? stream.messages : []),
+    [stream.messages],
   );
   const streamIsLoading = stream.isLoading;
   const strategyChatMessages = useMemo(
@@ -528,6 +591,7 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
     setPendingOutgoingMessages([]);
     setStrategyChatPendingReview(null);
     setStrategyChatPendingReviews([]);
+    setStrategyChatReviewProgress(null);
     setStrategyChatEvaluation(null);
   }, []);
 
@@ -550,6 +614,7 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
       setPendingOutgoingMessages([]);
       setStrategyChatPendingReview(null);
       setStrategyChatPendingReviews([]);
+      setStrategyChatReviewProgress(null);
       setStrategyChatEvaluation(null);
     },
     [],
@@ -581,6 +646,16 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
       return next.length === prev.length ? prev : next;
     });
   }, [streamMessages]);
+
+  useEffect(() => {
+    const pending = toPendingReview(streamInterruptValue) || toPendingReview(streamValues.pending_review);
+    const evaluation = toPolicyDecision(streamValues.evaluation_result);
+    const reviewProgress = toReviewProgress(streamValues.review_progress);
+    setStrategyChatPendingReview(pending);
+    setStrategyChatPendingReviews(pending ? [pending] : []);
+    setStrategyChatEvaluation(evaluation);
+    setStrategyChatReviewProgress(reviewProgress);
+  }, [streamInterruptValue, streamValues]);
 
   useEffect(
     () => () => {
@@ -924,11 +999,90 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
   };
 
   const onEvaluatePendingStrategy = async () => {
-    setLastAction('No pending proposal in text-only mode.');
+    if (!authSession) {
+      setLastAction('Please login first.');
+      return;
+    }
+    if (!strategyChatPendingReview) {
+      setLastAction('No pending proposal to evaluate.');
+      return;
+    }
+    setChatSendPhase('submitting');
+    setChatSendError('');
+    try {
+      await stream.submit(null, {
+        command: {
+          resume: {
+            action: 'evaluate',
+            proposal_id: strategyChatPendingReview.proposalId,
+            user_id: customerUserId || undefined,
+          },
+        },
+        context: {
+          merchantId: authSession.merchantId,
+        },
+        config: {
+          configurable: {
+            merchantId: authSession.merchantId,
+          },
+        },
+        metadata: {
+          merchantId: authSession.merchantId,
+          source: 'merchant-app',
+        },
+      });
+      setChatSendPhase('idle');
+      setLastAction('Evaluation completed.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'evaluate failed';
+      setChatSendPhase('failed');
+      setChatSendError(message);
+      setLastAction(`Evaluate failed: ${message}`);
+    }
   };
 
-  const onReviewPendingStrategy = async (_decision: 'APPROVE' | 'REJECT') => {
-    setLastAction('No pending proposal in text-only mode.');
+  const onReviewPendingStrategy = async (decision: 'APPROVE' | 'REJECT') => {
+    if (!authSession) {
+      setLastAction('Please login first.');
+      return;
+    }
+    if (!strategyChatPendingReview) {
+      setLastAction('No pending proposal to review.');
+      return;
+    }
+    const action = decision === 'APPROVE' ? 'approve' : 'reject';
+    setChatSendPhase('submitting');
+    setChatSendError('');
+    try {
+      await stream.submit(null, {
+        command: {
+          resume: {
+            action,
+            proposal_id: strategyChatPendingReview.proposalId,
+            user_id: customerUserId || undefined,
+          },
+        },
+        context: {
+          merchantId: authSession.merchantId,
+        },
+        config: {
+          configurable: {
+            merchantId: authSession.merchantId,
+          },
+        },
+        metadata: {
+          merchantId: authSession.merchantId,
+          source: 'merchant-app',
+        },
+      });
+      setChatSendPhase('idle');
+      setLastAction(decision === 'APPROVE' ? 'Proposal approved.' : 'Proposal rejected.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'review failed';
+      setChatSendPhase('failed');
+      setChatSendError(message);
+      setLastAction(`Review failed: ${message}`);
+    }
   };
 
   const onPublishApprovedProposal = async (_proposalId: string) => {

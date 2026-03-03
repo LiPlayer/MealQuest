@@ -185,6 +185,13 @@ function createAgentServerRoutesHandler({
       const { agentServerService } = getServicesForMerchant(merchantId);
       let headersSent = false;
       const pendingEvents = [];
+      const emitStreamEvent = (event, data) => {
+        if (!headersSent) {
+          pendingEvents.push({ event, data });
+          return;
+        }
+        writeSseEvent(res, event, data);
+      };
 
       const ensureStreamHeaders = ({ threadId, runId }) => {
         if (headersSent) {
@@ -218,13 +225,13 @@ function createAgentServerRoutesHandler({
               threadId: thread.thread_id,
               runId: run.run_id,
             });
+            emitStreamEvent("metadata", {
+              run_id: run.run_id,
+              thread_id: thread.thread_id,
+            });
           },
           onEvent: (event, data) => {
-            if (!headersSent) {
-              pendingEvents.push({ event, data });
-              return;
-            }
-            writeSseEvent(res, event, data);
+            emitStreamEvent(event, data);
           },
         });
 
@@ -246,6 +253,7 @@ function createAgentServerRoutesHandler({
           return true;
         }
         writeSseEvent(res, "error", {
+          error: error && error.message ? String(error.message) : "run stream failed",
           message: error && error.message ? String(error.message) : "run stream failed",
         });
         res.end();
@@ -323,6 +331,10 @@ function createAgentServerRoutesHandler({
       if (typeof res.flushHeaders === "function") {
         res.flushHeaders();
       }
+      writeSseEvent(res, "metadata", {
+        run_id: runId,
+        thread_id: threadId,
+      });
       writeSseEvent(res, "values", thread.values || { messages: [] });
       writeSseEvent(res, "end", {
         thread_id: threadId,

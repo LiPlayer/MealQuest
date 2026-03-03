@@ -156,30 +156,27 @@ POST /api/langgraph/threads
 POST /api/langgraph/threads/:threadId/runs/stream
 GET  /api/langgraph/threads/:threadId/state
 POST /api/langgraph/threads/:threadId/history
-POST /api/merchant/strategy-chat/proposals/:id/review
-POST /api/merchant/strategy-chat/proposals/:id/evaluate
-POST /api/merchant/strategy-chat/proposals/:id/publish
 POST /api/merchant/fire-sale
 ```
 
 `/api/langgraph/threads/:threadId/runs/stream` emits official LangGraph stream events via SSE:
 
 ```text
+event: metadata data: { run_id, thread_id }
 event: messages data: [...]
 event: values   data: { messages: [...] }
 event: custom   data: { ... }
 event: updates  data: { ... }
-event: error    data: { message }
+event: error    data: { error, message }
 event: end      data: { thread_id, run_id, status }
 ```
 
 Strategy chat behavior:
 
-1. Strategy chat is continuous within the active session (`strategy-chat/session`).
-2. When AI drafts a proposal card, session enters `PENDING_REVIEW`.
-3. Merchant must immediately `APPROVE` or `REJECT` via `strategy-chat/proposals/:id/review` before sending next message.
-4. Client does not pass `sessionId` when sending messages/reviews; server always routes to active session.
-5. Creating a new session resets chat context (history sessions are not exposed by API).
+1. Strategy chat is fully managed by `/api/langgraph/*` thread state.
+2. When AI drafts a proposal card, run ends with `status=interrupted` and `values.pending_review`.
+3. Client resumes workflow by calling `runs/stream` with `command.resume` (for example: `evaluate`, `approve`, `reject`).
+4. No legacy `strategy-chat/proposals/*` APIs are used in the flow.
 
 Supplier verification:
 

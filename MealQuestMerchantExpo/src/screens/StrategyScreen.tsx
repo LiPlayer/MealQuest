@@ -81,12 +81,12 @@ export default function StrategyScreen() {
     }, [strategyChatMessages]);
 
     // Live scroll during typewriter animation (simplified as we removed cursor and specialized typewriter if not needed)
-    const lastMessageText = strategyChatMessages[strategyChatMessages.length - 1]?.text;
+    const lastMessage = strategyChatMessages[strategyChatMessages.length - 1];
     useEffect(() => {
-        if (strategyChatMessages[strategyChatMessages.length - 1]?.role === 'ASSISTANT') {
+        if (lastMessage?.role === 'ASSISTANT') {
             scrollViewRef.current?.scrollToEnd({ animated: false });
         }
-    }, [lastMessageText]);
+    }, [lastMessage?.role, lastMessage?.text]);
 
     return (
         <SafeAreaView style={styles.safeArea} edges={['top']}>
