@@ -97,6 +97,7 @@ function createStrategyChatService(options = {}) {
       model: modelName,
       temperature,
       timeout: timeoutMs,
+      streaming: true,
     });
   }
 

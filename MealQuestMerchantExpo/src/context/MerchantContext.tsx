@@ -269,10 +269,20 @@ function mapMessageRole(message: Record<string, unknown>): 'USER' | 'ASSISTANT' 
     (typeof message.role === 'string' && message.role) ||
     '';
   const normalized = rawType.trim().toLowerCase();
-  if (normalized === 'human' || normalized === 'user') {
+  if (
+    normalized === 'human' ||
+    normalized === 'user' ||
+    normalized === 'humanmessagechunk' ||
+    normalized === 'humanmessage'
+  ) {
     return 'USER';
   }
-  if (normalized === 'ai' || normalized === 'assistant') {
+  if (
+    normalized === 'ai' ||
+    normalized === 'assistant' ||
+    normalized === 'aimessagechunk' ||
+    normalized === 'aimessage'
+  ) {
     return 'ASSISTANT';
   }
   return null;
@@ -341,59 +351,6 @@ function toStrategyMessages(
   }
 
   return mapped;
-}
-
-type StreamSubmitOptions = {
-  context?: Record<string, unknown>;
-  config?: Record<string, unknown>;
-  metadata?: Record<string, unknown>;
-  multitaskStrategy?: string;
-  streamMode?: StreamMode[];
-};
-
-function hasUseStreamRuntimeSupport() {
-  const hasReadableStream = typeof globalThis.ReadableStream === 'function';
-  const hasTextDecoder = typeof globalThis.TextDecoder === 'function';
-  return hasReadableStream && hasTextDecoder;
-}
-
-function parseSseEventFrame(frame: string): { eventName: string; payload: unknown } | null {
-  const normalized = frame.replace(/\r/g, '');
-  const lines = normalized.split('\n');
-  let eventName = 'message';
-  const dataLines: string[] = [];
-  for (const line of lines) {
-    if (line.startsWith('event:')) {
-      eventName = line.slice(6).trim() || 'message';
-      continue;
-    }
-    if (line.startsWith('data:')) {
-      dataLines.push(line.slice(5).trimStart());
-    }
-  }
-  if (!dataLines.length) {
-    return null;
-  }
-  const dataText = dataLines.join('\n');
-  try {
-    return {
-      eventName,
-      payload: JSON.parse(dataText),
-    };
-  } catch {
-    return {
-      eventName,
-      payload: dataText,
-    };
-  }
-}
-
-async function readResponseError(response: Response, fallback: string): Promise<string> {
-  const payload = await response.json().catch(() => null);
-  if (payload && typeof payload === 'object' && typeof (payload as Record<string, unknown>).error === 'string') {
-    return String((payload as Record<string, unknown>).error);
-  }
-  return fallback;
 }
 
 function createLocalMessageId() {
@@ -481,14 +438,11 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
   const [strategyChatEvaluation, setStrategyChatEvaluation] = useState<PolicyDecisionResult | null>(null);
   const [agentProgressEvents, setAgentProgressEvents] = useState<AgentProgressEvent[]>([]);
   const [contractStatus, setContractStatus] = useState<'LOADING' | 'NOT_SUBMITTED' | 'SUBMITTED'>('NOT_SUBMITTED');
-  const [fallbackMessages, setFallbackMessages] = useState<unknown[]>([]);
-  const [fallbackStreamLoading, setFallbackStreamLoading] = useState(false);
-  const fallbackAbortRef = useRef<AbortController | null>(null);
-  const officialStreamSupported = useMemo(() => hasUseStreamRuntimeSupport(), []);
   const streamApiUrl = useMemo(() => `${getApiBaseUrl()}/api/langgraph`, []);
+  const authToken = authSession?.token;
   const streamHeaders = useMemo(
-    () => (authSession && authSession.token ? { Authorization: `Bearer ${authSession.token}` } : undefined),
-    [authSession?.token],
+    () => (authToken ? { Authorization: `Bearer ${authToken}` } : undefined),
+    [authToken],
   );
   const handleStreamError = useCallback((error: unknown) => {
     const message = error instanceof Error ? error.message : 'chat stream failed';
@@ -518,178 +472,27 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
     onCustomEvent: handleCustomStreamEvent,
     onError: handleStreamError,
   });
-  const stopFallbackStream = useCallback(() => {
-    if (!fallbackAbortRef.current) {
-      return;
+  const stopStreamRef = useRef(() => {});
+  useEffect(() => {
+    stopStreamRef.current = () => {
+      void stream.stop();
+    };
+  }, [stream]);
+  const streamValuesMessages = useMemo(() => {
+    if (!stream.values || typeof stream.values !== 'object') {
+      return [];
     }
-    fallbackAbortRef.current.abort();
-    fallbackAbortRef.current = null;
-    setFallbackStreamLoading(false);
-  }, []);
-  const submitFallbackStream = useCallback(
-    async (input: Record<string, unknown>, options: StreamSubmitOptions = {}) => {
-      const abortController = new AbortController();
-      fallbackAbortRef.current = abortController;
-      setFallbackStreamLoading(true);
-      try {
-        let threadId = String(strategyThreadId || '').trim();
-        if (!threadId) {
-          const createThreadRes = await fetch(`${streamApiUrl}/threads`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(streamHeaders || {}),
-            },
-            body: JSON.stringify({
-              context: options.context || (authSession ? { merchantId: authSession.merchantId } : {}),
-              metadata: options.metadata || (authSession ? { merchantId: authSession.merchantId } : {}),
-            }),
-            signal: abortController.signal,
-          });
-          if (!createThreadRes.ok) {
-            throw new Error(await readResponseError(createThreadRes, `request failed (${createThreadRes.status})`));
-          }
-          const createdThread = await createThreadRes.json().catch(() => ({}));
-          threadId =
-            createdThread && typeof createdThread.thread_id === 'string'
-              ? String(createdThread.thread_id).trim()
-              : '';
-          if (!threadId) {
-            throw new Error('thread_id missing');
-          }
-          setStrategyThreadId(threadId);
-        }
-
-        const runRes = await fetch(`${streamApiUrl}/threads/${encodeURIComponent(threadId)}/runs/stream`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(streamHeaders || {}),
-          },
-          body: JSON.stringify({
-            assistant_id: OFFICIAL_ASSISTANT_ID,
-            input,
-            context: options.context || (authSession ? { merchantId: authSession.merchantId } : {}),
-            config:
-              options.config ||
-              (authSession
-                ? {
-                    configurable: {
-                      merchantId: authSession.merchantId,
-                    },
-                  }
-                : {}),
-            metadata:
-              options.metadata ||
-              (authSession
-                ? {
-                    merchantId: authSession.merchantId,
-                    source: 'merchant-app-expo',
-                  }
-                : {}),
-            multitask_strategy: options.multitaskStrategy || 'interrupt',
-            stream_mode:
-              Array.isArray(options.streamMode) && options.streamMode.length
-                ? options.streamMode
-                : ['messages-tuple', 'values', 'updates', 'custom'],
-          }),
-          signal: abortController.signal,
-        });
-        if (!runRes.ok) {
-          throw new Error(await readResponseError(runRes, `request failed (${runRes.status})`));
-        }
-
-        let buffer = '';
-        const dispatchFrame = (frame: string) => {
-          const parsed = parseSseEventFrame(frame);
-          if (!parsed) {
-            return;
-          }
-          const { eventName, payload } = parsed;
-          if (
-            eventName === 'values' &&
-            payload &&
-            typeof payload === 'object' &&
-            Array.isArray((payload as Record<string, unknown>).messages)
-          ) {
-            setFallbackMessages((payload as Record<string, unknown>).messages as unknown[]);
-            return;
-          }
-          if (eventName === 'custom') {
-            handleCustomStreamEvent(payload);
-            return;
-          }
-          if (eventName === 'error') {
-            const message =
-              payload && typeof payload === 'object' && typeof (payload as Record<string, unknown>).message === 'string'
-                ? String((payload as Record<string, unknown>).message)
-                : 'chat stream failed';
-            throw new Error(message);
-          }
-        };
-
-        const body = runRes.body as
-          | {
-              getReader?: () => {
-                read: () => Promise<{ value?: Uint8Array; done: boolean }>;
-              };
-            }
-          | null;
-        if (body && typeof body.getReader === 'function' && typeof globalThis.TextDecoder === 'function') {
-          const reader = body.getReader();
-          const decoder = new TextDecoder();
-          while (true) {
-            const { value, done } = await reader.read();
-            if (done) {
-              break;
-            }
-            if (!value) {
-              continue;
-            }
-            buffer += decoder.decode(value, { stream: true });
-            let boundary = buffer.indexOf('\n\n');
-            while (boundary >= 0) {
-              const frame = buffer.slice(0, boundary);
-              buffer = buffer.slice(boundary + 2);
-              dispatchFrame(frame);
-              boundary = buffer.indexOf('\n\n');
-            }
-          }
-          buffer += decoder.decode();
-          if (buffer.trim()) {
-            dispatchFrame(buffer);
-          }
-          return;
-        }
-
-        const textPayload = await runRes.text();
-        const frames = textPayload.split(/\r?\n\r?\n/);
-        for (const frame of frames) {
-          if (!frame.trim()) {
-            continue;
-          }
-          dispatchFrame(frame);
-        }
-      } finally {
-        if (fallbackAbortRef.current === abortController) {
-          fallbackAbortRef.current = null;
-        }
-        setFallbackStreamLoading(false);
-      }
-    },
-    [
-      authSession,
-      handleCustomStreamEvent,
-      strategyThreadId,
-      streamApiUrl,
-      streamHeaders,
-    ],
-  );
+    const values = stream.values as Record<string, unknown>;
+    return Array.isArray(values.messages) ? values.messages : [];
+  }, [stream.values]);
   const streamMessages = useMemo(
-    () => (officialStreamSupported ? (Array.isArray(stream.messages) ? stream.messages : []) : fallbackMessages),
-    [fallbackMessages, officialStreamSupported, stream.messages],
+    () =>
+      streamValuesMessages.length > 0
+        ? streamValuesMessages
+        : (Array.isArray(stream.messages) ? stream.messages : []),
+    [stream.messages, streamValuesMessages],
   );
-  const streamIsLoading = officialStreamSupported ? stream.isLoading : fallbackStreamLoading;
+  const streamIsLoading = stream.isLoading;
   const strategyChatMessages = useMemo(
     () =>
       toStrategyMessages(
@@ -714,14 +517,11 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
   );
 
   const resetSessionScopedState = useCallback(() => {
-    stopFallbackStream();
     setMerchantState(createInitialMerchantState());
     setAllianceStores([]);
     setQrStoreId('');
     setAiIntentDraft('');
     setStrategyThreadId(null);
-    setFallbackMessages([]);
-    setFallbackStreamLoading(false);
     setAgentProgressEvents([]);
     setChatSendPhase('idle');
     setChatSendError('');
@@ -729,11 +529,10 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
     setStrategyChatPendingReview(null);
     setStrategyChatPendingReviews([]);
     setStrategyChatEvaluation(null);
-  }, [stopFallbackStream]);
+  }, []);
 
   const applyAuthenticatedSession = useCallback(
     (session: MerchantAuthSession, merchantName: string, stores: { merchantId: string; name: string }[]) => {
-      stopFallbackStream();
       setPendingOnboardingSession(null);
       setAuthSession(session);
       setMerchantState(prev => ({
@@ -745,8 +544,6 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
       setQrStoreId(session.merchantId);
       setAiIntentDraft('');
       setStrategyThreadId(null);
-      setFallbackMessages([]);
-      setFallbackStreamLoading(false);
       setAgentProgressEvents([]);
       setChatSendPhase('idle');
       setChatSendError('');
@@ -755,7 +552,7 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
       setStrategyChatPendingReviews([]);
       setStrategyChatEvaluation(null);
     },
-    [stopFallbackStream],
+    [],
   );
 
   useEffect(() => {
@@ -787,9 +584,9 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(
     () => () => {
-      stopFallbackStream();
+      stopStreamRef.current();
     },
-    [stopFallbackStream],
+    [],
   );
 
   useEffect(() => {
@@ -978,11 +775,7 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = () => {
-    if (officialStreamSupported) {
-      void stream.stop();
-    } else {
-      stopFallbackStream();
-    }
+    void stream.stop();
     void clearMerchantAuthSession().catch(() => undefined);
     setAuthSession(null);
     setPendingOnboardingSession(null);
@@ -1074,14 +867,10 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
         multitaskStrategy: 'interrupt' as const,
         streamMode: streamModes,
       };
-      if (officialStreamSupported) {
-        await stream.submit(
-          inputPayload,
-          optionsPayload,
-        );
-      } else {
-        await submitFallbackStream(inputPayload, optionsPayload);
-      }
+      await stream.submit(
+        inputPayload,
+        optionsPayload,
+      );
       setPendingOutgoingMessages(prev =>
         prev.map(item =>
           item.messageId === localMessageId
@@ -1097,7 +886,6 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
       setLastAction('Chat response received.');
       logMerchantStreamEvent('submit_success', {
         merchantId: authSession.merchantId,
-        transport: officialStreamSupported ? 'official_useStream' : 'fallback_sse',
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'chat stream failed';
