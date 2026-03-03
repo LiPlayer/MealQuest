@@ -271,6 +271,57 @@ function buildPendingReview(assistantText = "") {
   };
 }
 
+function extractProposalCandidate(finalResult) {
+  if (!finalResult || typeof finalResult !== "object") {
+    return null;
+  }
+  if (Array.isArray(finalResult.proposals) && finalResult.proposals.length > 0) {
+    const first = finalResult.proposals[0];
+    return first && typeof first === "object" ? first : null;
+  }
+  if (finalResult.proposal && typeof finalResult.proposal === "object") {
+    return finalResult.proposal;
+  }
+  return null;
+}
+
+function buildPendingReviewFromResult(finalResult, assistantText = "") {
+  const fromResult = extractProposalCandidate(finalResult);
+  if (fromResult) {
+    const proposalId = safeString(fromResult.proposal_id || fromResult.id).trim();
+    const title = safeString(fromResult.title).trim();
+    const summary = safeString(fromResult.summary || assistantText).trim();
+    const score = Number(fromResult.score);
+    const riskCount = Number(fromResult.risk_count || fromResult.riskCount);
+    if (proposalId || title || summary) {
+      return {
+        proposal_id: proposalId || randomId("proposal"),
+        title: title || "Generated strategy proposal",
+        summary: summary || "Please review generated strategy.",
+        score: Number.isFinite(score) ? score : 0.82,
+        risk_count: Number.isFinite(riskCount) ? riskCount : 0,
+      };
+    }
+  }
+  return buildPendingReview(assistantText);
+}
+
+function shouldInterruptForReview({ finalResult }) {
+  const status = String(finalResult && finalResult.status ? finalResult.status : "")
+    .trim()
+    .toUpperCase();
+  if (status === "PROPOSAL_READY" || status === "PENDING_REVIEW" || status === "REVIEW_REQUIRED") {
+    return true;
+  }
+  if (finalResult && finalResult.requiresReview === true) {
+    return true;
+  }
+  if (extractProposalCandidate(finalResult)) {
+    return true;
+  }
+  return false;
+}
+
 function compactThreadMemory(thread) {
   const messages = Array.isArray(thread.messages) ? thread.messages : [];
   if (messages.length <= MAX_THREAD_MESSAGES) {
@@ -743,21 +794,35 @@ function createAgentServerService(db, { strategyChatService } = {}) {
         aiMessage.content = finalAssistantText || "Received.";
       }
       ensureThreadValues(thread);
-      thread.values.pending_review = buildPendingReview(finalAssistantText || aiText);
-      thread.values.evaluation_result = null;
-      thread.values.publish_result = null;
-      thread.values.review_progress = {
-        total: 1,
-        reviewed: 0,
-      };
-      thread.interrupts = {
-        review: {
-          type: "pending_review",
-          proposal_id: thread.values.pending_review.proposal_id,
-          title: thread.values.pending_review.title,
-          summary: thread.values.pending_review.summary,
-        },
-      };
+      const shouldInterrupt = shouldInterruptForReview({
+        finalResult,
+      });
+      if (shouldInterrupt) {
+        thread.values.pending_review = buildPendingReviewFromResult(finalResult, finalAssistantText || aiText);
+        thread.values.evaluation_result = null;
+        thread.values.publish_result = null;
+        thread.values.review_progress = {
+          total: 1,
+          reviewed: 0,
+        };
+        thread.interrupts = {
+          review: {
+            type: "pending_review",
+            proposal_id: thread.values.pending_review.proposal_id,
+            title: thread.values.pending_review.title,
+            summary: thread.values.pending_review.summary,
+          },
+        };
+      } else {
+        thread.values.pending_review = null;
+        thread.values.evaluation_result = null;
+        thread.values.publish_result = null;
+        thread.values.review_progress = {
+          total: 0,
+          reviewed: 0,
+        };
+        thread.interrupts = {};
+      }
       thread.updated_at = nowIso();
       thread.state_updated_at = thread.updated_at;
       if (run.status === "interrupted") {
@@ -768,7 +833,7 @@ function createAgentServerService(db, { strategyChatService } = {}) {
           thread,
         };
       }
-      updateRunStatus(run, "interrupted");
+      updateRunStatus(run, shouldInterrupt ? "interrupted" : "success");
       db.save();
       emitValues();
     } catch (error) {

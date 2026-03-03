@@ -218,6 +218,9 @@ test("langgraph thread state and history are queryable after stream", async () =
     assert.equal(runRes.status, 200);
     const runPayload = await runRes.json();
     assert.equal(runPayload.run_id, runId);
+    assert.equal(String(runPayload.status), "success");
+    assert.equal(statePayload.values.pending_review, null);
+    assert.equal(statePayload.values.__interrupt__.length, 0);
   } finally {
     await app.stop();
   }
@@ -370,44 +373,34 @@ test("langgraph command resume evaluate/approve works with interrupt state", asy
     const threadId = String(createdThread && createdThread.thread_id ? createdThread.thread_id : "");
     assert.ok(threadId);
 
-    const createRunRes = await fetch(`${baseUrl}/api/langgraph/threads/${threadId}/runs/stream`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+    const proposalId = "proposal_test_001";
+    const thread = app.db.agentServer.threads[threadId];
+    assert.ok(thread);
+    thread.values = {
+      ...(thread.values || {}),
+      pending_review: {
+        proposal_id: proposalId,
+        title: "Generated strategy proposal",
+        summary: "Please review generated strategy.",
+        score: 0.82,
+        risk_count: 0,
       },
-      body: JSON.stringify({
-        assistant_id: "merchant-agent",
-        input: {
-          messages: [{ type: "human", content: "generate a strategy" }],
-        },
-        stream_mode: ["messages-tuple", "values"],
-      }),
-    });
-    assert.equal(createRunRes.status, 200);
-    const createRunPayload = await createRunRes.text();
-    assert.match(createRunPayload, /"status":"interrupted"/);
-
-    const stateAfterCreateRes = await fetch(`${baseUrl}/api/langgraph/threads/${threadId}/state`, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
+      evaluation_result: null,
+      publish_result: null,
+      review_progress: {
+        total: 1,
+        reviewed: 0,
       },
-    });
-    assert.equal(stateAfterCreateRes.status, 200);
-    const stateAfterCreate = await stateAfterCreateRes.json();
-    const pendingReview =
-      stateAfterCreate &&
-      stateAfterCreate.values &&
-      stateAfterCreate.values.pending_review &&
-      typeof stateAfterCreate.values.pending_review === "object"
-        ? stateAfterCreate.values.pending_review
-        : null;
-    assert.ok(pendingReview);
-    const proposalId = String(pendingReview.proposal_id || "");
-    assert.ok(proposalId);
-    assert.ok(Array.isArray(stateAfterCreate.values.__interrupt__));
-    assert.ok(stateAfterCreate.values.__interrupt__.length >= 1);
+    };
+    thread.interrupts = {
+      review: {
+        type: "pending_review",
+        proposal_id: proposalId,
+        title: "Generated strategy proposal",
+        summary: "Please review generated strategy.",
+      },
+    };
+    app.db.save();
 
     const evaluateRes = await fetch(`${baseUrl}/api/langgraph/threads/${threadId}/runs/stream`, {
       method: "POST",

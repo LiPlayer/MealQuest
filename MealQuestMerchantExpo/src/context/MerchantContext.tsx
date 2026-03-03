@@ -604,29 +604,6 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
     () => (stream.values && typeof stream.values === 'object' ? (stream.values as Record<string, unknown>) : {}),
     [stream.values],
   );
-  const streamInterruptValue = useMemo(() => {
-    const interrupt = stream.interrupt as unknown;
-    if (!interrupt) {
-      return null;
-    }
-    if (Array.isArray(interrupt)) {
-      const first = interrupt[0];
-      if (!first || typeof first !== 'object') {
-        return null;
-      }
-      const firstRecord = first as Record<string, unknown>;
-      return firstRecord.value && typeof firstRecord.value === 'object'
-        ? (firstRecord.value as Record<string, unknown>)
-        : null;
-    }
-    if (typeof interrupt !== 'object') {
-      return null;
-    }
-    const record = interrupt as Record<string, unknown>;
-    return record.value && typeof record.value === 'object'
-      ? (record.value as Record<string, unknown>)
-      : null;
-  }, [stream.interrupt]);
   const streamMessages = useMemo(
     () => (Array.isArray(stream.messages) ? stream.messages : []),
     [stream.messages],
@@ -727,7 +704,7 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
   }, [streamMessages]);
 
   useEffect(() => {
-    const pending = toPendingReview(streamInterruptValue) || toPendingReview(streamPendingReviewRaw);
+    const pending = toPendingReview(streamPendingReviewRaw);
     const evaluation = toPolicyDecision(streamEvaluationRaw);
     const reviewProgress = toReviewProgress(streamReviewProgressRaw);
     const pendingList = pending ? [pending] : [];
@@ -735,7 +712,7 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
     setStrategyChatPendingReviews(prev => (isPendingReviewListEqual(prev, pendingList) ? prev : pendingList));
     setStrategyChatEvaluation(prev => (isPolicyDecisionEqual(prev, evaluation) ? prev : evaluation));
     setStrategyChatReviewProgress(prev => (isReviewProgressEqual(prev, reviewProgress) ? prev : reviewProgress));
-  }, [streamInterruptValue, streamPendingReviewRaw, streamEvaluationRaw, streamReviewProgressRaw]);
+  }, [streamPendingReviewRaw, streamEvaluationRaw, streamReviewProgressRaw]);
 
   useEffect(
     () => () => {
@@ -992,6 +969,7 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
     setStrategyChatPendingReview(null);
     setStrategyChatPendingReviews([]);
     setStrategyChatEvaluation(null);
+    setStrategyChatReviewProgress(null);
     setAgentProgressEvents([]);
     try {
       logMerchantStreamEvent('submit_start', {
@@ -1005,8 +983,12 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
           },
         ],
       };
-      const streamModes: StreamMode[] = ['messages-tuple', 'values', 'updates', 'custom'];
-      const optionsPayload = {
+      const optionsPayload: {
+        context: { merchantId: string };
+        config: { configurable: { merchantId: string } };
+        metadata: { merchantId: string; source: string };
+        streamMode: StreamMode[];
+      } = {
         context: {
           merchantId: authSession.merchantId,
         },
@@ -1019,8 +1001,7 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
           merchantId: authSession.merchantId,
           source: 'merchant-app',
         },
-        multitaskStrategy: 'interrupt' as const,
-        streamMode: streamModes,
+        streamMode: ['messages-tuple', 'values', 'updates', 'custom'],
       };
       await stream.submit(
         inputPayload,
@@ -1038,7 +1019,7 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
       );
       setChatSendPhase('idle');
       setChatSendError('');
-      setLastAction('Chat response received.');
+      setLastAction('Assistant replied.');
       logMerchantStreamEvent('submit_success', {
         merchantId: authSession.merchantId,
       });
