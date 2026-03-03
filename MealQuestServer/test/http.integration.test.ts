@@ -708,7 +708,7 @@ function pickAiChatDecision(payload) {
       confidence: 0.81,
       policyPatch: {
         name: proposalTitle,
-        lane: wantsExtreme ? "EMERGENCY" : approvedCount > 0 ? "GUARDED" : "NORMAL",
+        lane: approvedCount > 0 ? "GUARDED" : "NORMAL",
         constraints: [
           { plugin: "kill_switch_v1", params: {} },
           {

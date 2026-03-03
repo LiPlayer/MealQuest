@@ -11,7 +11,7 @@ function createSpec(merchantId = "m_policy_http") {
     schema_version: "policyos.v1",
     policy_key: "clear_stock_drop",
     name: "Clear Stock Drop",
-    lane: "EMERGENCY",
+    lane: "GUARDED",
     goal: {
       type: "CLEAR_STOCK",
       kpi: "inventory_days"

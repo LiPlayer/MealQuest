@@ -8,7 +8,7 @@ function createValidSpec() {
     schema_version: "policyos.v1",
     policy_key: "rainy_soup",
     name: "Rainy Soup",
-    lane: "EMERGENCY",
+    lane: "GUARDED",
     goal: {
       type: "CLEAR_STOCK",
       kpi: "inventory_days"

@@ -81,9 +81,6 @@
 
   function laneToPriority(lane) {
     const normalized = String(lane || "").trim().toUpperCase();
-    if (normalized === "EMERGENCY") {
-      return 100;
-    }
     if (normalized === "GUARDED") {
       return 85;
     }

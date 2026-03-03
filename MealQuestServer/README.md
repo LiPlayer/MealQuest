@@ -8,7 +8,6 @@ Minimal runnable backend implementation for MealQuest.
 - Payment verification with idempotency protection
 - Refund clawback (consume gifted balance first, then principal)
 - Policy OS decision engine (policy/trigger/constraint/scoring/action plugins)
-- Emergency fire-sale override (`Priority:999 + TTL`)
 - Supplier order verification API
 - Alliance configuration (store clusters, shared wallet, cross-store sync)
 - JWT auth with role scope (`CUSTOMER`, `CLERK`, `MANAGER`, `OWNER`)
@@ -156,7 +155,6 @@ POST /api/langgraph/threads
 POST /api/langgraph/threads/:threadId/runs/stream
 GET  /api/langgraph/threads/:threadId/state
 POST /api/langgraph/threads/:threadId/history
-POST /api/merchant/fire-sale
 ```
 
 `/api/langgraph/threads/:threadId/runs/stream` emits official LangGraph stream events via SSE:

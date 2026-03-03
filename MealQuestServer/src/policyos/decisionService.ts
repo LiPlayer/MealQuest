@@ -1,7 +1,6 @@
 const { randomUUID } = require("node:crypto");
 
 const LANE_RANK = {
-  EMERGENCY: 4,
   GUARDED: 3,
   NORMAL: 2,
   BACKGROUND: 1
@@ -86,16 +85,12 @@ function createDecisionService({
       const conflictSet = String(overlap.conflict_set || "default");
       const conflictKey = `${conflictSet}|${candidate.ctx.user ? candidate.ctx.user.uid : "anonymous"}`;
       const state = conflictState.get(conflictKey) || {
-        count: 0,
-        emergencyWon: false
+        count: 0
       };
 
       if (mode === "STACKABLE") {
         winners.push(candidate);
         state.count += 1;
-        if (candidate.policy.lane === "EMERGENCY") {
-          state.emergencyWon = true;
-        }
         conflictState.set(conflictKey, state);
         continue;
       }
@@ -111,22 +106,12 @@ function createDecisionService({
         }
         winners.push(candidate);
         state.count += 1;
-        if (candidate.policy.lane === "EMERGENCY") {
-          state.emergencyWon = true;
-        }
         conflictState.set(conflictKey, state);
         continue;
       }
 
       if (mode === "PREEMPTIVE") {
-        if (state.emergencyWon && candidate.policy.lane !== "EMERGENCY") {
-          skipped.push({
-            ...candidate,
-            rejectReason: "allocation:preempted_by_emergency"
-          });
-          continue;
-        }
-        if (state.count > 0 && candidate.policy.lane !== "EMERGENCY") {
+        if (state.count > 0) {
           skipped.push({
             ...candidate,
             rejectReason: "allocation:preemptive_conflict"
@@ -135,9 +120,6 @@ function createDecisionService({
         }
         winners.push(candidate);
         state.count += 1;
-        if (candidate.policy.lane === "EMERGENCY") {
-          state.emergencyWon = true;
-        }
         conflictState.set(conflictKey, state);
         continue;
       }
@@ -151,9 +133,6 @@ function createDecisionService({
       }
       winners.push(candidate);
       state.count += 1;
-      if (candidate.policy.lane === "EMERGENCY") {
-        state.emergencyWon = true;
-      }
       conflictState.set(conflictKey, state);
     }
 

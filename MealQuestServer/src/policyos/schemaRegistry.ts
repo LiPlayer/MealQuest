@@ -47,7 +47,7 @@ const policySpecSchema = z.object({
   schema_version: z.string().default(POLICY_SCHEMA_VERSION),
   policy_key: z.string().min(1),
   name: z.string().min(1),
-  lane: z.enum(["EMERGENCY", "GUARDED", "NORMAL", "BACKGROUND"]).default("NORMAL"),
+  lane: z.enum(["GUARDED", "NORMAL", "BACKGROUND"]).default("NORMAL"),
   tie_breaker: z
     .enum(["UTILITY_DESC", "EXPIRY_SOONER", "HIGHER_MARGIN", "RANDOM_JITTER"])
     .default("UTILITY_DESC"),
@@ -109,7 +109,7 @@ const policyJsonSchemaV1 = {
     schema_version: { type: "string", const: POLICY_SCHEMA_VERSION },
     policy_key: { type: "string", minLength: 1 },
     name: { type: "string", minLength: 1 },
-    lane: { enum: ["EMERGENCY", "GUARDED", "NORMAL", "BACKGROUND"] },
+    lane: { enum: ["GUARDED", "NORMAL", "BACKGROUND"] },
     tie_breaker: { enum: ["UTILITY_DESC", "EXPIRY_SOONER", "HIGHER_MARGIN", "RANDOM_JITTER"] }
   }
 };

@@ -2,9 +2,6 @@ const { buildCustomerActivities } = require("../serverHelpers");
 
 function laneToPriority(lane = "") {
   const normalized = String(lane || "").toUpperCase();
-  if (normalized === "EMERGENCY") {
-    return 100;
-  }
   if (normalized === "GUARDED") {
     return 85;
   }
