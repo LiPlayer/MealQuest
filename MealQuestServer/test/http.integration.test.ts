@@ -127,11 +127,11 @@ function seedLegacyTestUsers(db) {
   ensureMerchantBucket("invoicesByMerchant", "m_bistro");
   const strategyConfigs = ensureMerchantBucket("strategyConfigs", "m_store_001");
   ensureMerchantBucket("strategyConfigs", "m_bistro");
-  ensureMerchantBucket("strategyChats", "m_store_001", {
+  ensureMerchantBucket("agentSessions", "m_store_001", {
     activeSessionId: null,
     sessions: {},
   });
-  ensureMerchantBucket("strategyChats", "m_bistro", {
+  ensureMerchantBucket("agentSessions", "m_bistro", {
     activeSessionId: null,
     sessions: {},
   });
@@ -482,7 +482,7 @@ function extractAiUserPayload(requestPayload) {
         ? rawText.slice(userStart + userMarker.length).trim()
         : "";
     return {
-      task: "STRATEGY_CHAT",
+      task: "AGENT_CHAT",
       userMessage,
       activePolicies: Array.isArray(context.activePolicies) ? context.activePolicies : [],
     };
@@ -544,7 +544,7 @@ function pickAiChatDecision(payload) {
 }
 
 function toMockAiContent(payload, decision) {
-  if (payload && payload.task === "STRATEGY_CHAT") {
+  if (payload && payload.task === "AGENT_CHAT") {
     return String(
       (decision && decision.assistantMessage) ||
       "Please share goal, budget, and time window."
@@ -605,7 +605,7 @@ async function startMockAiServer() {
       }
       const payload = extractAiUserPayload(parsed);
       const decision =
-        payload && payload.task === "STRATEGY_CHAT"
+        payload && payload.task === "AGENT_CHAT"
           ? pickAiChatDecision(payload)
           : pickAiDecision(payload);
       const content = toMockAiContent(payload, decision);
@@ -1054,9 +1054,6 @@ test("merchant onboarding completion creates store and returns owner session", a
     assert.equal(state.data.merchant.merchantId, merchantId);
     assert.equal(state.data.merchant.name, "Custom Test Store");
 
-    const catalog = await getJson(baseUrl, "/api/merchant/catalog");
-    assert.equal(catalog.status, 200);
-    assert.ok(catalog.data.items.some((item) => item.merchantId === merchantId));
   } finally {
     await app.stop();
   }

@@ -4,8 +4,12 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
-const repoRoot = path.resolve(__dirname, "..");
+const repoRoot = path.resolve(__dirname);
 const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
+
+function shellEscape(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
 
 const projects = {
   server: {
@@ -67,19 +71,25 @@ for (const step of stepList) {
       process.exit(1);
     }
     console.log(`\n>>> [${step}] ${project.name}: npm ${args.join(" ")}`);
-    const extraEnv =
-      project.name === "MealQuestServer" && step === "test"
-        ? { HOST: "127.0.0.1" }
-        : {};
-    const result = spawnSync(npmCmd, args, {
-      cwd: project.cwd,
-      stdio: "inherit",
-      shell: process.platform === "win32",
-      env: {
-        ...process.env,
-        ...extraEnv,
-      },
-    });
+    const result =
+      process.platform === "win32"
+        ? spawnSync(npmCmd, args, {
+            cwd: project.cwd,
+            stdio: "inherit",
+            shell: true,
+            env: process.env,
+          })
+        : spawnSync(
+            "/bin/bash",
+            [
+              "-lc",
+              `cd ${shellEscape(project.cwd)} && ${npmCmd} ${args.map(shellEscape).join(" ")}`
+            ],
+            {
+              stdio: "inherit",
+              env: process.env,
+            },
+          );
     if (result.status !== 0) {
       console.error(`[repo-task] Failed: ${project.name} (${step})`);
       process.exit(result.status || 1);

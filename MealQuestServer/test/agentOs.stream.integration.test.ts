@@ -20,7 +20,7 @@ function seedMerchant(db, merchantId = "m_chat_001") {
   db.paymentsByMerchant[merchantId] = {};
   db.invoicesByMerchant[merchantId] = {};
   db.strategyConfigs[merchantId] = {};
-  db.strategyChats[merchantId] = {
+  db.agentSessions[merchantId] = {
     activeSessionId: null,
     sessions: {},
   };
@@ -66,22 +66,7 @@ test("agent-os tasks/stream emits values and messages events", async () => {
   );
 
   try {
-    const createSessionRes = await fetch(`${baseUrl}/api/agent-os/sessions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({}),
-    });
-    assert.equal(createSessionRes.status, 200);
-    const createdSession = await createSessionRes.json();
-    const sessionId = String(
-      createdSession && createdSession.session_id ? createdSession.session_id : "",
-    );
-    assert.ok(sessionId);
-
-    const res = await fetch(`${baseUrl}/api/agent-os/sessions/${sessionId}/tasks/stream`, {
+    const res = await fetch(`${baseUrl}/api/agent-os/tasks/stream`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -163,7 +148,7 @@ test("agent-os session state and history are queryable after stream", async () =
     );
     assert.ok(sessionId);
 
-    const streamRes = await fetch(`${baseUrl}/api/agent-os/sessions/${sessionId}/tasks/stream`, {
+    const streamRes = await fetch(`${baseUrl}/api/agent-os/tasks/stream`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -274,7 +259,7 @@ test("agent-os task cancel endpoint and join stream return metadata/events", asy
     );
     assert.ok(sessionId);
 
-    const streamRes = await fetch(`${baseUrl}/api/agent-os/sessions/${sessionId}/tasks/stream`, {
+    const streamRes = await fetch(`${baseUrl}/api/agent-os/tasks/stream`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -366,22 +351,7 @@ test("agent-os resume command is rejected in current agent runtime", async () =>
   );
 
   try {
-    const createSessionRes = await fetch(`${baseUrl}/api/agent-os/sessions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({}),
-    });
-    assert.equal(createSessionRes.status, 200);
-    const createdSession = await createSessionRes.json();
-    const sessionId = String(
-      createdSession && createdSession.session_id ? createdSession.session_id : "",
-    );
-    assert.ok(sessionId);
-
-    const resumeRes = await fetch(`${baseUrl}/api/agent-os/sessions/${sessionId}/tasks/stream`, {
+    const resumeRes = await fetch(`${baseUrl}/api/agent-os/tasks/stream`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -402,6 +372,162 @@ test("agent-os resume command is rejected in current agent runtime", async () =>
     const resumePayload = await resumeRes.text();
     assert.match(resumePayload, /event: error/);
     assert.match(resumePayload, /current agent runtime/i);
+  } finally {
+    await app.stop();
+  }
+});
+
+test("agent-os memory compaction fails hard when deepseek compression returns empty", async () => {
+  const app = createAppServer({
+    jwtSecret: TEST_JWT_SECRET,
+    omniAgentOptions: {
+      loadModel: async () => ({
+        invoke: async () => ({ content: "" }),
+      }),
+      loadAgent: async () => ({
+        async *stream() {
+          yield ["messages", [{ content: "ok" }, { node: "model" }]];
+        },
+      }),
+    },
+  });
+  seedMerchant(app.db, "m_chat_006");
+  const port = await app.start(0);
+  const baseUrl = `http://127.0.0.1:${port}`;
+  const token = issueToken(
+    {
+      role: "OWNER",
+      merchantId: "m_chat_006",
+      operatorId: "staff_owner",
+    },
+    TEST_JWT_SECRET,
+  );
+
+  try {
+    const createSessionRes = await fetch(`${baseUrl}/api/agent-os/sessions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({}),
+    });
+    assert.equal(createSessionRes.status, 200);
+    const createdSession = await createSessionRes.json();
+    const sessionId = String(
+      createdSession && createdSession.session_id ? createdSession.session_id : "",
+    );
+    assert.ok(sessionId);
+
+    const runtimeSession = app.db.agentRuntime.sessions[sessionId];
+    assert.ok(runtimeSession);
+    runtimeSession.messages = Array.from({ length: 201 }).map((_, index) => ({
+      id: `msg_seed_${index}`,
+      type: index % 2 === 0 ? "human" : "ai",
+      content: `seed_${index}`,
+    }));
+    runtimeSession.memory_summary = "seed_summary";
+    runtimeSession.values = {
+      messages: runtimeSession.messages,
+      __interrupt__: [],
+      memory_summary: runtimeSession.memory_summary,
+    };
+
+    const streamRes = await fetch(`${baseUrl}/api/agent-os/tasks/stream`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        agent_id: "merchant-omni-agent",
+        input: {
+          messages: [
+            {
+              type: "human",
+              content: "trigger compaction",
+            },
+          ],
+        },
+        stream_mode: ["messages-tuple", "values"],
+      }),
+    });
+    assert.equal(streamRes.status, 200);
+    const payload = await streamRes.text();
+    assert.match(payload, /event: error/);
+    assert.match(payload, /memory compression returned empty summary/i);
+
+    const afterSession = app.db.agentRuntime.sessions[sessionId];
+    assert.equal(afterSession.messages.length, 201);
+    assert.equal(afterSession.memory_summary, "seed_summary");
+  } finally {
+    await app.stop();
+  }
+});
+
+test("agent-os legacy session-scoped stream endpoint is removed", async () => {
+  const app = createAppServer({
+    jwtSecret: TEST_JWT_SECRET,
+    omniAgentOptions: {
+      loadAgent: async () => ({
+        async *stream() {
+          yield ["messages", [{ content: "ok" }, { node: "model" }]];
+        },
+      }),
+    },
+  });
+  seedMerchant(app.db, "m_chat_007");
+  const port = await app.start(0);
+  const baseUrl = `http://127.0.0.1:${port}`;
+  const token = issueToken(
+    {
+      role: "OWNER",
+      merchantId: "m_chat_007",
+      operatorId: "staff_owner",
+    },
+    TEST_JWT_SECRET,
+  );
+
+  try {
+    const createSessionRes = await fetch(`${baseUrl}/api/agent-os/sessions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({}),
+    });
+    assert.equal(createSessionRes.status, 200);
+    const createdSession = await createSessionRes.json();
+    const sessionId = String(
+      createdSession && createdSession.session_id ? createdSession.session_id : "",
+    );
+    assert.ok(sessionId);
+
+    const legacyRes = await fetch(
+      `${baseUrl}/api/agent-os/sessions/${encodeURIComponent(sessionId)}/tasks/stream`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          agent_id: "merchant-omni-agent",
+          input: {
+            messages: [
+              {
+                type: "human",
+                content: "should fail",
+              },
+            ],
+          },
+        }),
+      },
+    );
+    assert.equal(legacyRes.status, 404);
+    const payload = await legacyRes.json();
+    assert.match(String(payload.error || ""), /not found/i);
   } finally {
     await app.stop();
   }

@@ -17,7 +17,6 @@ Normative product/engineering source remains: `docs/specs/mealquest-spec.md`.
   - `POST /api/auth/customer/wechat-login`
   - `POST /api/auth/customer/alipay-login`
 - Merchant basic discovery:
-  - `GET /api/merchant/catalog` (currently no business flow dependency)
   - `GET /api/merchant/exists`
 
 ### 1.2 Payments, ledger, invoice, privacy
@@ -41,15 +40,19 @@ Normative product/engineering source remains: `docs/specs/mealquest-spec.md`.
   - `GET /api/agent-os/agents/:agentId`
   - `POST /api/agent-os/sessions`
   - `GET /api/agent-os/sessions/:sessionId`
-  - `POST /api/agent-os/sessions/:sessionId/copy`
   - `GET /api/agent-os/sessions/:sessionId/state`
   - `POST /api/agent-os/sessions/:sessionId/history`
   - `POST /api/agent-os/tasks/stream`
-  - `POST /api/agent-os/sessions/:sessionId/tasks/stream`
   - `GET /api/agent-os/sessions/:sessionId/tasks/:taskId`
   - `POST /api/agent-os/sessions/:sessionId/tasks/:taskId/cancel`
   - `GET /api/agent-os/sessions/:sessionId/tasks/:taskId/stream`
 - Stream transport: Server-Sent Events with `metadata/values/messages/end/error`.
+- Session scope: single thread per `merchantId + operatorId` (singleton session id).
+- Memory policy:
+  - short-term memory only, stored in server process memory
+  - compaction threshold `>200` messages keeps latest `40`
+  - archived context is compressed by DeepSeek (`summarizeSessionMemory`)
+  - no fallback path when compression fails (request fails)
 - Current implementation focuses on conversation-first execution over the unified Agent runtime contract.
 
 ### 1.4 Policy OS lifecycle and runtime
@@ -110,6 +113,7 @@ Normative product/engineering source remains: `docs/specs/mealquest-spec.md`.
 
 ### 2.2 Current engineering status
 - App source and routing are present and wired (`expo-router` structure exists).
+- Agent request path uses canonical `POST /api/agent-os/tasks/stream` (no client-side `session_id` coupling).
 - Merchant app `npm run typecheck` passes on current branch baseline.
 
 ## 3. Customer app (`meal-quest-customer`)
@@ -118,15 +122,15 @@ Normative product/engineering source remains: `docs/specs/mealquest-spec.md`.
 
 ## 4. Test baseline at snapshot time
 
-- `cd MealQuestServer && npm test` -> pass (`60/60`)
+- `cd MealQuestServer && npm test -- agentOs.stream.integration.test.ts` -> pass (`62/62`)
 - `cd MealQuestMerchant && npm run typecheck` -> pass
 - `npm run check:encoding` -> pass
 
 ## 5. Repo automation baseline
 
-- Root repo task scripts:
-  - `scripts/repo-task.js`
-  - `scripts/check-encoding.js`
+- Root automation scripts:
+  - `repo-task.js`
+  - `check-encoding.js`
 - Root `repo-task.js` is the monorepo bootstrap/lint/typecheck/test entrypoint.
 - App startup commands:
   - `cd MealQuestServer && npm start`

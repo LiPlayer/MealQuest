@@ -1,6 +1,6 @@
 const DEFAULT_AGENT_ID = "merchant-omni-agent";
-const MAX_SESSION_MESSAGES = 80;
-const KEEP_SESSION_MESSAGES = 32;
+const MAX_SESSION_MESSAGES = 200;
+const KEEP_SESSION_MESSAGES = 40;
 const MAX_MEMORY_SUMMARY_CHARS = 4000;
 
 function nowIso() {
@@ -13,6 +13,21 @@ function randomId(prefix) {
 
 function safeString(value) {
   return typeof value === "string" ? value : "";
+}
+
+function normalizeKeySegment(value) {
+  return String(value || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "unknown";
+}
+
+function buildActorThreadKey(merchantId, operatorId) {
+  return `${String(merchantId || "").trim()}:${String(operatorId || "").trim()}`;
+}
+
+function buildSingletonSessionId(merchantId, operatorId) {
+  return `thread_${normalizeKeySegment(merchantId)}_${normalizeKeySegment(operatorId)}`;
 }
 
 function normalizeContent(content) {
@@ -130,70 +145,11 @@ function normalizeStreamModes(source) {
   return deduped;
 }
 
-function migrateLegacyBucket(bucket) {
-  if (bucket.assistants && !bucket.agents) {
-    bucket.agents = bucket.assistants;
-  }
-  if (bucket.threads && !bucket.sessions) {
-    bucket.sessions = bucket.threads;
-  }
-  if (bucket.threadByMerchant && !bucket.sessionByMerchant) {
-    bucket.sessionByMerchant = bucket.threadByMerchant;
-  }
-  if (bucket.runs && !bucket.tasks) {
-    bucket.tasks = bucket.runs;
-  }
-
-  if (bucket.agents && typeof bucket.agents === "object") {
-    for (const item of Object.values(bucket.agents)) {
-      if (!item || typeof item !== "object") {
-        continue;
-      }
-      if (!item.agent_id && item.assistant_id) {
-        item.agent_id = item.assistant_id;
-      }
-      if (!item.workflow_id && item.graph_id) {
-        item.workflow_id = item.graph_id;
-      }
-    }
-  }
-
-  if (bucket.sessions && typeof bucket.sessions === "object") {
-    for (const item of Object.values(bucket.sessions)) {
-      if (!item || typeof item !== "object") {
-        continue;
-      }
-      if (!item.session_id && item.thread_id) {
-        item.session_id = item.thread_id;
-      }
-    }
-  }
-
-  if (bucket.tasks && typeof bucket.tasks === "object") {
-    for (const item of Object.values(bucket.tasks)) {
-      if (!item || typeof item !== "object") {
-        continue;
-      }
-      if (!item.task_id && item.run_id) {
-        item.task_id = item.run_id;
-      }
-      if (!item.session_id && item.thread_id) {
-        item.session_id = item.thread_id;
-      }
-      if (!item.agent_id && item.assistant_id) {
-        item.agent_id = item.assistant_id;
-      }
-    }
-  }
-}
-
 function ensureAgentRuntimeBucket(db) {
   if (!db.agentRuntime || typeof db.agentRuntime !== "object") {
-    db.agentRuntime =
-      db.agentServer && typeof db.agentServer === "object" ? db.agentServer : {};
+    db.agentRuntime = {};
   }
   const bucket = db.agentRuntime;
-  migrateLegacyBucket(bucket);
 
   if (!bucket.agents || typeof bucket.agents !== "object") {
     bucket.agents = {};
@@ -201,8 +157,8 @@ function ensureAgentRuntimeBucket(db) {
   if (!bucket.sessions || typeof bucket.sessions !== "object") {
     bucket.sessions = {};
   }
-  if (!bucket.sessionByMerchant || typeof bucket.sessionByMerchant !== "object") {
-    bucket.sessionByMerchant = {};
+  if (!bucket.sessionByActor || typeof bucket.sessionByActor !== "object") {
+    bucket.sessionByActor = {};
   }
   if (!bucket.tasks || typeof bucket.tasks !== "object") {
     bucket.tasks = {};
@@ -277,7 +233,7 @@ function buildSessionState(session) {
   };
 }
 
-function compactSessionMemory(session) {
+async function compactSessionMemory(session, compressMemoryFn) {
   const messages = Array.isArray(session.messages) ? session.messages : [];
   if (messages.length <= MAX_SESSION_MESSAGES) {
     return;
@@ -297,11 +253,20 @@ function compactSessionMemory(session) {
     .filter(Boolean)
     .join("\n");
   if (archiveText) {
-    const previous = safeString(session.memory_summary);
-    const merged = [previous, `[${nowIso()}]\n${archiveText}`]
-      .filter(Boolean)
-      .join("\n\n");
-    session.memory_summary = merged.slice(-MAX_MEMORY_SUMMARY_CHARS);
+    if (typeof compressMemoryFn !== "function") {
+      throw new Error("memory compression service is unavailable");
+    }
+    const compressed = await compressMemoryFn({
+      merchantId: session.merchant_id,
+      sessionId: session.session_id,
+      previousSummary: safeString(session.memory_summary),
+      archiveText,
+    });
+    const nextSummary = safeString(compressed).trim();
+    if (!nextSummary) {
+      throw new Error("memory compression returned empty summary");
+    }
+    session.memory_summary = nextSummary.slice(-MAX_MEMORY_SUMMARY_CHARS);
   }
   session.messages = recent;
 }
@@ -315,6 +280,23 @@ function buildAgentInput(session, userText) {
 }
 
 function createAgentRuntimeService(db, { omniAgentService } = {}) {
+  async function compressMemoryWithAgent({
+    merchantId,
+    sessionId,
+    previousSummary,
+    archiveText,
+  }) {
+    if (!omniAgentService || typeof omniAgentService.summarizeSessionMemory !== "function") {
+      throw new Error("deepseek memory compression is unavailable");
+    }
+    return omniAgentService.summarizeSessionMemory({
+      merchantId,
+      sessionId,
+      previousSummary,
+      archiveText,
+    });
+  }
+
   function listAgents() {
     const bucket = ensureAgentRuntimeBucket(db);
     return Object.values(bucket.agents);
@@ -325,30 +307,37 @@ function createAgentRuntimeService(db, { omniAgentService } = {}) {
     return bucket.agents[String(agentId || "").trim()] || null;
   }
 
-  function getOrCreateSessionForMerchant({
+  function getOrCreateSessionForOperator({
     merchantId,
-    sessionId,
+    operatorId,
     metadata = {},
   }) {
     const bucket = ensureAgentRuntimeBucket(db);
     const normalizedMerchantId = String(merchantId || "").trim();
+    const normalizedOperatorId = String(operatorId || "").trim();
     if (!normalizedMerchantId) {
       throw new Error("merchantId is required");
     }
+    if (!normalizedOperatorId) {
+      throw new Error("operatorId is required");
+    }
 
-    const mappedSessionId = safeString(bucket.sessionByMerchant[normalizedMerchantId]).trim();
+    const actorThreadKey = buildActorThreadKey(normalizedMerchantId, normalizedOperatorId);
+    const mappedSessionId = safeString(bucket.sessionByActor[actorThreadKey]).trim();
     if (mappedSessionId && bucket.sessions[mappedSessionId]) {
       return bucket.sessions[mappedSessionId];
     }
 
-    const normalizedSessionId =
-      String(sessionId || "").trim() || `session_${normalizedMerchantId}`;
+    const normalizedSessionId = buildSingletonSessionId(normalizedMerchantId, normalizedOperatorId);
     if (bucket.sessions[normalizedSessionId]) {
       const existing = bucket.sessions[normalizedSessionId];
-      if (existing.merchant_id !== normalizedMerchantId) {
+      if (
+        existing.merchant_id !== normalizedMerchantId ||
+        safeString(existing.operator_id).trim() !== normalizedOperatorId
+      ) {
         throw new Error("session scope denied");
       }
-      bucket.sessionByMerchant[normalizedMerchantId] = normalizedSessionId;
+      bucket.sessionByActor[actorThreadKey] = normalizedSessionId;
       return existing;
     }
 
@@ -356,11 +345,13 @@ function createAgentRuntimeService(db, { omniAgentService } = {}) {
     const created = {
       session_id: normalizedSessionId,
       merchant_id: normalizedMerchantId,
+      operator_id: normalizedOperatorId,
       created_at: createdAt,
       updated_at: createdAt,
       state_updated_at: createdAt,
       metadata: {
         merchantId: normalizedMerchantId,
+        operatorId: normalizedOperatorId,
         ...metadata,
       },
       status: "idle",
@@ -374,60 +365,56 @@ function createAgentRuntimeService(db, { omniAgentService } = {}) {
       messages: [],
     };
     bucket.sessions[normalizedSessionId] = created;
-    bucket.sessionByMerchant[normalizedMerchantId] = normalizedSessionId;
+    bucket.sessionByActor[actorThreadKey] = normalizedSessionId;
     db.save();
     return created;
   }
 
-  function getSession({ merchantId, sessionId }) {
-    const bucket = ensureAgentRuntimeBucket(db);
-    const normalizedSessionId = String(sessionId || "").trim();
-    if (!normalizedSessionId) {
+  function getSessionForOperator({ merchantId, operatorId, sessionId = null, autoCreate = false }) {
+    const normalizedMerchantId = String(merchantId || "").trim();
+    const normalizedOperatorId = String(operatorId || "").trim();
+    if (!normalizedMerchantId || !normalizedOperatorId) {
       return null;
     }
-    const session = bucket.sessions[normalizedSessionId];
+    const session = autoCreate
+      ? getOrCreateSessionForOperator({
+          merchantId: normalizedMerchantId,
+          operatorId: normalizedOperatorId,
+        })
+      : (() => {
+          const bucket = ensureAgentRuntimeBucket(db);
+          const actorThreadKey = buildActorThreadKey(normalizedMerchantId, normalizedOperatorId);
+          const mappedSessionId = safeString(bucket.sessionByActor[actorThreadKey]).trim();
+          return mappedSessionId ? bucket.sessions[mappedSessionId] || null : null;
+        })();
     if (!session) {
       return null;
     }
-    if (merchantId && session.merchant_id !== merchantId) {
+    const requested = String(sessionId || "").trim();
+    if (requested && requested !== session.session_id) {
       return null;
     }
     return session;
   }
 
-  function copySession({ merchantId, sessionId }) {
-    const source = getSession({ merchantId, sessionId });
-    if (!source) {
-      throw new Error("session not found");
-    }
-    const copiedId = `${source.session_id}_copy_${Math.random().toString(36).slice(2, 8)}`;
-    const copied = {
-      ...JSON.parse(JSON.stringify(source)),
-      session_id: copiedId,
-      created_at: nowIso(),
-      updated_at: nowIso(),
-      state_updated_at: nowIso(),
-      status: "idle",
-      metadata: {
-        ...(source.metadata || {}),
-        copiedFrom: source.session_id,
-      },
-    };
-    const bucket = ensureAgentRuntimeBucket(db);
-    bucket.sessions[copiedId] = copied;
-    db.save();
-    return copied;
-  }
-
-  function appendSessionMessage(session, message) {
+  async function appendSessionMessage(session, message) {
     if (!Array.isArray(session.messages)) {
       session.messages = [];
     }
+    const previousMessages = [...session.messages];
+    const previousSummary = safeString(session.memory_summary);
     session.messages.push(message);
-    compactSessionMemory(session);
-    ensureSessionValues(session);
-    session.updated_at = nowIso();
-    session.state_updated_at = session.updated_at;
+    try {
+      await compactSessionMemory(session, compressMemoryWithAgent);
+      ensureSessionValues(session);
+      session.updated_at = nowIso();
+      session.state_updated_at = session.updated_at;
+    } catch (error) {
+      session.messages = previousMessages;
+      session.memory_summary = previousSummary;
+      ensureSessionValues(session);
+      throw error;
+    }
   }
 
   function createTaskRecord({
@@ -497,7 +484,7 @@ function createAgentRuntimeService(db, { omniAgentService } = {}) {
 
   async function runWithStream({
     merchantId,
-    sessionId,
+    operatorId,
     agentId = DEFAULT_AGENT_ID,
     payload = {},
     onTaskCreated,
@@ -506,9 +493,9 @@ function createAgentRuntimeService(db, { omniAgentService } = {}) {
     const streamModes = normalizeStreamModes(
       (payload && payload.stream_mode) || (payload && payload.streamMode),
     );
-    const session = getOrCreateSessionForMerchant({
+    const session = getOrCreateSessionForOperator({
       merchantId,
-      sessionId,
+      operatorId,
       metadata: (payload && payload.metadata) || {},
     });
     const task = createTaskRecord({
@@ -554,7 +541,13 @@ function createAgentRuntimeService(db, { omniAgentService } = {}) {
       type: "human",
       content: userText,
     };
-    appendSessionMessage(session, userMessage);
+    try {
+      await appendSessionMessage(session, userMessage);
+    } catch (error) {
+      updateTaskStatus(task, "error");
+      db.save();
+      throw error;
+    }
     emitValues();
 
     const aiMessageId = randomId("msg_ai");
@@ -568,7 +561,7 @@ function createAgentRuntimeService(db, { omniAgentService } = {}) {
         type: "ai",
         content: aiText,
       };
-      appendSessionMessage(session, aiMessage);
+      await appendSessionMessage(session, aiMessage);
       updateTaskStatus(task, "error");
       db.save();
       emitValues();
@@ -607,7 +600,7 @@ function createAgentRuntimeService(db, { omniAgentService } = {}) {
                 type: "ai",
                 content: "",
               };
-              appendSessionMessage(session, aiMessage);
+              await appendSessionMessage(session, aiMessage);
             }
             aiMessage.content = aiText;
             ensureSessionValues(session);
@@ -662,7 +655,7 @@ function createAgentRuntimeService(db, { omniAgentService } = {}) {
           type: "ai",
           content: finalAssistantText || "Received.",
         };
-        appendSessionMessage(session, aiMessage);
+        await appendSessionMessage(session, aiMessage);
       } else if (!safeString(aiMessage.content).trim()) {
         aiMessage.content = finalAssistantText || "Received.";
       }
@@ -684,7 +677,11 @@ function createAgentRuntimeService(db, { omniAgentService } = {}) {
           type: "ai",
           content: `Error: ${message}`,
         };
-        appendSessionMessage(session, aiMessage);
+        try {
+          await appendSessionMessage(session, aiMessage);
+        } catch {
+          // Ignore append failures while surfacing original streaming error.
+        }
       }
       db.save();
       throw error;
@@ -698,13 +695,13 @@ function createAgentRuntimeService(db, { omniAgentService } = {}) {
 
   async function runAndWait({
     merchantId,
-    sessionId,
+    operatorId,
     agentId,
     payload,
   }) {
     const result = await runWithStream({
       merchantId,
-      sessionId,
+      operatorId,
       agentId,
       payload,
       onTaskCreated: null,
@@ -720,9 +717,8 @@ function createAgentRuntimeService(db, { omniAgentService } = {}) {
     DEFAULT_AGENT_ID,
     listAgents,
     getAgent,
-    getOrCreateSessionForMerchant,
-    getSession,
-    copySession,
+    getOrCreateSessionForOperator,
+    getSessionForOperator,
     getSessionState: buildSessionState,
     listTasksForSession,
     getTask,

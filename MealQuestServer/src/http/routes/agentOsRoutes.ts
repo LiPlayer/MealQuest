@@ -41,6 +41,16 @@ function createAgentOsRoutesHandler({
     return scopedMerchantId;
   }
 
+  function resolveScopedOperatorId(auth) {
+    const scopedOperatorId = String(auth && auth.operatorId ? auth.operatorId : "").trim();
+    if (!scopedOperatorId) {
+      const err = new Error("operatorId is required");
+      err.statusCode = 400;
+      throw err;
+    }
+    return scopedOperatorId;
+  }
+
   function matchPath(pathname, pattern) {
     const match = pathname.match(pattern);
     return match ? match.slice(1) : null;
@@ -81,13 +91,18 @@ function createAgentOsRoutesHandler({
     if (method === "POST" && url.pathname === `${AGENT_OS_PREFIX}/sessions`) {
       const body = await readJsonBody(req);
       const merchantId = resolveScopedMerchantId(auth, body);
+      const operatorId = resolveScopedOperatorId(auth);
       const { agentRuntimeService } = getServicesForMerchant(merchantId);
-      const session = agentRuntimeService.getOrCreateSessionForMerchant({
+      const session = agentRuntimeService.getOrCreateSessionForOperator({
         merchantId,
-        sessionId: body && body.session_id,
+        operatorId,
         metadata: (body && body.metadata) || {},
       });
-      sendJson(res, 200, session);
+      sendJson(res, 200, {
+        ...session,
+        thread_scope: "merchant_operator_singleton",
+        memory_persistence: "process_memory_only",
+      });
       return true;
     }
 
@@ -97,31 +112,24 @@ function createAgentOsRoutesHandler({
     );
     if (method === "GET" && sessionMatch) {
       const merchantId = resolveScopedMerchantId(auth);
+      const operatorId = resolveScopedOperatorId(auth);
       const sessionId = sessionMatch[0];
       const { agentRuntimeService } = getServicesForMerchant(merchantId);
-      const session = agentRuntimeService.getSession({ merchantId, sessionId });
+      const session = agentRuntimeService.getSessionForOperator({
+        merchantId,
+        operatorId,
+        sessionId,
+        autoCreate: true,
+      });
       if (!session) {
         sendJson(res, 404, { error: "session not found" });
         return true;
       }
-      sendJson(res, 200, session);
-      return true;
-    }
-
-    const copySessionMatch = matchPath(
-      url.pathname,
-      new RegExp(`^${AGENT_OS_PREFIX}/sessions/([^/]+)/copy$`),
-    );
-    if (method === "POST" && copySessionMatch) {
-      const merchantId = resolveScopedMerchantId(auth);
-      const sessionId = copySessionMatch[0];
-      const { agentRuntimeService } = getServicesForMerchant(merchantId);
-      try {
-        const copied = agentRuntimeService.copySession({ merchantId, sessionId });
-        sendJson(res, 200, copied);
-      } catch {
-        sendJson(res, 404, { error: "session not found" });
-      }
+      sendJson(res, 200, {
+        ...session,
+        thread_scope: "merchant_operator_singleton",
+        memory_persistence: "process_memory_only",
+      });
       return true;
     }
 
@@ -131,9 +139,15 @@ function createAgentOsRoutesHandler({
     );
     if (method === "GET" && sessionStateMatch) {
       const merchantId = resolveScopedMerchantId(auth);
+      const operatorId = resolveScopedOperatorId(auth);
       const sessionId = sessionStateMatch[0];
       const { agentRuntimeService } = getServicesForMerchant(merchantId);
-      const session = agentRuntimeService.getSession({ merchantId, sessionId });
+      const session = agentRuntimeService.getSessionForOperator({
+        merchantId,
+        operatorId,
+        sessionId,
+        autoCreate: true,
+      });
       if (!session) {
         sendJson(res, 404, { error: "session not found" });
         return true;
@@ -148,9 +162,15 @@ function createAgentOsRoutesHandler({
     );
     if (method === "POST" && sessionHistoryMatch) {
       const merchantId = resolveScopedMerchantId(auth);
+      const operatorId = resolveScopedOperatorId(auth);
       const sessionId = sessionHistoryMatch[0];
       const { agentRuntimeService } = getServicesForMerchant(merchantId);
-      const session = agentRuntimeService.getSession({ merchantId, sessionId });
+      const session = agentRuntimeService.getSessionForOperator({
+        merchantId,
+        operatorId,
+        sessionId,
+        autoCreate: true,
+      });
       if (!session) {
         sendJson(res, 404, { error: "session not found" });
         return true;
@@ -159,16 +179,10 @@ function createAgentOsRoutesHandler({
       return true;
     }
 
-    const taskStreamBySessionMatch = matchPath(
-      url.pathname,
-      new RegExp(`^${AGENT_OS_PREFIX}/sessions/([^/]+)/tasks/stream$`),
-    );
-    if (
-      method === "POST" &&
-      (taskStreamBySessionMatch || url.pathname === `${AGENT_OS_PREFIX}/tasks/stream`)
-    ) {
+    if (method === "POST" && url.pathname === `${AGENT_OS_PREFIX}/tasks/stream`) {
       const body = await readJsonBody(req);
       const merchantId = resolveScopedMerchantId(auth, body);
+      const operatorId = resolveScopedOperatorId(auth);
       if (
         !enforceTenantPolicyForHttp({
           tenantPolicyManager,
@@ -218,7 +232,7 @@ function createAgentOsRoutesHandler({
       try {
         const result = await agentRuntimeService.runWithStream({
           merchantId,
-          sessionId: taskStreamBySessionMatch ? taskStreamBySessionMatch[0] : undefined,
+          operatorId,
           agentId: body && body.agent_id,
           payload: body || {},
           onTaskCreated: ({ task, session }) => {
@@ -268,8 +282,19 @@ function createAgentOsRoutesHandler({
     );
     if (method === "GET" && taskDetailMatch) {
       const merchantId = resolveScopedMerchantId(auth);
+      const operatorId = resolveScopedOperatorId(auth);
       const [sessionId, taskId] = taskDetailMatch;
       const { agentRuntimeService } = getServicesForMerchant(merchantId);
+      const session = agentRuntimeService.getSessionForOperator({
+        merchantId,
+        operatorId,
+        sessionId,
+        autoCreate: false,
+      });
+      if (!session) {
+        sendJson(res, 404, { error: "task not found" });
+        return true;
+      }
       const task = agentRuntimeService.getTask({ merchantId, sessionId, taskId });
       if (!task) {
         sendJson(res, 404, { error: "task not found" });
@@ -285,6 +310,7 @@ function createAgentOsRoutesHandler({
     );
     if (method === "POST" && taskCancelMatch) {
       const merchantId = resolveScopedMerchantId(auth);
+      const operatorId = resolveScopedOperatorId(auth);
       if (
         !enforceTenantPolicyForHttp({
           tenantPolicyManager,
@@ -300,6 +326,16 @@ function createAgentOsRoutesHandler({
 
       const [sessionId, taskId] = taskCancelMatch;
       const { agentRuntimeService } = getServicesForMerchant(merchantId);
+      const session = agentRuntimeService.getSessionForOperator({
+        merchantId,
+        operatorId,
+        sessionId,
+        autoCreate: false,
+      });
+      if (!session) {
+        sendJson(res, 404, { error: "task not found" });
+        return true;
+      }
       try {
         const task = agentRuntimeService.cancelTask({ merchantId, sessionId, taskId });
         sendJson(res, 200, task);
@@ -315,10 +351,20 @@ function createAgentOsRoutesHandler({
     );
     if (method === "GET" && taskJoinStreamMatch) {
       const merchantId = resolveScopedMerchantId(auth);
+      const operatorId = resolveScopedOperatorId(auth);
       const [sessionId, taskId] = taskJoinStreamMatch;
       const { agentRuntimeService } = getServicesForMerchant(merchantId);
+      const session = agentRuntimeService.getSessionForOperator({
+        merchantId,
+        operatorId,
+        sessionId,
+        autoCreate: false,
+      });
+      if (!session) {
+        sendJson(res, 404, { error: "task not found" });
+        return true;
+      }
       const task = agentRuntimeService.getTask({ merchantId, sessionId, taskId });
-      const session = agentRuntimeService.getSession({ merchantId, sessionId });
       if (!task || !session) {
         sendJson(res, 404, { error: "task not found" });
         return true;

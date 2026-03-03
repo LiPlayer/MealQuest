@@ -11,7 +11,7 @@ const TABLES = {
   invoices: "mq_invoices",
   partnerOrders: "mq_partner_orders",
   strategyConfigs: "mq_strategy_configs",
-  strategyChats: "mq_strategy_chats",
+  agentSessions: "mq_agent_sessions",
   allianceConfigs: "mq_alliance_configs",
   phoneLoginCodes: "mq_phone_login_codes",
   customerIdentityBindings: "mq_customer_identity_bindings",
@@ -267,7 +267,7 @@ async function ensureRelationalTables(pool, schema, { enforceRls = true } = {}) 
   `);
 
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS ${schemaSql}.${qIdent(TABLES.strategyChats)} (
+    CREATE TABLE IF NOT EXISTS ${schemaSql}.${qIdent(TABLES.agentSessions)} (
       tenant_id TEXT NOT NULL,
       merchant_id TEXT NOT NULL,
       payload JSONB NOT NULL,
@@ -388,7 +388,8 @@ async function ensureRelationalTables(pool, schema, { enforceRls = true } = {}) 
     )
   `);
 
-  // Chat-only cleanup: remove legacy proposal storage table.
+  // Cleanup legacy tables removed from current architecture.
+  await pool.query(`DROP TABLE IF EXISTS ${schemaSql}.${qIdent("mq_strategy_chats")}`);
   await pool.query(`DROP TABLE IF EXISTS ${schemaSql}.${qIdent("mq_proposals")}`);
 
   for (const table of RELATIONAL_TENANT_TABLES) {
@@ -457,7 +458,7 @@ function createEmptyState() {
     invoicesByMerchant: {},
     partnerOrders: {},
     strategyConfigs: {},
-    strategyChats: {},
+    agentSessions: {},
     allianceConfigs: {},
     phoneLoginCodes: {},
     socialAuth: {
@@ -626,12 +627,12 @@ async function readRelationalStateWithClient(client, schema, tenantId) {
     state.strategyConfigs[row.merchant_id][row.template_id] = row.payload;
   }
 
-  const strategyChats = await client.query(
-    `SELECT merchant_id, payload FROM ${schemaSql}.${qIdent(TABLES.strategyChats)} WHERE tenant_id = $1`,
+  const agentSessions = await client.query(
+    `SELECT merchant_id, payload FROM ${schemaSql}.${qIdent(TABLES.agentSessions)} WHERE tenant_id = $1`,
     [tenantId],
   );
-  for (const row of strategyChats.rows) {
-    state.strategyChats[row.merchant_id] = row.payload;
+  for (const row of agentSessions.rows) {
+    state.agentSessions[row.merchant_id] = row.payload;
   }
 
   const allianceConfigs = await client.query(
@@ -858,11 +859,11 @@ async function replaceTenantState(client, schema, tenantId, rawState) {
     }
   }
 
-  for (const [merchantId, payload] of Object.entries(normalizedState.strategyChats || {})) {
+  for (const [merchantId, payload] of Object.entries(normalizedState.agentSessions || {})) {
     await insertRow(
       client,
       schema,
-      TABLES.strategyChats,
+      TABLES.agentSessions,
       ["tenant_id", "merchant_id", "payload"],
       [tenantId, merchantId, toJsonb(payload)],
     );

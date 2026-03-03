@@ -352,10 +352,10 @@ function buildMerchantSnapshotSummary(db, merchantId) {
       db.strategyConfigs[merchantId] &&
       Object.values(db.strategyConfigs[merchantId])) ||
     [];
-  const strategyChat =
-    (db.strategyChats && db.strategyChats[merchantId]) || { activeSessionId: null, sessions: {} };
-  const strategyChatSessionsCount = Object.keys(strategyChat.sessions || {}).length;
-  const strategyChatMessageCount = Object.values(strategyChat.sessions || {}).reduce(
+  const agentSessionsBucket =
+    (db.agentSessions && db.agentSessions[merchantId]) || { activeSessionId: null, sessions: {} };
+  const agentSessionsCount = Object.keys(agentSessionsBucket.sessions || {}).length;
+  const agentMessagesCount = Object.values(agentSessionsBucket.sessions || {}).reduce(
     (sum, session) =>
       sum + (Array.isArray(session && session.messages) ? session.messages.length : 0),
     0,
@@ -398,8 +398,8 @@ function buildMerchantSnapshotSummary(db, merchantId) {
     invoicesCount: Object.keys(invoices).length,
     activePoliciesCount: activePolicies.length,
     strategyConfigCount: strategyConfigs.length,
-    strategyChatSessionsCount,
-    strategyChatMessageCount,
+    agentSessionsCount,
+    agentMessagesCount,
     allianceWalletShared: Boolean(allianceConfig && allianceConfig.walletShared),
     ledgerCount: ledger.length,
     auditCount: auditLogs.length,
@@ -558,8 +558,8 @@ function ensureMerchantContainers(db, merchantId) {
   if (!db.strategyConfigs || typeof db.strategyConfigs !== "object") {
     db.strategyConfigs = {};
   }
-  if (!db.strategyChats || typeof db.strategyChats !== "object") {
-    db.strategyChats = {};
+  if (!db.agentSessions || typeof db.agentSessions !== "object") {
+    db.agentSessions = {};
   }
   if (!db.allianceConfigs || typeof db.allianceConfigs !== "object") {
     db.allianceConfigs = {};
@@ -586,8 +586,8 @@ function ensureMerchantContainers(db, merchantId) {
   if (!db.strategyConfigs[merchantId]) {
     db.strategyConfigs[merchantId] = {};
   }
-  if (!db.strategyChats[merchantId]) {
-    db.strategyChats[merchantId] = {
+  if (!db.agentSessions[merchantId]) {
+    db.agentSessions[merchantId] = {
       activeSessionId: null,
       sessions: {}
     };
@@ -963,11 +963,11 @@ function copyMerchantSlice({ sourceDb, targetDb, merchantId }) {
   targetDb.strategyConfigs[merchantId] = jsonClone(
     (sourceDb.strategyConfigs && sourceDb.strategyConfigs[merchantId]) || {}
   );
-  if (!targetDb.strategyChats || typeof targetDb.strategyChats !== "object") {
-    targetDb.strategyChats = {};
+  if (!targetDb.agentSessions || typeof targetDb.agentSessions !== "object") {
+    targetDb.agentSessions = {};
   }
-  targetDb.strategyChats[merchantId] = jsonClone(
-    (sourceDb.strategyChats && sourceDb.strategyChats[merchantId]) || {
+  targetDb.agentSessions[merchantId] = jsonClone(
+    (sourceDb.agentSessions && sourceDb.agentSessions[merchantId]) || {
       activeSessionId: null,
       sessions: {}
     }

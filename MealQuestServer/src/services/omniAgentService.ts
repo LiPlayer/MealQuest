@@ -84,6 +84,31 @@ function createOmniAgentService(options = {}) {
     return "";
   }
 
+  function extractModelText(output) {
+    if (typeof output === "string") {
+      return output;
+    }
+    if (!output || typeof output !== "object") {
+      return "";
+    }
+    if (typeof output.text === "string") {
+      return output.text;
+    }
+    if (typeof output.content === "string") {
+      return output.content;
+    }
+    if (Array.isArray(output.content)) {
+      return extractChunkText(output.content);
+    }
+    if (output.kwargs && typeof output.kwargs === "object") {
+      return extractModelText(output.kwargs);
+    }
+    if (output.message && typeof output.message === "object") {
+      return extractModelText(output.message);
+    }
+    return "";
+  }
+
   async function buildModel() {
     if (modelInstance) {
       return modelInstance;
@@ -237,8 +262,78 @@ function createOmniAgentService(options = {}) {
     }
   }
 
+  async function summarizeSessionMemory(input = {}) {
+    const merchantId = String(input.merchantId || "").trim();
+    const sessionId = String(input.sessionId || "").trim();
+    const archiveText = String(input.archiveText || "").trim();
+    const previousSummary = String(input.previousSummary || "").trim();
+    if (!merchantId || !sessionId || !archiveText) {
+      throw new Error("invalid memory compression input");
+    }
+
+    let model = null;
+    try {
+      model = await getModel();
+    } catch (error) {
+      throw new Error(
+        error && error.message
+          ? `deepseek model unavailable: ${String(error.message)}`
+          : "deepseek model unavailable",
+      );
+    }
+    if (!model || typeof model.invoke !== "function") {
+      throw new Error("deepseek model unavailable");
+    }
+
+    const archiveSnippet = archiveText.slice(-20000);
+    const previousSnippet = previousSummary.slice(-4000);
+    const response = await model.invoke(
+      [
+        {
+          role: "system",
+          content:
+            "You compress conversation memory for a merchant operations agent. Output concise plain text only.",
+        },
+        {
+          role: "user",
+          content: [
+            `Merchant ID: ${merchantId}`,
+            `Session ID: ${sessionId}`,
+            "",
+            "Task:",
+            "- Merge previous summary and archived dialogue into one rolling memory summary.",
+            "- Keep only durable facts: goals, constraints, decisions, commitments, risks, unresolved questions.",
+            "- Remove duplicated or obsolete details.",
+            "- Output max 12 bullet points.",
+            "",
+            "Previous summary:",
+            previousSnippet || "(none)",
+            "",
+            "Archived dialogue:",
+            archiveSnippet,
+          ].join("\n"),
+        },
+      ],
+      {
+        runName: "mq.agent.memory.compress",
+        tags: ["mealquest", "agent-os", "memory-compression"],
+        metadata: {
+          merchantId,
+          sessionId,
+          provider: "deepseek",
+        },
+      },
+    );
+    const summary = extractModelText(response).trim();
+    if (!summary) {
+      throw new Error("deepseek memory compression returned empty summary");
+    }
+    return summary;
+  }
+
   return {
     streamAgentTurn,
+    summarizeSessionMemory,
   };
 }
 

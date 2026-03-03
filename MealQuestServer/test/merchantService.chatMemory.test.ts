@@ -1,4 +1,4 @@
-﻿const test = require("node:test");
+const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { createInMemoryDb } = require("../src/store/inMemoryDb");
@@ -22,7 +22,7 @@ function seedMerchant(db, merchantId = "m_store_001") {
   db.paymentsByMerchant[merchantId] = {};
   db.invoicesByMerchant[merchantId] = {};
   db.strategyConfigs[merchantId] = {};
-  db.strategyChats[merchantId] = {
+  db.agentSessions[merchantId] = {
     activeSessionId: null,
     sessions: {},
   };
@@ -36,14 +36,14 @@ function seedMerchant(db, merchantId = "m_store_001") {
   };
 }
 
-test("merchant strategy chat keeps session messages and sends minimal agent input", async () => {
+test("merchant agent session keeps session messages and sends minimal agent input", async () => {
   const db = createInMemoryDb();
   seedMerchant(db);
 
   const capturedInputs = [];
   const merchantService = createMerchantService(db, {
-    strategyChatService: {
-      async *streamStrategyChatTurn(input) {
+    omniAgentService: {
+      async *streamAgentTurn(input) {
         capturedInputs.push(input);
         return {
           status: "CHAT_REPLY",
@@ -58,7 +58,7 @@ test("merchant strategy chat keeps session messages and sends minimal agent inpu
       `round ${index}: goal is to improve retention and GMV, budget cap ${300 + index * 10}. ` +
       "user preference: low disturbance, avoid over-discounting, keep margin. " +
       "x".repeat(760);
-    const turn = await merchantService.sendStrategyChatMessage({
+    const turn = await merchantService.sendAgentMessage({
       merchantId: "m_store_001",
       operatorId: "staff_owner",
       content,
@@ -66,7 +66,7 @@ test("merchant strategy chat keeps session messages and sends minimal agent inpu
     assert.equal(turn.status, "CHAT_REPLY");
   }
 
-  const bucket = db.strategyChats.m_store_001;
+  const bucket = db.agentSessions.m_store_001;
   const session = bucket.sessions[bucket.activeSessionId];
   assert.ok(session);
   assert.ok(Array.isArray(session.messages));

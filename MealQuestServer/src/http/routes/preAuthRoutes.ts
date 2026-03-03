@@ -411,26 +411,6 @@ function createPreAuthRoutesHandler({
       return true;
     }
 
-    if (method === "GET" && url.pathname === "/api/merchant/catalog") {
-      const merchants = await runWithRootFreshRead(async (rootDb) =>
-        Object.values(rootDb.merchants || {})
-          .map((merchant) => ({
-            merchantId: merchant.merchantId,
-            name: merchant.name,
-            budgetCap: merchant.budgetCap,
-            budgetUsed: merchant.budgetUsed,
-            killSwitchEnabled: Boolean(merchant.killSwitchEnabled),
-            onboardedAt: merchant.onboardedAt || null,
-          }))
-          .sort((a, b) => String(a.merchantId).localeCompare(String(b.merchantId)))
-      );
-      sendJson(res, 200, {
-        items: merchants,
-        total: merchants.length,
-      });
-      return true;
-    }
-
     if (method === "GET" && url.pathname === "/api/merchant/exists") {
       const merchantId = String(url.searchParams.get("merchantId") || "").trim();
       if (!merchantId) {

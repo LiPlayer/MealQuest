@@ -382,34 +382,38 @@ async function runSmoke(baseUrl, options = {}) {
   expectStatus(statusAfterCutover, 200, "migration status after cutover");
   assert.equal(statusAfterCutover.data.dedicatedDbAttached, true);
 
-  console.log("[smoke] scenario G: strategy chat turn");
+  console.log("[smoke] scenario G: agent runtime session + stream");
 
-  const strategySession = await postJson(
+  const agentSession = await postJson(
     baseUrl,
-    "/api/merchant/strategy-chat/sessions",
+    "/api/agent-os/sessions",
     {
       merchantId: "m_store_001"
     },
     { Authorization: `Bearer ${ownerToken}` }
   );
-  expectStatus(strategySession, 200, "strategy chat session create");
-  assert.ok(strategySession.data.sessionId, "strategy chat session id should exist");
+  expectStatus(agentSession, 200, "agent session create");
+  assert.ok(agentSession.data.session_id, "agent session id should exist");
 
-  const strategyTurn = await postJson(
+  const agentStream = await postJson(
     baseUrl,
-    "/api/merchant/strategy-chat/messages",
+    "/api/agent-os/tasks/stream",
     {
       merchantId: "m_store_001",
-      sessionId: strategySession.data.sessionId,
-      content: "Please create a strategy proposal for high temperature policy now."
+      agent_id: "merchant-omni-agent",
+      input: {
+        messages: [{ role: "user", content: "Please create an execution plan for lunch traffic." }]
+      },
+      stream_mode: ["values", "messages-tuple", "custom"]
     },
     { Authorization: `Bearer ${ownerToken}` }
   );
-  expectStatus(strategyTurn, 200, "strategy chat message");
-  assert.ok(
-    ["CHAT_REPLY", "AI_UNAVAILABLE"].includes(String(strategyTurn.data.status || "")),
-    "strategy chat status should be chat-only"
+  expectStatus(agentStream, 200, "agent task stream");
+  const streamText = String(
+    typeof agentStream.data.raw === "string" ? agentStream.data.raw : JSON.stringify(agentStream.data)
   );
+  assert.match(streamText, /event:\s+metadata/, "agent stream should include metadata event");
+  assert.match(streamText, /event:\s+end/, "agent stream should include end event");
 
   console.log("[smoke] scenario H: supplier verify");
   const supplierVerifyPass = await postJson(

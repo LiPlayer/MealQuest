@@ -11,7 +11,7 @@ Minimal runnable backend implementation for MealQuest.
 - Supplier order verification API
 - Alliance configuration (store clusters, shared wallet, cross-store sync)
 - JWT auth with role scope (`CUSTOMER`, `CLERK`, `MANAGER`, `OWNER`)
-- WebSocket realtime events (payment, refund, strategy, fuse, policy decision)
+- WebSocket realtime events (payment, refund, agent stream, fuse, policy decision)
 - PostgreSQL relational persistence (multi-table)
 - Strong shared-db isolation with PostgreSQL RLS (`tenant_id`)
 - High-risk audit logs
@@ -23,14 +23,6 @@ cd .\MealQuestServer
 Copy-Item .env.example .env
 npm install
 npm start
-```
-
-You can also start from repository scripts:
-
-```powershell
-.\scripts\start-server.ps1 -Profile dev
-.\scripts\start-server.ps1 -Profile staging
-.\scripts\start-server.ps1 -Profile prod
 ```
 
 ## Required Environment
@@ -76,7 +68,7 @@ $env:LANGSMITH_TRACING="true"
 $env:LANGSMITH_PROJECT="mealquest-local"
 ```
 
-3. Start server and send one request to `POST /api/agent-os/sessions/:sessionId/tasks/stream`.
+3. Start server and send one request to `POST /api/agent-os/tasks/stream`.
 4. Open LangSmith project and verify traces include AI Digital Operations Officer runs.
 
 Notes:
@@ -101,11 +93,9 @@ Merchant onboarding is now completed only through auth flow:
 POST /api/auth/merchant/request-code
 POST /api/auth/merchant/phone-login
 POST /api/auth/merchant/complete-onboard
-GET  /api/merchant/catalog
 ```
 
 Server starts with an empty merchant dataset by default. Use phone login and complete-onboard to create the first store.
-`GET /api/merchant/catalog` is currently not required by active business flows.
 
 ## Auth
 
@@ -154,12 +144,12 @@ AI Digital Operations Officer APIs:
 ```text
 POST /api/agent-os/agents/search
 POST /api/agent-os/sessions
-POST /api/agent-os/sessions/:sessionId/tasks/stream
+POST /api/agent-os/tasks/stream
 GET  /api/agent-os/sessions/:sessionId/state
 POST /api/agent-os/sessions/:sessionId/history
 ```
 
-`/api/agent-os/sessions/:sessionId/tasks/stream` emits SSE events:
+`/api/agent-os/tasks/stream` emits SSE events:
 
 ```text
 event: metadata data: { task_id, session_id }
@@ -174,8 +164,10 @@ event: end      data: { session_id, task_id, status }
 Agent runtime behavior:
 
 1. Agent runtime state is fully managed by `/api/agent-os/*` session state.
-2. Agent tasks are executed via `tasks/stream` and persisted in session/task records.
-3. `command.resume` is currently rejected by runtime policy.
+2. Session scope is singleton per `merchantId + operatorId` (single thread for short-term memory).
+3. Agent tasks are executed via `POST /api/agent-os/tasks/stream` and persisted in session/task records.
+4. Context compaction is strict DeepSeek compression only; compression failure aborts write (no fallback truncation).
+5. `command.resume` is currently rejected by runtime policy.
 
 Supplier verification:
 

@@ -6,7 +6,7 @@ This is a monorepo with three runtime apps:
 - `MealQuestMerchant/`: Expo merchant app (`app/`, `src/`).
 - `meal-quest-customer/`: Taro customer app (`src/`, `config/`, `test/`).
 
-Shared references are in `docs/`; root `scripts/` is intentionally minimal (`repo-task.js`, `check-encoding.js`).
+Shared references are in `docs/`; root automation scripts are `repo-task.js` and `check-encoding.js`.
 
 ## Build, Test, and Development Commands
 Run from repository root:

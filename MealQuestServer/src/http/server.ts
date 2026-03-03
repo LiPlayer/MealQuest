@@ -46,7 +46,6 @@ function createAppServer({
   socialAuthService = null,
   socialAuthOptions = {},
   omniAgentOptions = null,
-  strategyChatOptions = null,
 } = {}) {
   const actualDb = db || createInMemoryDb();
   if (typeof actualDb.save !== "function") {
@@ -109,9 +108,7 @@ function createAppServer({
   const resolvedOmniAgentOptions =
     omniAgentOptions && typeof omniAgentOptions === "object"
       ? omniAgentOptions
-      : strategyChatOptions && typeof strategyChatOptions === "object"
-        ? strategyChatOptions
-        : {};
+      : {};
   const omniAgentService = createOmniAgentService(resolvedOmniAgentOptions);
   const metrics = {
     startedAt: new Date().toISOString(),
@@ -128,7 +125,6 @@ function createAppServer({
         merchantService: createMerchantService(scopedDb, {
           policyOsService,
           wsHub,
-          strategyChatService: omniAgentService,
           omniAgentService,
         }),
         agentRuntimeService: createAgentRuntimeService(scopedDb, {
@@ -225,15 +221,11 @@ function createAppServer({
 
   // Handle incoming WebSocket messages
   wsHub.onMessage(async (client, data) => {
-    if (data.type === "AGENT_SEND_MESSAGE" || data.type === "STRATEGY_CHAT_SEND_MESSAGE") {
+    if (data.type === "AGENT_SEND_MESSAGE") {
       const merchantId = client.merchantId;
       const { merchantService } = getServicesForMerchant(merchantId);
       try {
-        const sendAgentMessage =
-          typeof merchantService.sendAgentMessage === "function"
-            ? merchantService.sendAgentMessage.bind(merchantService)
-            : merchantService.sendStrategyChatMessage.bind(merchantService);
-        const result = await sendAgentMessage({
+        const result = await merchantService.sendAgentMessage({
           merchantId,
           operatorId: client.auth.operatorId || "system",
           content: data.payload.content,
@@ -395,20 +387,14 @@ async function createAppServerAsync(options = {}) {
       modelName:
         options.omniAgentOptions && options.omniAgentOptions.modelName !== undefined
           ? options.omniAgentOptions.modelName
-          : options.strategyChatOptions && options.strategyChatOptions.modelName !== undefined
-            ? options.strategyChatOptions.modelName
           : runtimeEnv.ai.deepseekModel,
       timeoutMs:
         options.omniAgentOptions && options.omniAgentOptions.timeoutMs !== undefined
           ? options.omniAgentOptions.timeoutMs
-          : options.strategyChatOptions && options.strategyChatOptions.timeoutMs !== undefined
-            ? options.strategyChatOptions.timeoutMs
           : 45000,
       temperature:
         options.omniAgentOptions && options.omniAgentOptions.temperature !== undefined
           ? options.omniAgentOptions.temperature
-          : options.strategyChatOptions && options.strategyChatOptions.temperature !== undefined
-            ? options.strategyChatOptions.temperature
           : 0.2,
     },
     tenantDbMap: {

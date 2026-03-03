@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
-const repoRoot = path.resolve(__dirname, "..");
+const repoRoot = path.resolve(__dirname);
 const args = new Set(process.argv.slice(2));
 const scanStaged = args.has("--staged");
 const scanAll = args.has("--all");

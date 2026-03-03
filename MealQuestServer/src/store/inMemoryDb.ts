@@ -10,7 +10,7 @@ function createDefaultState() {
     invoicesByMerchant: {},
     partnerOrders: {},
     strategyConfigs: {},
-    strategyChats: {},
+    agentSessions: {},
     agentRuntime: {},
     allianceConfigs: {},
     phoneLoginCodes: {},
@@ -77,11 +77,11 @@ function normalizeShape(state) {
   if (!next.strategyConfigs || typeof next.strategyConfigs !== "object") {
     next.strategyConfigs = {};
   }
-  if (!next.strategyChats || typeof next.strategyChats !== "object") {
-    next.strategyChats = {};
+  if (!next.agentSessions || typeof next.agentSessions !== "object") {
+    next.agentSessions = {};
   }
   if (!next.agentRuntime || typeof next.agentRuntime !== "object") {
-    next.agentRuntime = next.agentServer && typeof next.agentServer === "object" ? next.agentServer : {};
+    next.agentRuntime = {};
   }
   if (!next.allianceConfigs || typeof next.allianceConfigs !== "object") {
     next.allianceConfigs = {};
@@ -141,8 +141,8 @@ function ensureMerchantBuckets(state) {
     if (!state.strategyConfigs[merchantId]) {
       state.strategyConfigs[merchantId] = {};
     }
-    if (!state.strategyChats[merchantId]) {
-      state.strategyChats[merchantId] = {
+    if (!state.agentSessions[merchantId]) {
+      state.agentSessions[merchantId] = {
         activeSessionId: null,
         sessions: {}
       };
@@ -188,13 +188,13 @@ function normalizeState(initialState = null) {
       ...defaults.strategyConfigs,
       ...(migrated.strategyConfigs || {})
     },
-    strategyChats: {
-      ...defaults.strategyChats,
-      ...(migrated.strategyChats || {})
+    agentSessions: {
+      ...defaults.agentSessions,
+      ...(migrated.agentSessions || {})
     },
     agentRuntime: {
       ...defaults.agentRuntime,
-      ...(migrated.agentRuntime || migrated.agentServer || {})
+      ...(migrated.agentRuntime || {})
     },
     allianceConfigs: {
       ...defaults.allianceConfigs,
@@ -266,7 +266,7 @@ function createInMemoryDb(initialState = null) {
       invoicesByMerchant: db.invoicesByMerchant,
       partnerOrders: db.partnerOrders,
       strategyConfigs: db.strategyConfigs,
-      strategyChats: db.strategyChats,
+      agentSessions: db.agentSessions,
       agentRuntime: db.agentRuntime,
       allianceConfigs: db.allianceConfigs,
       phoneLoginCodes: db.phoneLoginCodes,

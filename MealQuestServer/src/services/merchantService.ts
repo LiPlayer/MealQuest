@@ -1,5 +1,5 @@
 function createMerchantService(db, options = {}) {
-  const agentService = options.omniAgentService || options.strategyChatService;
+  const agentService = options.omniAgentService;
   const policyOsService = options.policyOsService;
   const wsHub = options.wsHub;
   const fromFreshState = Boolean(options.__fromFreshState);
@@ -45,7 +45,6 @@ function createMerchantService(db, options = {}) {
     }
     return db.runWithFreshState(async (workingDb) => {
       const scopedService = createMerchantService(workingDb, {
-        strategyChatService: agentService,
         omniAgentService: agentService,
         policyOsService,
         wsHub,
@@ -61,7 +60,6 @@ function createMerchantService(db, options = {}) {
     }
     return db.runWithFreshRead(async (workingDb) => {
       const scopedService = createMerchantService(workingDb, {
-        strategyChatService: agentService,
         omniAgentService: agentService,
         policyOsService,
         wsHub,
@@ -271,24 +269,24 @@ function createMerchantService(db, options = {}) {
     return JSON.parse(JSON.stringify(value));
   }
 
-  function ensureStrategyChatBucket(merchantId) {
-    if (!db.strategyChats || typeof db.strategyChats !== "object") {
-      db.strategyChats = {};
+  function ensureAgentSessionBucket(merchantId) {
+    if (!db.agentSessions || typeof db.agentSessions !== "object") {
+      db.agentSessions = {};
     }
-    if (!db.strategyChats[merchantId] || typeof db.strategyChats[merchantId] !== "object") {
-      db.strategyChats[merchantId] = {
+    if (!db.agentSessions[merchantId] || typeof db.agentSessions[merchantId] !== "object") {
+      db.agentSessions[merchantId] = {
         activeSessionId: null,
         sessions: {}
       };
     }
-    if (!db.strategyChats[merchantId].sessions || typeof db.strategyChats[merchantId].sessions !== "object") {
-      db.strategyChats[merchantId].sessions = {};
+    if (!db.agentSessions[merchantId].sessions || typeof db.agentSessions[merchantId].sessions !== "object") {
+      db.agentSessions[merchantId].sessions = {};
     }
-    return db.strategyChats[merchantId];
+    return db.agentSessions[merchantId];
   }
 
   function createSessionId(merchantId) {
-    return `sc_${merchantId}`;
+    return `as_${merchantId}`;
   }
 
   function createChatMessage(session, message) {
@@ -1116,8 +1114,8 @@ function createMerchantService(db, options = {}) {
     return [];
   }
 
-  function resolveStrategyChatSession({ merchantId, sessionId, autoCreate = true, operatorId = "system" }) {
-    const bucket = ensureStrategyChatBucket(merchantId);
+  function resolveAgentSession({ merchantId, sessionId, autoCreate = true, operatorId = "system" }) {
+    const bucket = ensureAgentSessionBucket(merchantId);
     const targetSessionId = String(sessionId || bucket.activeSessionId || "").trim();
     if (targetSessionId && bucket.sessions[targetSessionId]) {
       bucket.activeSessionId = targetSessionId;
@@ -1149,13 +1147,13 @@ function createMerchantService(db, options = {}) {
     appendChatMessage(session, {
       role: "SYSTEM",
       type: "TEXT",
-      text: "New strategy session created. You can discuss goals with the assistant."
+      text: "New agent session created. You can discuss goals with the assistant."
     });
     ensureSessionMemoryState(session);
     return session;
   }
 
-  function buildStrategyChatSessionResponse({ merchantId, session }) {
+  function buildAgentSessionResponse({ merchantId, session }) {
     const sessionMessages = session && Array.isArray(session.messages) ? session.messages : [];
     return {
       merchantId,
@@ -1171,7 +1169,7 @@ function createMerchantService(db, options = {}) {
     };
   }
 
-  function buildStrategyChatDeltaResponse({ merchantId, session, deltaFrom = 0 }) {
+  function buildAgentSessionDeltaResponse({ merchantId, session, deltaFrom = 0 }) {
     const allMessages =
       session && Array.isArray(session.messages) ? cloneJson(session.messages) : [];
     const safeDeltaFrom = Math.min(
@@ -1180,7 +1178,7 @@ function createMerchantService(db, options = {}) {
     );
     const deltaMessages = allMessages.slice(safeDeltaFrom);
     return {
-      ...buildStrategyChatSessionResponse({ merchantId, session }),
+      ...buildAgentSessionResponse({ merchantId, session }),
       deltaMessages,
       latestMessageId:
         allMessages.length > 0 ? allMessages[allMessages.length - 1].messageId : null
@@ -1803,8 +1801,8 @@ function createMerchantService(db, options = {}) {
     };
   }
 
-  async function createStrategyChatSession({ merchantId, operatorId = "system" }) {
-    const freshResult = await runWithFreshState("createStrategyChatSession", {
+  async function createAgentSession({ merchantId, operatorId = "system" }) {
+    const freshResult = await runWithFreshState("createAgentSession", {
       merchantId,
       operatorId
     });
@@ -1816,7 +1814,7 @@ function createMerchantService(db, options = {}) {
     if (!merchant) {
       throw new Error("merchant not found");
     }
-    const bucket = ensureStrategyChatBucket(merchantId);
+    const bucket = ensureAgentSessionBucket(merchantId);
     const nowIso = new Date().toISOString();
     const session = {
       sessionId: createSessionId(merchantId),
@@ -1837,15 +1835,15 @@ function createMerchantService(db, options = {}) {
     appendChatMessage(session, {
       role: "SYSTEM",
       type: "TEXT",
-      text: "New strategy session created. You can discuss goals with the assistant."
+      text: "New agent session created. You can discuss goals with the assistant."
     });
     ensureSessionMemoryState(session);
     // db.save(); // Removed persistence
-    return buildStrategyChatSessionResponse({ merchantId, session });
+    return buildAgentSessionResponse({ merchantId, session });
   }
 
-  async function getStrategyChatSession({ merchantId }) {
-    const freshResult = await runWithFreshState("getStrategyChatSession", { merchantId });
+  async function getAgentSession({ merchantId }) {
+    const freshResult = await runWithFreshState("getAgentSession", { merchantId });
     if (freshResult !== FRESH_NOT_USED) {
       return freshResult;
     }
@@ -1854,23 +1852,23 @@ function createMerchantService(db, options = {}) {
     if (!merchant) {
       throw new Error("merchant not found");
     }
-    const session = resolveStrategyChatSession({
+    const session = resolveAgentSession({
       merchantId,
       autoCreate: true,
       operatorId: "system"
     });
     if (!session) {
-      throw new Error("strategy chat session not found");
+      throw new Error("agent session not found");
     }
-    return buildStrategyChatSessionResponse({ merchantId, session });
+    return buildAgentSessionResponse({ merchantId, session });
   }
 
-  async function listStrategyChatMessages({
+  async function listAgentMessages({
     merchantId,
     cursor = "",
     limit = DEFAULT_CHAT_PAGE_LIMIT
   }) {
-    const freshResult = await runWithFreshState("listStrategyChatMessages", {
+    const freshResult = await runWithFreshState("listAgentMessages", {
       merchantId,
       cursor,
       limit
@@ -1884,13 +1882,13 @@ function createMerchantService(db, options = {}) {
       throw new Error("merchant not found");
     }
 
-    const session = resolveStrategyChatSession({
+    const session = resolveAgentSession({
       merchantId,
       autoCreate: true,
       operatorId: "system"
     });
     if (!session) {
-      throw new Error("strategy chat session not found");
+      throw new Error("agent session not found");
     }
 
     const messages = Array.isArray(session.messages) ? session.messages : [];
@@ -1951,14 +1949,14 @@ function createMerchantService(db, options = {}) {
       throw new Error("content is required");
     }
 
-    const session = resolveStrategyChatSession({
+    const session = resolveAgentSession({
       merchantId,
       autoCreate: true,
       operatorId
     });
     const baselineMessageCount = Array.isArray(session.messages) ? session.messages.length : 0;
     const buildChatResponse = () =>
-      buildStrategyChatDeltaResponse({
+      buildAgentSessionDeltaResponse({
         merchantId,
         session,
         deltaFrom: baselineMessageCount
@@ -1977,9 +1975,7 @@ function createMerchantService(db, options = {}) {
     const runAgentTurn =
       agentService && typeof agentService.streamAgentTurn === "function"
         ? agentService.streamAgentTurn.bind(agentService)
-        : agentService && typeof agentService.streamStrategyChatTurn === "function"
-          ? agentService.streamStrategyChatTurn.bind(agentService)
-          : null;
+        : null;
 
     if (!runAgentTurn) {
       const assistantMessage = "Agent is unavailable. Chat mode is still available.";
@@ -2161,7 +2157,7 @@ function createMerchantService(db, options = {}) {
     }
 
     const fallbackAssistantMessage = String(
-      (aiTurn && aiTurn.assistantMessage) || "I can continue helping with strategy details."
+      (aiTurn && aiTurn.assistantMessage) || "I can continue helping with agent execution details."
     );
     appendChatMessage(session, {
       role: "ASSISTANT",
@@ -2182,11 +2178,10 @@ function createMerchantService(db, options = {}) {
   return {
     getDashboard,
     setKillSwitch,
-    createStrategyChatSession,
-    getStrategyChatSession,
-    listStrategyChatMessages,
-    sendAgentMessage,
-    sendStrategyChatMessage: sendAgentMessage
+    createAgentSession,
+    getAgentSession,
+    listAgentMessages,
+    sendAgentMessage
   };
 }
 

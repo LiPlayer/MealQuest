@@ -28,8 +28,9 @@ App startup (run inside each project):
 Optional (recommended once per clone):
 - `npm run hooks:install` to enable `.githooks/pre-commit`.
 
-Root scripts are intentionally minimal (`repo-task.js`, `check-encoding.js`):
-- `scripts/README.md`
+Root automation scripts are intentionally minimal:
+- `repo-task.js`
+- `check-encoding.js`
 
 ## Docs
 Normative source of truth:

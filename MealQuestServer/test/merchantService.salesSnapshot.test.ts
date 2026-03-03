@@ -1,10 +1,10 @@
-﻿const test = require("node:test");
+const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { createInMemoryDb } = require("../src/store/inMemoryDb");
 const { createMerchantService } = require("../src/services/merchantService");
 
-test("merchant strategy chat does not forward payment sales snapshot into agent input", async () => {
+test("merchant agent session does not forward payment sales snapshot into agent input", async () => {
   const db = createInMemoryDb();
   const now = Date.now();
   db.merchants.m_store_001 = {
@@ -23,7 +23,7 @@ test("merchant strategy chat does not forward payment sales snapshot into agent 
   db.paymentsByMerchant.m_store_001 = {};
   db.invoicesByMerchant.m_store_001 = {};
   db.strategyConfigs.m_store_001 = {};
-  db.strategyChats.m_store_001 = {
+  db.agentSessions.m_store_001 = {
     activeSessionId: null,
     sessions: {},
   };
@@ -49,8 +49,8 @@ test("merchant strategy chat does not forward payment sales snapshot into agent 
 
   let capturedInput = null;
   const merchantService = createMerchantService(db, {
-    strategyChatService: {
-      async *streamStrategyChatTurn(input) {
+    omniAgentService: {
+      async *streamAgentTurn(input) {
         capturedInput = input;
         return {
           status: "CHAT_REPLY",
@@ -60,7 +60,7 @@ test("merchant strategy chat does not forward payment sales snapshot into agent 
     },
   });
 
-  const turn = await merchantService.sendStrategyChatMessage({
+  const turn = await merchantService.sendAgentMessage({
     merchantId: "m_store_001",
     operatorId: "staff_owner",
     content: "Summarize sales and suggest next strategy.",

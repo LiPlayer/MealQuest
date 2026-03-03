@@ -146,51 +146,12 @@ function parseSseEvents(raw: string): Array<{ event: string; data: unknown }> {
   return events;
 }
 
-async function ensureAgentSession(params: {
-  merchantId: string;
-  token: string;
-  agentSessionId: string | null;
-}): Promise<string> {
-  if (params.agentSessionId) {
-    return params.agentSessionId;
-  }
-
-  const response = await fetch(`${getApiBaseUrl()}/api/agent-os/sessions`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${params.token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      merchantId: params.merchantId,
-      metadata: {
-        merchantId: params.merchantId,
-        source: 'merchant-app',
-      },
-    }),
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(
-      payload && typeof payload.error === 'string'
-        ? payload.error
-        : `create agent session failed (${response.status})`,
-    );
-  }
-  const sessionId = String(payload && payload.session_id ? payload.session_id : '').trim();
-  if (!sessionId) {
-    throw new Error('agent session_id missing');
-  }
-  return sessionId;
-}
-
 async function runAgentTask(params: {
   merchantId: string;
   token: string;
-  sessionId: string;
   text: string;
 }): Promise<{ assistantText: string; progressEvents: AgentProgressEvent[] }> {
-  const response = await fetch(`${getApiBaseUrl()}/api/agent-os/sessions/${encodeURIComponent(params.sessionId)}/tasks/stream`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/agent-os/tasks/stream`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${params.token}`,
@@ -280,7 +241,6 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
   const [pendingOutgoingMessages, setPendingOutgoingMessages] = useState<PendingOutgoingMessage[]>([]);
   const [agentMessages, setAgentMessages] = useState<AgentMessageWithStatus[]>([]);
   const [agentProgressEvents, setAgentProgressEvents] = useState<AgentProgressEvent[]>([]);
-  const [agentSessionId, setAgentSessionId] = useState<string | null>(null);
 
   const isAuthenticated = Boolean(authSession && authSession.token && authSession.merchantId);
   const activeAgentProgress = useMemo(
@@ -297,7 +257,6 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
     setPendingOutgoingMessages([]);
     setAgentMessages([]);
     setAgentProgressEvents([]);
-    setAgentSessionId(null);
   }, []);
 
   const applyAuthenticatedSession = useCallback(
@@ -315,7 +274,6 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
       setPendingOutgoingMessages([]);
       setAgentMessages([]);
       setAgentProgressEvents([]);
-      setAgentSessionId(null);
     },
     [],
   );
@@ -556,17 +514,9 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
     ]);
 
     try {
-      const sessionId = await ensureAgentSession({
-        merchantId: authSession.merchantId,
-        token: authSession.token,
-        agentSessionId,
-      });
-      setAgentSessionId(sessionId);
-
       const result = await runAgentTask({
         merchantId: authSession.merchantId,
         token: authSession.token,
-        sessionId,
         text: draft,
       });
 
