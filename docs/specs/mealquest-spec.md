@@ -1,11 +1,11 @@
-# MealQuest 商业化落地规范（V13.0）
+# MealQuest 商业化落地规范（V13.2）
 
 > 文档定位：本文件是 MealQuest 当前唯一产品与工程规范真源（Source of Truth）。
 > 适用范围：`MealQuestServer`、`MealQuestMerchant`、`meal-quest-customer` 三端协同建设。
 
 ## 0. 版本与治理
 
-- 版本：V13.0（商业落地重构版）
+- 版本：V13.2（补齐入口闭环与接口合同执行细则）
 - 首发区域：中国大陆
 - 目标客群：单店与小连锁餐饮商户
 - 商业主轴：支付抽佣为主，订阅与增值服务为辅
@@ -81,7 +81,7 @@
 ### 4.1 In Scope（当前版本必须实现）
 
 - 商户端：登录、开店、经营驾驶基础视图、策略确认、紧急停机。
-- 顾客端：扫码入店、资产展示、支付核销、账本与发票查询。
+- 顾客端：扫码入店、候餐互动小游戏（Welcome 范围）、资产展示、支付核销、账本与发票查询。
 - 服务端：认证、支付、发票、隐私、Policy OS、Agent OS、审计与租户隔离。
 - 策略范围：首版仅保障“拉新礼包（Welcome）”闭环可商用。
 
@@ -107,13 +107,26 @@
 - 叙事价值可感：碎银/碎片保留核心品牌体验，但不突破商业红线。
 - 资产可追溯：每次发放、合成、核销必须可审计。
 
+### 5.3 三类资产-互动绑定矩阵（执行级）
+
+| 资产层 | 互动来源（Source） | 消耗/流转（Sink） | 风控约束 |
+| --- | --- | --- | --- |
+| 寻味碎银（叙事资产） | 候餐小游戏结算、首绑互动奖励 | 支付零头抵扣、碎片兑换 | 单局上限、日上限、设备与账号频控 |
+| 食福碎片（叙事资产） | 小游戏里程碑、碎银兑换、Welcome 触达奖励 | 合成口福红包、过期分解为碎银 | 合成配方校验、合成频控、幂等结算 |
+| 口福红包（权益资产） | 碎片合成、Welcome 策略发放 | 支付核销、订单减免 | 预算/库存强校验、同人模型、防重复核销 |
+
+执行规则：
+- 小游戏是 Welcome 闭环的互动增效器，不作为独立营销策略。
+- 奖励发放链路必须可审计，且每次发放都必须关联 `traceId`。
+- 任何奖励结算必须支持幂等，防止重复到账。
+
 ---
 
 ## 6. 首版商用闭环定义（MVP）
 
 ### 6.1 闭环路径
 
-扫码入店 -> 首次身份绑定 -> 触发拉新礼包 -> 到店支付核销 -> 资产沉淀 -> 复购触达
+扫码入店 -> 首次身份绑定 -> 候餐小游戏互动 -> 触发拉新礼包 -> 到店支付核销 -> 资产沉淀 -> 复购触达
 
 ### 6.2 拉新礼包（Welcome）规范（商业版）
 
@@ -123,6 +136,16 @@
 - 执行模式：默认建议 + 人工确认；紧急场景可人工临时覆盖并自动 TTL 过期。
 - 成本边界：单客补贴上限、日预算上限、活动总预算上限。
 - 审计要求：发放原因、审批人、策略版本、执行时间、结果状态全量记录。
+
+### 6.3 候餐小游戏（Welcome 范围）规范（商业版）
+
+- 目标：提升首绑后互动参与率与短周期复购，不脱离支付主链路。
+- 定位：仅作为 Welcome 奖励的互动入口，不单独定义为营销策略。
+- 首版形态：单人轻量回合制小游戏（无排行、无社交对战）。
+- 奖励类型：仅允许发放寻味碎银与食福碎片；口福红包必须通过策略发放或碎片合成获得。
+- 结算约束：每局奖励必须带 `idempotencyKey` 与 `traceId`，重复结算只允许一次成功。
+- 风控要求：设备指纹、账号频控、同店同人限制、异常分数拦截。
+- 降级要求：小游戏异常时可降级为静态互动，不得阻断支付与核销链路。
 
 ---
 
@@ -161,6 +184,8 @@
 - 新客首绑到首单转化率（7 日） >= 12%
 - 拉新补贴成本（每有效新客） <= 12 元
 - 拉新礼包 7 日核销率 >= 20%
+- 小游戏参与率（首绑后 24 小时） >= 35%
+- 碎片合成到红包转化率（7 日） >= 15%
 - 营销补贴占 GMV 比例 <= 5%
 - 支付成功率 >= 99.5%
 - 风险损失（套利/欺诈）占 GMV <= 0.3%
@@ -184,9 +209,10 @@
 
 ### 9.2 关键数据契约（最小集）
 
-- 顾客入店事件：`merchantId`, `userId`, `entryChannel`, `timestamp`
+- 顾客入店事件：`merchantId`, `userId`, `entryChannel`, `entryScene`, `timestamp`
 - 策略决策记录：`policyId`, `decision`, `reason`, `operatorId`, `approvalId`, `ttl`
 - 支付记录：`quote`, `verify`, `ledger`, `invoice` 全链一致
+- 小游戏事件：`GAME_SESSION_STARTED`, `GAME_ROUND_SETTLED`, `SILVER_GRANTED`, `FRAGMENT_GRANTED`, `FRAGMENT_SYNTHESIZED_TO_RED_PACKET`
 - 审计记录：`action`, `status`, `actor`, `details`, `at`
 
 ---
@@ -214,6 +240,8 @@
 ## 11. 风险清单与应对
 
 - 套利风险：同人模型 + 风险评分 + 频控 + 审计追责。
+- 小游戏刷分风险：设备指纹 + 局次频控 + 异常分数熔断。
+- 资产通胀风险：碎银/碎片发放日上限 + 超限自动降级为展示奖励。
 - 毛利侵蚀：预算熔断 + 单客上限 + 活动止损。
 - 策略失控：Kill Switch + TTL 自动释放 + 审批机制。
 - 系统可用性：限流、重试、降级与告警值班机制。
@@ -236,15 +264,116 @@
 
 | 规范阶段 | 执行步骤 |
 | --- | --- |
-| P0 契约冻结与基线校准 | S010, S020 |
+| P0 契约冻结与入口校准 | S010, S020, S030, S040 |
 | P1 Welcome 商用闭环 | S110, S120, S130 |
-| P2 商户经营台与审批治理 | S210, S220 |
+| P2 商户经营台与发布门治理 | S210, S220, S230 |
 | P3 顾客体验与增长强化 | S310 |
 | P4 商用就绪与规模化 | S410, S420 |
 
 - 接口执行细节约束：
-  - 接口级执行细节（method/path/request/response/error）统一以 `docs/roadmap.md` 第 `12` 章为准。
-  - 本规范保留业务规则与边界定义，不重复维护接口实现级细节。
+  - 接口最小合同（能力域、最小字段、错误码、幂等要求）统一以本规范第 `14` 章为准。
+  - `docs/roadmap.md` 仅维护任务方向、验收命令、推进状态，不维护字段级合同细节。
+
+---
+
+## 14. 公开接口能力域目录（最小合同）
+
+> 本章用于三端独立开发时的接口方向索引。字段级实现以代码与测试为准，新增字段必须保持向后兼容。
+
+### 14.1 统一合同规则
+
+- 所有关键链路响应必须携带 `traceId`。
+- 审批执行链路必须携带 `approvalId`。
+- 小游戏奖励结算与碎片合成链路必须携带 `idempotencyKey`。
+- 顾客登录与入店链路允许携带 `entryChannel`、`entryScene`，用于归因与风控，不得破坏旧请求兼容。
+- `/api/state` 响应必须同时满足：包含 `traceId`，并返回可用于顾客首页资产渲染的最小状态快照。
+- 关键接口错误码最小集包含：`400`, `401`, `403`, `404`, `409`, `422`, `429`, `500`（按能力域裁剪）。
+
+### 14.2 能力域总览
+
+| Domain | 典型路径 | 主要调用端 |
+| --- | --- | --- |
+| Auth | `/api/auth/customer/wechat-login`, `/api/auth/customer/alipay-login`, `/api/auth/merchant/*` | Merchant, Customer |
+| Customer Core | `/api/state`, `/api/payment/*`, `/api/invoice/*`, `/api/privacy/*` | Customer |
+| Merchant Ops | `/api/merchant/dashboard`, `/api/merchant/kill-switch`, `/api/merchant/stores` | Merchant |
+| Policy OS | `/api/policyos/*` | Merchant |
+| Agent OS | `/api/agent-os/*` | Merchant |
+| Game Loop | `/api/game/sessions/start`, `/api/game/sessions/settle`, `/api/assets/fragments/synthesize` | Customer |
+| Tenant Governance | `/api/merchant/tenant-policy`, `/api/merchant/migration/*` | Merchant |
+
+### 14.3 各能力域最小请求/响应要求
+
+#### Auth
+
+- Request Minimum：
+  - Customer：`merchantId`, `code`, `provider`（可选：`entryChannel`, `entryScene`）
+  - Merchant：`phone`, `code`（及 onboarding 必需字段）
+- Response Minimum：
+  - `token`, `profile`, `merchantId`
+- Error Focus：
+  - `400`, `401`, `403`, `500`
+
+#### Customer Core
+
+- Request Minimum：
+  - `/api/state`：`merchantId`, `userId`
+  - `/api/payment/quote`：`merchantId`, `userId`, `items/orderAmount`
+  - `/api/payment/verify`：`merchantId`, `userId`, `quoteId/orderAmount`
+- Response Minimum：
+  - `/api/state`：`traceId` + `merchant` + `user.wallet` + `user.fragments` + `user.vouchers`
+  - 报价、核验结果、台账、发票响应均需 `traceId`
+- Error Focus：
+  - `400`, `401`, `404`, `409`, `422`, `500`
+
+#### Merchant Ops
+
+- Request Minimum：
+  - `/api/merchant/dashboard`：`merchantId`
+  - `/api/merchant/kill-switch`：`merchantId`, `enabled`, `operatorId`
+- Response Minimum：
+  - 看板指标或执行结果，均带 `traceId`
+- Error Focus：
+  - `400`, `401`, `403`, `404`, `500`
+
+#### Policy OS
+
+- Request Minimum：
+  - 决策评估：`merchantId`, `event/policyId`, `context`
+  - 决策执行：`merchantId`, `decisionId/event`, `approvalId`（按执行链路要求）
+- Response Minimum：
+  - `decision/status`, `reason`, `traceId`
+- Error Focus：
+  - `400`, `401`, `403`, `409`, `422`, `500`
+
+#### Agent OS
+
+- Request Minimum：
+  - 任务流：`merchant_id`, `operator_id`, `input`
+- Response Minimum：
+  - 任务元数据、事件流、结束状态，均可关联 `traceId`
+- Error Focus：
+  - `400`, `401`, `403`, `404`, `500`
+
+#### Game Loop
+
+- Request Minimum：
+  - `/api/game/sessions/start`：`merchantId`, `userId`, `scene`
+  - `/api/game/sessions/settle`：`merchantId`, `userId`, `sessionId`, `score`, `idempotencyKey`
+  - `/api/assets/fragments/synthesize`：`merchantId`, `userId`, `recipeId`, `idempotencyKey`
+- Response Minimum：
+  - 开局响应包含 `sessionId`、`traceId`
+  - 结算/合成响应包含奖励结果、资产变化、`traceId`
+- Error Focus：
+  - `400`, `401`, `409`, `422`, `429`, `500`
+
+#### Tenant Governance
+
+- Request Minimum：
+  - `merchantId` + 对应治理动作参数
+- Response Minimum：
+  - 变更结果、策略状态、`traceId`
+- Error Focus：
+  - `400`, `401`, `403`, `409`, `500`
 
 ---
 

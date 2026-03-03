@@ -1,839 +1,633 @@
-# MealQuest 从0开发路线与推进指针手册（可独立开发版）
+# MealQuest 开发路线图（执行版）
 
 > 规范真源：`docs/specs/mealquest-spec.md`
 > 执行真源：`docs/roadmap.md`（本文件）
-> 说明：仓库当前没有独立 Runbook 文档，排障 Runbook 内嵌在本文件第 `06` 章。
+> 定位：本文件只回答“做什么、做到什么算完成、当前做到哪一步”。
 
 ## 00. 文档契约
 
-### 00.1 本文件职责
+### 00.1 职责边界
 
-1. 定义从0到商用可用的唯一开发路线（Master Step Sequence）。
-2. 维护当前推进位置（Progress Pointer）。
-3. 维护步骤证据账本（Evidence Ledger）。
-4. 提供按 StepID 索引的排障入口（Runbook）。
-5. 提供可独立接手开发的标准检查清单（Ready-for-Solo）。
+1. `spec` 负责业务目标、约束、KPI、公开接口最小合同。
+2. `roadmap` 负责开发方向、任务清单、推进指针、验收入口、排障索引。
+3. 代码实现方式由开发者在任务边界内自主决定，不在本文件展开实现细节。
 
-### 00.2 指针语义（强制）
+### 00.2 状态枚举
 
-1. 指针之前步骤：已实现且已验收（`done` + 证据齐全）。
-2. 指针当前步骤：唯一主执行步骤（`in_progress` 或 `blocked`）。
-3. 指针之后步骤：待执行步骤。
-4. 无证据不得标记 `done`，不得前移指针。
-5. 回归失败或线上事故证明失效时，步骤状态必须回退，指针必须回拨。
-
-### 00.3 状态枚举（唯一）
-
-1. `not_started`
-2. `in_progress`
+1. `todo`
+2. `doing`
 3. `blocked`
 4. `done`
 
-### 00.4 更新规则（强制）
+### 00.3 任务卡字段（统一）
 
-1. 任何代码、接口、策略、风控变更，必须更新对应 `StepID`。
-2. 每次前移或回拨指针，必须同时更新第 `02` 章和第 `04` 章。
-3. PR 必须声明 `StepID`、`EvidenceRef`、`PointerChange`。
-4. 本文档禁止使用待定占位符；责任人默认写 `AI/Agent`。
+1. `task_id`
+2. `lane`（`server` / `merchant` / `customer`）
+3. `task`
+4. `status`
+5. `output`
 
----
+### 00.4 推进硬规则
 
-## 01. 从0路线本体（Master Step Sequence）
-
-> 路线本体永远从0开始定义，不因当前实现状态删减步骤或改顺序。
-
-| StepID | Phase | Step Name | Prerequisites | Exit Criteria |
-| --- | --- | --- | --- | --- |
-| S010 | P0 | 冻结 Welcome 事件与 API 最小契约 | 无 | 事件/API/审计字段冻结并回归通过 |
-| S020 | P0 | 契约回归基线建立 | S010 done | 三端契约测试可重复执行 |
-| S110 | P1 | Welcome 触发与资格判定闭环 | S020 done | 触发/预算/库存/反套利四场景通过 |
-| S120 | P1 | Welcome 审批与执行治理闭环 | S110 done | Approval Token、TTL、Kill Switch 可用 |
-| S130 | P1 | Welcome 发放核销账务一致性 | S120 done | 支付到台账到发票到审计链路一致 |
-| S210 | P2 | 商户经营看板最小可用版本 | S130 done | 商户可查看命中、消耗、收益、风险 |
-| S220 | P2 | 审批中心与执行回放 | S210 done | 商户可确认、执行、回放策略记录 |
-| S310 | P3 | 顾客关键路径体验强化 | S220 done | 关键转化路径稳定并可观测 |
-| S410 | P4 | 商用发布门与值守门落地 | S310 done | 发布、回滚、演练、告警流程可执行 |
-| S420 | P4 | 规模化治理与成本约束 | S410 done | 多店扩展机制与成本监控闭环 |
+1. 指针之前的 Step 视为已实现，不允许出现 `TBD`、`待确认`。
+2. 每个 Step 至少绑定 1 个 `Triage Key`。
+3. 从 S110 起，所有 Step 必须提供三端可执行验收门。
+4. 商户端在自动化完善前，验收基线为 `lint + typecheck + 手工冒烟记录`。
 
 ---
 
-## 02. 推进指针（Progress Pointer）
+## 01. 执行驾驶舱（30秒必读）
 
-> 仅用本章判断“下一步干什么”。
-
-### 02.1 指针状态
+### 01.1 当前指针
 
 | Field | Value |
 | --- | --- |
-| Last Updated | 2026-03-03 |
+| Last Updated | 2026-03-04 |
 | Current StepID | S010 |
-| Current Status | in_progress |
+| Current Status | doing |
 | Next StepID | S020 |
-| Pointer Owner | AI/Agent |
-| Pointer Note | 先完成 Welcome 契约冻结与证据闭环，再进入功能闭环阶段 |
+| Owner | AI/Agent |
+| Blockers | 无 |
 
-### 02.2 指针前移条件检查清单（全部满足）
+### 01.2 本周目标（最多3条）
 
-1. 当前步骤状态为 `done`。
-2. 证据账本含测试证据。
-3. 证据账本含运行证据（日志/截图/PR 之一）。
-4. 无未关闭 blocker。
-5. 对应质量门禁命令通过。
+1. 完成 S010：冻结 Welcome 最小契约并建立三端字段映射清单。
+2. 完成 S010 证据回填：测试证据、运行证据、审阅引用。
+3. 启动 S020：契约回归基线命令与失败定位索引固化。
 
-### 02.3 指针回拨条件
+### 01.3 当前任务清单（执行优先级）
 
-1. 关键回归测试失败。
-2. 线上事故证明退出条件不再满足。
-3. 已记录证据无效或不可复现。
+1. 完成 `S010-SRV-01`：输出 Welcome 事件/API/审计字段基线清单。
+2. 同步完成 `S010-MER-01` 与 `S010-CUS-01` 字段映射检查记录。
+3. 回填 S010 在证据账本中的 Test/Runtime/Review 引用。
 
----
-
-## 03. Step 卡片（执行说明）
-
-> 每个步骤都必须有可直接执行的卡片。新增步骤必须复用同模板。
-
-### 03.1 Step 卡模板
-
-1. `StepID`
-2. `Objective`
-3. `Inputs`
-4. `Outputs`
-5. `Prerequisites`
-6. `Impacted Paths`
-7. `Implementation Checklist`
-8. `Acceptance Criteria`
-9. `Verification Commands`
-10. `Failure Signals`
-11. `Triage Entry`
-12. `Evidence Required`
-13. `Rollback`
-14. `Owner / Status / UpdatedAt`
-
-### 03.2 S010 - 冻结 Welcome 事件与 API 最小契约
-
-- `StepID`: S010
-- `Objective`: 冻结 Welcome 核心事件、API、审计字段，消除跨端漂移。
-- `Inputs`:
-  1. `docs/specs/mealquest-spec.md`
-  2. 现有三端实现
-- `Outputs`:
-  1. 事件契约清单
-  2. API 契约清单
-  3. 审计字段清单
-- `Prerequisites`: 无
-- `Impacted Paths`:
-  1. `MealQuestServer/src/http/routes`
-  2. `MealQuestServer/src/policyos`
-  3. `MealQuestMerchant/src/services`
-  4. `meal-quest-customer/src/services/apiDataService`
-- `Implementation Checklist`:
-  1. 固化事件：`USER_ENTER_SHOP`、`WELCOME_POLICY_HIT`、`WELCOME_GRANTED`、`PAYMENT_VERIFIED`。
-  2. 固化 API：顾客首页聚合、商户策略视图、支付核验回写。
-  3. 固化审计字段：`policyId`、`decision`、`reason`、`operatorId`、`approvalId`、`ttl`、`traceId`。
-  4. 契约映射到测试入口并绑定 StepID。
-- `Acceptance Criteria`:
-  1. 字段语义唯一且无歧义。
-  2. 至少一条 Welcome 主链路集成测试通过。
-- `Verification Commands`:
-  1. `npm run verify`
-  2. `cd MealQuestServer && npm test`
-- `Failure Signals`:
-  1. 前端解析失败或字段缺失。
-  2. 同一字段跨端含义冲突。
-- `Triage Entry`: `RB-CONTRACT-001`
-- `Evidence Required`:
-  1. 契约 diff
-  2. 测试输出
-- `Rollback`: 恢复旧字段兼容读取（一个迭代窗口）
-- `Owner / Status / UpdatedAt`: `AI/Agent / in_progress / 2026-03-03`
-
-### 03.3 S020 - 契约回归基线建立
-
-- `StepID`: S020
-- `Objective`: 建立稳定可复跑的契约回归基线。
-- `Inputs`: S010 输出
-- `Outputs`: 统一契约回归清单与命令入口
-- `Prerequisites`: S010 done
-- `Impacted Paths`:
-  1. `MealQuestServer/test`
-  2. `meal-quest-customer/test`
-  3. `MealQuestMerchant/src/services`
-- `Implementation Checklist`:
-  1. 整理三端契约测试清单。
-  2. 明确高风险用例（支付、审计、策略结果）。
-  3. 把失败定位路径写入 Runbook。
-- `Acceptance Criteria`:
-  1. 契约测试可重复执行。
-  2. 失败时可定位到责任模块。
-- `Verification Commands`:
-  1. `npm run verify`
-- `Failure Signals`:
-  1. 测试结果不稳定或不可复现。
-- `Triage Entry`: `RB-CONTRACT-002`
-- `Evidence Required`:
-  1. 回归清单
-  2. 回归测试输出
-- `Rollback`: 回退到上一版稳定契约
-- `Owner / Status / UpdatedAt`: `AI/Agent / not_started / 2026-03-03`
-
-### 03.4 S110 - Welcome 触发与资格判定闭环
-
-- `StepID`: S110
-- `Objective`: 完成触发、预算、库存、反套利资格判定闭环。
-- `Inputs`: S020 输出
-- `Outputs`: 可解释判定与审计记录
-- `Prerequisites`: S020 done
-- `Impacted Paths`:
-  1. `MealQuestServer/src/policyos`
-  2. `MealQuestServer/src/services/merchantService.ts`
-  3. `MealQuestServer/src/services/paymentService.ts`
-- `Implementation Checklist`:
-  1. 固化判定顺序与短路规则。
-  2. 固化 reason code 枚举。
-  3. 覆盖四类核心场景测试。
-- `Acceptance Criteria`:
-  1. 触发成功、预算耗尽、库存不足、套利拦截可回归。
-  2. 审计可解释判定路径。
-- `Verification Commands`:
-  1. `cd MealQuestServer && npm test`
-  2. `cd MealQuestServer && node --test test/policyOs.constraints.test.ts`
-- `Failure Signals`:
-  1. 误发放、误拦截、reason 缺失。
-- `Triage Entry`: `RB-WELCOME-110`
-- `Evidence Required`:
-  1. 四场景测试输出
-  2. 执行日志样例
-- `Rollback`: 回切到上个稳定规则版本
-- `Owner / Status / UpdatedAt`: `AI/Agent / not_started / 2026-03-03`
-
-### 03.5 S120 - Welcome 审批与执行治理闭环
-
-- `StepID`: S120
-- `Objective`: 打通 AI 建议 -> 人工确认 -> 执行治理链路。
-- `Inputs`: S110 输出
-- `Outputs`: 审批执行可追溯链
-- `Prerequisites`: S110 done
-- `Impacted Paths`:
-  1. `MealQuestServer/src/policyos/approvalTokenService.ts`
-  2. `MealQuestServer/src/http/routes/policyOsRoutes.ts`
-  3. `MealQuestMerchant/src/screens/AgentScreen.tsx`
-- `Implementation Checklist`:
-  1. 落地 Approval Token 生命周期。
-  2. 打通 TTL 覆盖策略与 Kill Switch。
-  3. 对齐商户端审批状态与失败原因。
-- `Acceptance Criteria`:
-  1. 无审批 token 的高风险动作被拒绝。
-  2. TTL 到期自动失效且可追溯。
-- `Verification Commands`:
-  1. `npm run verify`
-  2. `cd MealQuestServer && node --test test/policyOs.http.integration.test.ts`
-- `Failure Signals`:
-  1. 越权执行、TTL 失效、状态不同步。
-- `Triage Entry`: `RB-WELCOME-120`
-- `Evidence Required`:
-  1. 审批流回归测试
-  2. 商户端操作证据
-- `Rollback`: 停用自动执行路径，回退人工审批路径
-- `Owner / Status / UpdatedAt`: `AI/Agent / not_started / 2026-03-03`
-
-### 03.6 S130 - Welcome 发放核销账务一致性
-
-- `StepID`: S130
-- `Objective`: 打通支付、发放、核销、台账、发票、审计一致性。
-- `Inputs`: S120 输出
-- `Outputs`: 可回放交易闭环
-- `Prerequisites`: S120 done
-- `Impacted Paths`:
-  1. `MealQuestServer/src/services/paymentService.ts`
-  2. `MealQuestServer/src/policyos/ledgerService.ts`
-  3. `MealQuestServer/src/services/invoiceService.ts`
-  4. `meal-quest-customer/src/pages/account`
-- `Implementation Checklist`:
-  1. 固化核销与入账顺序。
-  2. 发票关联交易与权益流水。
-  3. 用 `traceId` 串联审计链路。
-- `Acceptance Criteria`:
-  1. 任意 Welcome 成功订单可完整追溯。
-  2. 对账无不一致告警。
-- `Verification Commands`:
-  1. `cd MealQuestServer && npm test`
-  2. `cd MealQuestServer && node --test test/policyOs.ledger.test.ts`
-- `Failure Signals`:
-  1. 支付成功但未入账或未开票。
-- `Triage Entry`: `RB-WELCOME-130`
-- `Evidence Required`:
-  1. 对账日志
-  2. 回放记录
-- `Rollback`: 关闭新链路写入，回退旧账本逻辑
-- `Owner / Status / UpdatedAt`: `AI/Agent / not_started / 2026-03-03`
-
-### 03.7 S210 - 商户经营看板最小可用版本
-
-- `StepID`: S210
-- `Objective`: 建立商户可用的经营看板最小闭环。
-- `Inputs`: S130 输出
-- `Outputs`: 看板字段、接口、展示入口
-- `Prerequisites`: S130 done
-- `Impacted Paths`:
-  1. `MealQuestServer/src/services/merchantService.ts`
-  2. `MealQuestServer/src/http/routes/merchantRoutes.ts`
-  3. `MealQuestMerchant/src/screens`
-  4. `MealQuestMerchant/src/domain/merchantEngine.ts`
-- `Implementation Checklist`:
-  1. 输出最小指标集：命中率、补贴消耗、核销收益、风险告警数。
-  2. 打通看板接口与商户端展示。
-  3. 建立指标口径说明与刷新频率。
-- `Acceptance Criteria`:
-  1. `/api/merchant/dashboard` 响应成功率 >= 99.5%（观察窗口 24h）。
-  2. 看板四类核心指标字段完整率 >= 99.0%。
-  3. 指标口径一致性抽样误差 <= 1.0%。
-  4. 硬失败条件：若连续两次回归出现口径误差 > 1.0%，本步必须回拨为 `in_progress`。
-- `Verification Commands`:
-  1. `cd MealQuestServer && npm test`
-  2. `cd MealQuestMerchant && npm run lint && npm run typecheck`
-- `Failure Signals`:
-  1. 指标缺值、口径不一致、页面崩溃。
-  2. 看板接口 5xx 错误率 > 1%。
-- `Triage Entry`: `RB-COCKPIT-210`
-- `Evidence Required`:
-  1. 指标接口响应样例
-  2. 商户端展示截图
-  3. 指标口径对账记录
-- `Rollback`: 隐藏新看板入口并回退老视图
-- `Owner / Status / UpdatedAt`: `AI/Agent / not_started / 2026-03-03`
-
-### 03.8 S220 - 审批中心与执行回放
-
-- `StepID`: S220
-- `Objective`: 让商户可完成审批确认、执行查看、历史回放。
-- `Inputs`: S210 输出
-- `Outputs`: 审批中心页面与回放能力
-- `Prerequisites`: S210 done
-- `Impacted Paths`:
-  1. `MealQuestServer/src/http/routes/policyOsRoutes.ts`
-  2. `MealQuestServer/src/services/agentRuntimeService.ts`
-  3. `MealQuestMerchant/src/screens/AgentScreen.tsx`
-- `Implementation Checklist`:
-  1. 建立待审批队列与详情视图。
-  2. 打通执行记录与失败原因查看。
-  3. 支持按策略/用户/时间回放。
-- `Acceptance Criteria`:
-  1. 审批状态一致性 >= 99.5%（服务端状态与客户端状态一致）。
-  2. 回放查询成功率 >= 99.0%。
-  3. `approvalId` 与 `traceId` 缺失率 = 0。
-  4. 硬失败条件：发现越权执行或无法追溯记录，本步必须回拨为 `blocked`。
-- `Verification Commands`:
-  1. `cd MealQuestServer && node --test test/policyOs.http.integration.test.ts`
-  2. `cd MealQuestServer && node --test test/agentOs.stream.integration.test.ts`
-  3. `cd MealQuestMerchant && npm run typecheck`
-- `Failure Signals`:
-  1. 审批状态错乱、回放数据断链。
-  2. 审批记录缺失 `approvalId` 或 `traceId`。
-- `Triage Entry`: `RB-APPROVAL-220`
-- `Evidence Required`:
-  1. 审批流测试输出
-  2. 回放链路日志
-  3. 越权检查记录
-- `Rollback`: 回退为只读执行日志，停用审批中心写入口
-- `Owner / Status / UpdatedAt`: `AI/Agent / not_started / 2026-03-03`
-
-### 03.9 S310 - 顾客关键路径体验强化
-
-- `StepID`: S310
-- `Objective`: 提升顾客关键路径稳定性与转化体验。
-- `Inputs`: S220 输出
-- `Outputs`: 关键路径优化、弱网降级、埋点数据
-- `Prerequisites`: S220 done
-- `Impacted Paths`:
-  1. `meal-quest-customer/src/pages/index`
-  2. `meal-quest-customer/src/pages/startup`
-  3. `meal-quest-customer/src/services/apiDataService`
-  4. `meal-quest-customer/src/domain/smartCheckout.ts`
-- `Implementation Checklist`:
-  1. 优化首页活动注入与反馈链路。
-  2. 优化支付后反馈一致性。
-  3. 补齐弱网降级和恢复策略。
-- `Acceptance Criteria`:
-  1. 顾客关键路径用例通过率 = 100%（启动、报价、核验、资产回写）。
-  2. `test:regression:ui` 全通过。
-  3. 弱网恢复后状态一致率 >= 99.5%。
-  4. 硬失败条件：存在阻断级 UI 回归缺陷（P1）时，本步不得标记 `done`。
-- `Verification Commands`:
-  1. `cd meal-quest-customer && npm run typecheck && npm test`
-  2. `cd meal-quest-customer && npm run test:regression:ui`
-- `Failure Signals`:
-  1. 关键路径中断、状态回写错乱、弱网恢复失败。
-  2. 回归 UI 测试出现阻断失败。
-- `Triage Entry`: `RB-CUSTOMER-310`
-- `Evidence Required`:
-  1. UI 回归测试结果
-  2. 弱网测试记录
-  3. 关键路径埋点样例
-- `Rollback`: 关闭新交互开关并恢复稳定版本页面
-- `Owner / Status / UpdatedAt`: `AI/Agent / not_started / 2026-03-03`
-
-### 03.10 S410 - 商用发布门与值守门落地
-
-- `StepID`: S410
-- `Objective`: 固化可执行的发布、值守、回滚流程。
-- `Inputs`: S310 输出
-- `Outputs`: 发布批次流程、值守规则、回滚模板
-- `Prerequisites`: S310 done
-- `Impacted Paths`:
-  1. `docs/roadmap.md`
-  2. `MealQuestServer/scripts`
-  3. `MealQuestServer/src/http/server.ts`
-- `Implementation Checklist`:
-  1. 固化 canary/limited/general 放量门槛。
-  2. 固化事故分级、告警触发、应急流程。
-  3. 固化回滚演练与 RCA 模板。
-- `Acceptance Criteria`:
-  1. canary 观察窗口 24h 内 P0/P1 事故数 = 0。
-  2. 回滚演练可在 15 分钟内恢复核心链路。
-  3. 告警覆盖支付、策略执行、审批执行三大链路。
-  4. 硬失败条件：任意一次回滚演练失败，本步必须回拨为 `in_progress`。
-- `Verification Commands`:
-  1. `npm run verify`
-  2. `cd MealQuestServer && npm run test:smoke`
-- `Failure Signals`:
-  1. 发布步骤不可执行、回滚无效、告警漏报。
-- `Triage Entry`: `RB-OPS-410`
-- `Evidence Required`:
-  1. 演练记录
-  2. 告警与回滚日志
-  3. 值守值班记录
-- `Rollback`: 立即进入紧急回滚模式并冻结放量
-- `Owner / Status / UpdatedAt`: `AI/Agent / not_started / 2026-03-03`
-
-### 03.11 S420 - 规模化治理与成本约束
-
-- `StepID`: S420
-- `Objective`: 建立多店扩展与成本治理闭环。
-- `Inputs`: S410 输出
-- `Outputs`: 扩展边界、成本指标、治理规则
-- `Prerequisites`: S410 done
-- `Impacted Paths`:
-  1. `MealQuestServer/src/core/tenantRouter.ts`
-  2. `MealQuestServer/src/store`
-  3. `docs/roadmap.md`
-- `Implementation Checklist`:
-  1. 明确多店扩展边界与租户隔离策略。
-  2. 建立成本指标：支付通道、AI 推理、云资源。
-  3. 建立容量阈值与扩容策略。
-- `Acceptance Criteria`:
-  1. 多租户隔离回归通过率 = 100%。
-  2. 三类成本指标覆盖率 = 100%（支付、AI、云资源）。
-  3. 扩容触发与降级流程可在演练中成功执行。
-  4. 硬失败条件：发现租户隔离缺陷即回拨为 `blocked`。
-- `Verification Commands`:
-  1. `npm run verify:ci`
-  2. `cd MealQuestServer && npm test`
-- `Failure Signals`:
-  1. 多店隔离问题、成本异常增长、扩容触发失效。
-- `Triage Entry`: `RB-SCALE-420`
-- `Evidence Required`:
-  1. 成本看板样例
-  2. 多店压测或回放记录
-  3. 隔离回归测试记录
-- `Rollback`: 降级至单店稳定策略并冻结扩展开关
-- `Owner / Status / UpdatedAt`: `AI/Agent / not_started / 2026-03-03`
-
----
-
-## 04. 证据账本（Evidence Ledger）
-
-> 证据账本是指针前移唯一依据。
-
-### 04.1 证据格式规范
-
-1. `Test Evidence`：必须包含命令、通过/失败结果、时间戳。
-2. `Runtime Evidence`：必须包含日志路径、截图路径或回放记录路径。
-3. `Review Ref`：必须包含 commit hash 或 PR 编号。
-4. `Result`：`pending | pass | fail`。
-5. `Verified By`：默认 `AI/Agent`，可附具体执行体。
-
-### 04.2 证据账本表
-
-| StepID | Test Evidence | Runtime Evidence | Review Ref | Result | Verified By | Verified At |
-| --- | --- | --- | --- | --- | --- | --- |
-| S010 | 待补 | 待补 | 待补 | pending | AI/Agent | - |
-| S020 | 待补 | 待补 | 待补 | pending | AI/Agent | - |
-| S110 | 待补 | 待补 | 待补 | pending | AI/Agent | - |
-| S120 | 待补 | 待补 | 待补 | pending | AI/Agent | - |
-| S130 | 待补 | 待补 | 待补 | pending | AI/Agent | - |
-| S210 | 待补 | 待补 | 待补 | pending | AI/Agent | - |
-| S220 | 待补 | 待补 | 待补 | pending | AI/Agent | - |
-| S310 | 待补 | 待补 | 待补 | pending | AI/Agent | - |
-| S410 | 待补 | 待补 | 待补 | pending | AI/Agent | - |
-| S420 | 待补 | 待补 | 待补 | pending | AI/Agent | - |
-
----
-
-## 05. 质量门与发布门
-
-### 05.1 仓库统一质量门
+### 01.4 必过命令（推进前）
 
 1. `npm run check:encoding`
-2. `npm run lint`
-3. `npm run typecheck`
-4. `npm run test`
-5. `npm run verify`
+2. `npm run verify`
+3. `cd MealQuestServer && npm test`
+4. `cd MealQuestMerchant && npm run lint && npm run typecheck`
+5. `cd meal-quest-customer && npm run typecheck && npm test`
 
-### 05.2 分项目质量门
+---
 
-1. Server：`cd MealQuestServer && npm test`
-2. Merchant：`cd MealQuestMerchant && npm run lint && npm run typecheck`
-3. Customer：`cd meal-quest-customer && npm run typecheck && npm test`
+## 02. 主路线（Master Step Sequence）
 
-### 05.3 发布门
+| StepID | Phase | Outcome（结果定义） | Dependency | Status |
+| --- | --- | --- | --- | --- |
+| S010 | P0 | Welcome 事件/API/审计字段冻结且三端对齐 | 无 | doing |
+| S020 | P0 | 契约回归基线可重复执行且可定位 | S010 done | todo |
+| S030 | P0 | 商户入口闭环（登录/开店/会话恢复）可回归 | S020 done | todo |
+| S040 | P0 | 顾客入口闭环（扫码入店/资产首屏）可回归 | S030 done | todo |
+| S110 | P1 | Welcome 触发与资格判定闭环可回归 | S040 done | todo |
+| S120 | P1 | 审批令牌、TTL、Kill Switch 治理闭环 | S110 done | todo |
+| S130 | P1 | 支付-台账-发票-审计一致性闭环 | S120 done | todo |
+| S210 | P2 | 商户经营看板最小可用 | S130 done | todo |
+| S220 | P2 | 商户审批中心与执行回放可用 | S210 done | todo |
+| S230 | P2 | KPI 可观测与 Go/No-Go 判定可执行 | S220 done | todo |
+| S310 | P3 | 顾客关键路径与小游戏体验稳定 | S230 done | todo |
+| S410 | P4 | 商用发布、值守、回滚流程可执行 | S310 done | todo |
+| S420 | P4 | 多租户规模化治理与成本闭环 | S410 done | todo |
 
-1. `canary`：1-2 家门店，观察 24 小时。
-2. `limited`：10%-30% 门店，观察 72 小时。
-3. `general`：全量发布。
+---
 
-### 05.4 回滚门
+## 03. Step 任务卡（主Step + 三端任务）
 
-1. 30 分钟内连续出现 P1 事故，立即回滚。
-2. 支付或核销链路异常率超阈值，立即回滚。
-3. 回滚后 24 小时内提交 RCA 并补充回归测试。
+### S010 - 冻结 Welcome 最小契约
 
-### 05.5 步骤-测试矩阵
+- Objective：冻结 Welcome 最小合同，消除三端字段漂移。
+- Dependency：无。
 
-| StepID | 必须通过命令 | 可选专项测试（命令 + 模板） | 失败阻断级别 |
+| task_id | lane | task | status | output |
+| --- | --- | --- | --- | --- |
+| S010-SRV-01 | server | 固化 Welcome 事件、API、审计字段清单并绑定路由入口 | doing | 合同基线清单 |
+| S010-MER-01 | merchant | 核对商户端关键接口字段映射（Agent/看板/审批相关） | todo | 字段映射清单 |
+| S010-CUS-01 | customer | 核对小程序关键接口字段映射（state/payment/invoice） | todo | 字段映射清单 |
+
+- Deliverables：
+1. 合同字段清单（事件/API/审计）。
+2. 三端字段映射检查记录。
+3. 可重复执行的最小链路证据。
+
+- Done Definition：
+1. 同一字段跨端语义一致。
+2. 至少一条 Welcome 主链路回归通过。
+3. 证据账本 S010 行完整回填。
+
+- Acceptance Commands：
+1. `npm run verify`
+2. `cd MealQuestServer && npm test`
+3. `cd MealQuestMerchant && npm run lint && npm run typecheck`
+4. `cd meal-quest-customer && npm run typecheck && npm test`
+
+- Failure Signals：
+1. 前端解析失败或字段缺失。
+2. 同字段语义冲突。
+
+- Triage Key：`RB-CONTRACT-001`
+
+### S020 - 契约回归基线建立
+
+- Objective：建立三端契约回归基线和失败定位入口。
+- Dependency：S010 done。
+
+| task_id | lane | task | status | output |
+| --- | --- | --- | --- | --- |
+| S020-SRV-01 | server | 固化后端契约回归命令与失败定位映射 | todo | 回归清单 |
+| S020-MER-01 | merchant | 固化商户端契约回归入口（lint/typecheck + 关键流程） | todo | 回归清单 |
+| S020-CUS-01 | customer | 固化小程序契约回归入口（apiDataService + 页面关键流） | todo | 回归清单 |
+
+- Deliverables：
+1. 三端回归清单。
+2. 回归失败定位索引。
+
+- Done Definition：
+1. 回归可重复执行。
+2. 失败可定位到责任域（server/merchant/customer）。
+
+- Acceptance Commands：
+1. `npm run verify`
+2. `cd MealQuestServer && npm test`
+3. `cd MealQuestMerchant && npm run lint && npm run typecheck`
+4. `cd meal-quest-customer && npm run typecheck && npm test`
+
+- Failure Signals：
+1. 回归结果不稳定或不可复现。
+
+- Triage Key：`RB-CONTRACT-002`
+
+### S030 - 商户入口闭环（登录/开店/会话恢复）
+
+- Objective：打通老板首日可用链路，保证手机号登录、开店、会话恢复可回归。
+- Dependency：S020 done。
+
+| task_id | lane | task | status | output |
+| --- | --- | --- | --- | --- |
+| S030-SRV-01 | server | 固化商户认证与开店接口合同（request-code/phone-login/complete-onboard/stores） | todo | 入口接口基线 |
+| S030-MER-01 | merchant | 打通 login -> quick-onboard -> agent 首页与会话恢复链路 | todo | 商户入口闭环 |
+| S030-CUS-01 | customer | 验证商户入口链路变更不影响顾客主路径 | todo | 兼容验证记录 |
+
+- Deliverables：
+1. 商户入口接口合同与错误码映射。
+2. 商户端入口流程验收记录。
+3. 手工冒烟记录（登录、开店、重启恢复）。
+
+- Done Definition：
+1. 未绑定手机号可进入开店流程，完成后可进入商户工作台。
+2. 已绑定商户可直接登录并恢复有效会话。
+3. 证据账本 S030 行完整回填。
+
+- Acceptance Commands：
+1. `cd MealQuestServer && npm test`
+2. `cd MealQuestMerchant && npm run lint && npm run typecheck`
+3. `cd meal-quest-customer && npm run typecheck && npm test`
+
+- Failure Signals：
+1. 登录成功但无法进入业务页。
+2. 开店成功后 merchantId/会话不一致。
+3. 应用重启后会话丢失。
+
+- Triage Key：`RB-MERCHANT-030`
+
+### S040 - 顾客入口闭环（扫码入店/资产首屏）
+
+- Objective：打通顾客扫码入店、会话建立、资产首屏展示的稳定闭环。
+- Dependency：S030 done。
+
+| task_id | lane | task | status | output |
+| --- | --- | --- | --- | --- |
+| S040-SRV-01 | server | 固化顾客登录与入店能力合同（wechat/alipay login + merchant exists + state） | todo | 顾客入口接口基线 |
+| S040-MER-01 | merchant | 承接顾客入店状态变化的只读可见性校验 | todo | 兼容验证记录 |
+| S040-CUS-01 | customer | 完成 startup 扫码入店、会话建立与首页资产展示闭环 | todo | 顾客入口闭环 |
+
+- Deliverables：
+1. 扫码入店链路回归记录。
+2. 资产首屏字段映射与降级策略。
+3. 微信小程序首发兼容记录（支付宝为兼容验证）。
+
+- Done Definition：
+1. 新用户扫码可完成入店并看到资产首屏。
+2. 已登录用户可复用会话进入首页。
+3. 异常 merchantId 可被阻断并提示。
+
+- Acceptance Commands：
+1. `cd MealQuestServer && npm test`
+2. `cd meal-quest-customer && npm run typecheck && npm test`
+3. `cd meal-quest-customer && npm run test:e2e:core`
+4. `cd MealQuestMerchant && npm run lint && npm run typecheck`
+
+- Failure Signals：
+1. 扫码后无法建立顾客会话。
+2. 首页资产字段缺失或映射错误。
+3. 首发平台流程通过但兼容平台崩溃。
+
+- Triage Key：`RB-CUSTOMER-040`
+
+### S110 - Welcome 触发与资格判定闭环
+
+- Objective：打通触发、预算、库存、反套利与小游戏奖励资格判定。
+- Dependency：S040 done。
+
+| task_id | lane | task | status | output |
+| --- | --- | --- | --- | --- |
+| S110-SRV-01 | server | 完成 Welcome 判定链和小游戏奖励风控（频控/同人/异常分） | todo | 判定闭环可回归 |
+| S110-MER-01 | merchant | 提供商户可读的命中/拦截结果与原因展示 | todo | 商户可见结果 |
+| S110-CUS-01 | customer | 打通顾客端命中反馈与奖励到账可见性 | todo | 顾客可见结果 |
+
+- Deliverables：
+1. 四场景判定回归结果。
+2. 奖励风控拦截证据。
+3. 三端状态一致性证据。
+
+- Done Definition：
+1. 触发成功、预算耗尽、库存不足、套利拦截四场景通过。
+2. 奖励重复结算与异常分数请求被拦截。
+3. 顾客端与商户端可查看一致的判定结果。
+
+- Acceptance Commands：
+1. `cd MealQuestServer && npm test`
+2. `cd MealQuestServer && node --test test/policyOs.constraints.test.ts`
+3. `cd MealQuestServer && node --test test/http.integration.test.ts`
+4. `cd MealQuestMerchant && npm run lint && npm run typecheck`
+5. `cd meal-quest-customer && npm run test:regression:ui`
+
+- Failure Signals：
+1. 误发放、误拦截、reason 缺失。
+2. 奖励异常放量或重复到账。
+3. 商户端与顾客端显示结果冲突。
+
+- Triage Key：`RB-WELCOME-110`, `RB-GAME-110`
+
+### S120 - Welcome 审批与执行治理闭环
+
+- Objective：打通审批令牌、TTL、Kill Switch 的执行治理链。
+- Dependency：S110 done。
+
+| task_id | lane | task | status | output |
+| --- | --- | --- | --- | --- |
+| S120-SRV-01 | server | 完成审批令牌校验、TTL 过期、Kill Switch 执行约束 | todo | 治理链可回归 |
+| S120-MER-01 | merchant | 完成审批确认、执行反馈、失败原因展示 | todo | 商户审批可用 |
+| S120-CUS-01 | customer | 顾客端承接治理结果（只读反馈与状态一致性） | todo | 状态一致性 |
+
+- Deliverables：
+1. 审批执行链路回归结果。
+2. 过期与熔断行为证据。
+3. 三端状态一致性证据。
+
+- Done Definition：
+1. 无审批条件的高风险动作不可执行。
+2. TTL 到期后自动失效且可追溯。
+3. Kill Switch 生效且可观测。
+
+- Acceptance Commands：
+1. `cd MealQuestServer && npm test`
+2. `cd MealQuestServer && node --test test/policyOs.http.integration.test.ts`
+3. `cd MealQuestMerchant && npm run lint && npm run typecheck`
+4. `cd meal-quest-customer && npm run test:regression:ui`
+
+- Failure Signals：
+1. 越权执行。
+2. TTL 失效。
+3. 状态不同步。
+
+- Triage Key：`RB-WELCOME-120`
+
+### S130 - Welcome 发放核销账务一致性
+
+- Objective：确保支付、奖励到账、台账、发票、审计一致。
+- Dependency：S120 done。
+
+| task_id | lane | task | status | output |
+| --- | --- | --- | --- | --- |
+| S130-SRV-01 | server | 固化 payment->ledger->invoice->audit 一致性与 trace 串联 | todo | 一致性链路 |
+| S130-MER-01 | merchant | 提供商户侧交易/执行结果可追溯视图 | todo | 商户追溯能力 |
+| S130-CUS-01 | customer | 提供顾客账本与发票查询一致性展示 | todo | 顾客可追溯能力 |
+
+- Deliverables：
+1. 对账证据。
+2. 审计回放证据。
+3. 三端追溯视图一致性记录。
+
+- Done Definition：
+1. 支付成功订单可完整追溯到账务与发票。
+2. 小游戏奖励到账与账本一致，无悬挂流水。
+3. 商户端与顾客端可见追溯链完整。
+
+- Acceptance Commands：
+1. `cd MealQuestServer && npm test`
+2. `cd MealQuestServer && node --test test/policyOs.ledger.test.ts`
+3. `cd MealQuestMerchant && npm run lint && npm run typecheck`
+4. `cd meal-quest-customer && npm test -- --runInBand test/pages/account.test.tsx`
+
+- Failure Signals：
+1. 支付成功但未入账或未开票。
+2. 奖励到账成功但审计缺失。
+3. 前端账本展示与后端台账不一致。
+
+- Triage Key：`RB-WELCOME-130`
+
+### S210 - 商户经营看板最小可用
+
+- Objective：交付商户可用的经营看板最小版本。
+- Dependency：S130 done。
+
+| task_id | lane | task | status | output |
+| --- | --- | --- | --- | --- |
+| S210-SRV-01 | server | 提供看板指标接口与口径稳定性保障 | todo | 指标接口 |
+| S210-MER-01 | merchant | 完成看板展示、缺失字段降级与刷新机制 | todo | 商户看板页面 |
+| S210-CUS-01 | customer | 验证看板相关变更不影响顾客主路径兼容 | todo | 兼容验证记录 |
+
+- Deliverables：
+1. 看板字段说明。
+2. 商户端看板验收记录。
+
+- Done Definition：
+1. 看板关键字段完整。
+2. 商户端页面稳定可用。
+
+- Acceptance Commands：
+1. `cd MealQuestServer && npm test`
+2. `cd MealQuestMerchant && npm run lint && npm run typecheck`
+3. `cd meal-quest-customer && npm run typecheck && npm test`
+
+- Failure Signals：
+1. 指标缺值或口径冲突。
+2. 页面崩溃。
+
+- Triage Key：`RB-COCKPIT-210`
+
+### S220 - 审批中心与执行回放
+
+- Objective：让商户完成审批确认、执行查看、历史回放。
+- Dependency：S210 done。
+
+| task_id | lane | task | status | output |
+| --- | --- | --- | --- | --- |
+| S220-SRV-01 | server | 提供审批队列、执行结果、回放查询接口 | todo | 审批回放接口 |
+| S220-MER-01 | merchant | 完成审批中心与回放页面主流程 | todo | 审批中心页面 |
+| S220-CUS-01 | customer | 顾客端承接审批执行结果的可见状态变化 | todo | 状态一致性 |
+
+- Deliverables：
+1. 审批流程回归证据。
+2. 回放链路证据。
+
+- Done Definition：
+1. 审批状态在服务端与商户端一致。
+2. 回放链路具备 `approvalId` 与 `traceId`。
+
+- Acceptance Commands：
+1. `cd MealQuestServer && node --test test/policyOs.http.integration.test.ts`
+2. `cd MealQuestServer && node --test test/agentOs.stream.integration.test.ts`
+3. `cd MealQuestMerchant && npm run lint && npm run typecheck`
+4. `cd meal-quest-customer && npm run typecheck && npm test`
+
+- Failure Signals：
+1. 审批状态错乱。
+2. 回放断链。
+
+- Triage Key：`RB-APPROVAL-220`
+
+### S230 - KPI 可观测与 Go/No-Go 判定
+
+- Objective：把商用 KPI 与上线门固化为可执行判定流程。
+- Dependency：S220 done。
+
+| task_id | lane | task | status | output |
+| --- | --- | --- | --- | --- |
+| S230-SRV-01 | server | 在 dashboard 与审计域固化 KPI 所需指标与 trace 链路 | todo | KPI 数据基线 |
+| S230-MER-01 | merchant | 看板提供 KPI 达标状态、趋势、告警可见性 | todo | KPI 运营视图 |
+| S230-CUS-01 | customer | 保证顾客链路埋点可支持 KPI 计算口径 | todo | 埋点兼容记录 |
+
+- Deliverables：
+1. KPI 指标口径说明。
+2. Go/No-Go 判定清单。
+3. 看板与审计对账证据。
+
+- Done Definition：
+1. Spec 8.1 KPI 字段可查询、可解释、可追溯。
+2. Go/No-Go 判定流程可重复执行。
+3. 指标异常可触发告警与定位路径。
+
+- Acceptance Commands：
+1. `cd MealQuestServer && npm test`
+2. `cd MealQuestMerchant && npm run lint && npm run typecheck`
+3. `cd meal-quest-customer && npm run test:regression:ui`
+
+- Failure Signals：
+1. KPI 指标缺失或口径漂移。
+2. Go/No-Go 无法按证据执行判定。
+
+- Triage Key：`RB-KPI-230`
+
+### S310 - 顾客关键路径体验强化
+
+- Objective：稳定顾客关键链路并完成小游戏体验闭环。
+- Dependency：S230 done。
+
+| task_id | lane | task | status | output |
+| --- | --- | --- | --- | --- |
+| S310-SRV-01 | server | 提供顾客主链路与小游戏接口稳定性保障（start/settle/synthesize） | todo | 接口稳定性 |
+| S310-MER-01 | merchant | 商户端承接顾客链路变化的运营提示与兼容验证 | todo | 兼容验证记录 |
+| S310-CUS-01 | customer | 完成 startup/index/account 关键链路与小游戏降级体验 | todo | 顾客主路径稳定 |
+
+- Deliverables：
+1. 顾客关键路径回归结果。
+2. 弱网恢复与小游戏降级证据。
+
+- Done Definition：
+1. 启动、报价、核验、资产回写链路通过。
+2. 小游戏异常不阻断支付主链路。
+3. 小游戏结算链路支持幂等与 trace 追踪。
+
+- Acceptance Commands：
+1. `cd MealQuestServer && npm test`
+2. `cd MealQuestMerchant && npm run lint && npm run typecheck`
+3. `cd meal-quest-customer && npm run typecheck && npm test`
+4. `cd meal-quest-customer && npm run test:regression:ui`
+
+- Failure Signals：
+1. 关键路径中断。
+2. 奖励回写失败或重复回写。
+3. 小游戏异常导致支付链路失败。
+
+- Triage Key：`RB-CUSTOMER-310`, `RB-GAME-310`
+
+### S410 - 商用发布门与值守门落地
+
+- Objective：发布、值守、回滚机制可执行。
+- Dependency：S310 done。
+
+| task_id | lane | task | status | output |
+| --- | --- | --- | --- | --- |
+| S410-SRV-01 | server | 固化 canary/limited/general 发布与回滚演练 | todo | 发布与回滚流程 |
+| S410-MER-01 | merchant | 固化 Android/iOS 客户端发布检查与回退方案 | todo | 移动端发布清单 |
+| S410-CUS-01 | customer | 固化 Taro 小程序发布检查与回退方案（微信硬门） | todo | 小程序发布清单 |
+
+- Deliverables：
+1. 三端发布清单。
+2. 三端回滚清单。
+3. 值守与告警清单。
+
+- Done Definition：
+1. 发布流程与回滚流程均可演练通过。
+2. P0/P1 告警升级路径可执行。
+3. 微信小程序发布门通过，支付宝链路有兼容验证记录。
+
+- Acceptance Commands：
+1. `npm run verify`
+2. `cd MealQuestServer && npm run test:smoke`
+3. `cd MealQuestMerchant && npm run lint && npm run typecheck`
+4. `cd meal-quest-customer && npm run build:weapp`
+
+- Failure Signals：
+1. 发布步骤不可执行。
+2. 回滚失败。
+
+- Triage Key：`RB-OPS-410`
+
+### S420 - 规模化治理与成本约束
+
+- Objective：多租户扩展与成本治理闭环。
+- Dependency：S410 done。
+
+| task_id | lane | task | status | output |
+| --- | --- | --- | --- | --- |
+| S420-SRV-01 | server | 完成多租户隔离、容量阈值、成本指标治理 | todo | 规模化治理能力 |
+| S420-MER-01 | merchant | 提供多店运营可用性与异常告警可见性 | todo | 多店运营支持 |
+| S420-CUS-01 | customer | 验证多店场景顾客侧状态一致与切换稳定 | todo | 多店顾客体验稳定 |
+
+- Deliverables：
+1. 隔离回归报告。
+2. 成本监控报告。
+3. 容量阈值演练记录。
+
+- Done Definition：
+1. 多租户隔离回归通过。
+2. 支付/AI/云资源成本指标可观测可告警。
+
+- Acceptance Commands：
+1. `npm run verify:ci`
+2. `cd MealQuestServer && npm test`
+3. `cd MealQuestMerchant && npm run lint && npm run typecheck`
+4. `cd meal-quest-customer && npm run typecheck && npm test`
+
+- Failure Signals：
+1. 租户数据串扰。
+2. 成本异常增长。
+
+- Triage Key：`RB-SCALE-420`
+
+---
+
+## 04. 证据账本（按 Step 回填）
+
+| StepID | Test Ref | Runtime Ref | Review Ref | Result | Verified By | Verified At |
+| --- | --- | --- | --- | --- | --- | --- |
+| S010 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
+| S020 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
+| S030 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
+| S040 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
+| S110 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
+| S120 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
+| S130 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
+| S210 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
+| S220 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
+| S230 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
+| S310 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
+| S410 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
+| S420 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
+
+---
+
+## 05. Runbook 快速索引
+
+| Triage Key | Symptom | First Checks | Responsibility Domain |
 | --- | --- | --- | --- |
-| S010 | `npm run verify` | `cd MealQuestServer && npm test`; 模板：`docs/qa/templates/step-manual-checklist-template.md#s010` | release_blocker |
-| S020 | `npm run verify` | `cd MealQuestServer && node --test test/policyOs.schema.test.ts`; 模板：`docs/qa/templates/step-manual-checklist-template.md#s020` | release_blocker |
-| S110 | `cd MealQuestServer && npm test` | `cd MealQuestServer && node --test test/policyOs.constraints.test.ts`; 模板：`docs/qa/templates/step-manual-checklist-template.md#s110` | release_blocker |
-| S120 | `cd MealQuestServer && node --test test/policyOs.http.integration.test.ts` | `cd MealQuestServer && node --test test/agentOs.stream.integration.test.ts`; 模板：`docs/qa/templates/step-manual-checklist-template.md#s120` | release_blocker |
-| S130 | `cd MealQuestServer && node --test test/policyOs.ledger.test.ts` | `cd MealQuestServer && npm test`; 模板：`docs/qa/templates/step-manual-checklist-template.md#s130` | release_blocker |
-| S210 | `cd MealQuestMerchant && npm run typecheck` | `cd MealQuestMerchant && npm run lint`; 模板：`docs/qa/templates/step-manual-checklist-template.md#s210` | quality_blocker |
-| S220 | `cd MealQuestServer && node --test test/policyOs.http.integration.test.ts` | `cd MealQuestServer && node --test test/agentOs.stream.integration.test.ts`; 模板：`docs/qa/templates/step-manual-checklist-template.md#s220` | quality_blocker |
-| S310 | `cd meal-quest-customer && npm test` | `cd meal-quest-customer && npm run test:regression:ui`; 模板：`docs/qa/templates/step-manual-checklist-template.md#s310` | quality_blocker |
-| S410 | `npm run verify` | `cd MealQuestServer && npm run test:smoke`; 模板：`docs/qa/templates/step-manual-checklist-template.md#s410` | release_blocker |
-| S420 | `npm run verify:ci` | `cd MealQuestServer && npm run test:smoke`; 模板：`docs/qa/templates/step-manual-checklist-template.md#s420` | release_blocker |
+| RB-CONTRACT-001 | 字段不一致/接口解析失败 | `cd MealQuestServer && npm test` | server + customer |
+| RB-CONTRACT-002 | 契约回归不稳定 | `npm run verify` | server + merchant + customer |
+| RB-MERCHANT-030 | 商户登录/开店链路中断 | `cd MealQuestMerchant && npm run lint && npm run typecheck` | merchant + server |
+| RB-CUSTOMER-040 | 扫码入店/会话建立失败 | `cd meal-quest-customer && npm run test:e2e:core` | customer + server |
+| RB-WELCOME-110 | Welcome 误发放/误拦截 | `cd MealQuestServer && node --test test/policyOs.constraints.test.ts` | server |
+| RB-WELCOME-120 | 审批或 TTL 治理异常 | `cd MealQuestServer && node --test test/policyOs.http.integration.test.ts` | server + merchant |
+| RB-WELCOME-130 | 支付到账务链路不一致 | `cd MealQuestServer && node --test test/policyOs.ledger.test.ts` | server |
+| RB-COCKPIT-210 | 看板字段缺失/口径冲突 | `cd MealQuestMerchant && npm run typecheck` | merchant + server |
+| RB-APPROVAL-220 | 审批中心状态错乱 | `cd MealQuestServer && node --test test/policyOs.http.integration.test.ts` | merchant + server |
+| RB-KPI-230 | KPI 口径漂移/发布门无法判定 | `cd MealQuestServer && npm test` | merchant + server + customer |
+| RB-CUSTOMER-310 | 顾客关键路径中断 | `cd meal-quest-customer && npm test` | customer |
+| RB-GAME-110 | 奖励异常放量/重复到账 | `cd MealQuestServer && node --test test/http.integration.test.ts` | server |
+| RB-GAME-310 | 小游戏开局/结算/回写异常 | `cd meal-quest-customer && npm run test:regression:ui` | customer + server |
+| RB-OPS-410 | 发布/回滚流程异常 | `cd MealQuestServer && npm run test:smoke` | server + release |
+| RB-SCALE-420 | 多租户隔离或成本异常 | `npm run verify:ci` | server |
 
 ---
 
-## 06. 内嵌排障 Runbook（按 StepID 绑定）
+## 06. API 合同索引（方向视图）
 
-### 06.1 RB-CONTRACT-001（S010）
+> 字段级最小合同以 `docs/specs/mealquest-spec.md` 第 14 章为准。
 
-- `Symptom`: 前后端字段不一致，接口返回无法解析。
-- `First Checks`:
-  1. `cd MealQuestServer && npm test`
-  2. 对照第 03.2 契约字段清单检查映射。
-- `Key Paths`:
-  1. `MealQuestServer/src/http/routes`
-  2. `MealQuestServer/src/policyos`
-  3. `meal-quest-customer/src/services/apiDataService`
-- `Recovery`: 回退新增字段解析，恢复兼容字段映射。
-- `Escalation`: 若影响支付/核销链路，升级为 P1。
-
-### 06.2 RB-CONTRACT-002（S020）
-
-- `Symptom`: 契约回归测试不稳定或重复失败。
-- `First Checks`:
-  1. `npm run verify`
-  2. 对比最近契约变更与回归基线。
-- `Key Paths`:
-  1. `MealQuestServer/test`
-  2. `meal-quest-customer/test`
-- `Recovery`: 回退最新契约变更并锁定最小复现。
-- `Escalation`: 连续失败且不可定位时升级架构级处理。
-
-### 06.3 RB-WELCOME-110（S110）
-
-- `Symptom`: Welcome 未触发、误触发、误拦截。
-- `First Checks`:
-  1. `cd MealQuestServer && node --test test/policyOs.constraints.test.ts`
-  2. 检查 reason code 和预算/库存判定链。
-- `Key Paths`:
-  1. `MealQuestServer/src/policyos`
-  2. `MealQuestServer/src/services/merchantService.ts`
-- `Recovery`: 回退到上个稳定规则。
-- `Escalation`: 误发放造成资金风险时升级 P1。
-
-### 06.4 RB-WELCOME-120（S120）
-
-- `Symptom`: 无审批执行、TTL 失效、Kill Switch 无效。
-- `First Checks`:
-  1. `cd MealQuestServer && node --test test/policyOs.http.integration.test.ts`
-  2. 检查审批 token 状态和过期时间。
-- `Key Paths`:
-  1. `MealQuestServer/src/policyos/approvalTokenService.ts`
-  2. `MealQuestMerchant/src/screens/AgentScreen.tsx`
-- `Recovery`: 关闭自动执行入口，回退人工审批。
-- `Escalation`: 越权执行即刻升级 P0/P1。
-
-### 06.5 RB-WELCOME-130（S130）
-
-- `Symptom`: 支付成功但未入账或未开票。
-- `First Checks`:
-  1. `cd MealQuestServer && node --test test/policyOs.ledger.test.ts`
-  2. 使用 `traceId` 串联支付/台账/发票日志。
-- `Key Paths`:
-  1. `MealQuestServer/src/services/paymentService.ts`
-  2. `MealQuestServer/src/policyos/ledgerService.ts`
-  3. `MealQuestServer/src/services/invoiceService.ts`
-- `Recovery`: 停止新链路写入并启用旧逻辑。
-- `Escalation`: 影响资金正确性立即升级 P0。
-
-### 06.6 RB-COCKPIT-210（S210）
-
-- `Symptom`: 看板指标缺失、口径不一致、页面展示异常。
-- `Signal Source`:
-  1. `/api/merchant/dashboard` 接口日志
-  2. Merchant 端看板渲染日志
-- `5-minute quick isolate`:
-  1. 检查接口是否 2xx 且字段齐全。
-  2. 比对后端统计口径与前端渲染字段。
-  3. 若口径冲突，先降级到只读视图。
-- `First Checks`:
-  1. `cd MealQuestMerchant && npm run typecheck`
-  2. `cd MealQuestServer && npm test`
-- `Key Paths`:
-  1. `MealQuestServer/src/services/merchantService.ts`
-  2. `MealQuestMerchant/src/screens`
-- `Recovery`: 回退看板新字段或切换到只读降级视图。
-- `Escalation`: 商户无法做经营决策时升级 P1。
-- `Escalation Owner`: `AI/Agent on-call`
-- `Timebox`: 15 分钟
-
-### 06.7 RB-APPROVAL-220（S220）
-
-- `Symptom`: 审批队列错乱、回放断链、状态不一致。
-- `Signal Source`:
-  1. `/api/policyos/*` 审批相关请求日志
-  2. Agent 任务流状态日志
-- `5-minute quick isolate`:
-  1. 抽样核对 `approvalId` 与 `traceId` 是否成对出现。
-  2. 验证审批状态在服务端与客户端是否一致。
-  3. 异常时立即切换只读模式。
-- `First Checks`:
-  1. `cd MealQuestServer && node --test test/policyOs.http.integration.test.ts`
-  2. `cd MealQuestServer && node --test test/agentOs.stream.integration.test.ts`
-- `Key Paths`:
-  1. `MealQuestServer/src/http/routes/policyOsRoutes.ts`
-  2. `MealQuestMerchant/src/screens/AgentScreen.tsx`
-- `Recovery`: 暂停写操作并回退到历史只读回放。
-- `Escalation`: 审批结果不可追溯时升级 P1。
-- `Escalation Owner`: `AI/Agent on-call`
-- `Timebox`: 15 分钟
-
-### 06.8 RB-CUSTOMER-310（S310）
-
-- `Symptom`: 顾客关键路径中断、弱网恢复失败。
-- `Signal Source`:
-  1. 顾客端关键路径埋点
-  2. `apiDataService` 请求错误日志
-- `5-minute quick isolate`:
-  1. 跑 UI 回归定位是否页面层问题。
-  2. 跑数据服务测试定位是否接口映射问题。
-  3. 若无法定位，先关闭新交互开关。
-- `First Checks`:
-  1. `cd meal-quest-customer && npm test`
-  2. `cd meal-quest-customer && npm run test:regression:ui`
-- `Key Paths`:
-  1. `meal-quest-customer/src/pages/index`
-  2. `meal-quest-customer/src/services/apiDataService`
-- `Recovery`: 关闭新交互特性并回退稳定页面。
-- `Escalation`: 支付体验受损时升级 P1。
-- `Escalation Owner`: `AI/Agent on-call`
-- `Timebox`: 15 分钟
-
-### 06.9 RB-OPS-410（S410）
-
-- `Symptom`: 发布流程不可执行、回滚失败、告警漏报。
-- `Signal Source`:
-  1. 发布流水日志
-  2. smoke 测试结果
-  3. 告警系统事件记录
-- `5-minute quick isolate`:
-  1. 立即冻结放量。
-  2. 确认回滚入口可用并执行 smoke。
-  3. 若关键链路未恢复，进入紧急事故流程。
-- `First Checks`:
-  1. `npm run verify`
-  2. `cd MealQuestServer && npm run test:smoke`
-- `Key Paths`:
-  1. `MealQuestServer/src/http/server.ts`
-  2. `MealQuestServer/scripts`
-- `Recovery`: 立即停止放量，进入回滚流程。
-- `Escalation`: 生产不可用直接升级 P0。
-- `Escalation Owner`: `AI/Agent on-call`
-- `Timebox`: 10 分钟
-
-### 06.10 RB-SCALE-420（S420）
-
-- `Symptom`: 多店隔离异常、容量告警频发、成本突增。
-- `Signal Source`:
-  1. 租户隔离回归日志
-  2. 成本监控看板
-  3. 容量阈值触发日志
-- `5-minute quick isolate`:
-  1. 先确认是否出现租户数据串扰。
-  2. 检查容量阈值是否按预期触发。
-  3. 异常时降级到单店稳定策略。
-- `First Checks`:
-  1. `npm run verify:ci`
-  2. `cd MealQuestServer && npm test`
-- `Key Paths`:
-  1. `MealQuestServer/src/core/tenantRouter.ts`
-  2. `MealQuestServer/src/store`
-- `Recovery`: 降级到单店稳定策略并冻结扩展开关。
-- `Escalation`: 影响多租户数据安全时升级 P0。
-- `Escalation Owner`: `AI/Agent on-call`
-- `Timebox`: 10 分钟
+| Domain | Primary Paths | Owner Lane |
+| --- | --- | --- |
+| Auth | `/api/auth/customer/wechat-login`, `/api/auth/customer/alipay-login`, `/api/auth/merchant/*` | server + merchant + customer |
+| Customer Core | `/api/state`, `/api/payment/*`, `/api/invoice/*`, `/api/privacy/*` | server + customer |
+| Merchant Ops | `/api/merchant/dashboard`, `/api/merchant/kill-switch`, `/api/merchant/stores` | server + merchant |
+| Policy OS | `/api/policyos/*` | server + merchant |
+| Agent OS | `/api/agent-os/*` | server + merchant |
+| Game Loop | `/api/game/sessions/start`, `/api/game/sessions/settle`, `/api/assets/fragments/synthesize` | server + customer |
+| Tenant Governance | `/api/merchant/tenant-policy`, `/api/merchant/migration/*` | server + merchant |
 
 ---
 
-## 07. 变更协议（PR 必更）
+## 07. 变更协议（PR 必填）
 
-### 07.1 提交要求
+1. 标注 `StepID`。
+2. 标注涉及的 `task_id` 列表。
+3. 标注 `PointerChange`（no_change / forward / rollback）。
+4. 标注 `EvidenceRef`（测试、运行、审阅）。
 
-1. 每个 PR 必须标注 `StepID`。
-2. 每个 PR 必须补 `EvidenceRef`。
-3. 每个 PR 必须说明 `PointerChange`（不变、前移、回拨）。
+### 07.1 指针变更流程
 
-### 07.2 指针变更流程
-
-1. 完成步骤并通过验收命令。
-2. 回填第 `04` 章证据账本。
-3. 更新第 `02` 章 `Current StepID` 与 `Next StepID`。
-4. 在第 `13` 章记录更新日志。
-
----
-
-## 08. 交付物清单（每步完成必须具备）
-
-1. 可复现命令输出。
-2. 关键日志或截图。
-3. 回滚入口或开关说明。
-4. 相关接口/字段变更说明。
-5. 对应 Runbook 条目可用。
+1. 当前 Step 所有必需任务达到 `done` 或有明确豁免记录。
+2. 必过命令通过。
+3. 回填证据账本。
+4. 更新驾驶舱 `Current/Next`。
 
 ---
 
-## 09. 独立开发就绪检查（Ready-for-Solo）
-
-### 09.1 新接手 30 分钟流程
+## 08. 新接手流程（30分钟）
 
 1. `npm run bootstrap`
 2. `npm run verify`
-3. 打开第 `02` 章读取 `Current StepID`。
-4. 跳到第 `03` 章对应 Step 卡执行 `Implementation Checklist`。
-5. 出现异常时按 `Triage Entry` 跳转第 `06` 章。
-
-### 09.2 本轮开始前检查
-
-1. 本地环境可执行仓库统一命令。
-2. 当前步骤前置条件均为 `done`。
-3. 当前步骤证据账本项存在并可回填。
-4. 当前步骤对应 Runbook 条目存在。
-
-### 09.3 本轮完成后检查
-
-1. 验收命令通过。
-2. 证据账本完整回填。
-3. 指针已按规则前移或回拨。
-4. 更新日志已记录。
+3. 打开第 01 章读取 `Current StepID` 与 `Blockers`
+4. 跳转第 03 章找到当前 Step 的三端任务表
+5. 执行本端 `todo` 任务并回填证据账本
 
 ---
 
-## 10. 环境与依赖矩阵
+## 09. 角色验收附录
 
-### 10.1 Server 环境变量（`MealQuestServer/src/config/runtimeEnv.ts`）
+### 09.1 顾客视角验收清单（小程序）
 
-| Key | Dev | Prod | Default | 说明 |
-| --- | --- | --- | --- | --- |
-| `HOST` | Optional | Optional | `0.0.0.0` | 服务监听地址 |
-| `PORT` | Optional | Optional | `3030` | 服务监听端口 |
-| `MQ_DB_URL` | Required | Required | - | 主数据库连接 |
-| `MQ_DB_SCHEMA` | Optional | Optional | `public` | DB schema |
-| `MQ_DB_POOL_MAX` | Optional | Optional | `5` | 连接池大小 |
-| `MQ_DB_AUTO_CREATE` | Optional | Optional | `true` | 自动建表 |
-| `MQ_DB_ENFORCE_RLS` | Optional | Optional | `true` | RLS 开关 |
-| `DEEPSEEK_API_KEY` | Required | Required | - | AI API Key |
-| `MQ_AI_MODEL` | Optional | Optional | `deepseek-chat` | AI 模型名 |
-| `MQ_JWT_SECRET` | Optional | Required | dev fallback | JWT 密钥 |
-| `MQ_PAYMENT_CALLBACK_SECRET` | Optional | Required | dev fallback | 支付回调签名密钥 |
-| `MQ_AUTH_WECHAT_MINI_APP_ID` | Optional | Optional | - | 微信认证参数 |
-| `MQ_AUTH_WECHAT_MINI_APP_SECRET` | Optional | Optional | - | 微信认证参数 |
-| `MQ_AUTH_ALIPAY_VERIFY_URL` | Optional | Optional | - | 支付宝认证参数 |
-| `MQ_AUTH_ALIPAY_APP_ID` | Optional | Optional | - | 支付宝认证参数 |
-| `MQ_AUTH_ALIPAY_APP_SECRET` | Optional | Optional | - | 支付宝认证参数 |
-| `LANGSMITH_TRACING` | Optional | Optional | `false` | LangSmith 追踪开关 |
-| `LANGSMITH_PROJECT` | Optional | Optional | empty | LangSmith 项目 |
-| `LANGSMITH_ENDPOINT` | Optional | Optional | empty | LangSmith 地址 |
+1. 首次扫码入店可成功进入首页并显示资产卡片。
+2. 老用户入店可复用会话，异常 merchantId 可被阻断。
+3. 支付核销后账本与发票可查询且一致。
+4. 小游戏奖励结算支持幂等，重复请求不重复入账。
+5. 小游戏异常时自动降级，不阻断支付主链路。
 
-### 10.2 Merchant 环境变量
+### 09.2 老板视角验收清单（商户端）
 
-| Key | Required | Default | 说明 |
-| --- | --- | --- | --- |
-| `EXPO_PUBLIC_MQ_SERVER_URL` | Optional | `http://127.0.0.1:3030` | 商户端 API Base URL |
-
-### 10.3 Customer 环境变量
-
-| Key | Required | Default | 说明 |
-| --- | --- | --- | --- |
-| `TARO_APP_SERVER_URL` | Optional | empty | 顾客端 API Base URL |
-| `TARO_APP_DEFAULT_STORE_ID` | Optional | empty | 默认门店 ID |
-| `TARO_ENV` | Optional | build injected | 平台环境识别 |
-
-### 10.4 首启最小配置（开发机）
-
-1. Server 至少配置：`MQ_DB_URL`、`DEEPSEEK_API_KEY`。
-2. Merchant 推荐配置：`EXPO_PUBLIC_MQ_SERVER_URL`。
-3. Customer 推荐配置：`TARO_APP_SERVER_URL`、`TARO_APP_DEFAULT_STORE_ID`。
+1. 手机号登录链路可用，未绑定时可进入开店流程。
+2. 完成开店后可进入工作台，重启应用可恢复会话。
+3. 看板可见核心 KPI、趋势与异常告警。
+4. 审批中心可执行确认、查看结果、回放历史。
+5. Kill Switch 可生效且影响可观测。
 
 ---
 
-## 11. 手工验收模板索引
+## 10. 更新日志
 
-1. 通用模板：`docs/qa/templates/step-manual-checklist-template.md`
-2. 使用方式：按 `StepID` 找到对应小节，填写“场景、结果、证据路径、结论”。
-
----
-
-## 12. 接口契约索引（执行级）
-
-> 本章提供开发执行最小契约。业务原则仍以 `spec` 为准。
-
-### 12.1 S210 经营看板链路
-
-| Method | Path | Request Minimum | Response Minimum | Error Codes |
-| --- | --- | --- | --- | --- |
-| `GET` | `/api/merchant/dashboard` | `merchantId` | `hitRate`, `subsidyCost`, `redeemRevenue`, `riskAlertCount`, `traceId` | `400`, `401`, `404`, `500` |
-| `POST` | `/api/merchant/kill-switch` | `merchantId`, `enabled`, `operatorId` | `status`, `updatedAt`, `traceId` | `400`, `401`, `403`, `500` |
-
-### 12.2 S220 审批与回放链路
-
-| Method | Path | Request Minimum | Response Minimum | Error Codes |
-| --- | --- | --- | --- | --- |
-| `POST` | `/api/policyos/decision/evaluate` | `merchantId`, `policyId`, `context` | `decision`, `reason`, `traceId` | `400`, `401`, `422`, `500` |
-| `POST` | `/api/policyos/decision/execute` | `merchantId`, `decisionId`, `approvalId` | `status`, `executedAt`, `traceId` | `400`, `401`, `403`, `409`, `500` |
-| `GET` | `/api/agent-os/sessions/:sessionId/tasks/:taskId` | `merchantId`, `sessionId`, `taskId` | `task`, `status`, `traceId` | `400`, `401`, `404`, `500` |
-
-### 12.3 S310 顾客关键路径链路
-
-| Method | Path | Request Minimum | Response Minimum | Error Codes |
-| --- | --- | --- | --- | --- |
-| `GET` | `/api/state` | `merchantId`, `userId` | `assets`, `activities`, `member`, `traceId` | `400`, `401`, `404`, `500` |
-| `POST` | `/api/payment/quote` | `merchantId`, `userId`, `items` | `quoteId`, `amount`, `traceId` | `400`, `401`, `422`, `500` |
-| `POST` | `/api/payment/verify` | `merchantId`, `userId`, `quoteId` | `status`, `ledgerRef`, `traceId` | `400`, `401`, `409`, `500` |
-| `GET` | `/api/invoice/list` | `merchantId`, `userId` | `items[]`, `traceId` | `400`, `401`, `500` |
-
-### 12.4 契约执行规则
-
-1. 关键执行链必须携带 `traceId`。
-2. 审批执行链必须携带 `approvalId`。
-3. 新字段仅追加，不得破坏旧字段兼容读取。
-4. 变更契约必须同步更新 Step 卡、测试矩阵、Runbook。
-
----
-
-## 13. 更新日志
-
-1. 2026-03-03：重构为从0路线本体 + 推进指针机制；明确“指针之前=已实现且已验收”；无证据不得前移，失败必须回拨。
-2. 2026-03-03：升级为可独立开发版，补齐 S210-S420 Step 卡、RB-210/220/310/410/420、步骤-测试矩阵、交付物清单、Ready-for-Solo 检查。
-3. 2026-03-03：第二轮开发者复审后补齐环境矩阵、执行级接口契约、量化验收门与 Runbook 信号源。
+1. 2026-03-03：建立从 0 路线本体与指针机制。
+2. 2026-03-03：补齐 S210-S420 执行卡与基础 Runbook。
+3. 2026-03-03：补齐环境矩阵与执行级接口索引。
+4. 2026-03-04：补齐三类资产与小游戏链路定义。
+5. 2026-03-04：重构为“方向版 roadmap”，采用主 Step + 三端任务卡。
+6. 2026-03-04：升级为“执行版 roadmap”，新增 S030/S040/S230 与角色验收附录。
