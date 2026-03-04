@@ -1,48 +1,57 @@
 .startup-page {
   min-height: 100vh;
-  padding: 48rpx 36rpx;
+  padding: 44rpx 34rpx;
   display: flex;
   align-items: center;
   justify-content: center;
   background:
-    radial-gradient(circle at 18% 12%, rgba(251, 191, 36, 0.18), transparent 36%),
-    radial-gradient(circle at 86% 10%, rgba(14, 165, 233, 0.18), transparent 32%),
-    linear-gradient(180deg, #fdfcf6 0%, #f8fafc 100%);
+    radial-gradient(circle at 20% 10%, rgba(11, 95, 255, 0.16), transparent 36%),
+    radial-gradient(circle at 86% 12%, rgba(0, 166, 166, 0.16), transparent 32%),
+    linear-gradient(180deg, #f6f9ff 0%, #eff4ff 100%);
 }
 
 .startup-panel {
   width: 100%;
   max-width: 680rpx;
-  padding: 54rpx 40rpx;
+  padding: 56rpx 40rpx;
   border-radius: 34rpx;
-  background: rgba(255, 255, 255, 0.93);
-  box-shadow: 0 22rpx 60rpx rgba(15, 23, 42, 0.12);
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: var(--mq-shadow-floating);
+  border: 1rpx solid var(--mq-border);
   display: flex;
   flex-direction: column;
-  gap: 24rpx;
+  gap: 22rpx;
+}
+
+.startup-panel__badge {
+  font-size: 18rpx;
+  letter-spacing: 2rpx;
+  color: #44638f;
+  font-weight: 700;
 }
 
 .startup-panel__title {
-  font-size: 50rpx;
-  line-height: 1.2;
-  color: #0f172a;
-  font-weight: 800;
+  font-size: 54rpx;
+  line-height: 1.1;
+  color: var(--mq-text);
+  font-weight: 900;
+  letter-spacing: -1rpx;
 }
 
 .startup-panel__desc {
   font-size: 28rpx;
-  line-height: 1.6;
-  color: #334155;
+  line-height: 1.55;
+  color: #334b6d;
 }
 
 .startup-panel__button {
   height: 92rpx;
   border-radius: 999rpx;
-  background: linear-gradient(120deg, #0f172a 0%, #1e293b 100%);
+  background: linear-gradient(120deg, #0b5fff 0%, #008ef2 100%);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 14rpx 30rpx rgba(15, 23, 42, 0.26);
+  box-shadow: 0 14rpx 30rpx rgba(11, 95, 255, 0.28);
 }
 
 .startup-panel__button:active {
@@ -50,15 +59,15 @@
 }
 
 .startup-panel__button-text {
-  color: #f8fafc;
+  color: #f8faff;
   font-size: 30rpx;
   letter-spacing: 1rpx;
-  font-weight: 700;
+  font-weight: 800;
 }
 
 .startup-panel__error {
   font-size: 24rpx;
-  color: #b91c1c;
+  color: var(--mq-danger);
 }
 
 .startup-loading {
@@ -67,22 +76,22 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 24rpx;
-  background: #f8fafc;
+  gap: 20rpx;
+  background: var(--mq-bg);
 }
 
 .startup-loading__spinner {
   width: 56rpx;
   height: 56rpx;
   border-radius: 50%;
-  border: 4rpx solid rgba(148, 163, 184, 0.35);
-  border-top-color: #0f172a;
+  border: 4rpx solid rgba(121, 144, 176, 0.3);
+  border-top-color: var(--mq-primary);
   animation: startup-spin 0.9s linear infinite;
 }
 
 .startup-loading__text {
   font-size: 28rpx;
-  color: #334155;
+  color: var(--mq-text-muted);
 }
 
 @keyframes startup-spin {

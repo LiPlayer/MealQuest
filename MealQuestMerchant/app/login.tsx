@@ -13,7 +13,7 @@ export default function LoginRoute() {
   }
 
   if (isAuthenticated) {
-    return <Redirect href="/(tabs)/agent" />;
+    return <Redirect href="/(tabs)/dashboard" />;
   }
 
   if (pendingOnboardingSession) {

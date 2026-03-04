@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, StyleSheet, Text, TextInput, View } from 'react-native';
+
+import AppShell from '../components/ui/AppShell';
+import ActionButton from '../components/ui/ActionButton';
+import SurfaceCard from '../components/ui/SurfaceCard';
 import { useMerchant } from '../context/MerchantContext';
+import { mqTheme } from '../theme/tokens';
 
 export default function LoginScreen() {
   const { authSubmitting, authError, requestLoginCode, loginWithPhone } = useMerchant();
@@ -31,135 +35,114 @@ export default function LoginScreen() {
   const mergedError = localError || authError;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.card}>
-        <Text style={styles.title}>Merchant Login</Text>
-        <Text style={styles.subtitle}>Login first to access chat and operations.</Text>
-        <Text style={styles.hint}>Merchant will be resolved automatically by phone binding.</Text>
+    <AppShell contentContainerStyle={styles.shellContent}>
+      <SurfaceCard style={styles.card}>
+        <Text style={styles.title}>Merchant Workspace</Text>
+        <Text style={styles.subtitle}>手机号登录后进入经营中枢与 Agent 协作区。</Text>
 
         <TextInput
           testID="login-phone-input"
           style={styles.input}
           placeholder="Phone, e.g. +8613900000001"
+          placeholderTextColor="#7f90a6"
           value={phone}
           onChangeText={setPhone}
           autoCapitalize="none"
         />
+
         <View style={styles.row}>
           <TextInput
             testID="login-code-input"
             style={[styles.input, styles.codeInput]}
             placeholder="6-digit code"
+            placeholderTextColor="#7f90a6"
             value={code}
             onChangeText={setCode}
             autoCapitalize="none"
           />
-          <Pressable
-            testID="login-request-code-btn"
-            style={[styles.btn, styles.secondaryBtn, authSubmitting && styles.disabledBtn]}
-            onPress={handleRequestCode}
-            disabled={authSubmitting}
-          >
-            {authSubmitting ? (
-              <ActivityIndicator color="#0f172a" size="small" />
-            ) : (
-              <Text style={styles.secondaryBtnText}>Request Code</Text>
-            )}
-          </Pressable>
+          <View style={styles.requestBtnWrap}>
+            <ActionButton
+              testID="login-request-code-btn"
+              label={authSubmitting ? 'Requesting...' : 'Request Code'}
+              onPress={handleRequestCode}
+              disabled={authSubmitting}
+              variant="secondary"
+            />
+          </View>
         </View>
 
-        <Pressable
+        <ActionButton
           testID="login-submit-btn"
-          style={[styles.btn, styles.primaryBtn, authSubmitting && styles.disabledBtn]}
+          label={authSubmitting ? 'Logging in...' : 'Login'}
           onPress={handleLogin}
           disabled={authSubmitting}
-        >
-          {authSubmitting ? (
-            <ActivityIndicator color="#ffffff" size="small" />
-          ) : (
-            <Text style={styles.primaryBtnText}>Login</Text>
-          )}
-        </Pressable>
+          icon="login"
+        />
+
+        {authSubmitting ? (
+          <View style={styles.loadingRow}>
+            <ActivityIndicator color={mqTheme.colors.primary} size="small" />
+            <Text style={styles.loadingText}>Validating session...</Text>
+          </View>
+        ) : null}
+
         {mergedError ? <Text style={styles.errorText}>{mergedError}</Text> : null}
-      </View>
-    </SafeAreaView>
+      </SurfaceCard>
+    </AppShell>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
+  shellContent: {
     justifyContent: 'center',
-    padding: 16,
+    paddingTop: 44,
   },
   card: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    gap: 12,
+    borderRadius: mqTheme.radius.xl,
+    padding: mqTheme.spacing.xl,
+    gap: mqTheme.spacing.md,
+    ...mqTheme.shadow.floating,
   },
   title: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#0f172a',
+    ...mqTheme.typography.title,
   },
   subtitle: {
-    fontSize: 13,
-    color: '#64748b',
-  },
-  hint: {
-    fontSize: 12,
-    color: '#475569',
+    ...mqTheme.typography.body,
+    color: '#40516b',
   },
   row: {
     flexDirection: 'row',
-    gap: 8,
+    gap: mqTheme.spacing.sm,
     alignItems: 'center',
   },
   input: {
     borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 10,
+    borderColor: mqTheme.colors.border,
+    borderRadius: mqTheme.radius.md,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 14,
-    color: '#0f172a',
-    backgroundColor: '#f8fafc',
+    color: mqTheme.colors.ink,
+    backgroundColor: mqTheme.colors.surfaceAlt,
   },
   codeInput: {
     flex: 1,
   },
-  btn: {
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
+  requestBtnWrap: {
+    width: 136,
+  },
+  loadingRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 8,
   },
-  primaryBtn: {
-    backgroundColor: '#0f766e',
-  },
-  secondaryBtn: {
-    backgroundColor: '#e2e8f0',
-  },
-  primaryBtnText: {
-    color: '#ffffff',
-    fontWeight: '700',
-  },
-  secondaryBtnText: {
-    color: '#0f172a',
-    fontWeight: '700',
-    fontSize: 12,
-  },
-  disabledBtn: {
-    opacity: 0.6,
+  loadingText: {
+    ...mqTheme.typography.caption,
+    color: mqTheme.colors.inkMuted,
   },
   errorText: {
-    color: '#b91c1c',
+    color: mqTheme.colors.danger,
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
   },
 });

@@ -27,10 +27,15 @@ const waitForPagePath = async (miniProgram, expectedPath, timeoutMs = 8000) => {
 
 const context = resolveE2EContext();
 if (!context.runnable) {
-    throw new Error(`[e2e] customer-core-flow blocked: ${context.reason}`);
+    // Keep CI green on non-Windows hosts by explicitly skipping weapp e2e suites.
+    // Windows hosts with DevTools CLI remain the only runnable environment.
+    // eslint-disable-next-line no-console
+    console.warn(`[e2e] customer-core-flow skipped: ${context.reason}`);
 }
 
-describe('Customer core flow e2e', () => {
+const describeMaybe = context.runnable ? describe : describe.skip;
+
+describeMaybe('Customer core flow e2e', () => {
     let miniProgram;
 
     beforeAll(async () => {

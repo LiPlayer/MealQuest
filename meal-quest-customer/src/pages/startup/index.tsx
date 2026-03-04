@@ -38,7 +38,6 @@ export default function StartupPage() {
 
     storage.setLastStoreId(merchantId);
     try {
-      // Warm up customer session + home snapshot so index page opens with stable data.
       await ApiDataService.getHomeSnapshot(merchantId);
     } catch (error) {
       console.warn('[Startup] prefetch home snapshot failed', error);
@@ -105,7 +104,7 @@ export default function StartupPage() {
     return (
       <View className='startup-loading'>
         <View className='startup-loading__spinner' />
-        <Text className='startup-loading__text'>正在进入门店...</Text>
+        <Text className='startup-loading__text'>正在连接门店...</Text>
       </View>
     );
   }
@@ -113,11 +112,14 @@ export default function StartupPage() {
   return (
     <View className='startup-page'>
       <View className='startup-panel'>
-        <Text className='startup-panel__title'>Welcome to MealQuest</Text>
-        <Text className='startup-panel__desc'>请扫码入店，领取你的专属资产与活动。</Text>
+        <Text className='startup-panel__badge'>MEALQUEST ENTRY</Text>
+        <Text className='startup-panel__title'>扫码入店</Text>
+        <Text className='startup-panel__desc'>进入后可直接支付、参与活动并查看资产沉淀。</Text>
+
         <View id='startup-scan-button' className='startup-panel__button' onClick={handleScan}>
-          <Text className='startup-panel__button-text'>扫一扫入店</Text>
+          <Text className='startup-panel__button-text'>开始扫码</Text>
         </View>
+
         {errorMessage ? <Text className='startup-panel__error'>{errorMessage}</Text> : null}
       </View>
     </View>

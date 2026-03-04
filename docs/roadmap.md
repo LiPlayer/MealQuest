@@ -59,8 +59,8 @@
 | S010 | P0 | Acquisition（Welcome 子场景）事件/API/审计字段冻结且三端对齐 | 无 | done |
 | S020 | P0 | 契约回归基线可重复执行且可定位 | S010 done | done |
 | S030 | P0 | 商户入口闭环（登录/开店/会话恢复）可回归 | S020 done | done |
-| S040 | P0 | 顾客入口闭环（扫码入店/资产首屏）可回归 | S030 done | doing |
-| S110 | P1 | Acquisition（Welcome + 候餐小游戏）触发与资格判定闭环可回归 | S040 done | blocked |
+| S040 | P0 | 顾客入口闭环（扫码入店/资产首屏）可回归 | S030 done | done |
+| S110 | P1 | Acquisition（Welcome + 候餐小游戏）触发与资格判定闭环可回归 | S040 done | doing |
 | S120 | P1 | Acquisition 执行治理闭环（审批/TTL/Kill Switch） | S110 done | todo |
 | S130 | P1 | Acquisition 发放核销账务一致性闭环 | S120 done | todo |
 | S210 | P2 | 商户经营看板最小可用 | S130 done | todo |
@@ -217,13 +217,15 @@
 | --- | --- | --- | --- | --- |
 | S040-SRV-01 | server | 固化顾客登录与入店能力合同（扫码入店/会话建立/资产状态） | done | `MealQuestServer/test/http.integration.test.ts`（customer login + state + merchant exists + merchant dashboard customerEntry 可见性） |
 | S040-MER-01 | merchant | 承接顾客入店状态变化的只读可见性校验 | done | `MealQuestMerchant/src/context/MerchantContext.tsx`; `MealQuestMerchant/src/screens/AgentScreen.tsx`; `MealQuestMerchant/src/services/apiClient.ts` |
-| S040-MER-02 | merchant | Deliver fixed customer-entry QR generation and distribution in merchant app (preview/save/share) | doing | `MealQuestMerchant/src/screens/EntryQrScreen.tsx`; `MealQuestMerchant/src/services/entryQrService.ts`; `MealQuestMerchant/app/entry-qrcode.tsx` |
+| S040-MER-02 | merchant | Deliver fixed customer-entry QR generation and distribution in merchant app (preview/save/share) | done | `MealQuestMerchant/src/screens/EntryQrScreen.tsx`; `MealQuestMerchant/src/services/entryQrService.ts`; `MealQuestMerchant/app/entry-qrcode.tsx`; 手工冒烟记录 |
+| S040-MER-03 | merchant | Freeze merchant IA shell (stack + tabs + future placeholder routes) and fix QR back-navigation stability | done | `MealQuestMerchant/app/_layout.tsx`; `MealQuestMerchant/app/(tabs)/_layout.tsx`; `MealQuestMerchant/app/(tabs)/dashboard.tsx`; `MealQuestMerchant/app/(tabs)/approvals.tsx`; `MealQuestMerchant/app/(tabs)/replay.tsx`; `MealQuestMerchant/app/(tabs)/risk.tsx` |
 | S040-CUS-01 | customer | 完成 startup 扫码入店、会话建立与首页资产展示闭环 | done | `meal-quest-customer/src/pages/startup/index.tsx`; `meal-quest-customer/src/pages/index/index.tsx`; `meal-quest-customer/src/pages/account/index.tsx` |
 
 - Deliverables：
 1. 扫码入店链路回归记录。
 2. 资产首屏字段映射与降级策略。
 3. 首发平台兼容记录。
+4. 跨端布局骨架冻结记录（商户端 IA 预置占位 + 顾客端三页统一风格基线）。
 
 - Done Definition：
 1. 新用户扫码可完成入店并看到资产首屏。
@@ -241,8 +243,9 @@
 1. 扫码后无法建立顾客会话。
 2. 首页资产字段缺失或映射错误。
 3. 首发平台流程通过但兼容平台崩溃。
+4. Merchant QR 页面返回主入口时出现导航栈崩溃（例如 `stale` 相关错误）。
 
-- Triage Key: `RB-CUSTOMER-040`, `RB-MERCHANT-QR-040`
+- Triage Key: `RB-CUSTOMER-040`, `RB-MERCHANT-QR-040`, `RB-MERCHANT-NAV-040`
 
 - Decision Notes（已确认）：
 1. `S040-CUS-01` 允许在 `S030` 总体验收完成前先行落地代码与测试，Step 收口仍以三端任务全部完成为准。
@@ -255,11 +258,15 @@
 8. S110 is blocked until S040 is re-closed with merchant QR source capability.
 9. S040-MER-02 uses merchant local QR generation with plain-text `merchantId` payload.
 10. S040-MER-02 scope is dedicated page + image save + image share; no server-side QR generation API in this step.
+11. Merchant app root navigation uses stack shell + tabs IA freeze to avoid repeated route rewrites in S110+.
+12. Entry QR screen back action must support safe fallback to `/(tabs)/dashboard` when no history stack is available.
+13. 顾客端 weapp e2e 仅在 Windows 执行；非 Windows 环境默认跳过 `test:e2e:core`，不作为失败判定。
+14. 2026-03-04 已确认商户端二维码保存/分享手工冒烟通过，`S040-MER-02` 收口为 `done`，S040 解锁至下一指针。
 
 ### S110 - Acquisition（Welcome + 候餐小游戏）触发与资格判定闭环
 
 - Objective：打通 Acquisition 子域触发、预算、库存、反套利与小游戏奖励资格判定。
-- Dependency: S040 done (currently blocked until S040 re-closure).
+- Dependency: S040 done.
 
 | task_id | lane | task | status | output |
 | --- | --- | --- | --- | --- |
@@ -720,7 +727,7 @@
 | S010 | `npm run verify`; `cd MealQuestServer && npm test`; `cd MealQuestMerchant && npm run lint && npm run typecheck`; `cd meal-quest-customer && npm run typecheck && npm test` | `docs/qa/s010-welcome-contract-baseline.md` | `MealQuestServer/test/http.integration.test.ts`（Welcome 主链路）；`meal-quest-customer/test/services/api-data-service.test.ts`（state 映射） | pass | AI/Agent | 2026-03-04 |
 | S020 | `npm run test:contract:baseline`; `cd MealQuestServer && npm run test:contract:baseline`; `cd MealQuestMerchant && npm run test:contract:baseline`; `cd meal-quest-customer && npm run test:contract:baseline` | `docs/qa/s020-contract-regression-baseline.md` | `MealQuestMerchant/src/context/MerchantContext.tsx`（lint warning 修复） | pass | AI/Agent | 2026-03-04 |
 | S030 | `cd MealQuestServer && npm test`（非沙箱重跑通过，65/65）；`cd MealQuestMerchant && npm run lint && npm run typecheck`；`cd meal-quest-customer && npm run typecheck && npm test -- --runInBand` | `docs/qa/s030-merchant-entry-closure.md` | `MealQuestServer/test/http.integration.test.ts`；`MealQuestMerchant/src/context/MerchantContext.tsx`；`MealQuestMerchant/src/services/apiClient.ts`；`MealQuestMerchant/src/services/authSessionStorage.ts`；`meal-quest-customer/test/pages/startup.test.tsx` | pass | AI/Agent | 2026-03-04 |
-| S040 | historical baseline: `cd MealQuestServer && npm test`（66/66）；`cd meal-quest-customer && npm run test:e2e:core`（2/2）；reopen checks: `cd MealQuestMerchant && npm run lint && npm run typecheck`; `cd meal-quest-customer && npm run typecheck`; `cd meal-quest-customer && npm test -- --runInBand test/pages/startup.test.tsx`（6/6） | `docs/qa/s040-customer-entry-closure.md` (reopened: missing merchant QR source) | `MealQuestServer/test/http.integration.test.ts`；`MealQuestMerchant/src/context/MerchantContext.tsx`；`MealQuestMerchant/src/screens/AgentScreen.tsx`；`MealQuestMerchant/src/screens/EntryQrScreen.tsx`；`MealQuestMerchant/src/services/entryQrService.ts`；`meal-quest-customer/src/pages/startup/index.tsx`；`meal-quest-customer/test/pages/startup.test.tsx`; `meal-quest-customer/test/e2e/customer-core-flow.spec.js`; `meal-quest-customer/test/e2e/utils/mini-program-session.js` | partial | AI/Agent | 2026-03-04 |
+| S040 | historical baseline: `cd MealQuestServer && npm test`（66/66）；latest reopen checks: `cd MealQuestMerchant && npm run lint && npm run typecheck`（pass）；`cd meal-quest-customer && npm run typecheck`（pass）；`cd meal-quest-customer && npm test -- --runInBand test/pages/startup.test.tsx test/pages/account.test.tsx`（8/8）；`npm run check:encoding`（pass）；`cd meal-quest-customer && npm run test:e2e:core`（skipped on Ubuntu: windows-only policy）；merchant QR save/share manual smoke（pass） | `docs/qa/s040-customer-entry-closure.md` | `MealQuestServer/test/http.integration.test.ts`；`MealQuestMerchant/app/_layout.tsx`；`MealQuestMerchant/app/(tabs)/_layout.tsx`；`MealQuestMerchant/app/(tabs)/dashboard.tsx`；`MealQuestMerchant/app/(tabs)/approvals.tsx`；`MealQuestMerchant/app/(tabs)/replay.tsx`；`MealQuestMerchant/app/(tabs)/risk.tsx`；`MealQuestMerchant/src/screens/AgentScreen.tsx`；`MealQuestMerchant/src/screens/EntryQrScreen.tsx`；`MealQuestMerchant/src/services/entryQrService.ts`；`meal-quest-customer/src/pages/startup/index.tsx`；`meal-quest-customer/src/pages/index/index.tsx`；`meal-quest-customer/src/pages/account/index.tsx`；`meal-quest-customer/test/pages/startup.test.tsx`；`meal-quest-customer/test/pages/account.test.tsx`；`meal-quest-customer/test/e2e/customer-core-flow.spec.js`；`meal-quest-customer/test/e2e/utils/mini-program-session.js` | pass | AI/Agent | 2026-03-04 |
 | S110 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S120 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S130 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
@@ -746,6 +753,7 @@
 | RB-MERCHANT-030 | 商户登录/开店链路中断 | `cd MealQuestMerchant && npm run lint && npm run typecheck` | merchant + server |
 | RB-CUSTOMER-040 | 扫码入店/会话建立失败 | `cd meal-quest-customer && Remove-Item Env:WECHAT_WS_ENDPOINT -ErrorAction SilentlyContinue; Remove-Item Env:WECHAT_SERVICE_PORT -ErrorAction SilentlyContinue; $env:WECHAT_CLI_PATH='D:\Program Files (x86)\Tencent\微信web开发者工具\cli.bat'; npm run test:e2e:core` | customer + server |
 | RB-MERCHANT-QR-040 | Merchant app cannot generate/save/share entry QR | `cd MealQuestMerchant && npm run lint && npm run typecheck` | merchant |
+| RB-MERCHANT-NAV-040 | Merchant app crashes when returning from entry QR page | `cd MealQuestMerchant && npm run lint && npm run typecheck` | merchant |
 | RB-ACQ-110 | Acquisition 子域误发放/误拦截 | `cd MealQuestServer && node --test test/policyOs.constraints.test.ts` | server |
 | RB-ACQ-120 | Acquisition 子域审批或 TTL 治理异常 | `cd MealQuestServer && node --test test/policyOs.http.integration.test.ts` | server + merchant |
 | RB-ACQ-130 | Acquisition 子域支付到账务链路不一致 | `cd MealQuestServer && node --test test/policyOs.ledger.test.ts` | server |

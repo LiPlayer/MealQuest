@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { StyleSheet, Text, TextInput } from 'react-native';
+
+import AppShell from '../components/ui/AppShell';
+import ActionButton from '../components/ui/ActionButton';
+import SurfaceCard from '../components/ui/SurfaceCard';
+import { mqTheme } from '../theme/tokens';
 
 type QuickOnboardScreenProps = {
   ownerPhone: string;
@@ -32,14 +36,16 @@ export default function QuickOnboardScreen(props: QuickOnboardScreenProps) {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.card}>
-        <Text style={styles.title}>Quick Onboard</Text>
-        <Text style={styles.subtitle}>Create your first merchant store in one step.</Text>
+    <AppShell contentContainerStyle={styles.shellContent}>
+      <SurfaceCard style={styles.card}>
+        <Text style={styles.title}>Create Your Store</Text>
+        <Text style={styles.subtitle}>首登只需填写门店名即可完成开店初始化。</Text>
+
         <TextInput
           testID="quick-onboard-phone-input"
           style={styles.input}
-          placeholder="Owner phone, e.g. +8613900000001"
+          placeholder="Owner phone"
+          placeholderTextColor="#7f90a6"
           value={phone}
           autoCapitalize="none"
           editable={false}
@@ -48,91 +54,66 @@ export default function QuickOnboardScreen(props: QuickOnboardScreenProps) {
           testID="quick-onboard-name-input"
           style={styles.input}
           placeholder="Store name"
+          placeholderTextColor="#7f90a6"
           value={name}
           onChangeText={setName}
         />
-        <Pressable
+
+        <ActionButton
           testID="quick-onboard-submit-btn"
-          style={[styles.btn, styles.primaryBtn, props.submitting && styles.disabledBtn]}
+          label={props.submitting ? 'Creating...' : 'Create Store'}
+          busy={Boolean(props.submitting)}
           onPress={handleCreate}
-          disabled={props.submitting}
-        >
-          {props.submitting ? (
-            <ActivityIndicator color="#ffffff" size="small" />
-          ) : (
-            <Text style={styles.primaryBtnText}>Create Store</Text>
-          )}
-        </Pressable>
-        <Pressable testID="quick-onboard-back-btn" style={[styles.btn, styles.backBtn]} onPress={props.onBack}>
-          <Text style={styles.backBtnText}>Back to Login</Text>
-        </Pressable>
+          disabled={Boolean(props.submitting)}
+          icon="storefront"
+        />
+
+        <ActionButton
+          testID="quick-onboard-back-btn"
+          label="Back to Login"
+          onPress={props.onBack}
+          disabled={Boolean(props.submitting)}
+          variant="secondary"
+          icon="chevron-left"
+        />
+
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
-      </View>
-    </SafeAreaView>
+      </SurfaceCard>
+    </AppShell>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
+  shellContent: {
     justifyContent: 'center',
-    padding: 16,
+    paddingTop: 36,
   },
   card: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    gap: 12,
+    borderRadius: mqTheme.radius.xl,
+    padding: mqTheme.spacing.xl,
+    gap: mqTheme.spacing.md,
+    ...mqTheme.shadow.floating,
   },
   title: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#0f172a',
+    ...mqTheme.typography.title,
   },
   subtitle: {
-    fontSize: 13,
-    color: '#64748b',
+    ...mqTheme.typography.body,
+    color: '#40516b',
   },
   input: {
     borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 10,
+    borderColor: mqTheme.colors.border,
+    borderRadius: mqTheme.radius.md,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 14,
-    color: '#0f172a',
-    backgroundColor: '#f8fafc',
-  },
-  btn: {
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  primaryBtn: {
-    backgroundColor: '#0f766e',
-  },
-  primaryBtnText: {
-    color: '#ffffff',
-    fontWeight: '700',
-  },
-  backBtn: {
-    backgroundColor: '#e2e8f0',
-  },
-  backBtnText: {
-    color: '#0f172a',
-    fontWeight: '700',
-  },
-  disabledBtn: {
-    opacity: 0.6,
+    color: mqTheme.colors.ink,
+    backgroundColor: mqTheme.colors.surfaceAlt,
   },
   errorText: {
-    color: '#b91c1c',
+    color: mqTheme.colors.danger,
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
   },
 });

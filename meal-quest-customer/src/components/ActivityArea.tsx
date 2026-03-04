@@ -1,68 +1,96 @@
-import {View, Text} from '@tarojs/components';
+import { Text, View } from '@tarojs/components';
 
 import './ActivityArea.scss';
 
 export interface ActivityItem {
-    id: string | number;
-    title: string;
-    desc: string;
-    icon: string;
-    color: string;
-    textColor: string;
-    tag: string;
+  id: string | number;
+  title: string;
+  desc: string;
+  icon: string;
+  color: string;
+  textColor: string;
+  tag: string;
 }
 
 interface ActivityAreaProps {
-    activities?: ActivityItem[];
+  activities?: ActivityItem[];
 }
 
-export default function ActivityArea({activities = []}: ActivityAreaProps) {
-    const list = Array.isArray(activities) ? activities : [];
+const TONES = [
+  {
+    dot: '#dbe7ff',
+    iconBg: '#edf3ff',
+    tagBg: '#e2edff',
+    tagText: '#224f9c',
+  },
+  {
+    dot: '#d7fbfb',
+    iconBg: '#e8ffff',
+    tagBg: '#ddfbfb',
+    tagText: '#0f6d6d',
+  },
+  {
+    dot: '#ffe9cb',
+    iconBg: '#fff3df',
+    tagBg: '#ffefdb',
+    tagText: '#88510a',
+  },
+];
 
-    return (
-        <View className="activity-area">
-            <View className="activity-area__header">
-                <Text className="activity-area__header-title">精选特惠</Text>
-                <Text className="activity-area__header-more">策略驱动 · 实时更新</Text>
+export default function ActivityArea({ activities = [] }: ActivityAreaProps) {
+  const list = Array.isArray(activities) ? activities : [];
+
+  return (
+    <View className='activity-area'>
+      <View className='activity-area__header'>
+        <Text className='activity-area__header-title'>今日活动</Text>
+        <Text className='activity-area__header-more'>策略驱动 · 实时更新</Text>
+      </View>
+
+      <View className='activity-area__list'>
+        {list.length === 0 ? (
+          <View className='activity-area__item'>
+            <View className='activity-area__left'>
+              <View className='activity-area__icon-container activity-area__icon-container--empty'>
+                <Text className='activity-area__icon'>AI</Text>
+              </View>
+              <View className='activity-area__content'>
+                <Text className='activity-area__title'>暂无活动</Text>
+                <Text className='activity-area__desc'>商家发布活动后将自动显示在这里。</Text>
+              </View>
             </View>
-
-            <View className="activity-area__list">
-                {list.length === 0 ? (
-                    <View className="activity-area__item">
-                        <View className="activity-area__left">
-                            <View className="activity-area__content">
-                                <Text className="activity-area__title">暂无活动</Text>
-                                <Text className="activity-area__desc">商家发布活动后会在这里展示</Text>
-                            </View>
-                        </View>
+          </View>
+        ) : (
+          list.map((activity, index) => {
+            const tone = TONES[index % TONES.length];
+            return (
+              <View key={activity.id} className='activity-area__item'>
+                <View className='activity-area__decor' style={{ backgroundColor: tone.dot }} />
+                <View className='activity-area__left'>
+                  <View className='activity-area__icon-container' style={{ backgroundColor: tone.iconBg }}>
+                    <Text className='activity-area__icon'>{activity.icon || 'A'}</Text>
+                  </View>
+                  <View className='activity-area__content'>
+                    <View className='activity-area__title-row'>
+                      <Text className='activity-area__title'>{activity.title}</Text>
+                      <View
+                        className='activity-area__tag'
+                        style={{ backgroundColor: tone.tagBg }}
+                      >
+                        <Text style={{ color: tone.tagText }}>{activity.tag}</Text>
+                      </View>
                     </View>
-                ) : (
-                    list.map((activity, index) => (
-                        <View key={activity.id} className="activity-area__item">
-                            <View className={`activity-area__decor ${activity.color}`} />
-                            <View className="activity-area__left">
-                                <View className={`activity-area__icon-container ${activity.color}`}>
-                                    {activity.icon}
-                                </View>
-                                <View className="activity-area__content">
-                                    <View className="activity-area__title-row">
-                                        <Text className="activity-area__title">{activity.title}</Text>
-                                        <View className={`activity-area__tag ${activity.color} ${activity.textColor}`}>
-                                            <Text>{activity.tag}</Text>
-                                        </View>
-                                    </View>
-                                    <Text className="activity-area__desc">{activity.desc}</Text>
-                                </View>
-                            </View>
-                            <View className="activity-area__arrow-wrap">
-                                <Text className="activity-area__arrow">{index + 1}</Text>
-                            </View>
-                        </View>
-                    ))
-                )}
-            </View>
-
-            <View style={{height: '320rpx'}} />
-        </View>
-    );
+                    <Text className='activity-area__desc'>{activity.desc}</Text>
+                  </View>
+                </View>
+                <View className='activity-area__arrow-wrap'>
+                  <Text className='activity-area__arrow'>{index + 1}</Text>
+                </View>
+              </View>
+            );
+          })
+        )}
+      </View>
+    </View>
+  );
 }

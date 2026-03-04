@@ -1,6 +1,6 @@
 import React from 'react';
 import { StatusBar } from 'react-native';
-import { Slot } from 'expo-router';
+import { Stack } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { MerchantProvider } from '../src/context/MerchantContext';
@@ -10,7 +10,13 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <StatusBar barStyle="dark-content" />
       <MerchantProvider>
-        <Slot />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" />
+          <Stack.Screen name="login" />
+          <Stack.Screen name="quick-onboard" />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="entry-qrcode" />
+        </Stack>
       </MerchantProvider>
     </SafeAreaProvider>
   );

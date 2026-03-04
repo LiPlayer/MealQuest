@@ -9,7 +9,7 @@ export interface Voucher {
     value: number;
     icon?: string;
     minSpend?: number;
-    status?: 'ACTIVE' | 'USED' | 'EXPIRED';
+    status?: string;
     expiresAt?: string;
 }
 

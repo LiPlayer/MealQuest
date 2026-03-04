@@ -42,6 +42,7 @@ const resolveE2EContext = (env = process.env, options = {}) => {
   const platform = options.platform || process.platform;
   const existsSyncFn = options.existsSync || fs.existsSync;
   const cliPathResolver = options.resolveCliPath || resolveCliPath;
+  const projectPath = resolveProjectPath(env);
 
   if (hasLegacyConnectEnv(env)) {
     return {
@@ -51,8 +52,16 @@ const resolveE2EContext = (env = process.env, options = {}) => {
     };
   }
 
+  if (platform !== WINDOWS_PLATFORM) {
+    return {
+      runnable: false,
+      mode: 'none',
+      reason: 'weapp e2e is windows-only (current platform is not win32)',
+      projectPath
+    };
+  }
+
   const cliPath = cliPathResolver({ env, platform, existsSync: existsSyncFn });
-  const projectPath = resolveProjectPath(env);
   const projectExists = existsSyncFn(projectPath);
 
   if (!cliPath) {
@@ -88,11 +97,10 @@ const resolveE2EContext = (env = process.env, options = {}) => {
   }
 
   return {
-    runnable: true,
-    mode: 'launch',
-    cliPath,
-    projectPath,
-    reason: ''
+    runnable: false,
+    mode: 'none',
+    reason: 'weapp e2e is windows-only',
+    projectPath
   };
 };
 

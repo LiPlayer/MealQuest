@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Text, View } from '@tarojs/components';
+import { Text, View } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 
 import { DataService } from '@/services/DataService';
@@ -96,30 +96,42 @@ export default function AccountPage() {
         <Text id='account-page-title' className='account-page__title'>
           账户中心
         </Text>
-        <Text className='account-page__subtitle'>{snapshot?.store.name || 'MealQuest'} · {storeId}</Text>
+        <Text className='account-page__subtitle'>
+          {snapshot?.store.name || 'MealQuest'} · {storeId}
+        </Text>
       </View>
 
-      <View className='account-card'>
+      <View className='account-card account-card--wallet'>
         <Text className='account-card__title'>钱包资产</Text>
         <View className='account-wallet'>
-          <Text>本金：{toMoney(snapshot?.wallet.principal || 0)}</Text>
-          <Text>赠送金：{toMoney(snapshot?.wallet.bonus || 0)}</Text>
-          <Text>碎银：{Number(snapshot?.wallet.silver || 0).toFixed(0)} 两</Text>
+          <View className='account-wallet__item'>
+            <Text className='account-wallet__label'>本金</Text>
+            <Text className='account-wallet__value'>{toMoney(snapshot?.wallet.principal || 0)}</Text>
+          </View>
+          <View className='account-wallet__item'>
+            <Text className='account-wallet__label'>赠送金</Text>
+            <Text className='account-wallet__value'>{toMoney(snapshot?.wallet.bonus || 0)}</Text>
+          </View>
+          <View className='account-wallet__item'>
+            <Text className='account-wallet__label'>碎银</Text>
+            <Text className='account-wallet__value'>
+              {Number(snapshot?.wallet.silver || 0).toFixed(0)} 两
+            </Text>
+          </View>
         </View>
       </View>
 
       <View className='account-actions'>
-        <Button id='account-refresh-button' className='account-btn account-btn--ghost' onClick={loadData} disabled={loading}>
+        <View id='account-refresh-button' className='account-btn account-btn--ghost' onClick={loadData}>
           刷新
-        </Button>
-        <Button
+        </View>
+        <View
           id='account-cancel-button'
           className='account-btn account-btn--danger'
           onClick={handleCancelAccount}
-          disabled={canceling}
         >
-          {cancelArmed ? '确认注销' : '注销账号'}
-        </Button>
+          {canceling ? '注销中...' : cancelArmed ? '确认注销' : '注销账号'}
+        </View>
       </View>
 
       {loading ? <Text className='account-loading'>加载中...</Text> : null}
@@ -132,8 +144,8 @@ export default function AccountPage() {
         {ledger.length === 0 && <Text className='account-empty'>暂无流水</Text>}
         {ledger.map((item) => (
           <View className='account-row' key={item.txnId}>
-            <Text>{item.type}</Text>
-            <Text>{toMoney(item.amount)}</Text>
+            <Text className='account-row__label'>{item.type}</Text>
+            <Text className='account-row__value'>{toMoney(item.amount)}</Text>
             <Text className='account-row__meta'>{new Date(item.timestamp).toLocaleString()}</Text>
           </View>
         ))}
@@ -146,8 +158,8 @@ export default function AccountPage() {
         {invoices.length === 0 && <Text className='account-empty'>暂无发票</Text>}
         {invoices.map((invoice) => (
           <View className='account-row' key={invoice.invoiceNo}>
-            <Text>{invoice.invoiceNo}</Text>
-            <Text>{toMoney(invoice.amount)}</Text>
+            <Text className='account-row__label'>{invoice.invoiceNo}</Text>
+            <Text className='account-row__value'>{toMoney(invoice.amount)}</Text>
             <Text className='account-row__meta'>{invoice.status}</Text>
           </View>
         ))}

@@ -11,12 +11,18 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
+import ActionButton from '../components/ui/ActionButton';
+import AppShell from '../components/ui/AppShell';
+import SurfaceCard from '../components/ui/SurfaceCard';
+import StatTile from '../components/ui/StatTile';
 import { useMerchant } from '../context/MerchantContext';
+import { mqTheme } from '../theme/tokens';
 
 const RichText = ({ text, isStreaming }: { text: string; isStreaming?: boolean }) => {
-  if (!text && !isStreaming) return null;
+  if (!text && !isStreaming) {
+    return null;
+  }
   return (
     <Text style={styles.messageText}>
       {text || ''}
@@ -46,57 +52,51 @@ export default function AgentScreen() {
   useEffect(() => {
     const timer = setTimeout(() => {
       scrollViewRef.current?.scrollToEnd({ animated: true });
-    }, 80);
+    }, 90);
     return () => clearTimeout(timer);
   }, [agentMessages]);
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <AppShell edges={['bottom']}>
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 20}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 18}
       >
-        <View style={styles.header}>
-          <View style={styles.headerContent}>
-            <MaterialIcons name="chat-bubble-outline" size={18} color="#0f766e" />
-            <View style={styles.headerTextWrap}>
-              <Text style={styles.headerTitle}>AI数字运营官</Text>
-              <Text style={styles.headerSubtitle}>当前模式: 登录 + 开店 + 全能Agent</Text>
+        <SurfaceCard style={styles.heroCard}>
+          <View style={styles.heroTopRow}>
+            <View style={styles.heroTitleWrap}>
+              <Text style={styles.heroTitle}>AI 经营协作中心</Text>
+              <Text style={styles.heroSubtitle}>看板看结果，Agent 负责下一步建议。</Text>
             </View>
-            <Pressable testID="ai-proactive-scan" style={styles.proactiveBtn} onPress={onTriggerProactiveScan}>
-              <Text style={styles.proactiveBtnText}>巡检</Text>
-            </Pressable>
+            <ActionButton
+              testID="ai-proactive-scan"
+              label="巡检"
+              onPress={onTriggerProactiveScan}
+              variant="secondary"
+              icon="radar"
+            />
           </View>
-        </View>
 
-        <View testID="merchant-customer-entry-card" style={styles.customerEntryCard}>
-          <View style={styles.customerEntryHeader}>
-            <Text style={styles.customerEntryTitle}>顾客入店只读视图</Text>
-            <Pressable
-              testID="merchant-entry-qr-button"
-              style={styles.entryQrBtn}
-              onPress={() => router.push('/entry-qrcode')}
-            >
-              <MaterialIcons name="qr-code-2" size={14} color="#ffffff" />
-              <Text style={styles.entryQrBtnText}>Entry QR</Text>
-            </Pressable>
-          </View>
-          <View style={styles.customerEntryGrid}>
-            <View style={styles.customerEntryItem}>
-              <Text style={styles.customerEntryLabel}>总顾客</Text>
-              <Text style={styles.customerEntryValue}>{merchantState.customerEntry.totalCustomers}</Text>
+          <View testID="merchant-customer-entry-card" style={styles.customerEntryCard}>
+            <View style={styles.customerEntryHeader}>
+              <Text style={styles.customerEntryTitle}>顾客入店只读视图</Text>
+              <Pressable
+                testID="merchant-entry-qr-button"
+                style={styles.entryQrBtn}
+                onPress={() => router.push('/entry-qrcode')}
+              >
+                <MaterialIcons name="qr-code-2" size={14} color="#ffffff" />
+                <Text style={styles.entryQrBtnText}>Entry QR</Text>
+              </Pressable>
             </View>
-            <View style={styles.customerEntryItem}>
-              <Text style={styles.customerEntryLabel}>今日新增</Text>
-              <Text style={styles.customerEntryValue}>{merchantState.customerEntry.newCustomersToday}</Text>
-            </View>
-            <View style={styles.customerEntryItem}>
-              <Text style={styles.customerEntryLabel}>今日入店</Text>
-              <Text style={styles.customerEntryValue}>{merchantState.customerEntry.checkinsToday}</Text>
+            <View style={styles.customerEntryGrid}>
+              <StatTile label="总顾客" value={merchantState.customerEntry.totalCustomers} />
+              <StatTile label="今日新增" value={merchantState.customerEntry.newCustomersToday} />
+              <StatTile label="今日入店" value={merchantState.customerEntry.checkinsToday} />
             </View>
           </View>
-        </View>
+        </SurfaceCard>
 
         <ScrollView
           ref={scrollViewRef}
@@ -106,25 +106,26 @@ export default function AgentScreen() {
           keyboardShouldPersistTaps="handled"
         >
           {activeAgentProgress ? (
-            <View style={styles.progressWrap}>
+            <SurfaceCard style={styles.progressWrap}>
               <Text style={styles.progressTitle}>Agent Progress</Text>
               <Text style={styles.progressText}>
                 {activeAgentProgress.phase} | {activeAgentProgress.status}
               </Text>
               <Text style={styles.progressText}>
-                Tokens {activeAgentProgress.tokenCount} | {Math.max(0, Math.round(activeAgentProgress.elapsedMs))}ms
+                Tokens {activeAgentProgress.tokenCount} |{' '}
+                {Math.max(0, Math.round(activeAgentProgress.elapsedMs))}ms
               </Text>
               {activeAgentProgress.error ? (
                 <Text style={styles.progressError}>{activeAgentProgress.error}</Text>
               ) : null}
-            </View>
+            </SurfaceCard>
           ) : null}
 
           {agentMessages.length === 0 ? (
-            <View style={styles.emptyState}>
-              <MaterialIcons name="info-outline" size={32} color="#cbd5e1" />
-              <Text style={styles.emptyText}>还没有对话，输入你的经营目标开始。</Text>
-            </View>
+            <SurfaceCard style={styles.emptyState}>
+              <MaterialIcons name="lightbulb-outline" size={30} color="#89a0bd" />
+              <Text style={styles.emptyText}>输入经营目标，开始一次可回放的策略协作。</Text>
+            </SurfaceCard>
           ) : (
             agentMessages.map((item: any) => (
               <View key={item.messageId} style={styles.messageRow}>
@@ -150,99 +151,78 @@ export default function AgentScreen() {
           )}
         </ScrollView>
 
-        <View style={styles.composerWrap}>
+        <SurfaceCard style={styles.composerWrap}>
           <TextInput
             testID="agent-intent-input"
             value={aiIntentDraft}
             onChangeText={setAiIntentDraft}
             placeholder="例如：帮我提升本周午餐复购率"
+            placeholderTextColor="#8699b2"
             multiline
             style={styles.input}
           />
 
           {chatSendPhase === 'failed' ? <Text style={styles.errorText}>{chatSendError}</Text> : null}
 
-          <Pressable
+          <ActionButton
             testID="agent-send"
-            style={[styles.sendBtn, (aiIntentSubmitting || !aiIntentDraft.trim()) && styles.sendBtnDisabled]}
+            label={aiIntentSubmitting ? '发送中...' : '发送'}
+            icon={aiIntentSubmitting ? 'hourglass-top' : 'send'}
             disabled={aiIntentSubmitting || !aiIntentDraft.trim()}
+            busy={aiIntentSubmitting}
             onPress={onSendAgentMessage}
-          >
-            <MaterialIcons name={aiIntentSubmitting ? 'hourglass-top' : 'send'} size={16} color="#ffffff" />
-            <Text style={styles.sendBtnText}>{aiIntentSubmitting ? '发送中...' : '发送'}</Text>
-          </Pressable>
-        </View>
+          />
+        </SurfaceCard>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </AppShell>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
-  },
   container: {
     flex: 1,
+    gap: mqTheme.spacing.sm,
   },
-  header: {
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 8,
+  heroCard: {
+    marginTop: mqTheme.spacing.sm,
   },
-  headerContent: {
+  heroTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    gap: mqTheme.spacing.sm,
   },
-  headerTextWrap: {
+  heroTitleWrap: {
     flex: 1,
+    gap: 2,
   },
-  headerTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0f172a',
+  heroTitle: {
+    ...mqTheme.typography.sectionTitle,
+    fontSize: 18,
   },
-  headerSubtitle: {
-    fontSize: 12,
-    color: '#64748b',
-    marginTop: 2,
+  heroSubtitle: {
+    ...mqTheme.typography.caption,
   },
   customerEntryCard: {
-    marginHorizontal: 16,
-    marginBottom: 8,
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 8,
-  },
-  customerEntryTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#0f172a',
+    gap: mqTheme.spacing.sm,
   },
   customerEntryHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: mqTheme.spacing.sm,
+  },
+  customerEntryTitle: {
+    ...mqTheme.typography.caption,
+    color: '#344661',
   },
   entryQrBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#0f766e',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
+    backgroundColor: mqTheme.colors.accent,
+    borderRadius: mqTheme.radius.sm,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
   },
   entryQrBtnText: {
     color: '#ffffff',
@@ -251,177 +231,121 @@ const styles = StyleSheet.create({
   },
   customerEntryGrid: {
     flexDirection: 'row',
-    gap: 8,
-  },
-  customerEntryItem: {
-    flex: 1,
-    borderRadius: 8,
-    backgroundColor: '#f8fafc',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    alignItems: 'center',
-  },
-  customerEntryLabel: {
-    fontSize: 11,
-    color: '#64748b',
-  },
-  customerEntryValue: {
-    marginTop: 4,
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#0f172a',
-  },
-  proactiveBtn: {
-    backgroundColor: '#0f766e',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  proactiveBtnText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '700',
+    gap: mqTheme.spacing.sm,
   },
   chatScroll: {
     flex: 1,
+    minHeight: 0,
   },
   chatContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-    gap: 10,
+    paddingBottom: mqTheme.spacing.sm,
+    gap: mqTheme.spacing.sm,
   },
   progressWrap: {
-    backgroundColor: '#eef2ff',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#c7d2fe',
-    padding: 10,
+    backgroundColor: '#edf4ff',
+    borderColor: '#c6dbff',
   },
   progressTitle: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#3730a3',
-    marginBottom: 3,
+    color: '#1f4fbf',
   },
   progressText: {
     fontSize: 12,
-    color: '#4338ca',
+    color: '#325e95',
   },
   progressError: {
-    marginTop: 4,
+    marginTop: 2,
     fontSize: 12,
-    color: '#b91c1c',
+    color: mqTheme.colors.danger,
   },
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderStyle: 'dashed',
-    borderRadius: 12,
-    padding: 18,
-    backgroundColor: '#ffffff',
+    paddingVertical: mqTheme.spacing.xl,
   },
   emptyText: {
-    marginTop: 8,
-    color: '#64748b',
-    fontSize: 13,
+    ...mqTheme.typography.body,
+    color: '#465c79',
+    textAlign: 'center',
   },
   messageRow: {
     width: '100%',
   },
   messageBubble: {
-    borderRadius: 12,
+    borderRadius: mqTheme.radius.lg,
     borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    padding: mqTheme.spacing.sm,
+    gap: 4,
   },
   userBubble: {
-    backgroundColor: '#0f766e',
-    borderColor: '#0f766e',
+    backgroundColor: '#e8f0ff',
+    borderColor: '#bdd4ff',
+    marginLeft: 42,
   },
   botBubble: {
     backgroundColor: '#ffffff',
-    borderColor: '#e2e8f0',
+    borderColor: mqTheme.colors.border,
+    marginRight: 42,
   },
   roleLabel: {
     fontSize: 11,
+    color: '#5d7390',
     fontWeight: '700',
-    color: '#64748b',
-    marginBottom: 4,
   },
   messageText: {
     fontSize: 14,
     lineHeight: 20,
-    color: '#0f172a',
+    color: mqTheme.colors.ink,
   },
   streamingCursor: {
-    opacity: 0.65,
+    color: mqTheme.colors.primary,
   },
   failedRow: {
+    marginTop: 4,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginTop: 8,
+    justifyContent: 'space-between',
   },
   failedText: {
     fontSize: 12,
-    color: '#fca5a5',
+    color: mqTheme.colors.danger,
+    fontWeight: '700',
   },
   retryBtn: {
-    backgroundColor: '#fee2e2',
-    borderRadius: 6,
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingVertical: 4,
+    borderRadius: mqTheme.radius.pill,
+    backgroundColor: '#fff6f7',
+    borderWidth: 1,
+    borderColor: '#ffd3d9',
   },
   retryText: {
-    fontSize: 11,
+    fontSize: 12,
+    color: mqTheme.colors.danger,
     fontWeight: '700',
-    color: '#b91c1c',
   },
   composerWrap: {
-    backgroundColor: '#ffffff',
-    borderTopWidth: 1,
-    borderTopColor: '#e2e8f0',
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 12,
-    gap: 8,
+    marginBottom: mqTheme.spacing.sm,
+    gap: mqTheme.spacing.sm,
   },
   input: {
-    minHeight: 64,
-    maxHeight: 140,
+    minHeight: 72,
+    maxHeight: 150,
     borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 10,
+    borderColor: mqTheme.colors.border,
+    borderRadius: mqTheme.radius.md,
+    backgroundColor: mqTheme.colors.surfaceAlt,
     paddingHorizontal: 10,
     paddingVertical: 8,
     fontSize: 14,
-    color: '#0f172a',
+    lineHeight: 20,
+    color: mqTheme.colors.ink,
     textAlignVertical: 'top',
-    backgroundColor: '#ffffff',
   },
   errorText: {
-    color: '#b91c1c',
+    color: mqTheme.colors.danger,
     fontSize: 12,
-  },
-  sendBtn: {
-    height: 42,
-    borderRadius: 10,
-    backgroundColor: '#0f766e',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  sendBtnDisabled: {
-    backgroundColor: '#94a3b8',
-  },
-  sendBtnText: {
-    color: '#ffffff',
-    fontSize: 14,
     fontWeight: '700',
   },
 });

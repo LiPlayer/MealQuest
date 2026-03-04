@@ -1,24 +1,20 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  SafeAreaView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import { Redirect, useRouter } from 'expo-router';
 import QRCode from 'react-native-qrcode-svg';
 
 import BootSplash from '../components/BootSplash';
+import ActionButton from '../components/ui/ActionButton';
+import AppShell from '../components/ui/AppShell';
+import SurfaceCard from '../components/ui/SurfaceCard';
+import TopBar from '../components/ui/TopBar';
 import { useMerchant } from '../context/MerchantContext';
 import {
   saveEntryQrToLibrary,
   shareEntryQrImage,
   writeEntryQrPngFile,
 } from '../services/entryQrService';
+import { mqTheme } from '../theme/tokens';
 
 type ActionState = 'idle' | 'saving' | 'sharing';
 type QrCodeHandle = {
@@ -56,6 +52,14 @@ export default function EntryQrScreen() {
     () => String(merchantState.merchantName || '').trim() || merchantId || 'Current Store',
     [merchantState.merchantName, merchantId],
   );
+
+  const handleBack = useCallback(() => {
+    if (typeof router.canGoBack === 'function' && router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace('/(tabs)/dashboard');
+  }, [router]);
 
   const buildQrImageFile = useCallback(async (): Promise<string> => {
     if (!merchantId) {
@@ -109,16 +113,14 @@ export default function EntryQrScreen() {
   const canOperate = !busy && Boolean(merchantId);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <MaterialIcons name="arrow-back" size={18} color="#0f172a" />
-          <Text style={styles.backBtnText}>Back</Text>
-        </Pressable>
-        <Text style={styles.headerTitle}>Store Entry QR</Text>
-      </View>
+    <AppShell>
+      <TopBar
+        title="Store Entry QR"
+        subtitle="固定门店二维码，用于顾客扫码入店"
+        onBack={handleBack}
+      />
 
-      <View style={styles.card}>
+      <SurfaceCard style={styles.card}>
         <Text style={styles.storeName}>{merchantName}</Text>
         <Text style={styles.storeId}>merchantId: {merchantId || '-'}</Text>
         <View style={styles.qrWrap}>
@@ -135,135 +137,73 @@ export default function EntryQrScreen() {
           )}
         </View>
         <Text style={styles.hintText}>
-          Print or share this QR code for customers to scan and enter your store.
+          Print, save, or share this QR code for customers to scan and enter your store.
         </Text>
-      </View>
+      </SurfaceCard>
 
       <View style={styles.actions}>
-        <Pressable
+        <ActionButton
           testID="merchant-entry-qr-save"
-          disabled={!canOperate}
+          label="Save Image"
           onPress={handleSave}
-          style={[styles.actionBtn, !canOperate && styles.actionBtnDisabled]}
-        >
-          {saving ? (
-            <ActivityIndicator color="#ffffff" />
-          ) : (
-            <>
-              <MaterialIcons name="download" size={16} color="#ffffff" />
-              <Text style={styles.actionBtnText}>Save Image</Text>
-            </>
-          )}
-        </Pressable>
-        <Pressable
-          testID="merchant-entry-qr-share"
           disabled={!canOperate}
+          busy={saving}
+          icon="download"
+        />
+        <ActionButton
+          testID="merchant-entry-qr-share"
+          label="Share Image"
           onPress={handleShare}
-          style={[styles.actionBtn, !canOperate && styles.actionBtnDisabled]}
-        >
-          {sharing ? (
-            <ActivityIndicator color="#ffffff" />
-          ) : (
-            <>
-              <MaterialIcons name="share" size={16} color="#ffffff" />
-              <Text style={styles.actionBtnText}>Share Image</Text>
-            </>
-          )}
-        </Pressable>
+          disabled={!canOperate}
+          busy={sharing}
+          icon="share"
+          variant="secondary"
+        />
       </View>
-    </SafeAreaView>
+    </AppShell>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 20,
-    gap: 12,
-  },
-  header: {
-    gap: 8,
-  },
-  backBtn: {
-    width: 80,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: 6,
-  },
-  backBtnText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#0f172a',
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#0f172a',
-  },
   card: {
     flex: 1,
-    backgroundColor: '#ffffff',
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    padding: 14,
     alignItems: 'center',
-    gap: 10,
+    justifyContent: 'space-between',
+    paddingVertical: mqTheme.spacing.lg,
   },
   storeName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#0f172a',
+    fontSize: 17,
+    fontWeight: '800',
+    color: mqTheme.colors.ink,
   },
   storeId: {
-    fontSize: 12,
-    color: '#475569',
+    ...mqTheme.typography.caption,
   },
   qrWrap: {
     width: '100%',
     flex: 1,
     minHeight: 260,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 12,
-    backgroundColor: '#ffffff',
+    borderColor: mqTheme.colors.border,
+    borderRadius: mqTheme.radius.lg,
+    backgroundColor: mqTheme.colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 12,
   },
   hintText: {
-    fontSize: 12,
-    color: '#475569',
+    ...mqTheme.typography.caption,
     textAlign: 'center',
+    color: '#394d68',
   },
   errorText: {
     fontSize: 13,
-    color: '#b91c1c',
+    color: mqTheme.colors.danger,
+    fontWeight: '600',
   },
   actions: {
     flexDirection: 'row',
-    gap: 10,
-  },
-  actionBtn: {
-    flex: 1,
-    height: 44,
-    borderRadius: 10,
-    backgroundColor: '#0f766e',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 6,
-  },
-  actionBtnDisabled: {
-    backgroundColor: '#94a3b8',
-  },
-  actionBtnText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '700',
+    gap: mqTheme.spacing.sm,
+    marginBottom: mqTheme.spacing.sm,
   },
 });
