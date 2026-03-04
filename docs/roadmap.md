@@ -59,8 +59,8 @@
 | S010 | P0 | Acquisition（Welcome 子场景）事件/API/审计字段冻结且三端对齐 | 无 | done |
 | S020 | P0 | 契约回归基线可重复执行且可定位 | S010 done | done |
 | S030 | P0 | 商户入口闭环（登录/开店/会话恢复）可回归 | S020 done | done |
-| S040 | P0 | 顾客入口闭环（扫码入店/资产首屏）可回归 | S030 done | doing |
-| S110 | P1 | Acquisition（Welcome + 候餐小游戏）触发与资格判定闭环可回归 | S040 done | todo |
+| S040 | P0 | 顾客入口闭环（扫码入店/资产首屏）可回归 | S030 done | done |
+| S110 | P1 | Acquisition（Welcome + 候餐小游戏）触发与资格判定闭环可回归 | S040 done | doing |
 | S120 | P1 | Acquisition 执行治理闭环（审批/TTL/Kill Switch） | S110 done | todo |
 | S130 | P1 | Acquisition 发放核销账务一致性闭环 | S120 done | todo |
 | S210 | P2 | 商户经营看板最小可用 | S130 done | todo |
@@ -245,6 +245,9 @@
 1. `S040-CUS-01` 允许在 `S030` 总体验收完成前先行落地代码与测试，Step 收口仍以三端任务全部完成为准。
 2. 顾客端首版仅以小程序实现，不引入非小程序技术路线。
 3. `S040-MER-01` 采用“服务端 dashboard 字段 + 商户端只读展示”的方案，不在此 Step 引入写操作。
+4. Windows 环境下顾客端 e2e 自动拉起采用 `cli auto --auto-port + automator.connect`，不再依赖 `automator.launch` 直接拉起 `cli.bat`。
+5. 顾客端 e2e 废弃 `WECHAT_WS_ENDPOINT` / `WECHAT_SERVICE_PORT` connect 模式，仅保留官方 CLI 自动拉起模式。
+6. 顾客端 e2e 自动拉起默认启用，不再要求 `WECHAT_E2E_AUTO_LAUNCH` 环境开关。
 
 ### S110 - Acquisition（Welcome + 候餐小游戏）触发与资格判定闭环
 
@@ -710,7 +713,7 @@
 | S010 | `npm run verify`; `cd MealQuestServer && npm test`; `cd MealQuestMerchant && npm run lint && npm run typecheck`; `cd meal-quest-customer && npm run typecheck && npm test` | `docs/qa/s010-welcome-contract-baseline.md` | `MealQuestServer/test/http.integration.test.ts`（Welcome 主链路）；`meal-quest-customer/test/services/api-data-service.test.ts`（state 映射） | pass | AI/Agent | 2026-03-04 |
 | S020 | `npm run test:contract:baseline`; `cd MealQuestServer && npm run test:contract:baseline`; `cd MealQuestMerchant && npm run test:contract:baseline`; `cd meal-quest-customer && npm run test:contract:baseline` | `docs/qa/s020-contract-regression-baseline.md` | `MealQuestMerchant/src/context/MerchantContext.tsx`（lint warning 修复） | pass | AI/Agent | 2026-03-04 |
 | S030 | `cd MealQuestServer && npm test`（非沙箱重跑通过，65/65）；`cd MealQuestMerchant && npm run lint && npm run typecheck`；`cd meal-quest-customer && npm run typecheck && npm test -- --runInBand` | `docs/qa/s030-merchant-entry-closure.md` | `MealQuestServer/test/http.integration.test.ts`；`MealQuestMerchant/src/context/MerchantContext.tsx`；`MealQuestMerchant/src/services/apiClient.ts`；`MealQuestMerchant/src/services/authSessionStorage.ts`；`meal-quest-customer/test/pages/startup.test.tsx` | pass | AI/Agent | 2026-03-04 |
-| S040 | `cd MealQuestServer && npm test`（非沙箱重跑通过，66/66）；`cd MealQuestMerchant && npm run lint && npm run typecheck`；`cd meal-quest-customer && npm run typecheck && npm test -- --runInBand`；`cd meal-quest-customer && npm run test:e2e:core`（环境未启用自动拉起，套件 skip） | `docs/qa/s040-customer-entry-closure.md` | `MealQuestServer/test/http.integration.test.ts`；`MealQuestMerchant/src/context/MerchantContext.tsx`；`MealQuestMerchant/src/screens/AgentScreen.tsx`；`meal-quest-customer/src/pages/startup/index.tsx`；`meal-quest-customer/test/pages/startup.test.tsx` | partial | AI/Agent | 2026-03-04 |
+| S040 | `cd MealQuestServer && npm test`（非沙箱重跑通过，66/66）；`cd MealQuestMerchant && npm run lint && npm run typecheck`；`cd meal-quest-customer && npm run typecheck && npm test -- --runInBand`；`cd meal-quest-customer && Remove-Item Env:WECHAT_WS_ENDPOINT -ErrorAction SilentlyContinue; Remove-Item Env:WECHAT_SERVICE_PORT -ErrorAction SilentlyContinue; $env:WECHAT_CLI_PATH='D:\Program Files (x86)\Tencent\微信web开发者工具\cli.bat'; npm run test:e2e:core`（自动拉起通过，2/2） | `docs/qa/s040-customer-entry-closure.md` | `MealQuestServer/test/http.integration.test.ts`；`MealQuestMerchant/src/context/MerchantContext.tsx`；`MealQuestMerchant/src/screens/AgentScreen.tsx`；`meal-quest-customer/src/pages/startup/index.tsx`；`meal-quest-customer/test/pages/startup.test.tsx`; `meal-quest-customer/test/e2e/customer-core-flow.spec.js`; `meal-quest-customer/test/e2e/utils/mini-program-session.js` | pass | AI/Agent | 2026-03-04 |
 | S110 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S120 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S130 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
@@ -734,7 +737,7 @@
 | RB-CONTRACT-001 | 字段不一致/接口解析失败 | `cd MealQuestServer && npm test` | server + customer |
 | RB-CONTRACT-002 | 契约回归不稳定 | `npm run test:contract:baseline` | server + merchant + customer |
 | RB-MERCHANT-030 | 商户登录/开店链路中断 | `cd MealQuestMerchant && npm run lint && npm run typecheck` | merchant + server |
-| RB-CUSTOMER-040 | 扫码入店/会话建立失败 | `cd meal-quest-customer && npm run test:e2e:core` | customer + server |
+| RB-CUSTOMER-040 | 扫码入店/会话建立失败 | `cd meal-quest-customer && Remove-Item Env:WECHAT_WS_ENDPOINT -ErrorAction SilentlyContinue; Remove-Item Env:WECHAT_SERVICE_PORT -ErrorAction SilentlyContinue; $env:WECHAT_CLI_PATH='D:\Program Files (x86)\Tencent\微信web开发者工具\cli.bat'; npm run test:e2e:core` | customer + server |
 | RB-ACQ-110 | Acquisition 子域误发放/误拦截 | `cd MealQuestServer && node --test test/policyOs.constraints.test.ts` | server |
 | RB-ACQ-120 | Acquisition 子域审批或 TTL 治理异常 | `cd MealQuestServer && node --test test/policyOs.http.integration.test.ts` | server + merchant |
 | RB-ACQ-130 | Acquisition 子域支付到账务链路不一致 | `cd MealQuestServer && node --test test/policyOs.ledger.test.ts` | server |

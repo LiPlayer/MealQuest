@@ -5,27 +5,37 @@ const {
     waitForSelector,
 } = require('./utils/mini-program-session');
 
-const context = resolveE2EContext();
-const describeIfRunnable = context.runnable ? describe : describe.skip;
+const waitForPagePath = async (miniProgram, expectedPath, timeoutMs = 8000) => {
+    const startedAt = Date.now();
+    let lastPath = '(unknown)';
 
+    while (Date.now() - startedAt <= timeoutMs) {
+        const page = await miniProgram.currentPage();
+        if (page && page.path === expectedPath) {
+            return page;
+        }
+        if (page && page.path) {
+            lastPath = page.path;
+            await page.waitFor(120);
+        } else {
+            await new Promise((resolve) => setTimeout(resolve, 120));
+        }
+    }
+
+    throw new Error(`page not reached within timeout: ${expectedPath}, current=${lastPath}`);
+};
+
+const context = resolveE2EContext();
 if (!context.runnable) {
-    // eslint-disable-next-line no-console
-    console.warn(`[e2e] customer-core-flow skipped: ${context.reason}`);
+    throw new Error(`[e2e] customer-core-flow blocked: ${context.reason}`);
 }
 
-describeIfRunnable('Customer core flow e2e', () => {
+describe('Customer core flow e2e', () => {
     let miniProgram;
-    let launchError = null;
 
     beforeAll(async () => {
-        try {
-            miniProgram = await launchMiniProgram(context);
-            await clearAppStorage(miniProgram);
-        } catch (error) {
-            launchError = error;
-            // eslint-disable-next-line no-console
-            console.warn(`[e2e] customer-core-flow runtime skip: ${error.message}`);
-        }
+        miniProgram = await launchMiniProgram(context);
+        await clearAppStorage(miniProgram);
     });
 
     afterAll(async () => {
@@ -35,9 +45,6 @@ describeIfRunnable('Customer core flow e2e', () => {
     });
 
     it('renders startup scan button for first-time user', async () => {
-        if (launchError) {
-            return;
-        }
         const startupPage = await miniProgram.reLaunch('/pages/startup/index');
         await startupPage.waitFor(800);
 
@@ -46,9 +53,6 @@ describeIfRunnable('Customer core flow e2e', () => {
     });
 
     it('navigates from index to account center and arms cancel action', async () => {
-        if (launchError) {
-            return;
-        }
         await miniProgram.evaluate(() => {
             wx.setStorageSync('mq_last_store_id', 'm_store_001');
         });
@@ -59,9 +63,9 @@ describeIfRunnable('Customer core flow e2e', () => {
         const accountEntry = await waitForSelector(indexPage, '#index-account-entry', 8000);
         await accountEntry.tap();
 
-        const accountPage = await miniProgram.currentPage();
+        const accountPage = await waitForPagePath(miniProgram, 'pages/account/index', 10000);
         expect(accountPage).not.toBeUndefined();
-        await accountPage.waitFor(1000);
+        await accountPage.waitFor(800);
 
         const pageTitle = await waitForSelector(accountPage, '#account-page-title', 8000);
         const ledgerTitle = await waitForSelector(accountPage, '#account-ledger-title', 8000);

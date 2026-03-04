@@ -34,9 +34,10 @@
 2. `cd MealQuestMerchant && npm run lint && npm run typecheck` -> pass
 3. `cd meal-quest-customer && npm run typecheck` -> pass
 4. `cd meal-quest-customer && npm test -- --runInBand` -> pass (9 suites, 33 tests)
-5. `cd meal-quest-customer && npm run test:e2e:core` -> skipped (`WECHAT_E2E_AUTO_LAUNCH` not enabled)
+5. `cd meal-quest-customer && Remove-Item Env:WECHAT_WS_ENDPOINT -ErrorAction SilentlyContinue; Remove-Item Env:WECHAT_SERVICE_PORT -ErrorAction SilentlyContinue; $env:WECHAT_CLI_PATH='D:\Program Files (x86)\Tencent\微信web开发者工具\cli.bat'; npm run test:e2e:core` -> pass (2 tests)
 6. `npm run check:encoding` -> pass
 
 ## 5. Risks / Follow-ups
 
-1. Core e2e runtime is environment-gated; real device or CI auto-launch run is still required for full step closure evidence.
+1. WeChat DevTools trust/project permissions must stay enabled on the execution machine; otherwise auto-launch may fail before test runtime.
+2. Legacy connect env variables (`WECHAT_WS_ENDPOINT`, `WECHAT_SERVICE_PORT`) are intentionally unsupported in S040 closure.
