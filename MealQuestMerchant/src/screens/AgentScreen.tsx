@@ -10,7 +10,6 @@ import {
   View,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 
 import ActionButton from '../components/ui/ActionButton';
 import AppShell from '../components/ui/AppShell';
@@ -32,7 +31,6 @@ const RichText = ({ text, isStreaming }: { text: string; isStreaming?: boolean }
 };
 
 export default function AgentScreen() {
-  const router = useRouter();
   const {
     merchantState,
     aiIntentDraft,
@@ -79,17 +77,7 @@ export default function AgentScreen() {
           </View>
 
           <View testID="merchant-customer-entry-card" style={styles.customerEntryCard}>
-            <View style={styles.customerEntryHeader}>
-              <Text style={styles.customerEntryTitle}>顾客入店只读视图</Text>
-              <Pressable
-                testID="merchant-entry-qr-button"
-                style={styles.entryQrBtn}
-                onPress={() => router.push('/entry-qrcode')}
-              >
-                <MaterialIcons name="qr-code-2" size={14} color="#ffffff" />
-                <Text style={styles.entryQrBtnText}>Entry QR</Text>
-              </Pressable>
-            </View>
+            <Text style={styles.customerEntryTitle}>顾客入店只读视图</Text>
             <View style={styles.customerEntryGrid}>
               <StatTile label="总顾客" value={merchantState.customerEntry.totalCustomers} />
               <StatTile label="今日新增" value={merchantState.customerEntry.newCustomersToday} />
@@ -205,29 +193,9 @@ const styles = StyleSheet.create({
   customerEntryCard: {
     gap: mqTheme.spacing.sm,
   },
-  customerEntryHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: mqTheme.spacing.sm,
-  },
   customerEntryTitle: {
     ...mqTheme.typography.caption,
     color: '#344661',
-  },
-  entryQrBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: mqTheme.colors.accent,
-    borderRadius: mqTheme.radius.sm,
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-  },
-  entryQrBtnText: {
-    color: '#ffffff',
-    fontSize: 11,
-    fontWeight: '700',
   },
   customerEntryGrid: {
     flexDirection: 'row',

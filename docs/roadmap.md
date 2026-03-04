@@ -262,6 +262,7 @@
 12. Entry QR screen back action must support safe fallback to `/(tabs)/dashboard` when no history stack is available.
 13. 顾客端 weapp e2e 仅在 Windows 执行；非 Windows 环境默认跳过 `test:e2e:core`，不作为失败判定。
 14. 2026-03-04 已确认商户端二维码保存/分享手工冒烟通过，`S040-MER-02` 收口为 `done`，S040 解锁至下一指针。
+15. Entry QR 入口统一收敛到 dashboard；Agent 页面不再保留重复入口，仅展示入店只读数据。
 
 ### S110 - Acquisition（Welcome + 候餐小游戏）触发与资格判定闭环
 
