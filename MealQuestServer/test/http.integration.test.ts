@@ -1085,6 +1085,119 @@ test("merchant exists endpoint returns precise availability", async () => {
   }
 });
 
+test("acquisition welcome template supports USER_ENTER_SHOP evaluate/execute", async () => {
+  const app = createAppServer({ persist: false });
+  const port = await app.start(0);
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const ownerToken = await mockLogin(baseUrl, "OWNER", { merchantId: "m_store_001" });
+    const managerToken = await mockLogin(baseUrl, "MANAGER", { merchantId: "m_store_001" });
+    const { spec } = createPolicySpecFromTemplate({
+      merchantId: "m_store_001",
+      templateId: "acquisition_welcome_gift",
+      branchId: "DEFAULT",
+      policyPatch: {
+        policy_key: "acquisition_welcome_s010_baseline",
+      },
+    });
+
+    const createDraft = await postJson(
+      baseUrl,
+      "/api/policyos/drafts",
+      {
+        merchantId: "m_store_001",
+        spec,
+      },
+      { Authorization: `Bearer ${ownerToken}` }
+    );
+    assert.equal(createDraft.status, 200);
+    assert.ok(createDraft.data.draft_id);
+
+    const draftId = String(createDraft.data.draft_id);
+    const submit = await postJson(
+      baseUrl,
+      `/api/policyos/drafts/${encodeURIComponent(draftId)}/submit`,
+      { merchantId: "m_store_001" },
+      { Authorization: `Bearer ${ownerToken}` }
+    );
+    assert.equal(submit.status, 200);
+    assert.equal(submit.data.status, "SUBMITTED");
+
+    const approve = await postJson(
+      baseUrl,
+      `/api/policyos/drafts/${encodeURIComponent(draftId)}/approve`,
+      { merchantId: "m_store_001" },
+      { Authorization: `Bearer ${ownerToken}` }
+    );
+    assert.equal(approve.status, 200);
+    assert.ok(approve.data.approvalId);
+
+    const publish = await postJson(
+      baseUrl,
+      `/api/policyos/drafts/${encodeURIComponent(draftId)}/publish`,
+      {
+        merchantId: "m_store_001",
+        approvalId: approve.data.approvalId,
+      },
+      { Authorization: `Bearer ${ownerToken}` }
+    );
+    assert.equal(publish.status, 200);
+    assert.equal(publish.data.policy.status, "PUBLISHED");
+
+    const evaluate = await postJson(
+      baseUrl,
+      "/api/policyos/decision/evaluate",
+      {
+        merchantId: "m_store_001",
+        userId: "u_fixture_001",
+        event: "USER_ENTER_SHOP",
+        eventId: "evt_s010_welcome_eval_001",
+        context: {
+          isNewUser: true,
+        },
+      },
+      { Authorization: `Bearer ${managerToken}` }
+    );
+    assert.equal(evaluate.status, 200);
+    assert.equal(evaluate.data.mode, "EVALUATE");
+    assert.equal(Array.isArray(evaluate.data.selected), true);
+    assert.ok(evaluate.data.selected.length >= 1);
+
+    const execute = await postJson(
+      baseUrl,
+      "/api/policyos/decision/execute",
+      {
+        merchantId: "m_store_001",
+        userId: "u_fixture_001",
+        event: "USER_ENTER_SHOP",
+        eventId: "evt_s010_welcome_exec_001",
+        confirmed: true,
+        context: {
+          isNewUser: true,
+        },
+      },
+      { Authorization: `Bearer ${managerToken}` }
+    );
+    assert.equal(execute.status, 200);
+    assert.equal(execute.data.mode, "EXECUTE");
+    assert.equal(Array.isArray(execute.data.executed), true);
+    assert.ok(execute.data.executed.length >= 1);
+    assert.ok(execute.data.decision_id);
+
+    const state = await getJson(
+      baseUrl,
+      "/api/state?merchantId=m_store_001&userId=u_fixture_001",
+      { Authorization: `Bearer ${ownerToken}` }
+    );
+    assert.equal(state.status, 200);
+    assert.ok(state.data.merchant);
+    assert.ok(state.data.user);
+  } finally {
+    await app.stop();
+  }
+});
+
 test("payment verify supports includeState payload for post-payment refresh", async () => {
   const app = createAppServer({ persist: false });
   const port = await app.start(0);

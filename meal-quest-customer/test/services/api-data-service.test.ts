@@ -87,6 +87,12 @@ describe('ApiDataService activities mapping', () => {
         expect(snapshot.activities.length).toBe(1);
         expect(snapshot.activities[0].id).toBe('campaign_1');
         expect(snapshot.activities[0].desc).toBe('Server activity');
+        expect(requestMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                method: 'GET',
+                url: 'http://127.0.0.1:3030/api/state?merchantId=m_store_001&userId=u_fixture_001'
+            })
+        );
     });
 
     it('uses alipay login endpoint when running in alipay env', async () => {

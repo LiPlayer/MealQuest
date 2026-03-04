@@ -9,6 +9,14 @@
 | Owner | AI/Agent |
 | Source of Truth | docs/specs/mealquest-spec.md, docs/roadmap.md |
 
+### 1.1 Task To Evidence Mapping
+
+| task_id | Required Output | Evidence |
+| --- | --- | --- |
+| S010-SRV-01 | Acquisition/Welcome event + API + audit fields | Section 2, Section 3, `MealQuestServer/test/http.integration.test.ts` (`acquisition welcome template supports USER_ENTER_SHOP evaluate/execute`) |
+| S010-MER-01 | Merchant-side key mapping check (Agent entry + merchant entry/session fields) | Section 4, `MealQuestMerchant/src/context/MerchantContext.tsx`, `MealQuestMerchant/src/services/apiClient.ts`, `MealQuestMerchant/src/services/authSessionStorage.ts` |
+| S010-CUS-01 | Mini-program mapping check (`state/payment/invoice`) | Section 5, `meal-quest-customer/src/services/apiDataService/index.ts`, `meal-quest-customer/test/services/api-data-service.test.ts`, `meal-quest-customer/test/services/api-data-service-customer-center.test.ts` |
+
 ## 2. Canonical Welcome Event And Template
 
 - Canonical template: `acquisition_welcome_gift`
@@ -67,16 +75,23 @@
 - Operation mapping baseline:
   - `POST /api/agent-os/tasks/stream` => `AGENT_TASK_RUN`
 
-### 3.3 Payment/Invoice Query APIs (Cross-check for S010-CUS-01)
+### 3.3 State/Payment/Invoice Query APIs (Cross-check for S010-CUS-01)
 
-1. `GET /api/payment/ledger`
+1. `GET /api/state`
+- required: `merchantId`
+- conditional: `userId` (required for customer role)
+- role scope: merchant roles + customer
+- scope guard: `merchant scope denied`, `user scope denied`
+- response baseline: `merchant`, `user`, `dashboard`, `policyOs`
+
+2. `GET /api/payment/ledger`
 - required: `merchantId`
 - optional: `userId`, `limit`
 - role scope: merchant roles + customer
 - customer user scope guard enabled (`user scope denied`)
 - response baseline: `merchantId`, `userId|null`, `items[]`
 
-2. `GET /api/invoice/list`
+3. `GET /api/invoice/list`
 - required: `merchantId`
 - optional: `userId`, `limit`
 - role scope: merchant roles + customer
@@ -112,36 +127,80 @@
     - `phase`, `status`, `tokenCount`, `elapsedMs`, `at`, `resultStatus`, `error`
   - `error` -> throw and surface message
 
-### 4.2 S010 Merchant Conclusion
+### 4.2 Merchant Entry/Session Contract Mapping
 
-- Merchant app already consumes canonical AgentOS stream event set (`messages/custom/error`).
-- Field semantics are aligned with current server response contract.
+- Source:
+  - `MealQuestMerchant/src/services/apiClient.ts`
+  - `MealQuestMerchant/src/context/MerchantContext.tsx`
+  - `MealQuestMerchant/src/services/authSessionStorage.ts`
+- API mapping:
+  - `POST /api/auth/merchant/request-code` for SMS request
+  - `POST /api/auth/merchant/phone-login` returns `BOUND` or `ONBOARD_REQUIRED`
+  - `POST /api/auth/merchant/complete-onboard` binds owner and store
+  - `GET /api/merchant/stores` hydrates merchant name for restored session
+- Session mapping:
+  - persisted key: `mq_merchant_auth_session`
+  - required fields: `token`, `merchantId`, `role`, `phone`
+  - hydration path: persisted session -> `getMerchantStores` -> in-memory authenticated session
+
+### 4.3 S010 Merchant Conclusion
+
+- Merchant app consumes canonical AgentOS stream event set (`messages/custom/error`).
+- Merchant entry/session field semantics are aligned with server auth/onboard contracts.
 
 ## 5. Customer Mapping Baseline (S010-CUS-01)
 
-### 5.1 Ledger Mapping
+### 5.1 State Mapping
 
 - Source: `meal-quest-customer/src/services/apiDataService/index.ts`
+- API call:
+  - `GET /api/state?merchantId={storeId}&userId={session.userId}`
+- Mapping:
+  - response -> `toHomeSnapshot` -> customer home payload (`merchant`, `wallet`, `fragments`, `vouchers`, activities)
+
+### 5.2 Ledger Mapping
+
 - API call:
   - `GET /api/payment/ledger?merchantId={storeId}&userId={session.userId}&limit={limit}`
 - Mapping:
   - `txnId`, `merchantId`, `userId`, `type`, `amount`, `timestamp`, `paymentTxnId`
 
-### 5.2 Invoice Mapping
+### 5.3 Invoice Mapping
 
 - API call:
   - `GET /api/invoice/list?merchantId={storeId}&userId={session.userId}&limit={limit}`
 - Mapping:
   - `invoiceNo`, `merchantId`, `userId`, `paymentTxnId`, `amount`, `status`, `issuedAt`, `title`
 
-### 5.3 S010 Customer Conclusion
+### 5.4 S010 Customer Conclusion
 
-- Customer API service mapping fields match current payment/invoice response envelope.
-- user scope and merchant scope protections exist on server routes.
+- Customer API service mapping fields match current `state/payment/invoice` response contracts.
+- User scope and merchant scope protections exist on server routes.
 
-## 6. S010 Delivery Checklist
+## 6. Minimal Welcome Chain Regression Evidence
+
+1. Server end-to-end chain (template + event):
+  - `MealQuestServer/test/http.integration.test.ts`
+  - test case: `acquisition welcome template supports USER_ENTER_SHOP evaluate/execute`
+  - assertion focus:
+    - template-derived policy can be draft/submitted/approved/published
+    - `USER_ENTER_SHOP` evaluate returns selected actions
+    - execute with confirm signal returns executed actions
+2. Customer mapping verification:
+  - `meal-quest-customer/test/services/api-data-service.test.ts`
+  - validates customer `state` request contract usage
+3. Query mapping verification:
+  - `meal-quest-customer/test/services/api-data-service-customer-center.test.ts`
+  - validates `payment/ledger` and `invoice/list` mapping contract
+
+## 7. S010 Delivery Checklist
 
 1. Contract field list frozen: event/API/audit ✅
 2. Merchant mapping checklist completed ✅
-3. Customer mapping checklist completed ✅
-4. Command evidence: to be appended in roadmap evidence ledger after verification run
+3. Customer mapping checklist completed (`state/payment/invoice`) ✅
+4. At least one Acquisition (Welcome) main chain regression passed ✅
+5. Acceptance command evidence:
+  - `npm run verify` ✅
+  - `cd MealQuestServer && npm test` ✅
+  - `cd MealQuestMerchant && npm run lint && npm run typecheck` ✅
+  - `cd meal-quest-customer && npm run typecheck && npm test` ✅
