@@ -33,6 +33,7 @@
 2. 每个 Step 至少绑定 1 个 `Triage Key`。
 3. 从 S110 起，所有 Step 必须提供三端可执行验收门。
 4. 商户端在自动化完善前，验收基线为 `lint + typecheck + 手工冒烟记录`。
+5. 口头确认的关键产品决策必须回填到对应 Step 的 `Decision Notes`。
 
 ---
 
@@ -53,13 +54,13 @@
 
 1. 完成 S010：冻结 Welcome 最小契约并建立三端字段映射清单。
 2. 完成 S010 证据回填：测试证据、运行证据、审阅引用。
-3. 启动 S020：契约回归基线命令与失败定位索引固化。
+3. 完成 Agent-策略耦合任务拆分：新增 S240-S270 任务链与决策备注。
 
 ### 01.3 当前任务清单（执行优先级）
 
 1. 完成 `S010-SRV-01`：输出 Welcome 事件/API/审计字段基线清单。
 2. 同步完成 `S010-MER-01` 与 `S010-CUS-01` 字段映射检查记录。
-3. 回填 S010 在证据账本中的 Test/Runtime/Review 引用。
+3. 将 Agent-策略耦合方案落地为 S240-S270 任务卡与 `Decision Notes`。
 
 ### 01.4 必过命令（推进前）
 
@@ -85,7 +86,11 @@
 | S210 | P2 | 商户经营看板最小可用 | S130 done | todo |
 | S220 | P2 | 商户审批中心与执行回放可用 | S210 done | todo |
 | S230 | P2 | KPI 可观测与 Go/No-Go 判定可执行 | S220 done | todo |
-| S310 | P3 | 顾客关键路径与小游戏体验稳定 | S230 done | todo |
+| S240 | P2 | 老板端 Agent 查询协作基线（账务/发票）可回归 | S230 done | todo |
+| S250 | P2 | 策略提案卡闭环（同意/驳回）可回归 | S240 done | todo |
+| S260 | P2 | 全局最优建议与执行硬门协同可回归 | S250 done | todo |
+| S270 | P2 | 会话三态与关键提醒机制可回归 | S260 done | todo |
+| S310 | P3 | 顾客关键路径与小游戏体验稳定 | S270 done | todo |
 | S410 | P4 | 商用发布、值守、回滚流程可执行 | S310 done | todo |
 | S420 | P4 | 多租户规模化治理与成本闭环 | S410 done | todo |
 
@@ -427,10 +432,163 @@
 
 - Triage Key：`RB-KPI-230`
 
+### S240 - 老板端 Agent 查询协作基线
+
+- Objective：打通老板端 Agent 对账务与发票查询的最小闭环，确保查询协作可回归。
+- Dependency：S230 done。
+
+| task_id | lane | task | status | output |
+| --- | --- | --- | --- | --- |
+| S240-SRV-01 | server | 固化 Agent 查询能力路由（账单/发票）及权限/租户守卫 | todo | 查询能力基线 |
+| S240-MER-01 | merchant | 完成老板端 Agent 查询模式体验（汇总优先、空结果提示） | todo | 查询体验闭环 |
+| S240-CUS-01 | customer | 验证顾客端不接入 Agent 且现有账票入口兼容 | todo | 兼容验证记录 |
+
+- Deliverables：
+1. 查询能力清单（账单/发票）。
+2. 查询守卫生效证据（角色、门店隔离）。
+3. 老板端查询问答手工冒烟记录。
+
+- Done Definition：
+1. 老板可通过 Agent 查询账单与发票经营事实。
+2. 非老板角色不得访问老板端 Agent 查询能力。
+3. 跨门店越权查询被阻断并可审计。
+
+- Acceptance Commands：
+1. `cd MealQuestServer && npm test`
+2. `cd MealQuestMerchant && npm run lint && npm run typecheck`
+3. `cd meal-quest-customer && npm run typecheck && npm test`
+
+- Failure Signals：
+1. Agent 返回不可验证数据。
+2. 越权查询未被阻断。
+3. 查询能力影响支付/发票主链路。
+
+- Triage Key：`RB-AGENT-240`
+
+- Decision Notes（已确认）：
+1. 首版仅老板端开放 Agent，店长与顾客侧不开放。
+2. 查询数据必须可验证，不做黑盒估算回答。
+3. 查询遵循单店授权边界。
+
+### S250 - 策略提案卡同意/驳回闭环
+
+- Objective：完成“策略意图 -> 提案卡 -> 同意/驳回 -> 回执”闭环，确保老板端可回归。
+- Dependency：S240 done。
+
+| task_id | lane | task | status | output |
+| --- | --- | --- | --- | --- |
+| S250-SRV-01 | server | 提供提案生命周期与同意/驳回决策接口 | todo | 提案生命周期基线 |
+| S250-MER-01 | merchant | 完成提案卡固定五要素展示与同意/驳回交互 | todo | 提案卡闭环 |
+| S250-CUS-01 | customer | 验证提案机制不影响顾客主路径与支付路径 | todo | 兼容验证记录 |
+
+- Deliverables：
+1. 提案卡交互流程记录。
+2. 同意/驳回结果回执记录。
+3. 提案协作不影响主链路证据。
+
+- Done Definition：
+1. 策略意图命中后可生成提案卡。
+2. 老板可在 UI 完成同意或驳回。
+3. 同意后立即生效，驳回后返回普通对话。
+
+- Acceptance Commands：
+1. `cd MealQuestServer && npm test`
+2. `cd MealQuestMerchant && npm run lint && npm run typecheck`
+3. `cd meal-quest-customer && npm run typecheck && npm test`
+
+- Failure Signals：
+1. 提案卡字段缺失或顺序混乱。
+2. 同意/驳回状态错乱或重复执行。
+3. 提案阻塞状态无法恢复。
+
+- Triage Key：`RB-AGENT-250`
+
+- Decision Notes（已确认）：
+1. 单店单会话；同一时刻仅允许 1 个待处理提案。
+2. 提案卡仅提供“同意/驳回”动作，不提供撤销。
+3. 驳回后可追问原因，但仅用于当次会话优化，不做长期留存。
+
+### S260 - 全局最优建议与执行硬门
+
+- Objective：将 Agent 建议排序与策略执行治理解耦，形成“全局最优建议 + 执行硬门”闭环。
+- Dependency：S250 done。
+
+| task_id | lane | task | status | output |
+| --- | --- | --- | --- | --- |
+| S260-SRV-01 | server | 固化全局最优候选排序、动作风险先验、执行硬门校验 | todo | 推荐与执行治理基线 |
+| S260-MER-01 | merchant | 提案卡展示预算占用、风险等级、预期区间 | todo | 可解释提案展示 |
+| S260-CUS-01 | customer | 验证策略建议增强不影响顾客账务与资产一致性 | todo | 一致性验证记录 |
+
+- Deliverables：
+1. 建议排序规则说明（业务层）。
+2. 红线硬门拦截证据。
+3. 提案解释信息展示证据。
+
+- Done Definition：
+1. 建议排序可基于全局最优思想输出主推荐。
+2. 超预算/超风险/超毛利红线策略不可执行。
+3. 提案信息具备预算、风险、预期区间可读性。
+
+- Acceptance Commands：
+1. `cd MealQuestServer && npm test`
+2. `cd MealQuestServer && node --test test/policyOs.constraints.test.ts`
+3. `cd MealQuestMerchant && npm run lint && npm run typecheck`
+4. `cd meal-quest-customer && npm run typecheck && npm test`
+
+- Failure Signals：
+1. 超线策略被执行。
+2. 同分候选裁决不稳定。
+3. 风险/预算信息与后端判定不一致。
+
+- Triage Key：`RB-AGENT-260`
+
+- Decision Notes（已确认）：
+1. 建议层采用全局最优思想，执行层保留红线硬门。
+2. 动作风险先验默认：wallet 高、voucher 中、fragment 低、story 极低。
+3. 综合分权重采用平台基线 + 模型微调（幅度受控）。
+
+### S270 - 会话三态与关键提醒机制
+
+- Objective：完成老板端 Agent 会话三态流转与关键事件提醒机制，保障协作体验可回归。
+- Dependency：S260 done。
+
+| task_id | lane | task | status | output |
+| --- | --- | --- | --- | --- |
+| S270-SRV-01 | server | 固化会话三态状态流转与关键提醒事件分发 | todo | 会话与提醒基线 |
+| S270-MER-01 | merchant | 完成三态 UI 行为（普通/提案待决/回执）与提醒展示 | todo | 三态体验闭环 |
+| S270-CUS-01 | customer | 验证提醒能力接入不影响顾客链路稳定性 | todo | 兼容验证记录 |
+
+- Deliverables：
+1. 会话三态流转记录。
+2. 关键提醒推送与展示记录。
+3. 提案待决状态下提醒展示兼容证据。
+
+- Done Definition：
+1. 会话三态可稳定流转并可回归。
+2. 关键提醒支持 App 内与系统推送。
+3. 非营业时段可抑制非紧急提醒。
+
+- Acceptance Commands：
+1. `cd MealQuestServer && npm test`
+2. `cd MealQuestMerchant && npm run lint && npm run typecheck`
+3. `cd meal-quest-customer && npm run typecheck && npm test`
+
+- Failure Signals：
+1. 会话状态错乱或卡死。
+2. 提案待决时出现越权操作入口。
+3. 提醒机制导致主链路可用性下降。
+
+- Triage Key：`RB-AGENT-270`
+
+- Decision Notes（已确认）：
+1. 会话采用三态：普通对话、提案待决、决策回执。
+2. 关键提醒通道：App 内 + 系统推送。
+3. 提案待决时仅展示提醒条，不解除提案决策阻塞。
+
 ### S310 - 顾客关键路径体验强化
 
 - Objective：稳定顾客关键链路并完成小游戏体验闭环。
-- Dependency：S230 done。
+- Dependency：S270 done。
 
 | task_id | lane | task | status | output |
 | --- | --- | --- | --- | --- |
@@ -541,6 +699,10 @@
 | S210 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S220 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S230 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
+| S240 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
+| S250 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
+| S260 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
+| S270 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S310 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S410 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S420 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
@@ -561,6 +723,10 @@
 | RB-COCKPIT-210 | 看板字段缺失/口径冲突 | `cd MealQuestMerchant && npm run typecheck` | merchant + server |
 | RB-APPROVAL-220 | 审批中心状态错乱 | `cd MealQuestServer && node --test test/policyOs.http.integration.test.ts` | merchant + server |
 | RB-KPI-230 | KPI 口径漂移/发布门无法判定 | `cd MealQuestServer && npm test` | merchant + server + customer |
+| RB-AGENT-240 | Agent 查询越权或数据口径异常 | `cd MealQuestServer && npm test` | server + merchant |
+| RB-AGENT-250 | 提案卡状态错乱或同意/驳回异常 | `cd MealQuestMerchant && npm run typecheck` | merchant + server |
+| RB-AGENT-260 | 全局最优建议或红线执行门异常 | `cd MealQuestServer && node --test test/policyOs.constraints.test.ts` | server |
+| RB-AGENT-270 | 会话三态或关键提醒机制异常 | `cd MealQuestMerchant && npm run lint && npm run typecheck` | merchant + server |
 | RB-CUSTOMER-310 | 顾客关键路径中断 | `cd meal-quest-customer && npm test` | customer |
 | RB-GAME-110 | 奖励异常放量/重复到账 | `cd MealQuestServer && node --test test/http.integration.test.ts` | server |
 | RB-GAME-310 | 小游戏开局/结算/回写异常 | `cd meal-quest-customer && npm run test:regression:ui` | customer + server |
@@ -641,3 +807,4 @@
 4. 2026-03-04：补齐三类资产与小游戏链路定义。
 5. 2026-03-04：重构为“方向版 roadmap”，采用主 Step + 三端任务卡。
 6. 2026-03-04：升级为“执行版 roadmap”，新增 S030/S040/S230 与角色验收附录。
+7. 2026-03-04：新增 S240-S270（Agent-策略耦合任务链）并回填关键 Decision Notes。
