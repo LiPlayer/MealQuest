@@ -22,7 +22,7 @@
 ### 00.3 任务卡字段（统一）
 
 1. `task_id`
-2. `lane`（`server` / `merchant` / `customer`）
+2. `lane`（`server` / `merchant` / `customer`，其中 `customer` 固定指小程序端）
 3. `task`
 4. `status`
 5. `output`
@@ -34,6 +34,7 @@
 3. 从 S110 起，所有 Step 必须提供三端可执行验收门。
 4. 商户端在自动化完善前，验收基线为 `lint + typecheck + 手工冒烟记录`。
 5. 口头确认的关键产品决策必须回填到对应 Step 的 `Decision Notes`。
+6. 顾客端实施形态固定为小程序端；未更新 `docs/specs/mealquest-spec.md` 前不得引入其他顾客端技术路线。
 
 ### 00.5 完整性规则（Spec Coverage）
 
@@ -64,7 +65,7 @@
 
 ### 01.3 当前任务清单（执行优先级）
 
-1. 完成 `S030-SRV-01`：固化商户认证与开店接口合同（request-code/phone-login/complete-onboard/stores）。
+1. 完成 `S030-SRV-01`：固化商户认证与开店接口合同（登录/开店/门店信息）。
 2. 完成 `S030-MER-01`：打通 login -> quick-onboard -> agent 首页与会话恢复链路。
 3. 完成 `S030-CUS-01`：验证商户入口链路变更不影响顾客主路径。
 
@@ -131,17 +132,6 @@
 1. `covered`: 18
 2. `guarded-out`: 1
 3. `gap`: 0
-
-### 02.2 StepID 重排映射（兼容阅读）
-
-| Legacy StepID | Current StepID | Scope |
-| --- | --- | --- |
-| S240 | S220 | 老板端 Agent 查询协作基线 |
-| S250 | S230 | 策略提案卡同意/驳回闭环 |
-| S220 | S240 | 审批中心与执行回放 |
-| S260 | S250 | 全局最优建议与执行硬门 |
-| S270 | S260 | 会话三态与关键提醒机制 |
-| S230 | S320 | KPI 可观测与 Go/No-Go 判定 |
 
 ---
 
@@ -217,7 +207,7 @@
 
 | task_id | lane | task | status | output |
 | --- | --- | --- | --- | --- |
-| S030-SRV-01 | server | 固化商户认证与开店接口合同（request-code/phone-login/complete-onboard/stores） | todo | 入口接口基线 |
+| S030-SRV-01 | server | 固化商户认证与开店接口合同（登录/开店/门店信息） | todo | 入口接口基线 |
 | S030-MER-01 | merchant | 打通 login -> quick-onboard -> agent 首页与会话恢复链路 | todo | 商户入口闭环 |
 | S030-CUS-01 | customer | 验证商户入口链路变更不影响顾客主路径 | todo | 兼容验证记录 |
 
@@ -250,14 +240,14 @@
 
 | task_id | lane | task | status | output |
 | --- | --- | --- | --- | --- |
-| S040-SRV-01 | server | 固化顾客登录与入店能力合同（wechat/alipay login + merchant exists + state） | todo | 顾客入口接口基线 |
+| S040-SRV-01 | server | 固化顾客登录与入店能力合同（扫码入店/会话建立/资产状态） | todo | 顾客入口接口基线 |
 | S040-MER-01 | merchant | 承接顾客入店状态变化的只读可见性校验 | todo | 兼容验证记录 |
 | S040-CUS-01 | customer | 完成 startup 扫码入店、会话建立与首页资产展示闭环 | todo | 顾客入口闭环 |
 
 - Deliverables：
 1. 扫码入店链路回归记录。
 2. 资产首屏字段映射与降级策略。
-3. 微信小程序首发兼容记录（支付宝为兼容验证）。
+3. 首发平台兼容记录。
 
 - Done Definition：
 1. 新用户扫码可完成入店并看到资产首屏。
@@ -674,9 +664,9 @@
 
 | task_id | lane | task | status | output |
 | --- | --- | --- | --- | --- |
-| S410-SRV-01 | server | 固化 canary/limited/general 发布与回滚演练 | todo | 发布与回滚流程 |
-| S410-MER-01 | merchant | 固化 Android/iOS 客户端发布检查与回退方案 | todo | 移动端发布清单 |
-| S410-CUS-01 | customer | 固化 Taro 小程序发布检查与回退方案（微信硬门） | todo | 小程序发布清单 |
+| S410-SRV-01 | server | 固化分阶段发布与回滚演练流程 | todo | 发布与回滚流程 |
+| S410-MER-01 | merchant | 固化商户端客户端发布检查与回退方案 | todo | 商户端发布清单 |
+| S410-CUS-01 | customer | 固化顾客端发布检查与回退方案（首发平台硬门） | todo | 顾客端发布清单 |
 
 - Deliverables：
 1. 三端发布清单。
@@ -686,7 +676,7 @@
 - Done Definition：
 1. 发布流程与回滚流程均可演练通过。
 2. P0/P1 告警升级路径可执行。
-3. 微信小程序发布门通过，支付宝链路有兼容验证记录。
+3. 首发平台发布门通过，兼容平台有验证记录。
 
 - Acceptance Commands：
 1. `npm run verify`
@@ -784,19 +774,19 @@
 
 ---
 
-## 06. API 合同索引（方向视图）
+## 06. 能力合同索引（Spec 对齐）
 
-> 本节用于执行级合同索引；产品边界以 `docs/specs/mealquest-spec.md` 的范围、KPI、治理章节为准。
+> 本节仅保留 `docs/specs/mealquest-spec.md` 已定义的能力域，不新增 spec 外功能需求。
 
-| Domain | Primary Paths | Owner Lane |
+| Domain | Capability Contract | Owner Lane |
 | --- | --- | --- |
-| Auth | `/api/auth/customer/wechat-login`, `/api/auth/customer/alipay-login`, `/api/auth/merchant/*` | server + merchant + customer |
-| Customer Core | `/api/state`, `/api/payment/*`, `/api/invoice/*`, `/api/privacy/*` | server + customer |
-| Merchant Ops | `/api/merchant/dashboard`, `/api/merchant/kill-switch`, `/api/merchant/stores` | server + merchant |
-| Policy OS | `/api/policyos/*` | server + merchant |
-| Agent OS | `/api/agent-os/*` | server + merchant |
-| Game Loop | `/api/game/sessions/start`, `/api/game/sessions/settle`, `/api/assets/fragments/synthesize` | server + customer |
-| Tenant Governance | `/api/merchant/tenant-policy`, `/api/merchant/migration/*` | server + merchant |
+| Auth & Entry | 顾客/商户身份认证与入店链路 | server + merchant + customer |
+| Customer Core | 资产展示、支付核销、账本与发票查询 | server + customer |
+| Merchant Ops | 开店、经营看板、紧急停机 | server + merchant |
+| Acquisition Strategy | Welcome + 候餐小游戏子域触发、判定、治理、发放一致性 | server + merchant + customer |
+| Agent Collaboration | 查询协作、提案协作、审批回放、会话提醒 | server + merchant |
+| Compliance & Audit | 隐私、审计、发票合规 | server + merchant + customer |
+| Multi-tenant Governance | 多租户隔离、规模化与成本治理 | server + merchant + customer |
 
 ---
 
@@ -828,7 +818,7 @@
 
 ## 09. 角色验收附录
 
-### 09.1 顾客视角验收清单（小程序）
+### 09.1 顾客视角验收清单（小程序端）
 
 1. 首次扫码入店可成功进入首页并显示资产卡片。
 2. 老用户入店可复用会话，异常 merchantId 可被阻断。
@@ -850,17 +840,4 @@
 
 ## 10. 更新日志
 
-1. 2026-03-03：建立从 0 路线本体与指针机制。
-2. 2026-03-03：补齐 S210-S420 执行卡与基础 Runbook。
-3. 2026-03-03：补齐环境矩阵与执行级接口索引。
-4. 2026-03-04：补齐三类资产与小游戏链路定义。
-5. 2026-03-04：重构为“方向版 roadmap”，采用主 Step + 三端任务卡。
-6. 2026-03-04：升级为“执行版 roadmap”，新增 S030/S040/S320 与角色验收附录。
-7. 2026-03-04：新增 S220-S260（Agent-策略耦合任务链）并回填关键 Decision Notes。
-8. 2026-03-04：完成 S010（三端任务 + 证据账本）并将执行指针前移至 S020。
-9. 2026-03-04：完成 S020（三端契约回归基线命令 + 失败定位索引 + 证据账本）并将执行指针前移至 S030。
-10. 2026-03-04：按开发实现顺序重排主路线（S210→S220→S230→S240→S250→S260→S310→S320→S410），并同步对应 Step 依赖关系。
-11. 2026-03-04：新增“Spec 需求覆盖矩阵”与完整性硬规则（有 `gap` 不得前移指针）。
-12. 2026-03-04：完成 P2/P3 StepID 重排并同步任务卡、Runbook、证据账本顺序，新增 Legacy->Current 映射表。
-13. 2026-03-04：明确 Welcome 与候餐小游戏归属五类策略族中的 Acquisition 子域，并同步 spec/roadmap 命名与排障键。
-14. 2026-03-04：扩展 Spec 覆盖矩阵为全条款覆盖（含 0/1.1/2.1/12），并回填覆盖统计（gap=0）。
+1. 2026-03-04：Init version（roadmap baseline established）。
