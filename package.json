@@ -14,6 +14,7 @@
     "lint": "npm run repo:lint",
     "typecheck": "npm run repo:typecheck",
     "test": "npm run repo:test",
+    "test:contract:baseline": "npm run test:contract:baseline --prefix MealQuestServer && npm run test:contract:baseline --prefix MealQuestMerchant && npm run test:contract:baseline --prefix meal-quest-customer",
     "verify": "npm run repo:verify",
     "verify:ci": "npm run repo:verify:ci",
     "check:encoding": "node check-encoding.js",

@@ -44,31 +44,32 @@
 | Field | Value |
 | --- | --- |
 | Last Updated | 2026-03-04 |
-| Current StepID | S020 |
+| Current StepID | S030 |
 | Current Status | doing |
-| Next StepID | S030 |
+| Next StepID | S040 |
 | Owner | AI/Agent |
 | Blockers | 无 |
 
 ### 01.2 本周目标（最多3条）
 
-1. 完成 S010：冻结 Welcome 最小契约并建立三端字段映射清单（已完成）。
-2. 完成 S010 证据回填：测试证据、运行证据、审阅引用（已完成）。
-3. 启动 S020：契约回归基线命令与失败定位索引固化。
+1. 完成 S020：契约回归基线命令与失败定位索引固化（已完成）。
+2. 完成 S020 证据回填：测试证据、运行证据、审阅引用（已完成）。
+3. 启动 S030：商户入口闭环（登录/开店/会话恢复）主链路回归。
 
 ### 01.3 当前任务清单（执行优先级）
 
-1. 完成 `S020-SRV-01`：固化后端契约回归命令与失败定位映射。
-2. 完成 `S020-MER-01`：固化商户端契约回归入口（lint/typecheck + 关键流程）。
-3. 完成 `S020-CUS-01`：固化小程序契约回归入口（apiDataService + 页面关键流）。
+1. 完成 `S030-SRV-01`：固化商户认证与开店接口合同（request-code/phone-login/complete-onboard/stores）。
+2. 完成 `S030-MER-01`：打通 login -> quick-onboard -> agent 首页与会话恢复链路。
+3. 完成 `S030-CUS-01`：验证商户入口链路变更不影响顾客主路径。
 
 ### 01.4 必过命令（推进前）
 
 1. `npm run check:encoding`
 2. `npm run verify`
-3. `cd MealQuestServer && npm test`
-4. `cd MealQuestMerchant && npm run lint && npm run typecheck`
-5. `cd meal-quest-customer && npm run typecheck && npm test`
+3. `npm run test:contract:baseline`
+4. `cd MealQuestServer && npm test`
+5. `cd MealQuestMerchant && npm run lint && npm run typecheck`
+6. `cd meal-quest-customer && npm run typecheck && npm test`
 
 ---
 
@@ -77,8 +78,8 @@
 | StepID | Phase | Outcome（结果定义） | Dependency | Status |
 | --- | --- | --- | --- | --- |
 | S010 | P0 | Welcome 事件/API/审计字段冻结且三端对齐 | 无 | done |
-| S020 | P0 | 契约回归基线可重复执行且可定位 | S010 done | doing |
-| S030 | P0 | 商户入口闭环（登录/开店/会话恢复）可回归 | S020 done | todo |
+| S020 | P0 | 契约回归基线可重复执行且可定位 | S010 done | done |
+| S030 | P0 | 商户入口闭环（登录/开店/会话恢复）可回归 | S020 done | doing |
 | S040 | P0 | 顾客入口闭环（扫码入店/资产首屏）可回归 | S030 done | todo |
 | S110 | P1 | Welcome 触发与资格判定闭环可回归 | S040 done | todo |
 | S120 | P1 | 审批令牌、TTL、Kill Switch 治理闭环 | S110 done | todo |
@@ -138,9 +139,9 @@
 
 | task_id | lane | task | status | output |
 | --- | --- | --- | --- | --- |
-| S020-SRV-01 | server | 固化后端契约回归命令与失败定位映射 | todo | 回归清单 |
-| S020-MER-01 | merchant | 固化商户端契约回归入口（lint/typecheck + 关键流程） | todo | 回归清单 |
-| S020-CUS-01 | customer | 固化小程序契约回归入口（apiDataService + 页面关键流） | todo | 回归清单 |
+| S020-SRV-01 | server | 固化后端契约回归命令与失败定位映射 | done | `MealQuestServer/package.json` |
+| S020-MER-01 | merchant | 固化商户端契约回归入口（lint/typecheck + 关键流程） | done | `MealQuestMerchant/package.json` |
+| S020-CUS-01 | customer | 固化小程序契约回归入口（apiDataService + 页面关键流） | done | `meal-quest-customer/package.json` |
 
 - Deliverables：
 1. 三端回归清单。
@@ -151,10 +152,10 @@
 2. 失败可定位到责任域（server/merchant/customer）。
 
 - Acceptance Commands：
-1. `npm run verify`
-2. `cd MealQuestServer && npm test`
-3. `cd MealQuestMerchant && npm run lint && npm run typecheck`
-4. `cd meal-quest-customer && npm run typecheck && npm test`
+1. `npm run test:contract:baseline`
+2. `cd MealQuestServer && npm run test:contract:baseline`
+3. `cd MealQuestMerchant && npm run test:contract:baseline`
+4. `cd meal-quest-customer && npm run test:contract:baseline`
 
 - Failure Signals：
 1. 回归结果不稳定或不可复现。
@@ -690,7 +691,7 @@
 | StepID | Test Ref | Runtime Ref | Review Ref | Result | Verified By | Verified At |
 | --- | --- | --- | --- | --- | --- | --- |
 | S010 | `npm run verify`; `cd MealQuestServer && npm test`; `cd MealQuestMerchant && npm run lint && npm run typecheck`; `cd meal-quest-customer && npm run typecheck && npm test` | `docs/qa/s010-welcome-contract-baseline.md` | 工作区文档回填（未提交） | pass | AI/Agent | 2026-03-04 |
-| S020 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
+| S020 | `npm run test:contract:baseline`; `cd MealQuestServer && npm run test:contract:baseline`; `cd MealQuestMerchant && npm run test:contract:baseline`; `cd meal-quest-customer && npm run test:contract:baseline` | `docs/qa/s020-contract-regression-baseline.md` | 工作区文档回填（未提交） | pass | AI/Agent | 2026-03-04 |
 | S030 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S040 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S110 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
@@ -714,7 +715,7 @@
 | Triage Key | Symptom | First Checks | Responsibility Domain |
 | --- | --- | --- | --- |
 | RB-CONTRACT-001 | 字段不一致/接口解析失败 | `cd MealQuestServer && npm test` | server + customer |
-| RB-CONTRACT-002 | 契约回归不稳定 | `npm run verify` | server + merchant + customer |
+| RB-CONTRACT-002 | 契约回归不稳定 | `npm run test:contract:baseline` | server + merchant + customer |
 | RB-MERCHANT-030 | 商户登录/开店链路中断 | `cd MealQuestMerchant && npm run lint && npm run typecheck` | merchant + server |
 | RB-CUSTOMER-040 | 扫码入店/会话建立失败 | `cd meal-quest-customer && npm run test:e2e:core` | customer + server |
 | RB-WELCOME-110 | Welcome 误发放/误拦截 | `cd MealQuestServer && node --test test/policyOs.constraints.test.ts` | server |
@@ -809,3 +810,4 @@
 6. 2026-03-04：升级为“执行版 roadmap”，新增 S030/S040/S230 与角色验收附录。
 7. 2026-03-04：新增 S240-S270（Agent-策略耦合任务链）并回填关键 Decision Notes。
 8. 2026-03-04：完成 S010（三端任务 + 证据账本）并将执行指针前移至 S020。
+9. 2026-03-04：完成 S020（三端契约回归基线命令 + 失败定位索引 + 证据账本）并将执行指针前移至 S030。

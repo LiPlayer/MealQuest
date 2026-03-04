@@ -8,6 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "npm run typecheck && npm run policyos:validate-templates && node -r ts-node/register/transpile-only --test --test-concurrency=1 \"test/**/*.test.ts\"",
+    "test:contract:baseline": "npm run typecheck && node -r ts-node/register/transpile-only --test --test-reporter=tap --test-concurrency=1 test/policyOs.schema.test.ts test/policyOs.constraints.test.ts test/policyOs.ledger.test.ts test/omniAgentService.stream.test.ts",
     "test:smoke": "node -r ts-node/register/transpile-only scripts/smoke-local-server.ts",
     "policyos:retention": "node -r ts-node/register/transpile-only scripts/policyos-retention-job.ts",
     "policyos:validate-templates": "node -r ts-node/register/transpile-only scripts/policyos-validate-templates.ts"

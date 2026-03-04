@@ -9,7 +9,8 @@
     "dev:android": "expo start --dev-client --android",
     "dev:ios": "expo start --dev-client --ios",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:contract:baseline": "npm run lint && npm run typecheck"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
