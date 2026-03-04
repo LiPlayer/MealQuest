@@ -23,6 +23,12 @@ export interface MerchantState {
   budgetCap: number;
   budgetUsed: number;
   activePolicies: ActivePolicy[];
+  customerEntry: {
+    totalCustomers: number;
+    newCustomersToday: number;
+    checkinsToday: number;
+    latestCheckinAt: string | null;
+  };
 }
 
 export interface CashierInput {
@@ -51,6 +57,12 @@ export const createInitialMerchantState = (): MerchantState => ({
   budgetCap: 0,
   budgetUsed: 0,
   activePolicies: [],
+  customerEntry: {
+    totalCustomers: 0,
+    newCustomersToday: 0,
+    checkinsToday: 0,
+    latestCheckinAt: null,
+  },
 });
 
 export const toggleKillSwitch = (

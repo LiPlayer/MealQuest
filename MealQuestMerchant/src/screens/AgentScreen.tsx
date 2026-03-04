@@ -26,6 +26,7 @@ const RichText = ({ text, isStreaming }: { text: string; isStreaming?: boolean }
 
 export default function AgentScreen() {
   const {
+    merchantState,
     aiIntentDraft,
     setAiIntentDraft,
     aiIntentSubmitting,
@@ -64,6 +65,24 @@ export default function AgentScreen() {
             <Pressable testID="ai-proactive-scan" style={styles.proactiveBtn} onPress={onTriggerProactiveScan}>
               <Text style={styles.proactiveBtnText}>巡检</Text>
             </Pressable>
+          </View>
+        </View>
+
+        <View testID="merchant-customer-entry-card" style={styles.customerEntryCard}>
+          <Text style={styles.customerEntryTitle}>顾客入店只读视图</Text>
+          <View style={styles.customerEntryGrid}>
+            <View style={styles.customerEntryItem}>
+              <Text style={styles.customerEntryLabel}>总顾客</Text>
+              <Text style={styles.customerEntryValue}>{merchantState.customerEntry.totalCustomers}</Text>
+            </View>
+            <View style={styles.customerEntryItem}>
+              <Text style={styles.customerEntryLabel}>今日新增</Text>
+              <Text style={styles.customerEntryValue}>{merchantState.customerEntry.newCustomersToday}</Text>
+            </View>
+            <View style={styles.customerEntryItem}>
+              <Text style={styles.customerEntryLabel}>今日入店</Text>
+              <Text style={styles.customerEntryValue}>{merchantState.customerEntry.checkinsToday}</Text>
+            </View>
           </View>
         </View>
 
@@ -182,6 +201,46 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#64748b',
     marginTop: 2,
+  },
+  customerEntryCard: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  customerEntryTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  customerEntryGrid: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  customerEntryItem: {
+    flex: 1,
+    borderRadius: 8,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  customerEntryLabel: {
+    fontSize: 11,
+    color: '#64748b',
+  },
+  customerEntryValue: {
+    marginTop: 4,
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0f172a',
   },
   proactiveBtn: {
     backgroundColor: '#0f766e',

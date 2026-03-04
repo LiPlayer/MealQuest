@@ -45,6 +45,21 @@ export type MerchantStoresResponse = {
   }[];
 };
 
+export type MerchantDashboardResponse = {
+  merchantId: string;
+  merchantName: string;
+  killSwitchEnabled: boolean;
+  budgetCap: number;
+  budgetUsed: number;
+  activePolicyCount: number;
+  customerEntry?: {
+    totalCustomers?: number;
+    newCustomersToday?: number;
+    checkinsToday?: number;
+    latestCheckinAt?: string | null;
+  };
+};
+
 const DEFAULT_BASE_URL = Platform.select({
   android: 'http://10.0.2.2:3030',
   default: 'http://127.0.0.1:3030',
@@ -143,6 +158,20 @@ export async function getMerchantStores(params: {
   }
   return getJson<MerchantStoresResponse>(
     `/api/merchant/stores?merchantId=${encodeURIComponent(merchantId)}`,
+    { token: params.token },
+  );
+}
+
+export async function getMerchantDashboard(params: {
+  merchantId: string;
+  token: string;
+}): Promise<MerchantDashboardResponse> {
+  const merchantId = String(params.merchantId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  return getJson<MerchantDashboardResponse>(
+    `/api/merchant/dashboard?merchantId=${encodeURIComponent(merchantId)}`,
     { token: params.token },
   );
 }

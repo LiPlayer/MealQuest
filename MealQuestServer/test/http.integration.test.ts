@@ -845,6 +845,83 @@ test("customer alipay login merges to same account when phone is the same", asyn
   }
 });
 
+test("merchant dashboard exposes read-only customer entry visibility after customer login", async () => {
+  const app = createAppServer({
+    persist: false,
+    socialAuthService: createFakeSocialAuthService()
+  });
+  const port = await app.start(0);
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const requestCode = await postJson(baseUrl, "/api/auth/merchant/request-code", {
+      phone: "+8613800006666"
+    });
+    assert.equal(requestCode.status, 200);
+    const onboardLoginCode = getIssuedPhoneCode(app, "+8613800006666");
+    assert.ok(onboardLoginCode);
+
+    const phoneLogin = await postJson(baseUrl, "/api/auth/merchant/phone-login", {
+      phone: "+8613800006666",
+      code: onboardLoginCode
+    });
+    assert.equal(phoneLogin.status, 200);
+    assert.equal(phoneLogin.data.status, "ONBOARD_REQUIRED");
+    assert.equal(typeof phoneLogin.data.onboardingToken, "string");
+
+    const completeOnboard = await postJson(
+      baseUrl,
+      "/api/auth/merchant/complete-onboard",
+      {
+        name: "Customer Visibility Store",
+      },
+      { Authorization: `Bearer ${phoneLogin.data.onboardingToken}` }
+    );
+    assert.equal(completeOnboard.status, 201);
+    assert.equal(completeOnboard.data.status, "BOUND");
+    const merchantId = String(completeOnboard.data.profile.merchantId || "");
+    assert.ok(merchantId);
+
+    const dashboardBefore = await getJson(
+      baseUrl,
+      `/api/merchant/dashboard?merchantId=${encodeURIComponent(merchantId)}`,
+      { Authorization: `Bearer ${completeOnboard.data.token}` }
+    );
+    assert.equal(dashboardBefore.status, 200);
+    assert.equal(dashboardBefore.data.customerEntry.totalCustomers, 0);
+    assert.equal(dashboardBefore.data.customerEntry.newCustomersToday, 0);
+    assert.equal(dashboardBefore.data.customerEntry.checkinsToday, 0);
+    assert.equal(dashboardBefore.data.customerEntry.latestCheckinAt, null);
+
+    const customerLogin = await postJson(baseUrl, "/api/auth/customer/wechat-login", {
+      merchantId,
+      code: "mini_code_customer_visibility"
+    });
+    assert.equal(customerLogin.status, 200);
+    assert.ok(customerLogin.data.token);
+
+    const dashboardAfter = await getJson(
+      baseUrl,
+      `/api/merchant/dashboard?merchantId=${encodeURIComponent(merchantId)}`,
+      { Authorization: `Bearer ${completeOnboard.data.token}` }
+    );
+    assert.equal(dashboardAfter.status, 200);
+    assert.equal(dashboardAfter.data.customerEntry.totalCustomers, 1);
+    assert.equal(dashboardAfter.data.customerEntry.newCustomersToday, 1);
+    assert.equal(dashboardAfter.data.customerEntry.checkinsToday, 1);
+    assert.equal(typeof dashboardAfter.data.customerEntry.latestCheckinAt, "string");
+
+    const customerDenied = await getJson(
+      baseUrl,
+      `/api/merchant/dashboard?merchantId=${encodeURIComponent(merchantId)}`,
+      { Authorization: `Bearer ${customerLogin.data.token}` }
+    );
+    assert.equal(customerDenied.status, 403);
+  } finally {
+    await app.stop();
+  }
+});
+
 test("merchant phone login returns bound status and enforces merchant scope", async () => {
   const app = createAppServer({ persist: false });
   const port = await app.start(0);

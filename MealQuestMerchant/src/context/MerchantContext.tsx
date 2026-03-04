@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { createInitialMerchantState, MerchantState } from '../domain/merchantEngine';
 import {
   completeMerchantOnboard,
+  getMerchantDashboard,
   getMerchantStores,
   getApiBaseUrl,
   loginMerchantByPhone,
@@ -146,6 +147,19 @@ function parseSseEvents(raw: string): { event: string; data: unknown }[] {
   return events;
 }
 
+function normalizeCustomerEntry(raw: unknown): MerchantState['customerEntry'] {
+  const safe = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  return {
+    totalCustomers: Number(safe.totalCustomers) || 0,
+    newCustomersToday: Number(safe.newCustomersToday) || 0,
+    checkinsToday: Number(safe.checkinsToday) || 0,
+    latestCheckinAt:
+      typeof safe.latestCheckinAt === 'string' && safe.latestCheckinAt.trim()
+        ? safe.latestCheckinAt
+        : null,
+  };
+}
+
 async function runAgentTask(params: {
   merchantId: string;
   token: string;
@@ -278,6 +292,29 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  const refreshMerchantDashboard = useCallback(
+    async (session: MerchantAuthSession) => {
+      try {
+        const dashboard = await getMerchantDashboard({
+          merchantId: session.merchantId,
+          token: session.token,
+        });
+        setMerchantState(prev => ({
+          ...prev,
+          merchantId: session.merchantId,
+          merchantName: String(dashboard.merchantName || prev.merchantName || session.merchantId),
+          killSwitchEnabled: Boolean(dashboard.killSwitchEnabled),
+          budgetCap: Number(dashboard.budgetCap) || 0,
+          budgetUsed: Number(dashboard.budgetUsed) || 0,
+          customerEntry: normalizeCustomerEntry(dashboard.customerEntry),
+        }));
+      } catch (error) {
+        console.warn('[MerchantContext] refresh dashboard failed', error);
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     let cancelled = false;
 
@@ -329,6 +366,13 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
       cancelled = true;
     };
   }, [applyAuthenticatedSession, resetSessionScopedState]);
+
+  useEffect(() => {
+    if (!authSession) {
+      return;
+    }
+    void refreshMerchantDashboard(authSession);
+  }, [authSession, refreshMerchantDashboard]);
 
   const requestLoginCode = async (phone: string) => {
     const normalized = String(phone || '').trim();

@@ -1314,6 +1314,38 @@ function createMerchantService(db, options = {}) {
     }
 
     const activeStrategyCount = getActivePolicyContext(merchantId).length;
+    const now = Date.now();
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
+    const startOfDayMs = startOfDay.getTime();
+    const phoneBindingsBucket =
+      db &&
+      db.socialAuth &&
+      db.socialAuth.customerPhoneBindingsByMerchant &&
+      db.socialAuth.customerPhoneBindingsByMerchant[merchantId] &&
+      typeof db.socialAuth.customerPhoneBindingsByMerchant[merchantId] === "object"
+        ? db.socialAuth.customerPhoneBindingsByMerchant[merchantId]
+        : {};
+    const phoneBindings = Object.values(phoneBindingsBucket).filter(
+      (item) => item && typeof item === "object"
+    );
+    let newCustomersToday = 0;
+    let checkinsToday = 0;
+    let latestCheckinMs = 0;
+
+    for (const item of phoneBindings) {
+      const linkedAtMs = Date.parse(String(item.linkedAt || ""));
+      const lastLoginAtMs = Date.parse(String(item.lastLoginAt || ""));
+      if (Number.isFinite(linkedAtMs) && linkedAtMs >= startOfDayMs) {
+        newCustomersToday += 1;
+      }
+      if (Number.isFinite(lastLoginAtMs) && lastLoginAtMs >= startOfDayMs) {
+        checkinsToday += 1;
+      }
+      if (Number.isFinite(lastLoginAtMs) && lastLoginAtMs > latestCheckinMs) {
+        latestCheckinMs = lastLoginAtMs;
+      }
+    }
 
     return {
       merchantId,
@@ -1321,7 +1353,13 @@ function createMerchantService(db, options = {}) {
       killSwitchEnabled: merchant.killSwitchEnabled,
       budgetCap: merchant.budgetCap,
       budgetUsed: merchant.budgetUsed,
-      activePolicyCount: activeStrategyCount
+      activePolicyCount: activeStrategyCount,
+      customerEntry: {
+        totalCustomers: phoneBindings.length,
+        newCustomersToday,
+        checkinsToday,
+        latestCheckinAt: latestCheckinMs > 0 ? new Date(latestCheckinMs).toISOString() : null,
+      },
     };
   }
 

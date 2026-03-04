@@ -58,8 +58,8 @@
 | --- | --- | --- | --- | --- |
 | S010 | P0 | Acquisition（Welcome 子场景）事件/API/审计字段冻结且三端对齐 | 无 | done |
 | S020 | P0 | 契约回归基线可重复执行且可定位 | S010 done | done |
-| S030 | P0 | 商户入口闭环（登录/开店/会话恢复）可回归 | S020 done | doing |
-| S040 | P0 | 顾客入口闭环（扫码入店/资产首屏）可回归 | S030 done | todo |
+| S030 | P0 | 商户入口闭环（登录/开店/会话恢复）可回归 | S020 done | done |
+| S040 | P0 | 顾客入口闭环（扫码入店/资产首屏）可回归 | S030 done | doing |
 | S110 | P1 | Acquisition（Welcome + 候餐小游戏）触发与资格判定闭环可回归 | S040 done | todo |
 | S120 | P1 | Acquisition 执行治理闭环（审批/TTL/Kill Switch） | S110 done | todo |
 | S130 | P1 | Acquisition 发放核销账务一致性闭环 | S120 done | todo |
@@ -177,9 +177,9 @@
 
 | task_id | lane | task | status | output |
 | --- | --- | --- | --- | --- |
-| S030-SRV-01 | server | 固化商户认证与开店接口合同（登录/开店/门店信息） | todo | 入口接口基线 |
-| S030-MER-01 | merchant | 打通 login -> quick-onboard -> agent 首页与会话恢复链路 | todo | 商户入口闭环 |
-| S030-CUS-01 | customer | 验证商户入口链路变更不影响顾客主路径 | todo | 兼容验证记录 |
+| S030-SRV-01 | server | 固化商户认证与开店接口合同（登录/开店/门店信息） | done | `MealQuestServer/test/http.integration.test.ts`（merchant phone login / complete-onboard 用例） |
+| S030-MER-01 | merchant | 打通 login -> quick-onboard -> agent 首页与会话恢复链路 | done | `MealQuestMerchant/src/context/MerchantContext.tsx`; `MealQuestMerchant/src/services/apiClient.ts`; `MealQuestMerchant/src/services/authSessionStorage.ts`; 手工冒烟记录 |
+| S030-CUS-01 | customer | 验证商户入口链路变更不影响顾客主路径 | done | `meal-quest-customer/test/pages/startup.test.tsx`; `meal-quest-customer/test/pages/account.test.tsx`; `docs/qa/s040-customer-entry-closure.md` |
 
 - Deliverables：
 1. 商户入口接口合同与错误码映射。
@@ -203,6 +203,10 @@
 
 - Triage Key：`RB-MERCHANT-030`
 
+- Decision Notes（已确认）：
+1. 商户端自动化回归完善前，`S030-MER-01` 继续采用 `lint + typecheck + 手工冒烟记录` 作为验收基线。
+2. 2026-03-04 已有手工冒烟确认“手机登录测试正常，可继续下一步”，用于覆盖登录/开店/重启恢复链路的首轮验收。
+
 ### S040 - 顾客入口闭环（扫码入店/资产首屏）
 
 - Objective：打通顾客扫码入店、会话建立、资产首屏展示的稳定闭环。
@@ -210,8 +214,8 @@
 
 | task_id | lane | task | status | output |
 | --- | --- | --- | --- | --- |
-| S040-SRV-01 | server | 固化顾客登录与入店能力合同（扫码入店/会话建立/资产状态） | todo | 顾客入口接口基线 |
-| S040-MER-01 | merchant | 承接顾客入店状态变化的只读可见性校验 | todo | 兼容验证记录 |
+| S040-SRV-01 | server | 固化顾客登录与入店能力合同（扫码入店/会话建立/资产状态） | done | `MealQuestServer/test/http.integration.test.ts`（customer login + state + merchant exists + merchant dashboard customerEntry 可见性） |
+| S040-MER-01 | merchant | 承接顾客入店状态变化的只读可见性校验 | done | `MealQuestMerchant/src/context/MerchantContext.tsx`; `MealQuestMerchant/src/screens/AgentScreen.tsx`; `MealQuestMerchant/src/services/apiClient.ts` |
 | S040-CUS-01 | customer | 完成 startup 扫码入店、会话建立与首页资产展示闭环 | done | `meal-quest-customer/src/pages/startup/index.tsx`; `meal-quest-customer/src/pages/index/index.tsx`; `meal-quest-customer/src/pages/account/index.tsx` |
 
 - Deliverables：
@@ -240,6 +244,7 @@
 - Decision Notes（已确认）：
 1. `S040-CUS-01` 允许在 `S030` 总体验收完成前先行落地代码与测试，Step 收口仍以三端任务全部完成为准。
 2. 顾客端首版仅以小程序实现，不引入非小程序技术路线。
+3. `S040-MER-01` 采用“服务端 dashboard 字段 + 商户端只读展示”的方案，不在此 Step 引入写操作。
 
 ### S110 - Acquisition（Welcome + 候餐小游戏）触发与资格判定闭环
 
@@ -704,8 +709,8 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | S010 | `npm run verify`; `cd MealQuestServer && npm test`; `cd MealQuestMerchant && npm run lint && npm run typecheck`; `cd meal-quest-customer && npm run typecheck && npm test` | `docs/qa/s010-welcome-contract-baseline.md` | `MealQuestServer/test/http.integration.test.ts`（Welcome 主链路）；`meal-quest-customer/test/services/api-data-service.test.ts`（state 映射） | pass | AI/Agent | 2026-03-04 |
 | S020 | `npm run test:contract:baseline`; `cd MealQuestServer && npm run test:contract:baseline`; `cd MealQuestMerchant && npm run test:contract:baseline`; `cd meal-quest-customer && npm run test:contract:baseline` | `docs/qa/s020-contract-regression-baseline.md` | `MealQuestMerchant/src/context/MerchantContext.tsx`（lint warning 修复） | pass | AI/Agent | 2026-03-04 |
-| S030 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
-| S040 | `cd meal-quest-customer && npm run typecheck`; `cd meal-quest-customer && npm run lint`; `cd meal-quest-customer && npm test -- --runInBand`; `cd meal-quest-customer && npm run test:contract:baseline`; `cd meal-quest-customer && npm run test:e2e:core`（环境未启用自动拉起，套件 skip） | `docs/qa/s040-customer-entry-closure.md` | `meal-quest-customer/src/pages/startup/index.tsx`; `meal-quest-customer/src/pages/index/index.tsx`; `meal-quest-customer/src/pages/account/index.tsx`; `meal-quest-customer/test/pages/startup.test.tsx`; `meal-quest-customer/test/pages/account.test.tsx` | partial | AI/Agent | 2026-03-04 |
+| S030 | `cd MealQuestServer && npm test`（非沙箱重跑通过，65/65）；`cd MealQuestMerchant && npm run lint && npm run typecheck`；`cd meal-quest-customer && npm run typecheck && npm test -- --runInBand` | `docs/qa/s030-merchant-entry-closure.md` | `MealQuestServer/test/http.integration.test.ts`；`MealQuestMerchant/src/context/MerchantContext.tsx`；`MealQuestMerchant/src/services/apiClient.ts`；`MealQuestMerchant/src/services/authSessionStorage.ts`；`meal-quest-customer/test/pages/startup.test.tsx` | pass | AI/Agent | 2026-03-04 |
+| S040 | `cd MealQuestServer && npm test`（非沙箱重跑通过，66/66）；`cd MealQuestMerchant && npm run lint && npm run typecheck`；`cd meal-quest-customer && npm run typecheck && npm test -- --runInBand`；`cd meal-quest-customer && npm run test:e2e:core`（环境未启用自动拉起，套件 skip） | `docs/qa/s040-customer-entry-closure.md` | `MealQuestServer/test/http.integration.test.ts`；`MealQuestMerchant/src/context/MerchantContext.tsx`；`MealQuestMerchant/src/screens/AgentScreen.tsx`；`meal-quest-customer/src/pages/startup/index.tsx`；`meal-quest-customer/test/pages/startup.test.tsx` | partial | AI/Agent | 2026-03-04 |
 | S110 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S120 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S130 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
