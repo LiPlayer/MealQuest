@@ -4,6 +4,9 @@
 - `docs/specs/mealquest-spec.md` and `docs/roadmap.md` are the **only source of truth**.
 - Requirement decisions must come from these two files only.
 - Any code/doc change that affects behavior must sync these two files in the same pass.
+- AI should actively challenge and reverse-reason requirements in these two files for commercial readiness.
+- If gaps, conflicts, or non-production assumptions are found, do not silently invent behavior in code.
+- Instead, propose and apply concrete updates to `docs/specs/mealquest-spec.md` and `docs/roadmap.md` in the same pass, then implement against the updated docs.
 
 ## 2) Repo Layout
 - `MealQuestServer/`: Node backend (`src/http`, `src/services`, `src/store`, `test`)
