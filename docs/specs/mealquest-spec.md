@@ -1,11 +1,11 @@
-# MealQuest 商业化落地规范（V13.5）
+# MealQuest 商业化落地规范（V13.6）
 
 > 文档定位：本文件是 MealQuest 的产品与商业规范真源（Source of Truth）。
 > 适用范围：`MealQuestServer`、`MealQuestMerchant`、`meal-quest-customer` 三端协同建设。
 
 ## 0. 版本与治理
 
-- 版本：V13.5（明确 Welcome/候餐小游戏归属 Acquisition 策略子域）
+- 版本：V13.6（补齐商户入店二维码生产与顾客扫码来源闭环）
 - 首发区域：中国大陆
 - 目标客群：单店与小连锁餐饮商户
 - 商业主轴：支付抽佣为主，订阅与增值服务为辅
@@ -85,6 +85,8 @@
 - 服务端：认证、支付、发票、隐私、策略治理、执行审计、多租户隔离。
 - 策略范围：首版仅开放五类策略族中的拉新获客（Acquisition）子域闭环（拉新礼包 Welcome + 候餐小游戏 Welcome 范围）。
 
+- Merchant entry QR: must support generating fixed store QR and distributing via preview/save/share.
+
 ### 4.2 Out of Scope（当前版本明确不做）
 
 - 点餐流程、后厨 KDS、桌台管理
@@ -117,6 +119,8 @@
 - 操作形态：关键动作可确认、可撤回、可追溯
 - 体验目标：老板在 10 分钟内看懂经营状态并完成一次策略执行
 
+- Entry QR operation: owner can open a dedicated page to generate a fixed store entry QR and distribute it offline.
+
 ### 5.4 三类资产-互动绑定矩阵
 
 | 资产层 | 互动来源（Source） | 消耗/流转（Sink） | 商业约束 |
@@ -138,6 +142,9 @@
 ### 6.1 闭环路径
 
 扫码入店 -> 首次身份绑定 -> 候餐小游戏互动 -> 触发拉新礼包 -> 到店支付核销 -> 资产沉淀 -> 复购触达
+
+- Merchant generates and posts store entry QR -> customer scans to enter -> identity binding -> interaction -> payment and asset accrual.
+- QR payload boundary (MVP): plain `merchantId` only, validated by server-side merchant existence check; signed payload and one-time short code are out of scope in this release.
 
 ### 6.2 拉新礼包（Welcome，Acquisition 子场景）规范
 
@@ -170,6 +177,8 @@
 - 异常：发现风险信号时可一键停机，并通过回放定位问题
 
 ---
+
+- Owner can generate/store/share the entry QR before opening customer acquisition in-store.
 
 ## 7. AI Agent 与策略耦合治理（产品层）
 

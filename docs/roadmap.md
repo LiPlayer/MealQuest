@@ -59,8 +59,8 @@
 | S010 | P0 | Acquisition（Welcome 子场景）事件/API/审计字段冻结且三端对齐 | 无 | done |
 | S020 | P0 | 契约回归基线可重复执行且可定位 | S010 done | done |
 | S030 | P0 | 商户入口闭环（登录/开店/会话恢复）可回归 | S020 done | done |
-| S040 | P0 | 顾客入口闭环（扫码入店/资产首屏）可回归 | S030 done | done |
-| S110 | P1 | Acquisition（Welcome + 候餐小游戏）触发与资格判定闭环可回归 | S040 done | doing |
+| S040 | P0 | 顾客入口闭环（扫码入店/资产首屏）可回归 | S030 done | doing |
+| S110 | P1 | Acquisition（Welcome + 候餐小游戏）触发与资格判定闭环可回归 | S040 done | blocked |
 | S120 | P1 | Acquisition 执行治理闭环（审批/TTL/Kill Switch） | S110 done | todo |
 | S130 | P1 | Acquisition 发放核销账务一致性闭环 | S120 done | todo |
 | S210 | P2 | 商户经营看板最小可用 | S130 done | todo |
@@ -85,6 +85,7 @@
 | 2.2-2.3 | 商户/顾客核心场景与平台价值（支付+营销闭环） | S030, S040, S110, S130, S210 | covered |
 | 3.1-3.3 | 商业约束（预算/风险/毛利红线）与单元经济可控 | S120, S320, S250, S420 | covered |
 | 4.1 商户端 | 登录、开店、经营视图、老板端 Agent、紧急停机 | S030, S210, S220, S230, S240, S120 | covered |
+| 4.1 Merchant QR | Merchant can generate and distribute customer entry QR code (preview/save/share) | S040 | covered |
 | 4.1 顾客端 | 扫码入店、Acquisition 子域小游戏、资产展示、支付核销、账本发票查询 | S040, S110, S130, S310 | covered |
 | 4.1 服务端 | 认证、支付、发票、隐私、策略治理、审计、多租户隔离 | S030, S040, S120, S130, S240, S420 | covered |
 | 4.1 策略范围 | 首版仅开放 Acquisition 子域（Welcome + 候餐小游戏）闭环商用 | S110, S120, S130 | covered |
@@ -216,6 +217,7 @@
 | --- | --- | --- | --- | --- |
 | S040-SRV-01 | server | 固化顾客登录与入店能力合同（扫码入店/会话建立/资产状态） | done | `MealQuestServer/test/http.integration.test.ts`（customer login + state + merchant exists + merchant dashboard customerEntry 可见性） |
 | S040-MER-01 | merchant | 承接顾客入店状态变化的只读可见性校验 | done | `MealQuestMerchant/src/context/MerchantContext.tsx`; `MealQuestMerchant/src/screens/AgentScreen.tsx`; `MealQuestMerchant/src/services/apiClient.ts` |
+| S040-MER-02 | merchant | Deliver fixed customer-entry QR generation and distribution in merchant app (preview/save/share) | doing | `MealQuestMerchant/src/screens/EntryQrScreen.tsx`; `MealQuestMerchant/src/services/entryQrService.ts`; `MealQuestMerchant/app/entry-qrcode.tsx` |
 | S040-CUS-01 | customer | 完成 startup 扫码入店、会话建立与首页资产展示闭环 | done | `meal-quest-customer/src/pages/startup/index.tsx`; `meal-quest-customer/src/pages/index/index.tsx`; `meal-quest-customer/src/pages/account/index.tsx` |
 
 - Deliverables：
@@ -227,6 +229,7 @@
 1. 新用户扫码可完成入店并看到资产首屏。
 2. 已登录用户可复用会话进入首页。
 3. 异常 merchantId 可被阻断并提示。
+4. Merchant app can generate and distribute store entry QR code (preview/save/share) as a valid scan source.
 
 - Acceptance Commands：
 1. `cd MealQuestServer && npm test`
@@ -239,7 +242,7 @@
 2. 首页资产字段缺失或映射错误。
 3. 首发平台流程通过但兼容平台崩溃。
 
-- Triage Key：`RB-CUSTOMER-040`
+- Triage Key: `RB-CUSTOMER-040`, `RB-MERCHANT-QR-040`
 
 - Decision Notes（已确认）：
 1. `S040-CUS-01` 允许在 `S030` 总体验收完成前先行落地代码与测试，Step 收口仍以三端任务全部完成为准。
@@ -248,11 +251,15 @@
 4. Windows 环境下顾客端 e2e 自动拉起采用 `cli auto --auto-port + automator.connect`，不再依赖 `automator.launch` 直接拉起 `cli.bat`。
 5. 顾客端 e2e 废弃 `WECHAT_WS_ENDPOINT` / `WECHAT_SERVICE_PORT` connect 模式，仅保留官方 CLI 自动拉起模式。
 6. 顾客端 e2e 自动拉起默认启用，不再要求 `WECHAT_E2E_AUTO_LAUNCH` 环境开关。
+7. S040 is reopened because merchant-side QR production was missing from the customer scan chain.
+8. S110 is blocked until S040 is re-closed with merchant QR source capability.
+9. S040-MER-02 uses merchant local QR generation with plain-text `merchantId` payload.
+10. S040-MER-02 scope is dedicated page + image save + image share; no server-side QR generation API in this step.
 
 ### S110 - Acquisition（Welcome + 候餐小游戏）触发与资格判定闭环
 
 - Objective：打通 Acquisition 子域触发、预算、库存、反套利与小游戏奖励资格判定。
-- Dependency：S040 done。
+- Dependency: S040 done (currently blocked until S040 re-closure).
 
 | task_id | lane | task | status | output |
 | --- | --- | --- | --- | --- |
@@ -713,7 +720,7 @@
 | S010 | `npm run verify`; `cd MealQuestServer && npm test`; `cd MealQuestMerchant && npm run lint && npm run typecheck`; `cd meal-quest-customer && npm run typecheck && npm test` | `docs/qa/s010-welcome-contract-baseline.md` | `MealQuestServer/test/http.integration.test.ts`（Welcome 主链路）；`meal-quest-customer/test/services/api-data-service.test.ts`（state 映射） | pass | AI/Agent | 2026-03-04 |
 | S020 | `npm run test:contract:baseline`; `cd MealQuestServer && npm run test:contract:baseline`; `cd MealQuestMerchant && npm run test:contract:baseline`; `cd meal-quest-customer && npm run test:contract:baseline` | `docs/qa/s020-contract-regression-baseline.md` | `MealQuestMerchant/src/context/MerchantContext.tsx`（lint warning 修复） | pass | AI/Agent | 2026-03-04 |
 | S030 | `cd MealQuestServer && npm test`（非沙箱重跑通过，65/65）；`cd MealQuestMerchant && npm run lint && npm run typecheck`；`cd meal-quest-customer && npm run typecheck && npm test -- --runInBand` | `docs/qa/s030-merchant-entry-closure.md` | `MealQuestServer/test/http.integration.test.ts`；`MealQuestMerchant/src/context/MerchantContext.tsx`；`MealQuestMerchant/src/services/apiClient.ts`；`MealQuestMerchant/src/services/authSessionStorage.ts`；`meal-quest-customer/test/pages/startup.test.tsx` | pass | AI/Agent | 2026-03-04 |
-| S040 | `cd MealQuestServer && npm test`（非沙箱重跑通过，66/66）；`cd MealQuestMerchant && npm run lint && npm run typecheck`；`cd meal-quest-customer && npm run typecheck && npm test -- --runInBand`；`cd meal-quest-customer && Remove-Item Env:WECHAT_WS_ENDPOINT -ErrorAction SilentlyContinue; Remove-Item Env:WECHAT_SERVICE_PORT -ErrorAction SilentlyContinue; $env:WECHAT_CLI_PATH='D:\Program Files (x86)\Tencent\微信web开发者工具\cli.bat'; npm run test:e2e:core`（自动拉起通过，2/2） | `docs/qa/s040-customer-entry-closure.md` | `MealQuestServer/test/http.integration.test.ts`；`MealQuestMerchant/src/context/MerchantContext.tsx`；`MealQuestMerchant/src/screens/AgentScreen.tsx`；`meal-quest-customer/src/pages/startup/index.tsx`；`meal-quest-customer/test/pages/startup.test.tsx`; `meal-quest-customer/test/e2e/customer-core-flow.spec.js`; `meal-quest-customer/test/e2e/utils/mini-program-session.js` | pass | AI/Agent | 2026-03-04 |
+| S040 | historical baseline: `cd MealQuestServer && npm test`（66/66）；`cd meal-quest-customer && npm run test:e2e:core`（2/2）；reopen checks: `cd MealQuestMerchant && npm run lint && npm run typecheck`; `cd meal-quest-customer && npm run typecheck`; `cd meal-quest-customer && npm test -- --runInBand test/pages/startup.test.tsx`（6/6） | `docs/qa/s040-customer-entry-closure.md` (reopened: missing merchant QR source) | `MealQuestServer/test/http.integration.test.ts`；`MealQuestMerchant/src/context/MerchantContext.tsx`；`MealQuestMerchant/src/screens/AgentScreen.tsx`；`MealQuestMerchant/src/screens/EntryQrScreen.tsx`；`MealQuestMerchant/src/services/entryQrService.ts`；`meal-quest-customer/src/pages/startup/index.tsx`；`meal-quest-customer/test/pages/startup.test.tsx`; `meal-quest-customer/test/e2e/customer-core-flow.spec.js`; `meal-quest-customer/test/e2e/utils/mini-program-session.js` | partial | AI/Agent | 2026-03-04 |
 | S110 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S120 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S130 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
@@ -738,6 +745,7 @@
 | RB-CONTRACT-002 | 契约回归不稳定 | `npm run test:contract:baseline` | server + merchant + customer |
 | RB-MERCHANT-030 | 商户登录/开店链路中断 | `cd MealQuestMerchant && npm run lint && npm run typecheck` | merchant + server |
 | RB-CUSTOMER-040 | 扫码入店/会话建立失败 | `cd meal-quest-customer && Remove-Item Env:WECHAT_WS_ENDPOINT -ErrorAction SilentlyContinue; Remove-Item Env:WECHAT_SERVICE_PORT -ErrorAction SilentlyContinue; $env:WECHAT_CLI_PATH='D:\Program Files (x86)\Tencent\微信web开发者工具\cli.bat'; npm run test:e2e:core` | customer + server |
+| RB-MERCHANT-QR-040 | Merchant app cannot generate/save/share entry QR | `cd MealQuestMerchant && npm run lint && npm run typecheck` | merchant |
 | RB-ACQ-110 | Acquisition 子域误发放/误拦截 | `cd MealQuestServer && node --test test/policyOs.constraints.test.ts` | server |
 | RB-ACQ-120 | Acquisition 子域审批或 TTL 治理异常 | `cd MealQuestServer && node --test test/policyOs.http.integration.test.ts` | server + merchant |
 | RB-ACQ-130 | Acquisition 子域支付到账务链路不一致 | `cd MealQuestServer && node --test test/policyOs.ledger.test.ts` | server |
@@ -762,7 +770,7 @@
 
 | Domain | Capability Contract | Owner Lane |
 | --- | --- | --- |
-| Auth & Entry | 顾客/商户身份认证与入店链路 | server + merchant + customer |
+| Auth & Entry | Customer/merchant identity, merchant entry-QR generation/distribution, and in-store entry chain | server + merchant + customer |
 | Customer Core | 资产展示、支付核销、账本与发票查询 | server + customer |
 | Merchant Ops | 开店、经营看板、紧急停机 | server + merchant |
 | Acquisition Strategy | Welcome + 候餐小游戏子域触发、判定、治理、发放一致性 | server + merchant + customer |

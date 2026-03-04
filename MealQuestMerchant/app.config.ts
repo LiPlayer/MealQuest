@@ -8,7 +8,16 @@ const config: ExpoConfig = {
   version: '1.0.0',
   orientation: 'portrait',
   userInterfaceStyle: 'light',
-  plugins: ['expo-router', 'expo-dev-client'],
+  plugins: [
+    'expo-router',
+    'expo-dev-client',
+    [
+      'expo-media-library',
+      {
+        photosPermission: 'Allow MealQuest Merchant to save entry QR images.',
+      },
+    ],
+  ],
   android: {
     package: 'com.mealquestmerchant',
   },

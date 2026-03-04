@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useMerchant } from '../context/MerchantContext';
@@ -25,6 +26,7 @@ const RichText = ({ text, isStreaming }: { text: string; isStreaming?: boolean }
 };
 
 export default function AgentScreen() {
+  const router = useRouter();
   const {
     merchantState,
     aiIntentDraft,
@@ -69,7 +71,17 @@ export default function AgentScreen() {
         </View>
 
         <View testID="merchant-customer-entry-card" style={styles.customerEntryCard}>
-          <Text style={styles.customerEntryTitle}>顾客入店只读视图</Text>
+          <View style={styles.customerEntryHeader}>
+            <Text style={styles.customerEntryTitle}>顾客入店只读视图</Text>
+            <Pressable
+              testID="merchant-entry-qr-button"
+              style={styles.entryQrBtn}
+              onPress={() => router.push('/entry-qrcode')}
+            >
+              <MaterialIcons name="qr-code-2" size={14} color="#ffffff" />
+              <Text style={styles.entryQrBtnText}>Entry QR</Text>
+            </Pressable>
+          </View>
           <View style={styles.customerEntryGrid}>
             <View style={styles.customerEntryItem}>
               <Text style={styles.customerEntryLabel}>总顾客</Text>
@@ -217,6 +229,25 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#0f172a',
+  },
+  customerEntryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  entryQrBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#0f766e',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  entryQrBtnText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '700',
   },
   customerEntryGrid: {
     flexDirection: 'row',

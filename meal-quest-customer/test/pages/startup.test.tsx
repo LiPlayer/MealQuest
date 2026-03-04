@@ -102,6 +102,29 @@ describe('Startup Page', () => {
         });
     });
 
+    it('Scan Action: accepts plain merchantId payload from merchant entry QR', async () => {
+        (storage.getLastStoreId as jest.Mock).mockReturnValue(null);
+        (ApiDataService.isConfigured as jest.Mock).mockReturnValue(true);
+        (ApiDataService.isMerchantAvailable as jest.Mock).mockResolvedValue(true);
+        (Taro.scanCode as jest.Mock).mockImplementation(({ success }) => {
+            success({ result: 'm_store_001' });
+        });
+
+        render(<Startup />);
+        await waitFor(() => {
+            expect(document.getElementById('startup-scan-button')).toBeInTheDocument();
+        });
+        const scanButton = document.getElementById('startup-scan-button');
+        expect(scanButton).not.toBeNull();
+        fireEvent.click(scanButton as Element);
+
+        await waitFor(() => {
+            expect(ApiDataService.isMerchantAvailable).toHaveBeenCalledWith('m_store_001');
+            expect(storage.setLastStoreId).toHaveBeenCalledWith('m_store_001');
+            expect(Taro.reLaunch).toHaveBeenCalledWith({ url: '/pages/index/index' });
+        });
+    });
+
     it('Scan Action: redirects to payment page when payload contains action=pay', async () => {
         (storage.getLastStoreId as jest.Mock).mockReturnValue(null);
         (ApiDataService.isConfigured as jest.Mock).mockReturnValue(true);
