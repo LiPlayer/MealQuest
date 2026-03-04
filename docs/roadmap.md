@@ -4,22 +4,22 @@
 > 执行真源：`docs/roadmap.md`（本文件）
 > 定位：本文件只回答“做什么、做到什么算完成、当前做到哪一步”。
 
-## 00. 文档契约
+## 01. 文档契约
 
-### 00.1 职责边界
+### 01.1 职责边界
 
 1. `spec` 负责业务目标、范围边界、核心体验形态、KPI 与治理原则。
 2. `roadmap` 负责开发方向、任务清单、推进指针、验收入口、排障索引与执行级合同索引。
 3. 代码实现方式由开发者在任务边界内自主决定，不在本文件展开实现细节。
 
-### 00.2 状态枚举
+### 01.2 状态枚举
 
 1. `todo`
 2. `doing`
 3. `blocked`
 4. `done`
 
-### 00.3 任务卡字段（统一）
+### 01.3 任务卡字段（统一）
 
 1. `task_id`
 2. `lane`（`server` / `merchant` / `customer`，其中 `customer` 固定指小程序端）
@@ -27,7 +27,7 @@
 4. `status`
 5. `output`
 
-### 00.4 推进硬规则
+### 01.4 推进硬规则
 
 1. 指针之前的 Step 视为已实现，不允许出现 `TBD`、`待确认`。
 2. 每个 Step 至少绑定 1 个 `Triage Key`。
@@ -36,7 +36,7 @@
 5. 口头确认的关键产品决策必须回填到对应 Step 的 `Decision Notes`。
 6. 顾客端实施形态固定为小程序端；未更新 `docs/specs/mealquest-spec.md` 前不得引入其他顾客端技术路线。
 
-### 00.5 完整性规则（Spec Coverage）
+### 01.5 完整性规则（Spec Coverage）
 
 1. `docs/roadmap.md` 的任务集合与治理规则必须覆盖 `docs/specs/mealquest-spec.md` 的全部必需条款（含 In Scope、Out of Scope、治理与发布约束）。
 2. 任一需求若在覆盖矩阵中标记为 `gap`，不得执行指针前移。
@@ -44,45 +44,15 @@
 
 ---
 
-## 01. 执行驾驶舱（30秒必读）
-
-### 01.1 当前指针
-
-| Field | Value |
-| --- | --- |
-| Last Updated | 2026-03-04 |
-| Current StepID | S030 |
-| Current Status | doing |
-| Next StepID | S040 |
-| Owner | AI/Agent |
-| Blockers | 无 |
-
-### 01.2 本周目标（最多3条）
-
-1. 完成 S020：契约回归基线命令与失败定位索引固化（已完成）。
-2. 完成 S020 收口：商户端 lint warning 清零并复验通过（已完成）。
-3. 启动 S030：商户入口闭环（登录/开店/会话恢复）主链路回归。
-
-### 01.3 当前任务清单（执行优先级）
-
-1. 完成 `S030-SRV-01`：固化商户认证与开店接口合同（登录/开店/门店信息）。
-2. 完成 `S030-MER-01`：打通 login -> quick-onboard -> agent 首页与会话恢复链路。
-3. 完成 `S030-CUS-01`：验证商户入口链路变更不影响顾客主路径。
-
-### 01.4 必过命令（推进前）
-
-1. `npm run check:encoding`
-2. `npm run verify`
-3. `npm run test:contract:baseline`
-4. `cd MealQuestServer && npm test`
-5. `cd MealQuestMerchant && npm run lint && npm run typecheck`
-6. `cd meal-quest-customer && npm run typecheck && npm test`
-
----
-
 ## 02. 主路线（Master Step Sequence）
 
 > 说明：本表按“开发实现顺序”排序，不按 StepID 数字大小排序。
+
+### 02.0 指针判定规则（唯一来源）
+
+1. `Status = doing` 的 Step 即当前指针。
+2. 下一指针为当前 Step 完成后，按主路线顺序进入的首个 `todo` Step。
+3. 任一时刻仅允许 1 个 Step 处于 `doing`。
 
 | StepID | Phase | Outcome（结果定义） | Dependency | Status |
 | --- | --- | --- | --- | --- |
@@ -108,7 +78,7 @@
 
 | Spec Clause | Requirement（摘要） | Mapped Items（StepID / Roadmap Section） | Coverage |
 | --- | --- | --- | --- |
-| 0 | 版本治理、首发区域、变更先文档后研发 | `00.1`, `00.4`, `07`, `10` | covered |
+| 0 | 版本治理、首发区域、变更先文档后研发 | `01.1`, `01.4`, `07`, `10` | covered |
 | 1.1 | 北极星目标（商户价值、顾客价值、平台可复制） | S030, S040, S210, S320, S410 | covered |
 | 1.2 | 无请求不决策、无确认不执行、利润优先、先闭环后扩张 | S110, S120, S250 | covered |
 | 2.1 | ICP（单店/小连锁、低 IT 成本、结果导向） | S030, S210, S410 | covered |
@@ -126,7 +96,7 @@
 | 9.1-9.3 | 资金安全、隐私合规、发票与审计合规 | S120, S130, S410, S420 | covered |
 | 10 | 风险清单与应对（套利/刷分/通胀/毛利/失控/可用性） | S110, S120, S250, S310, S410, S420 | covered |
 | 11.1-11.3 | 五类策略族扩展框架与扩展硬约束 | S250, S260, S420 | covered |
-| 12 | 执行文档边界（spec/roadmap 职责边界） | `00.1`, `00.5`, `06`, `07` | covered |
+| 12 | 执行文档边界（spec/roadmap 职责边界） | `01.1`, `01.5`, `06`, `07` | covered |
 
 - Coverage Summary：
 1. `covered`: 18
@@ -802,7 +772,7 @@
 1. 当前 Step 所有必需任务达到 `done` 或有明确豁免记录。
 2. 必过命令通过。
 3. 回填证据账本。
-4. 更新驾驶舱 `Current/Next`。
+4. 更新第 02 章主路线状态（当前 Step 由 `doing` -> `done`，下一 Step 由 `todo` -> `doing`）。
 
 ---
 
@@ -810,7 +780,7 @@
 
 1. `npm run bootstrap`
 2. `npm run verify`
-3. 打开第 01 章读取 `Current StepID` 与 `Blockers`
+3. 打开第 02 章，定位 `Status = doing` 的当前 Step，并读取下一条 `todo` Step。
 4. 跳转第 03 章找到当前 Step 的三端任务表
 5. 执行本端 `todo` 任务并回填证据账本
 
