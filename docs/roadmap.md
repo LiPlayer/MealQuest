@@ -35,6 +35,12 @@
 4. 商户端在自动化完善前，验收基线为 `lint + typecheck + 手工冒烟记录`。
 5. 口头确认的关键产品决策必须回填到对应 Step 的 `Decision Notes`。
 
+### 00.5 完整性规则（Spec Coverage）
+
+1. `docs/roadmap.md` 的任务集合与治理规则必须覆盖 `docs/specs/mealquest-spec.md` 的全部必需条款（含 In Scope、Out of Scope、治理与发布约束）。
+2. 任一需求若在覆盖矩阵中标记为 `gap`，不得执行指针前移。
+3. `Out of Scope` 需求必须在覆盖矩阵中显式标注为 `guarded-out`，防止误开发。
+
 ---
 
 ## 01. 执行驾驶舱（30秒必读）
@@ -75,38 +81,80 @@
 
 ## 02. 主路线（Master Step Sequence）
 
+> 说明：本表按“开发实现顺序”排序，不按 StepID 数字大小排序。
+
 | StepID | Phase | Outcome（结果定义） | Dependency | Status |
 | --- | --- | --- | --- | --- |
-| S010 | P0 | Welcome 事件/API/审计字段冻结且三端对齐 | 无 | done |
+| S010 | P0 | Acquisition（Welcome 子场景）事件/API/审计字段冻结且三端对齐 | 无 | done |
 | S020 | P0 | 契约回归基线可重复执行且可定位 | S010 done | done |
 | S030 | P0 | 商户入口闭环（登录/开店/会话恢复）可回归 | S020 done | doing |
 | S040 | P0 | 顾客入口闭环（扫码入店/资产首屏）可回归 | S030 done | todo |
-| S110 | P1 | Welcome 触发与资格判定闭环可回归 | S040 done | todo |
-| S120 | P1 | 审批令牌、TTL、Kill Switch 治理闭环 | S110 done | todo |
-| S130 | P1 | 支付-台账-发票-审计一致性闭环 | S120 done | todo |
+| S110 | P1 | Acquisition（Welcome + 候餐小游戏）触发与资格判定闭环可回归 | S040 done | todo |
+| S120 | P1 | Acquisition 执行治理闭环（审批/TTL/Kill Switch） | S110 done | todo |
+| S130 | P1 | Acquisition 发放核销账务一致性闭环 | S120 done | todo |
 | S210 | P2 | 商户经营看板最小可用 | S130 done | todo |
-| S220 | P2 | 商户审批中心与执行回放可用 | S210 done | todo |
-| S230 | P2 | KPI 可观测与 Go/No-Go 判定可执行 | S220 done | todo |
-| S240 | P2 | 老板端 Agent 查询协作基线（账务/发票）可回归 | S230 done | todo |
-| S250 | P2 | 策略提案卡闭环（同意/驳回）可回归 | S240 done | todo |
-| S260 | P2 | 全局最优建议与执行硬门协同可回归 | S250 done | todo |
-| S270 | P2 | 会话三态与关键提醒机制可回归 | S260 done | todo |
-| S310 | P3 | 顾客关键路径与小游戏体验稳定 | S270 done | todo |
-| S410 | P4 | 商用发布、值守、回滚流程可执行 | S310 done | todo |
+| S220 | P2 | 老板端 Agent 查询协作基线（账务/发票）可回归 | S210 done | todo |
+| S230 | P2 | 策略提案卡闭环（同意/驳回）可回归 | S220 done | todo |
+| S240 | P2 | 商户审批中心与执行回放可用 | S230 done | todo |
+| S250 | P2 | 全局最优建议与执行硬门协同可回归 | S240 done | todo |
+| S260 | P2 | 会话三态与关键提醒机制可回归 | S250 done | todo |
+| S310 | P3 | 顾客关键路径与小游戏体验稳定 | S260 done | todo |
+| S320 | P3 | KPI 可观测与 Go/No-Go 判定可执行 | S310 done | todo |
+| S410 | P4 | 商用发布、值守、回滚流程可执行 | S320 done | todo |
 | S420 | P4 | 多租户规模化治理与成本闭环 | S410 done | todo |
+
+### 02.1 Spec 需求覆盖矩阵（完整性基线）
+
+| Spec Clause | Requirement（摘要） | Mapped Items（StepID / Roadmap Section） | Coverage |
+| --- | --- | --- | --- |
+| 0 | 版本治理、首发区域、变更先文档后研发 | `00.1`, `00.4`, `07`, `10` | covered |
+| 1.1 | 北极星目标（商户价值、顾客价值、平台可复制） | S030, S040, S210, S320, S410 | covered |
+| 1.2 | 无请求不决策、无确认不执行、利润优先、先闭环后扩张 | S110, S120, S250 | covered |
+| 2.1 | ICP（单店/小连锁、低 IT 成本、结果导向） | S030, S210, S410 | covered |
+| 2.2-2.3 | 商户/顾客核心场景与平台价值（支付+营销闭环） | S030, S040, S110, S130, S210 | covered |
+| 3.1-3.3 | 商业约束（预算/风险/毛利红线）与单元经济可控 | S120, S320, S250, S420 | covered |
+| 4.1 商户端 | 登录、开店、经营视图、老板端 Agent、紧急停机 | S030, S210, S220, S230, S240, S120 | covered |
+| 4.1 顾客端 | 扫码入店、Acquisition 子域小游戏、资产展示、支付核销、账本发票查询 | S040, S110, S130, S310 | covered |
+| 4.1 服务端 | 认证、支付、发票、隐私、策略治理、审计、多租户隔离 | S030, S040, S120, S130, S240, S420 | covered |
+| 4.1 策略范围 | 首版仅开放 Acquisition 子域（Welcome + 候餐小游戏）闭环商用 | S110, S120, S130 | covered |
+| 4.2 | 点餐/后厨/进销存、除 Acquisition 子域外其余策略族商用、顾客/店长 Agent 不做 | S320（发布门范围审计）, S410（上线清单） | guarded-out |
+| 5.1-5.5 | 三类资产系统与顾客/老板核心形态、体验红线 | S040, S110, S130, S210, S220, S310 | covered |
+| 6.1-6.5 | MVP 闭环与顾客/老板旅程对齐 | S030, S040, S110, S120, S130, S310 | covered |
+| 7.1-7.8 | Agent 核心定位、查询协作、提案协作、治理耦合、提醒与降级 | S220, S230, S240, S250, S260 | covered |
+| 8.1-8.2 | KPI 指标与 Go/No-Go 发布门 | S320, S410 | covered |
+| 9.1-9.3 | 资金安全、隐私合规、发票与审计合规 | S120, S130, S410, S420 | covered |
+| 10 | 风险清单与应对（套利/刷分/通胀/毛利/失控/可用性） | S110, S120, S250, S310, S410, S420 | covered |
+| 11.1-11.3 | 五类策略族扩展框架与扩展硬约束 | S250, S260, S420 | covered |
+| 12 | 执行文档边界（spec/roadmap 职责边界） | `00.1`, `00.5`, `06`, `07` | covered |
+
+- Coverage Summary：
+1. `covered`: 18
+2. `guarded-out`: 1
+3. `gap`: 0
+
+### 02.2 StepID 重排映射（兼容阅读）
+
+| Legacy StepID | Current StepID | Scope |
+| --- | --- | --- |
+| S240 | S220 | 老板端 Agent 查询协作基线 |
+| S250 | S230 | 策略提案卡同意/驳回闭环 |
+| S220 | S240 | 审批中心与执行回放 |
+| S260 | S250 | 全局最优建议与执行硬门 |
+| S270 | S260 | 会话三态与关键提醒机制 |
+| S230 | S320 | KPI 可观测与 Go/No-Go 判定 |
 
 ---
 
 ## 03. Step 任务卡（主Step + 三端任务）
 
-### S010 - 冻结 Welcome 最小契约
+### S010 - 冻结 Acquisition（Welcome 子场景）最小契约
 
-- Objective：冻结 Welcome 最小合同，消除三端字段漂移。
+- Objective：冻结 Acquisition（Welcome 子场景）最小合同，消除三端字段漂移。
 - Dependency：无。
 
 | task_id | lane | task | status | output |
 | --- | --- | --- | --- | --- |
-| S010-SRV-01 | server | 固化 Welcome 事件、API、审计字段清单并绑定路由入口 | done | 合同基线清单 |
+| S010-SRV-01 | server | 固化 Acquisition/Welcome 事件、API、审计字段清单并绑定路由入口 | done | 合同基线清单 |
 | S010-MER-01 | merchant | 核对商户端关键接口字段映射（Agent/看板/审批相关） | done | 字段映射清单 |
 | S010-CUS-01 | customer | 核对小程序关键接口字段映射（state/payment/invoice） | done | 字段映射清单 |
 
@@ -117,7 +165,7 @@
 
 - Done Definition：
 1. 同一字段跨端语义一致。
-2. 至少一条 Welcome 主链路回归通过。
+2. 至少一条 Acquisition（Welcome 子场景）主链路回归通过。
 3. 证据账本 S010 行完整回填。
 
 - Acceptance Commands：
@@ -229,14 +277,14 @@
 
 - Triage Key：`RB-CUSTOMER-040`
 
-### S110 - Welcome 触发与资格判定闭环
+### S110 - Acquisition（Welcome + 候餐小游戏）触发与资格判定闭环
 
-- Objective：打通触发、预算、库存、反套利与小游戏奖励资格判定。
+- Objective：打通 Acquisition 子域触发、预算、库存、反套利与小游戏奖励资格判定。
 - Dependency：S040 done。
 
 | task_id | lane | task | status | output |
 | --- | --- | --- | --- | --- |
-| S110-SRV-01 | server | 完成 Welcome 判定链和小游戏奖励风控（频控/同人/异常分） | todo | 判定闭环可回归 |
+| S110-SRV-01 | server | 完成 Acquisition 判定链和小游戏奖励风控（频控/同人/异常分） | todo | 判定闭环可回归 |
 | S110-MER-01 | merchant | 提供商户可读的命中/拦截结果与原因展示 | todo | 商户可见结果 |
 | S110-CUS-01 | customer | 打通顾客端命中反馈与奖励到账可见性 | todo | 顾客可见结果 |
 
@@ -262,11 +310,11 @@
 2. 奖励异常放量或重复到账。
 3. 商户端与顾客端显示结果冲突。
 
-- Triage Key：`RB-WELCOME-110`, `RB-GAME-110`
+- Triage Key：`RB-ACQ-110`, `RB-GAME-110`
 
-### S120 - Welcome 审批与执行治理闭环
+### S120 - Acquisition 执行治理闭环（审批/TTL/Kill Switch）
 
-- Objective：打通审批令牌、TTL、Kill Switch 的执行治理链。
+- Objective：打通 Acquisition 子域审批令牌、TTL、Kill Switch 的执行治理链。
 - Dependency：S110 done。
 
 | task_id | lane | task | status | output |
@@ -296,11 +344,11 @@
 2. TTL 失效。
 3. 状态不同步。
 
-- Triage Key：`RB-WELCOME-120`
+- Triage Key：`RB-ACQ-120`
 
-### S130 - Welcome 发放核销账务一致性
+### S130 - Acquisition 发放核销账务一致性
 
-- Objective：确保支付、奖励到账、台账、发票、审计一致。
+- Objective：确保 Acquisition 子域支付、奖励到账、台账、发票、审计一致。
 - Dependency：S120 done。
 
 | task_id | lane | task | status | output |
@@ -330,7 +378,7 @@
 2. 奖励到账成功但审计缺失。
 3. 前端账本展示与后端台账不一致。
 
-- Triage Key：`RB-WELCOME-130`
+- Triage Key：`RB-ACQ-130`
 
 ### S210 - 商户经营看板最小可用
 
@@ -365,16 +413,92 @@
 
 - Triage Key：`RB-COCKPIT-210`
 
-### S220 - 审批中心与执行回放
+### S220 - 老板端 Agent 查询协作基线
 
-- Objective：让商户完成 Agent 建议确认、审批执行、历史回放。
+- Objective：打通老板端 Agent 对账务与发票查询的最小闭环，确保查询协作可回归。
 - Dependency：S210 done。
 
 | task_id | lane | task | status | output |
 | --- | --- | --- | --- | --- |
-| S220-SRV-01 | server | 提供审批队列、执行结果、回放查询接口 | todo | 审批回放接口 |
-| S220-MER-01 | merchant | 完成 Agent 建议确认、审批中心与回放页面主流程 | todo | 审批中心页面 |
-| S220-CUS-01 | customer | 顾客端承接审批执行结果的可见状态变化 | todo | 状态一致性 |
+| S220-SRV-01 | server | 固化 Agent 查询能力路由（账单/发票）及权限/租户守卫 | todo | 查询能力基线 |
+| S220-MER-01 | merchant | 完成老板端 Agent 查询模式体验（汇总优先、空结果提示） | todo | 查询体验闭环 |
+| S220-CUS-01 | customer | 验证顾客端不接入 Agent 且现有账票入口兼容 | todo | 兼容验证记录 |
+
+- Deliverables：
+1. 查询能力清单（账单/发票）。
+2. 查询守卫生效证据（角色、门店隔离）。
+3. 老板端查询问答手工冒烟记录。
+
+- Done Definition：
+1. 老板可通过 Agent 查询账单与发票经营事实。
+2. 非老板角色不得访问老板端 Agent 查询能力。
+3. 跨门店越权查询被阻断并可审计。
+
+- Acceptance Commands：
+1. `cd MealQuestServer && npm test`
+2. `cd MealQuestMerchant && npm run lint && npm run typecheck`
+3. `cd meal-quest-customer && npm run typecheck && npm test`
+
+- Failure Signals：
+1. Agent 返回不可验证数据。
+2. 越权查询未被阻断。
+3. 查询能力影响支付/发票主链路。
+
+- Triage Key：`RB-AGENT-220`
+
+- Decision Notes（已确认）：
+1. 首版仅老板端开放 Agent，店长与顾客侧不开放。
+2. 查询数据必须可验证，不做黑盒估算回答。
+3. 查询遵循单店授权边界。
+
+### S230 - 策略提案卡同意/驳回闭环
+
+- Objective：完成“策略意图 -> 提案卡 -> 同意/驳回 -> 回执”闭环，确保老板端可回归。
+- Dependency：S220 done。
+
+| task_id | lane | task | status | output |
+| --- | --- | --- | --- | --- |
+| S230-SRV-01 | server | 提供提案生命周期与同意/驳回决策接口 | todo | 提案生命周期基线 |
+| S230-MER-01 | merchant | 完成提案卡固定五要素展示与同意/驳回交互 | todo | 提案卡闭环 |
+| S230-CUS-01 | customer | 验证提案机制不影响顾客主路径与支付路径 | todo | 兼容验证记录 |
+
+- Deliverables：
+1. 提案卡交互流程记录。
+2. 同意/驳回结果回执记录。
+3. 提案协作不影响主链路证据。
+
+- Done Definition：
+1. 策略意图命中后可生成提案卡。
+2. 老板可在 UI 完成同意或驳回。
+3. 同意后立即生效，驳回后返回普通对话。
+
+- Acceptance Commands：
+1. `cd MealQuestServer && npm test`
+2. `cd MealQuestMerchant && npm run lint && npm run typecheck`
+3. `cd meal-quest-customer && npm run typecheck && npm test`
+
+- Failure Signals：
+1. 提案卡字段缺失或顺序混乱。
+2. 同意/驳回状态错乱或重复执行。
+3. 提案阻塞状态无法恢复。
+
+- Triage Key：`RB-AGENT-230`
+
+- Decision Notes（已确认）：
+1. 单店单会话；同一时刻仅允许 1 个待处理提案。
+2. 提案卡仅提供“同意/驳回”动作，不提供撤销。
+3. 驳回后可追问原因，但仅用于当次会话优化，不做长期留存。
+
+### S240 - 审批中心与执行回放
+
+- Objective：让商户完成 Agent 建议确认、审批执行、历史回放。
+- Dependency：S230 done。
+
+| task_id | lane | task | status | output |
+| --- | --- | --- | --- | --- |
+| S240-SRV-01 | server | 提供审批队列、执行结果、回放查询接口 | todo | 审批回放接口 |
+| S240-MER-01 | merchant | 完成 Agent 建议确认、审批中心与回放页面主流程 | todo | 审批中心页面 |
+| S240-CUS-01 | customer | 顾客端承接审批执行结果的可见状态变化 | todo | 状态一致性 |
 
 - Deliverables：
 1. 审批流程回归证据。
@@ -397,128 +521,18 @@
 2. 回放断链。
 3. Agent 建议与审批执行无法关联。
 
-- Triage Key：`RB-APPROVAL-220`
+- Triage Key：`RB-APPROVAL-240`
 
-### S230 - KPI 可观测与 Go/No-Go 判定
+### S250 - 全局最优建议与执行硬门
 
-- Objective：把商用 KPI、Agent 经营成效与上线门固化为可执行判定流程。
-- Dependency：S220 done。
-
-| task_id | lane | task | status | output |
-| --- | --- | --- | --- | --- |
-| S230-SRV-01 | server | 在 dashboard 与审计域固化 KPI 所需指标与 trace 链路 | todo | KPI 数据基线 |
-| S230-MER-01 | merchant | 看板提供 KPI 达标状态、趋势、告警与 Agent 建议成效可见性 | todo | KPI 运营视图 |
-| S230-CUS-01 | customer | 保证顾客链路埋点可支持 KPI 计算口径 | todo | 埋点兼容记录 |
-
-- Deliverables：
-1. KPI 指标口径说明。
-2. Go/No-Go 判定清单。
-3. 看板与审计对账证据。
-4. 老板端 Agent 闭环验收记录。
-
-- Done Definition：
-1. Spec 8.1 KPI 字段可查询、可解释、可追溯。
-2. Go/No-Go 判定流程可重复执行。
-3. 指标异常可触发告警与定位路径。
-4. 老板可通过 Agent 完成一次策略执行并查看回放解释。
-
-- Acceptance Commands：
-1. `cd MealQuestServer && npm test`
-2. `cd MealQuestMerchant && npm run lint && npm run typecheck`
-3. `cd meal-quest-customer && npm run test:regression:ui`
-
-- Failure Signals：
-1. KPI 指标缺失或口径漂移。
-2. Go/No-Go 无法按证据执行判定。
-
-- Triage Key：`RB-KPI-230`
-
-### S240 - 老板端 Agent 查询协作基线
-
-- Objective：打通老板端 Agent 对账务与发票查询的最小闭环，确保查询协作可回归。
-- Dependency：S230 done。
-
-| task_id | lane | task | status | output |
-| --- | --- | --- | --- | --- |
-| S240-SRV-01 | server | 固化 Agent 查询能力路由（账单/发票）及权限/租户守卫 | todo | 查询能力基线 |
-| S240-MER-01 | merchant | 完成老板端 Agent 查询模式体验（汇总优先、空结果提示） | todo | 查询体验闭环 |
-| S240-CUS-01 | customer | 验证顾客端不接入 Agent 且现有账票入口兼容 | todo | 兼容验证记录 |
-
-- Deliverables：
-1. 查询能力清单（账单/发票）。
-2. 查询守卫生效证据（角色、门店隔离）。
-3. 老板端查询问答手工冒烟记录。
-
-- Done Definition：
-1. 老板可通过 Agent 查询账单与发票经营事实。
-2. 非老板角色不得访问老板端 Agent 查询能力。
-3. 跨门店越权查询被阻断并可审计。
-
-- Acceptance Commands：
-1. `cd MealQuestServer && npm test`
-2. `cd MealQuestMerchant && npm run lint && npm run typecheck`
-3. `cd meal-quest-customer && npm run typecheck && npm test`
-
-- Failure Signals：
-1. Agent 返回不可验证数据。
-2. 越权查询未被阻断。
-3. 查询能力影响支付/发票主链路。
-
-- Triage Key：`RB-AGENT-240`
-
-- Decision Notes（已确认）：
-1. 首版仅老板端开放 Agent，店长与顾客侧不开放。
-2. 查询数据必须可验证，不做黑盒估算回答。
-3. 查询遵循单店授权边界。
-
-### S250 - 策略提案卡同意/驳回闭环
-
-- Objective：完成“策略意图 -> 提案卡 -> 同意/驳回 -> 回执”闭环，确保老板端可回归。
+- Objective：将 Agent 建议排序与策略执行治理解耦，形成“全局最优建议 + 执行硬门”闭环。
 - Dependency：S240 done。
 
 | task_id | lane | task | status | output |
 | --- | --- | --- | --- | --- |
-| S250-SRV-01 | server | 提供提案生命周期与同意/驳回决策接口 | todo | 提案生命周期基线 |
-| S250-MER-01 | merchant | 完成提案卡固定五要素展示与同意/驳回交互 | todo | 提案卡闭环 |
-| S250-CUS-01 | customer | 验证提案机制不影响顾客主路径与支付路径 | todo | 兼容验证记录 |
-
-- Deliverables：
-1. 提案卡交互流程记录。
-2. 同意/驳回结果回执记录。
-3. 提案协作不影响主链路证据。
-
-- Done Definition：
-1. 策略意图命中后可生成提案卡。
-2. 老板可在 UI 完成同意或驳回。
-3. 同意后立即生效，驳回后返回普通对话。
-
-- Acceptance Commands：
-1. `cd MealQuestServer && npm test`
-2. `cd MealQuestMerchant && npm run lint && npm run typecheck`
-3. `cd meal-quest-customer && npm run typecheck && npm test`
-
-- Failure Signals：
-1. 提案卡字段缺失或顺序混乱。
-2. 同意/驳回状态错乱或重复执行。
-3. 提案阻塞状态无法恢复。
-
-- Triage Key：`RB-AGENT-250`
-
-- Decision Notes（已确认）：
-1. 单店单会话；同一时刻仅允许 1 个待处理提案。
-2. 提案卡仅提供“同意/驳回”动作，不提供撤销。
-3. 驳回后可追问原因，但仅用于当次会话优化，不做长期留存。
-
-### S260 - 全局最优建议与执行硬门
-
-- Objective：将 Agent 建议排序与策略执行治理解耦，形成“全局最优建议 + 执行硬门”闭环。
-- Dependency：S250 done。
-
-| task_id | lane | task | status | output |
-| --- | --- | --- | --- | --- |
-| S260-SRV-01 | server | 固化全局最优候选排序、动作风险先验、执行硬门校验 | todo | 推荐与执行治理基线 |
-| S260-MER-01 | merchant | 提案卡展示预算占用、风险等级、预期区间 | todo | 可解释提案展示 |
-| S260-CUS-01 | customer | 验证策略建议增强不影响顾客账务与资产一致性 | todo | 一致性验证记录 |
+| S250-SRV-01 | server | 固化全局最优候选排序、动作风险先验、执行硬门校验 | todo | 推荐与执行治理基线 |
+| S250-MER-01 | merchant | 提案卡展示预算占用、风险等级、预期区间 | todo | 可解释提案展示 |
+| S250-CUS-01 | customer | 验证策略建议增强不影响顾客账务与资产一致性 | todo | 一致性验证记录 |
 
 - Deliverables：
 1. 建议排序规则说明（业务层）。
@@ -541,23 +555,23 @@
 2. 同分候选裁决不稳定。
 3. 风险/预算信息与后端判定不一致。
 
-- Triage Key：`RB-AGENT-260`
+- Triage Key：`RB-AGENT-250`
 
 - Decision Notes（已确认）：
 1. 建议层采用全局最优思想，执行层保留红线硬门。
 2. 动作风险先验默认：wallet 高、voucher 中、fragment 低、story 极低。
 3. 综合分权重采用平台基线 + 模型微调（幅度受控）。
 
-### S270 - 会话三态与关键提醒机制
+### S260 - 会话三态与关键提醒机制
 
 - Objective：完成老板端 Agent 会话三态流转与关键事件提醒机制，保障协作体验可回归。
-- Dependency：S260 done。
+- Dependency：S250 done。
 
 | task_id | lane | task | status | output |
 | --- | --- | --- | --- | --- |
-| S270-SRV-01 | server | 固化会话三态状态流转与关键提醒事件分发 | todo | 会话与提醒基线 |
-| S270-MER-01 | merchant | 完成三态 UI 行为（普通/提案待决/回执）与提醒展示 | todo | 三态体验闭环 |
-| S270-CUS-01 | customer | 验证提醒能力接入不影响顾客链路稳定性 | todo | 兼容验证记录 |
+| S260-SRV-01 | server | 固化会话三态状态流转与关键提醒事件分发 | todo | 会话与提醒基线 |
+| S260-MER-01 | merchant | 完成三态 UI 行为（普通/提案待决/回执）与提醒展示 | todo | 三态体验闭环 |
+| S260-CUS-01 | customer | 验证提醒能力接入不影响顾客链路稳定性 | todo | 兼容验证记录 |
 
 - Deliverables：
 1. 会话三态流转记录。
@@ -579,7 +593,7 @@
 2. 提案待决时出现越权操作入口。
 3. 提醒机制导致主链路可用性下降。
 
-- Triage Key：`RB-AGENT-270`
+- Triage Key：`RB-AGENT-260`
 
 - Decision Notes（已确认）：
 1. 会话采用三态：普通对话、提案待决、决策回执。
@@ -589,7 +603,7 @@
 ### S310 - 顾客关键路径体验强化
 
 - Objective：稳定顾客关键链路并完成小游戏体验闭环。
-- Dependency：S270 done。
+- Dependency：S260 done。
 
 | task_id | lane | task | status | output |
 | --- | --- | --- | --- | --- |
@@ -619,10 +633,44 @@
 
 - Triage Key：`RB-CUSTOMER-310`, `RB-GAME-310`
 
+### S320 - KPI 可观测与 Go/No-Go 判定
+
+- Objective：把商用 KPI、Agent 经营成效与上线门固化为可执行判定流程。
+- Dependency：S310 done。
+
+| task_id | lane | task | status | output |
+| --- | --- | --- | --- | --- |
+| S320-SRV-01 | server | 在 dashboard 与审计域固化 KPI 所需指标与 trace 链路 | todo | KPI 数据基线 |
+| S320-MER-01 | merchant | 看板提供 KPI 达标状态、趋势、告警与 Agent 建议成效可见性 | todo | KPI 运营视图 |
+| S320-CUS-01 | customer | 保证顾客链路埋点可支持 KPI 计算口径 | todo | 埋点兼容记录 |
+
+- Deliverables：
+1. KPI 指标口径说明。
+2. Go/No-Go 判定清单。
+3. 看板与审计对账证据。
+4. 老板端 Agent 闭环验收记录。
+
+- Done Definition：
+1. Spec 8.1 KPI 字段可查询、可解释、可追溯。
+2. Go/No-Go 判定流程可重复执行。
+3. 指标异常可触发告警与定位路径。
+4. 老板可通过 Agent 完成一次策略执行并查看回放解释。
+
+- Acceptance Commands：
+1. `cd MealQuestServer && npm test`
+2. `cd MealQuestMerchant && npm run lint && npm run typecheck`
+3. `cd meal-quest-customer && npm run test:regression:ui`
+
+- Failure Signals：
+1. KPI 指标缺失或口径漂移。
+2. Go/No-Go 无法按证据执行判定。
+
+- Triage Key：`RB-KPI-320`
+
 ### S410 - 商用发布门与值守门落地
 
 - Objective：发布、值守、回滚机制可执行。
-- Dependency：S310 done。
+- Dependency：S320 done。
 
 | task_id | lane | task | status | output |
 | --- | --- | --- | --- | --- |
@@ -703,8 +751,8 @@
 | S240 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S250 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S260 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
-| S270 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S310 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
+| S320 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S410 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S420 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 
@@ -718,16 +766,16 @@
 | RB-CONTRACT-002 | 契约回归不稳定 | `npm run test:contract:baseline` | server + merchant + customer |
 | RB-MERCHANT-030 | 商户登录/开店链路中断 | `cd MealQuestMerchant && npm run lint && npm run typecheck` | merchant + server |
 | RB-CUSTOMER-040 | 扫码入店/会话建立失败 | `cd meal-quest-customer && npm run test:e2e:core` | customer + server |
-| RB-WELCOME-110 | Welcome 误发放/误拦截 | `cd MealQuestServer && node --test test/policyOs.constraints.test.ts` | server |
-| RB-WELCOME-120 | 审批或 TTL 治理异常 | `cd MealQuestServer && node --test test/policyOs.http.integration.test.ts` | server + merchant |
-| RB-WELCOME-130 | 支付到账务链路不一致 | `cd MealQuestServer && node --test test/policyOs.ledger.test.ts` | server |
+| RB-ACQ-110 | Acquisition 子域误发放/误拦截 | `cd MealQuestServer && node --test test/policyOs.constraints.test.ts` | server |
+| RB-ACQ-120 | Acquisition 子域审批或 TTL 治理异常 | `cd MealQuestServer && node --test test/policyOs.http.integration.test.ts` | server + merchant |
+| RB-ACQ-130 | Acquisition 子域支付到账务链路不一致 | `cd MealQuestServer && node --test test/policyOs.ledger.test.ts` | server |
 | RB-COCKPIT-210 | 看板字段缺失/口径冲突 | `cd MealQuestMerchant && npm run typecheck` | merchant + server |
-| RB-APPROVAL-220 | 审批中心状态错乱 | `cd MealQuestServer && node --test test/policyOs.http.integration.test.ts` | merchant + server |
-| RB-KPI-230 | KPI 口径漂移/发布门无法判定 | `cd MealQuestServer && npm test` | merchant + server + customer |
-| RB-AGENT-240 | Agent 查询越权或数据口径异常 | `cd MealQuestServer && npm test` | server + merchant |
-| RB-AGENT-250 | 提案卡状态错乱或同意/驳回异常 | `cd MealQuestMerchant && npm run typecheck` | merchant + server |
-| RB-AGENT-260 | 全局最优建议或红线执行门异常 | `cd MealQuestServer && node --test test/policyOs.constraints.test.ts` | server |
-| RB-AGENT-270 | 会话三态或关键提醒机制异常 | `cd MealQuestMerchant && npm run lint && npm run typecheck` | merchant + server |
+| RB-AGENT-220 | Agent 查询越权或数据口径异常 | `cd MealQuestServer && npm test` | server + merchant |
+| RB-AGENT-230 | 提案卡状态错乱或同意/驳回异常 | `cd MealQuestMerchant && npm run typecheck` | merchant + server |
+| RB-APPROVAL-240 | 审批中心状态错乱 | `cd MealQuestServer && node --test test/policyOs.http.integration.test.ts` | merchant + server |
+| RB-AGENT-250 | 全局最优建议或红线执行门异常 | `cd MealQuestServer && node --test test/policyOs.constraints.test.ts` | server |
+| RB-AGENT-260 | 会话三态或关键提醒机制异常 | `cd MealQuestMerchant && npm run lint && npm run typecheck` | merchant + server |
+| RB-KPI-320 | KPI 口径漂移/发布门无法判定 | `cd MealQuestServer && npm test` | merchant + server + customer |
 | RB-CUSTOMER-310 | 顾客关键路径中断 | `cd meal-quest-customer && npm test` | customer |
 | RB-GAME-110 | 奖励异常放量/重复到账 | `cd MealQuestServer && node --test test/http.integration.test.ts` | server |
 | RB-GAME-310 | 小游戏开局/结算/回写异常 | `cd meal-quest-customer && npm run test:regression:ui` | customer + server |
@@ -807,7 +855,12 @@
 3. 2026-03-03：补齐环境矩阵与执行级接口索引。
 4. 2026-03-04：补齐三类资产与小游戏链路定义。
 5. 2026-03-04：重构为“方向版 roadmap”，采用主 Step + 三端任务卡。
-6. 2026-03-04：升级为“执行版 roadmap”，新增 S030/S040/S230 与角色验收附录。
-7. 2026-03-04：新增 S240-S270（Agent-策略耦合任务链）并回填关键 Decision Notes。
+6. 2026-03-04：升级为“执行版 roadmap”，新增 S030/S040/S320 与角色验收附录。
+7. 2026-03-04：新增 S220-S260（Agent-策略耦合任务链）并回填关键 Decision Notes。
 8. 2026-03-04：完成 S010（三端任务 + 证据账本）并将执行指针前移至 S020。
 9. 2026-03-04：完成 S020（三端契约回归基线命令 + 失败定位索引 + 证据账本）并将执行指针前移至 S030。
+10. 2026-03-04：按开发实现顺序重排主路线（S210→S220→S230→S240→S250→S260→S310→S320→S410），并同步对应 Step 依赖关系。
+11. 2026-03-04：新增“Spec 需求覆盖矩阵”与完整性硬规则（有 `gap` 不得前移指针）。
+12. 2026-03-04：完成 P2/P3 StepID 重排并同步任务卡、Runbook、证据账本顺序，新增 Legacy->Current 映射表。
+13. 2026-03-04：明确 Welcome 与候餐小游戏归属五类策略族中的 Acquisition 子域，并同步 spec/roadmap 命名与排障键。
+14. 2026-03-04：扩展 Spec 覆盖矩阵为全条款覆盖（含 0/1.1/2.1/12），并回填覆盖统计（gap=0）。
