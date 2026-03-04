@@ -51,23 +51,23 @@
 | Field | Value |
 | --- | --- |
 | Last Updated | 2026-03-04 |
-| Current StepID | S030 |
+| Current StepID | S020 |
 | Current Status | doing |
-| Next StepID | S040 |
+| Next StepID | S030 |
 | Owner | AI/Agent |
 | Blockers | 无 |
 
 ### 01.2 本周目标（最多3条）
 
-1. 完成 S020：契约回归基线命令与失败定位索引固化（已完成）。
-2. 完成 S020 证据回填：测试证据、运行证据、审阅引用（已完成）。
-3. 启动 S030：商户入口闭环（登录/开店/会话恢复）主链路回归。
+1. 清零 S020 商户端契约基线 lint warning（已完成）。
+2. 复验 S020 三端契约回归基线稳定性（已完成）。
+3. 完成 S020 收口后切换至 S030（待执行）。
 
 ### 01.3 当前任务清单（执行优先级）
 
-1. 完成 `S030-SRV-01`：固化商户认证与开店接口合同（登录/开店/门店信息）。
-2. 完成 `S030-MER-01`：打通 login -> quick-onboard -> agent 首页与会话恢复链路。
-3. 完成 `S030-CUS-01`：验证商户入口链路变更不影响顾客主路径。
+1. 复验 `S020-SRV-01`：后端契约回归命令与失败定位映射稳定。
+2. 复验 `S020-MER-01`：商户端 lint/typecheck 契约回归入口无 warning。
+3. 复验 `S020-CUS-01`：小程序契约回归入口稳定。
 
 ### 01.4 必过命令（推进前）
 
@@ -87,8 +87,8 @@
 | StepID | Phase | Outcome（结果定义） | Dependency | Status |
 | --- | --- | --- | --- | --- |
 | S010 | P0 | Acquisition（Welcome 子场景）事件/API/审计字段冻结且三端对齐 | 无 | done |
-| S020 | P0 | 契约回归基线可重复执行且可定位 | S010 done | done |
-| S030 | P0 | 商户入口闭环（登录/开店/会话恢复）可回归 | S020 done | doing |
+| S020 | P0 | 契约回归基线可重复执行且可定位 | S010 done | doing |
+| S030 | P0 | 商户入口闭环（登录/开店/会话恢复）可回归 | S020 done | todo |
 | S040 | P0 | 顾客入口闭环（扫码入店/资产首屏）可回归 | S030 done | todo |
 | S110 | P1 | Acquisition（Welcome + 候餐小游戏）触发与资格判定闭环可回归 | S040 done | todo |
 | S120 | P1 | Acquisition 执行治理闭环（审批/TTL/Kill Switch） | S110 done | todo |
@@ -729,7 +729,7 @@
 | StepID | Test Ref | Runtime Ref | Review Ref | Result | Verified By | Verified At |
 | --- | --- | --- | --- | --- | --- | --- |
 | S010 | `npm run verify`; `cd MealQuestServer && npm test`; `cd MealQuestMerchant && npm run lint && npm run typecheck`; `cd meal-quest-customer && npm run typecheck && npm test` | `docs/qa/s010-welcome-contract-baseline.md` | `MealQuestServer/test/http.integration.test.ts`（Welcome 主链路）；`meal-quest-customer/test/services/api-data-service.test.ts`（state 映射） | pass | AI/Agent | 2026-03-04 |
-| S020 | `npm run test:contract:baseline`; `cd MealQuestServer && npm run test:contract:baseline`; `cd MealQuestMerchant && npm run test:contract:baseline`; `cd meal-quest-customer && npm run test:contract:baseline` | `docs/qa/s020-contract-regression-baseline.md` | 工作区文档回填（未提交） | pass | AI/Agent | 2026-03-04 |
+| S020 | `npm run test:contract:baseline`; `cd MealQuestServer && npm run test:contract:baseline`; `cd MealQuestMerchant && npm run test:contract:baseline`; `cd meal-quest-customer && npm run test:contract:baseline` | `docs/qa/s020-contract-regression-baseline.md` | `MealQuestMerchant/src/context/MerchantContext.tsx`（lint warning 修复） | pass | AI/Agent | 2026-03-04 |
 | S030 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S040 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S110 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |

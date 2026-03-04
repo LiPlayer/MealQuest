@@ -113,9 +113,9 @@ function extractTokenFromMessagesPayload(payload: unknown): string {
   return '';
 }
 
-function parseSseEvents(raw: string): Array<{ event: string; data: unknown }> {
+function parseSseEvents(raw: string): { event: string; data: unknown }[] {
   const blocks = raw.split(/\n\n+/g).filter(Boolean);
-  const events: Array<{ event: string; data: unknown }> = [];
+  const events: { event: string; data: unknown }[] = [];
 
   for (const block of blocks) {
     const lines = block.split('\n');
