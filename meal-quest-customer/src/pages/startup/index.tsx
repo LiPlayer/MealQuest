@@ -1,306 +1,125 @@
-import { useState, useEffect, useCallback } from 'react';
-import { View, Text } from '@tarojs/components';
+import { useCallback, useEffect, useState } from 'react';
+import { Text, View } from '@tarojs/components';
 import Taro, { useRouter } from '@tarojs/taro';
-import { storage } from '../../utils/storage';
-import { ApiDataService } from '../../services/ApiDataService';
+
+import { ApiDataService } from '@/services/ApiDataService';
+import { resolveStartupIntent, StartupIntent, toIndexUrl } from '@/services/customerApp/entryService';
+import { storage } from '@/utils/storage';
+
 import './index.scss';
 
-interface StartupIntent {
-    storeId: string;
-    autoPay: boolean;
-    orderAmount: number | null;
+function getEntryCandidate(options: Record<string, unknown>): string {
+  const raw = options.id || options.storeId || options.merchantId || options.scene || '';
+  return String(raw || '');
 }
 
-function decodeSafe(raw: string) {
+export default function StartupPage() {
+  const router = useRouter();
+  const [readyForScan, setReadyForScan] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const enterStore = useCallback(async (intent: StartupIntent): Promise<boolean> => {
+    const merchantId = String(intent.merchantId || '').trim();
+    if (!merchantId) {
+      return false;
+    }
+    if (!ApiDataService.isConfigured()) {
+      setErrorMessage('Service not configured');
+      Taro.showToast({ title: 'Service not configured', icon: 'none' });
+      return false;
+    }
+
+    const exists = await ApiDataService.isMerchantAvailable(merchantId);
+    if (!exists) {
+      setErrorMessage('Store not found');
+      Taro.showToast({ title: 'Store not found', icon: 'none' });
+      return false;
+    }
+
+    storage.setLastStoreId(merchantId);
     try {
-        return decodeURIComponent(raw);
-    } catch {
-        return raw;
+      // Warm up customer session + home snapshot so index page opens with stable data.
+      await ApiDataService.getHomeSnapshot(merchantId);
+    } catch (error) {
+      console.warn('[Startup] prefetch home snapshot failed', error);
     }
-}
+    Taro.reLaunch({ url: toIndexUrl(intent) });
+    return true;
+  }, []);
 
-function isValidMerchantId(value: string) {
-    return /^[a-zA-Z0-9_-]{2,64}$/.test(value);
-}
+  useEffect(() => {
+    let active = true;
 
-function parseOrderAmount(raw: string) {
-    const parsed = Number(raw);
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-        return null;
-    }
-    return Math.round(parsed * 100) / 100;
-}
-
-function isPayFlag(raw: string) {
-    const normalized = String(raw || '').trim().toLowerCase();
-    if (!normalized) {
-        return false;
-    }
-    return ['1', 'true', 'yes', 'on', 'pay', 'payment'].includes(normalized);
-}
-
-function applyRawIntent(intent: StartupIntent, rawInput: string) {
-    const raw = String(rawInput || '').trim();
-    if (!raw) {
-        return;
-    }
-    const decoded = decodeSafe(raw);
-
-    if (!intent.storeId && isValidMerchantId(decoded)) {
-        intent.storeId = decoded;
-        return;
-    }
-
-    const applyKeyValue = (keyInput: string, valueInput: string) => {
-        const key = String(keyInput || '').trim().toLowerCase();
-        const value = decodeSafe(String(valueInput || '').trim());
-        if (!key) {
-            return;
-        }
-
-        if (key === 'id' || key === 'storeid' || key === 'merchantid') {
-            if (!intent.storeId && isValidMerchantId(value)) {
-                intent.storeId = value;
-            }
-            return;
-        }
-
-        if (key === 'scene') {
-            applyRawIntent(intent, value);
-            return;
-        }
-
-        if (key === 'pay' || key === 'autopay' || key === 'openpay') {
-            if (isPayFlag(value)) {
-                intent.autoPay = true;
-            }
-            return;
-        }
-
-        if (key === 'action' || key === 'page') {
-            if (String(value || '').toLowerCase().includes('pay')) {
-                intent.autoPay = true;
-            }
-            return;
-        }
-
-        if (key === 'amount' || key === 'orderamount' || key === 'payamount') {
-            const amount = parseOrderAmount(value);
-            if (amount !== null) {
-                intent.orderAmount = amount;
-            }
-        }
-    };
-
-    try {
-        const parsed = new URL(decoded);
-        parsed.searchParams.forEach((value, key) => applyKeyValue(key, value));
-        const tailSegment = decodeSafe(parsed.pathname.split('/').filter(Boolean).pop() || '');
-        if (!intent.storeId && isValidMerchantId(tailSegment)) {
-            intent.storeId = tailSegment;
+    const bootstrap = async () => {
+      const options = (router.params || {}) as Record<string, unknown>;
+      const entryInput = getEntryCandidate(options);
+      if (entryInput) {
+        const entered = await enterStore(resolveStartupIntent(entryInput, options));
+        if (!entered && active) {
+          setReadyForScan(true);
         }
         return;
-    } catch {
-        // Not an absolute URL, continue parsing as query-like text.
-    }
+      }
 
-    if (decoded.includes('?') || decoded.includes('=') || decoded.includes('&')) {
-        const queryPart = decoded.includes('?') ? decoded.split('?').slice(1).join('?') : decoded;
-        const params = new URLSearchParams(queryPart);
-        params.forEach((value, key) => applyKeyValue(key, value));
-    }
-
-    const tailSegment = decoded.match(/\/([a-zA-Z0-9_-]{2,64})$/);
-    if (!intent.storeId && tailSegment && tailSegment[1]) {
-        intent.storeId = tailSegment[1];
-    }
-}
-
-function resolveStartupIntent(input: string, options: Record<string, any> = {}): StartupIntent {
-    const intent: StartupIntent = {
-        storeId: '',
-        autoPay: false,
-        orderAmount: null
+      const lastStore = storage.getLastStoreId();
+      if (lastStore) {
+        const entered = await enterStore(resolveStartupIntent(lastStore));
+        if (entered) {
+          return;
+        }
+        storage.removeLastStoreId();
+      }
+      if (active) {
+        setReadyForScan(true);
+      }
     };
 
-    applyRawIntent(intent, input);
+    bootstrap().catch((error) => {
+      console.warn('[Startup] bootstrap failed', error);
+      if (active) {
+        setReadyForScan(true);
+      }
+    });
 
-    const candidateKeys = [
-        'id',
-        'storeId',
-        'merchantId',
-        'scene',
-        'action',
-        'page',
-        'pay',
-        'autoPay',
-        'openPay',
-        'amount',
-        'orderAmount',
-        'payAmount'
-    ];
-    for (const key of candidateKeys) {
-        const value = options[key];
-        if (value !== undefined && value !== null && value !== '') {
-            applyRawIntent(intent, `${key}=${String(value)}`);
-        }
-    }
-
-    return intent;
-}
-
-export default function Startup() {
-    const [isNewUser, setIsNewUser] = useState(false);
-
-    const validateMerchantId = useCallback(async (storeId: string) => {
-        if (!storeId) {
-            return false;
-        }
-        if (!ApiDataService.isConfigured()) {
-            Taro.showToast({ title: 'Service not configured', icon: 'none' });
-            return false;
-        }
-        try {
-            const ok = await ApiDataService.isMerchantAvailable(storeId);
-            if (!ok) {
-                Taro.showToast({ title: 'Store not found', icon: 'none' });
-            }
-            return ok;
-        } catch (error) {
-            console.warn('[Startup] merchant validation failed', error);
-            Taro.showToast({ title: 'Store validation failed', icon: 'none' });
-            return false;
-        }
-    }, []);
-
-    const redirectToHome = useCallback((intent?: { autoPay?: boolean; orderAmount?: number | null }) => {
-        let targetUrl = '/pages/index/index';
-        const query: string[] = [];
-
-        if (intent && intent.autoPay) {
-            query.push('autoPay=1');
-            if (intent.orderAmount !== null && intent.orderAmount !== undefined) {
-                query.push(`orderAmount=${encodeURIComponent(String(intent.orderAmount))}`);
-            }
-        }
-
-        if (query.length > 0) {
-            targetUrl += `?${query.join('&')}`;
-        }
-
-        Taro.nextTick(() => {
-            Taro.reLaunch({
-                url: targetUrl
-            });
-        });
-    }, []);
-
-    const enterStoreIfValid = useCallback(async (intent: StartupIntent) => {
-        if (!intent.storeId) {
-            return false;
-        }
-        const ok = await validateMerchantId(intent.storeId);
-        if (!ok) {
-            return false;
-        }
-        storage.setLastStoreId(intent.storeId);
-        redirectToHome(intent);
-        return true;
-    }, [redirectToHome, validateMerchantId]);
-
-    const router = useRouter();
-
-    useEffect(() => {
-        let active = true;
-
-        const handleStartup = async () => {
-            const options = (router.params || {}) as Record<string, any>;
-            const entryCandidate =
-                options.id ||
-                options.storeId ||
-                options.merchantId ||
-                options.scene ||
-                '';
-
-            if (entryCandidate) {
-                const intent = resolveStartupIntent(String(entryCandidate || ''), options);
-                const entered = await enterStoreIfValid(intent);
-                if (!entered && active) {
-                    setIsNewUser(true);
-                }
-                return;
-            }
-
-            const lastId = storage.getLastStoreId();
-            if (lastId) {
-                const entered = await enterStoreIfValid(resolveStartupIntent(String(lastId || '')));
-                if (entered) {
-                    return;
-                }
-                storage.removeLastStoreId();
-            }
-
-            if (active) {
-                setIsNewUser(true);
-            }
-        };
-
-        handleStartup().catch((error) => {
-            console.warn('[Startup] handleStartup failed', error);
-            if (active) {
-                setIsNewUser(true);
-            }
-        });
-
-        return () => {
-            active = false;
-        };
-    }, [enterStoreIfValid, router.params]);
-
-    const handleScanQR = () => {
-        Taro.scanCode({
-            success: async (res) => {
-                const intent = resolveStartupIntent(String(res.result || ''));
-                const entered = await enterStoreIfValid(intent);
-                if (entered) {
-                    return;
-                }
-                Taro.showToast({ title: '二维码无效，请重试', icon: 'none' });
-            }
-        });
+    return () => {
+      active = false;
     };
+  }, [enterStore, router.params]);
 
-    if (!isNewUser) {
-        return (
-            <View className='startup-loading'>
-                <View className='loading-spinner' />
-                <Text className='loading-text'>正在进入商户专属空间...</Text>
-            </View>
-        );
-    }
+  const handleScan = useCallback(() => {
+    Taro.scanCode({
+      success: async (result) => {
+        const intent = resolveStartupIntent(String(result.result || ''));
+        const entered = await enterStore(intent);
+        if (!entered) {
+          Taro.showToast({ title: '二维码无效，请重试', icon: 'none' });
+        }
+      },
+      fail: () => {
+        Taro.showToast({ title: '扫码失败，请重试', icon: 'none' });
+      },
+    });
+  }, [enterStore]);
 
+  if (!readyForScan) {
     return (
-        <View className='startup-container'>
-            <View className='startup-content'>
-                <View className='logo-placeholder'>
-                    <View className='logo-inner' />
-                </View>
-                <Text className='startup-title'>欢迎使用</Text>
-                <Text className='startup-description'>
-                    请扫描桌角或商家二维码，解锁专属美味
-                </Text>
-                <View
-                    id='startup-scan-button'
-                    className='scan-button transition-transform'
-                    onClick={handleScanQR}
-                >
-                    <Text className='scan-button-text'>扫一扫</Text>
-                </View>
-            </View>
-
-            <View className='startup-footer'>
-                <Text className='footer-text'>MealQuest 私域专属技术支持</Text>
-            </View>
-        </View>
+      <View className='startup-loading'>
+        <View className='startup-loading__spinner' />
+        <Text className='startup-loading__text'>正在进入门店...</Text>
+      </View>
     );
+  }
+
+  return (
+    <View className='startup-page'>
+      <View className='startup-panel'>
+        <Text className='startup-panel__title'>Welcome to MealQuest</Text>
+        <Text className='startup-panel__desc'>请扫码入店，领取你的专属资产与活动。</Text>
+        <View id='startup-scan-button' className='startup-panel__button' onClick={handleScan}>
+          <Text className='startup-panel__button-text'>扫一扫入店</Text>
+        </View>
+        {errorMessage ? <Text className='startup-panel__error'>{errorMessage}</Text> : null}
+      </View>
+    </View>
+  );
 }

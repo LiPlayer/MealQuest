@@ -1,6 +1,3 @@
 export default definePageConfig({
-    navigationStyle: 'custom',
-    usingComponents: {
-        'wxs-scroll-view': '../../components/native/WxsScrollView/index'
-    }
-})
+  navigationBarTitleText: '门店首页',
+});

@@ -212,7 +212,7 @@
 | --- | --- | --- | --- | --- |
 | S040-SRV-01 | server | 固化顾客登录与入店能力合同（扫码入店/会话建立/资产状态） | todo | 顾客入口接口基线 |
 | S040-MER-01 | merchant | 承接顾客入店状态变化的只读可见性校验 | todo | 兼容验证记录 |
-| S040-CUS-01 | customer | 完成 startup 扫码入店、会话建立与首页资产展示闭环 | todo | 顾客入口闭环 |
+| S040-CUS-01 | customer | 完成 startup 扫码入店、会话建立与首页资产展示闭环 | done | `meal-quest-customer/src/pages/startup/index.tsx`; `meal-quest-customer/src/pages/index/index.tsx`; `meal-quest-customer/src/pages/account/index.tsx` |
 
 - Deliverables：
 1. 扫码入店链路回归记录。
@@ -236,6 +236,10 @@
 3. 首发平台流程通过但兼容平台崩溃。
 
 - Triage Key：`RB-CUSTOMER-040`
+
+- Decision Notes（已确认）：
+1. `S040-CUS-01` 允许在 `S030` 总体验收完成前先行落地代码与测试，Step 收口仍以三端任务全部完成为准。
+2. 顾客端首版仅以小程序实现，不引入非小程序技术路线。
 
 ### S110 - Acquisition（Welcome + 候餐小游戏）触发与资格判定闭环
 
@@ -701,7 +705,7 @@
 | S010 | `npm run verify`; `cd MealQuestServer && npm test`; `cd MealQuestMerchant && npm run lint && npm run typecheck`; `cd meal-quest-customer && npm run typecheck && npm test` | `docs/qa/s010-welcome-contract-baseline.md` | `MealQuestServer/test/http.integration.test.ts`（Welcome 主链路）；`meal-quest-customer/test/services/api-data-service.test.ts`（state 映射） | pass | AI/Agent | 2026-03-04 |
 | S020 | `npm run test:contract:baseline`; `cd MealQuestServer && npm run test:contract:baseline`; `cd MealQuestMerchant && npm run test:contract:baseline`; `cd meal-quest-customer && npm run test:contract:baseline` | `docs/qa/s020-contract-regression-baseline.md` | `MealQuestMerchant/src/context/MerchantContext.tsx`（lint warning 修复） | pass | AI/Agent | 2026-03-04 |
 | S030 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
-| S040 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
+| S040 | `cd meal-quest-customer && npm run typecheck`; `cd meal-quest-customer && npm run lint`; `cd meal-quest-customer && npm test -- --runInBand`; `cd meal-quest-customer && npm run test:contract:baseline`; `cd meal-quest-customer && npm run test:e2e:core`（环境未启用自动拉起，套件 skip） | `docs/qa/s040-customer-entry-closure.md` | `meal-quest-customer/src/pages/startup/index.tsx`; `meal-quest-customer/src/pages/index/index.tsx`; `meal-quest-customer/src/pages/account/index.tsx`; `meal-quest-customer/test/pages/startup.test.tsx`; `meal-quest-customer/test/pages/account.test.tsx` | partial | AI/Agent | 2026-03-04 |
 | S110 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S120 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S130 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |

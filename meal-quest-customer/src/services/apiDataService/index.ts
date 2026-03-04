@@ -1,153 +1,46 @@
 import { CheckoutQuote } from '@/domain/smartCheckout';
-import { storage } from '@/utils/storage';
+import { HomeSnapshot, InvoiceItem, PaymentLedgerItem } from '@/services/dataTypes';
+import { getServerBaseUrl } from '@/services/apiDataService/env';
 
-import { HomeSnapshot, InvoiceItem, PaymentLedgerItem } from '../dataTypes';
-import { getEnv, getServerBaseUrl } from './env';
-import { requestJson } from './http';
-import { toHomeSnapshot } from './mappers';
-import { ensureCustomerSession } from './session';
-
-const getHomeSnapshot = async (storeId: string, userId = ''): Promise<HomeSnapshot> => {
-  const targetStoreId = storeId || getEnv('TARO_APP_DEFAULT_STORE_ID');
-  const targetStoreIdStr = String(targetStoreId || '').trim();
-  if (!targetStoreIdStr) {
-    throw new Error('storeId is required');
-  }
-  const session = await ensureCustomerSession(targetStoreIdStr, userId);
-  const stateData = await requestJson({
-    method: 'GET',
-    path: `/api/state?merchantId=${encodeURIComponent(targetStoreIdStr)}&userId=${encodeURIComponent(session.userId)}`,
-    token: session.token,
-  });
-  const snapshot = toHomeSnapshot(stateData);
-  storage.setCachedHomeSnapshot(targetStoreIdStr, session.userId, snapshot);
-  return snapshot;
-};
-
-const toStatePayload = (payload: any) => {
-  if (payload && typeof payload === 'object' && payload.state && typeof payload.state === 'object') {
-    return payload.state;
-  }
-  return payload;
-};
+import { cancelAccount, getInvoices, getPaymentLedger } from '@/services/customerApp/billingService';
+import { executeCheckout, getCheckoutQuote } from '@/services/customerApp/checkoutService';
+import { getHomeSnapshot, isMerchantAvailable } from '@/services/customerApp/stateService';
 
 export const ApiDataService = {
   isConfigured: () => Boolean(getServerBaseUrl()),
 
   isMerchantAvailable: async (merchantId: string): Promise<boolean> => {
-    const target = String(merchantId || '').trim();
-    if (!target) {
-      return false;
-    }
-    const existsResult = await requestJson({
-      method: 'GET',
-      path: `/api/merchant/exists?merchantId=${encodeURIComponent(target)}`,
-    });
-    return Boolean((existsResult as any)?.exists);
+    return isMerchantAvailable(merchantId);
   },
 
-  getHomeSnapshot,
+  getHomeSnapshot: async (storeId: string, _userId = ''): Promise<HomeSnapshot> => {
+    return getHomeSnapshot(storeId);
+  },
 
-  getCheckoutQuote: async (storeId: string, orderAmount: number, userId = ''): Promise<CheckoutQuote> => {
-    const session = await ensureCustomerSession(storeId, userId);
-    return requestJson({
-      method: 'POST',
-      path: '/api/payment/quote',
-      token: session.token,
-      data: {
-        merchantId: storeId,
-        userId: session.userId,
-        orderAmount,
-      },
-    });
+  getCheckoutQuote: async (storeId: string, orderAmount: number, _userId = ''): Promise<CheckoutQuote> => {
+    return getCheckoutQuote(storeId, orderAmount);
   },
 
   executeCheckout: async (
     storeId: string,
     orderAmount: number,
-    userId = '',
+    _userId = '',
   ): Promise<{ paymentId: string; quote: CheckoutQuote; snapshot: HomeSnapshot }> => {
-    const session = await ensureCustomerSession(storeId, userId);
-    const quote = await requestJson({
-      method: 'POST',
-      path: '/api/payment/verify',
-      token: session.token,
-      data: {
-        merchantId: storeId,
-        userId: session.userId,
-        orderAmount,
-        includeState: true,
-        idempotencyKey: `mini_${Date.now()}`,
-      },
-    });
-
-    const nextState = toStatePayload(quote);
-    const snapshot = nextState && nextState.merchant && nextState.user
-      ? toHomeSnapshot(nextState)
-      : await getHomeSnapshot(storeId, session.userId);
-    storage.setCachedHomeSnapshot(storeId, session.userId, snapshot);
-    return {
-      paymentId: quote.paymentTxnId,
-      quote: quote.quote,
-      snapshot,
-    };
+    return executeCheckout(storeId, orderAmount);
   },
 
-  getPaymentLedger: async (
-    storeId: string,
-    userId = '',
-    limit = 20,
-  ): Promise<PaymentLedgerItem[]> => {
-    const session = await ensureCustomerSession(storeId, userId);
-    const result = await requestJson({
-      method: 'GET',
-      path: `/api/payment/ledger?merchantId=${encodeURIComponent(storeId)}&userId=${encodeURIComponent(session.userId)}&limit=${encodeURIComponent(String(limit))}`,
-      token: session.token,
-    });
-    const items = Array.isArray(result.items) ? result.items : [];
-    return items.map((item: any) => ({
-      txnId: String(item.txnId || ''),
-      merchantId: String(item.merchantId || storeId),
-      userId: String(item.userId || session.userId),
-      type: item.type || 'PAYMENT',
-      amount: Number(item.amount || 0),
-      timestamp: item.timestamp || new Date().toISOString(),
-      paymentTxnId: item.details?.paymentTxnId || item.paymentTxnId,
-    }));
+  getPaymentLedger: async (storeId: string, _userId = '', limit = 20): Promise<PaymentLedgerItem[]> => {
+    return getPaymentLedger(storeId, limit);
   },
 
-  getInvoices: async (storeId: string, userId = '', limit = 20): Promise<InvoiceItem[]> => {
-    const session = await ensureCustomerSession(storeId, userId);
-    const result = await requestJson({
-      method: 'GET',
-      path: `/api/invoice/list?merchantId=${encodeURIComponent(storeId)}&userId=${encodeURIComponent(session.userId)}&limit=${encodeURIComponent(String(limit))}`,
-      token: session.token,
-    });
-    const items = Array.isArray(result.items) ? result.items : [];
-    return items.map((item: any) => ({
-      invoiceNo: String(item.invoiceNo || ''),
-      merchantId: String(item.merchantId || storeId),
-      userId: String(item.userId || session.userId),
-      paymentTxnId: String(item.paymentTxnId || ''),
-      amount: Number(item.amount || 0),
-      status: String(item.status || 'ISSUED'),
-      issuedAt: item.issuedAt || new Date().toISOString(),
-      title: String(item.title || 'MealQuest Invoice'),
-    }));
+  getInvoices: async (storeId: string, _userId = '', limit = 20): Promise<InvoiceItem[]> => {
+    return getInvoices(storeId, limit);
   },
 
   cancelAccount: async (
     storeId: string,
-    userId = '',
+    _userId = '',
   ): Promise<{ deleted: boolean; deletedAt: string; anonymizedUserId: string }> => {
-    const session = await ensureCustomerSession(storeId, userId);
-    return requestJson({
-      method: 'POST',
-      path: '/api/privacy/cancel-account',
-      token: session.token,
-      data: {
-        merchantId: storeId,
-      },
-    });
+    return cancelAccount(storeId);
   },
 };

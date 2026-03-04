@@ -1,6 +1,6 @@
 .account-page {
     min-height: 100vh;
-    padding: 28rpx;
+    padding: 28rpx 28rpx 34rpx;
     background: linear-gradient(180deg, #fdf4d4 0%, #f8fafc 36%, #f8fafc 100%);
     overflow-y: auto;
 }
@@ -53,6 +53,21 @@
     margin-bottom: 20rpx;
 }
 
+.account-loading,
+.account-error {
+    display: block;
+    margin: 4rpx 2rpx 20rpx;
+    font-size: 24rpx;
+}
+
+.account-loading {
+    color: #64748b;
+}
+
+.account-error {
+    color: #b91c1c;
+}
+
 .account-btn {
     flex: 1;
     border-radius: 999rpx;
@@ -95,4 +110,3 @@
     color: #94a3b8;
     font-size: 24rpx;
 }
-

@@ -1,194 +1,235 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { View, Text, Slot } from '@tarojs/components';
-import Taro, { useReady, useRouter } from '@tarojs/taro';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ScrollView, Text, View } from '@tarojs/components';
+import Taro, { useRouter } from '@tarojs/taro';
 
-import ShopBrand from '../../components/ShopBrand';
-import CustomerCardStack from '../../components/CustomerCardStack';
-import ActivityArea from '../../components/ActivityArea';
-import CustomerBottomDock from '../../components/CustomerBottomDock';
-import { storage } from '../../utils/storage';
-import { HomeSnapshot } from '../../services/dataTypes';
-import { DataService } from '../../services/DataService';
-import { buildSmartCheckoutQuote } from '../../domain/smartCheckout';
+import { buildSmartCheckoutQuote } from '@/domain/smartCheckout';
+import { HomeSnapshot } from '@/services/dataTypes';
+import { DataService } from '@/services/DataService';
+import { storage } from '@/utils/storage';
 
 import './index.scss';
 
 const DEFAULT_STORE_ID =
-    (typeof process !== 'undefined' && process.env && process.env.TARO_APP_DEFAULT_STORE_ID) || '';
-
+  (typeof process !== 'undefined' && process.env && process.env.TARO_APP_DEFAULT_STORE_ID) || '';
 const DEFAULT_ORDER_AMOUNT = 52;
 
-const toOrderAmount = (raw: unknown) => {
-    const parsed = Number(raw);
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-        return DEFAULT_ORDER_AMOUNT;
-    }
-    return Math.round(parsed * 100) / 100;
-};
-
-const isAutoPayEnabled = (raw: unknown) => {
-    const normalized = String(raw || '').trim().toLowerCase();
-    return ['1', 'true', 'yes', 'on', 'pay', 'payment'].includes(normalized);
-};
-
-// Add declaration for the native component
-declare global {
-    namespace JSX {
-        interface IntrinsicElements {
-            'wxs-scroll-view': any;
-        }
-        interface IntrinsicAttributes {
-            slot?: string;
-        }
-    }
+function toOrderAmount(raw: unknown): number {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_ORDER_AMOUNT;
+  }
+  return Math.round(parsed * 100) / 100;
 }
 
-export default function Index() {
-    const router = useRouter();
-    const [snapshot, setSnapshot] = useState<HomeSnapshot | null>(null);
-    const [headerStyle, setHeaderStyle] = useState<React.CSSProperties>({});
-    const [refreshTrigger, setRefreshTrigger] = useState(0);
-    const [isPaying, setIsPaying] = useState(false);
-    const [lastReceipt, setLastReceipt] = useState<string>('');
-    const autoPayHintShownRef = useRef(false);
+function toAutoPay(raw: unknown): boolean {
+  const normalized = String(raw || '').trim().toLowerCase();
+  return ['1', 'true', 'yes', 'on', 'pay', 'payment'].includes(normalized);
+}
 
-    const orderAmount = useMemo(() => {
-        const params = (router.params || {}) as Record<string, unknown>;
-        const raw = params.orderAmount ?? params.amount;
-        return toOrderAmount(raw);
-    }, [router.params]);
+function toMoney(value: number): string {
+  return `¥${Number(value || 0).toFixed(2)}`;
+}
 
-    const shouldAutoPay = useMemo(() => {
-        const params = (router.params || {}) as Record<string, unknown>;
-        return isAutoPayEnabled(params.autoPay);
-    }, [router.params]);
+function toCount(value: number): string {
+  return `${Math.max(0, Math.floor(Number(value || 0)))}`;
+}
 
-    const quote = snapshot
-        ? buildSmartCheckoutQuote(orderAmount, snapshot.wallet, snapshot.vouchers)
-        : null;
+export default function IndexPage() {
+  const router = useRouter();
+  const [snapshot, setSnapshot] = useState<HomeSnapshot | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [paying, setPaying] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [lastReceipt, setLastReceipt] = useState('');
+  const autoPayHintShownRef = useRef(false);
 
-    useReady(() => {
-        try {
-            const capsule = Taro.getMenuButtonBoundingClientRect();
-            setHeaderStyle({
-                '--header-height': `${capsule.bottom + 8}px`,
-                '--nav-top': `${capsule.top}px`,
-                '--nav-height': `${capsule.height}px`
-            } as React.CSSProperties);
-        } catch {
-            setHeaderStyle({
-                '--header-height': '88px',
-                '--nav-top': '44px',
-                '--nav-height': '32px'
-            } as React.CSSProperties);
-        }
-    });
+  const storeId = useMemo(() => {
+    return String(storage.getLastStoreId() || DEFAULT_STORE_ID || '').trim();
+  }, []);
 
-    useEffect(() => {
-        const loadData = async () => {
-            const storeId = storage.getLastStoreId() || DEFAULT_STORE_ID;
-            if (!storeId) {
-                Taro.reLaunch({ url: '/pages/startup/index' });
-                return;
-            }
+  const orderAmount = useMemo(() => {
+    const params = (router.params || {}) as Record<string, unknown>;
+    return toOrderAmount(params.orderAmount ?? params.amount);
+  }, [router.params]);
 
-            try {
-                const homeSnapshot = await DataService.getHomeSnapshot(storeId);
-                setSnapshot(homeSnapshot);
-                setRefreshTrigger(v => v + 1);
-            } catch (err) {
-                console.error('Error fetching store data:', err);
-            }
-        };
+  const shouldAutoPay = useMemo(() => {
+    const params = (router.params || {}) as Record<string, unknown>;
+    return toAutoPay(params.autoPay ?? params.pay ?? params.action);
+  }, [router.params]);
 
-        loadData().catch(error => {
-            console.error('Failed to load home snapshot:', error);
-        });
-    }, []);
+  const quote = useMemo(() => {
+    if (!snapshot) {
+      return null;
+    }
+    return buildSmartCheckoutQuote(orderAmount, snapshot.wallet, snapshot.vouchers);
+  }, [orderAmount, snapshot]);
 
-    const handleCheckout = async (targetOrderAmount = orderAmount) => {
-        if (!snapshot || isPaying) {
-            return;
-        }
-        setIsPaying(true);
-        try {
-            const result = await DataService.executeCheckout(snapshot.store.id, targetOrderAmount);
-            setSnapshot(result.snapshot);
-            setLastReceipt(`支付成功 ${result.paymentId}，外部支付 ¥${result.quote.payable.toFixed(2)}`);
-            setRefreshTrigger(v => v + 1);
-        } catch (error) {
-            console.error('Checkout failed:', error);
-            Taro.showToast({ title: '支付失败，请重试', icon: 'none' });
-        } finally {
-            setIsPaying(false);
-        }
-    };
+  const loadSnapshot = useCallback(async () => {
+    if (!storeId) {
+      Taro.reLaunch({ url: '/pages/startup/index' });
+      return;
+    }
 
-    useEffect(() => {
-        if (!shouldAutoPay || autoPayHintShownRef.current || !snapshot) {
-            return;
-        }
-        autoPayHintShownRef.current = true;
-        Taro.showToast({ title: '已打开支付页，请确认支付', icon: 'none' });
-    }, [shouldAutoPay, snapshot]);
+    setLoading(true);
+    setErrorMessage('');
+    try {
+      const nextSnapshot = await DataService.getHomeSnapshot(storeId);
+      setSnapshot(nextSnapshot);
+    } catch (error) {
+      console.error('[Index] load snapshot failed', error);
+      setErrorMessage('加载失败，请稍后重试');
+      Taro.showToast({ title: '加载失败，请重试', icon: 'none' });
+    } finally {
+      setLoading(false);
+    }
+  }, [storeId]);
 
-    const handleOpenAccount = () => {
-        Taro.navigateTo({ url: '/pages/account/index' });
-    };
+  useEffect(() => {
+    void loadSnapshot();
+  }, [loadSnapshot]);
 
-    return (
-        <View className='index-container' style={headerStyle}>
-            <View id='index-account-entry' className='account-entry' onClick={handleOpenAccount}>
-                <Text className='account-entry__text'>账户中心</Text>
+  useEffect(() => {
+    if (!snapshot || !shouldAutoPay || autoPayHintShownRef.current) {
+      return;
+    }
+    autoPayHintShownRef.current = true;
+    Taro.showToast({ title: '已进入支付确认页', icon: 'none' });
+  }, [shouldAutoPay, snapshot]);
+
+  const handleOpenAccount = useCallback(() => {
+    Taro.navigateTo({ url: '/pages/account/index' });
+  }, []);
+
+  const handlePay = useCallback(async () => {
+    if (!snapshot || !storeId || paying) {
+      return;
+    }
+    setPaying(true);
+    try {
+      const result = await DataService.executeCheckout(storeId, orderAmount);
+      setSnapshot(result.snapshot);
+      setLastReceipt(`支付成功：${result.paymentId}`);
+      Taro.showToast({ title: '支付成功', icon: 'none' });
+    } catch (error) {
+      console.error('[Index] execute checkout failed', error);
+      Taro.showToast({ title: '支付失败，请重试', icon: 'none' });
+    } finally {
+      setPaying(false);
+    }
+  }, [orderAmount, paying, snapshot, storeId]);
+
+  const vouchers = snapshot?.vouchers || [];
+  const activities = snapshot?.activities || [];
+
+  return (
+    <View className='index-page'>
+      <View className='index-header'>
+        <View className='index-header__store'>
+          <Text className='index-header__name'>{snapshot?.store.name || 'MealQuest'}</Text>
+          <Text className='index-header__id'>{storeId || '未识别门店'}</Text>
+        </View>
+        <View id='index-account-entry' className='index-header__account' onClick={handleOpenAccount}>
+          <Text className='index-header__account-text'>账户中心</Text>
+        </View>
+      </View>
+
+      <ScrollView scrollY className='index-scroll'>
+        {loading ? (
+          <View className='index-state'>
+            <View className='index-state__spinner' />
+            <Text className='index-state__text'>正在加载资产首屏...</Text>
+          </View>
+        ) : null}
+
+        {!loading && errorMessage ? (
+          <View className='index-state index-state--error'>
+            <Text className='index-state__text'>{errorMessage}</Text>
+            <View className='index-state__btn' onClick={loadSnapshot}>
+              <Text className='index-state__btn-text'>重新加载</Text>
             </View>
-            {/* @ts-ignore */}
-            <wxs-scroll-view refresh-trigger={refreshTrigger}>
-                <Slot name="header-left">
-                    <View className="avatar-wrapper transition-transform">
-                        <View className='avatar-circle'>
-                            <Text className='avatar-emoji'>👤</Text>
-                        </View>
-                    </View>
-                </Slot>
+          </View>
+        ) : null}
 
-                <Slot name="header-title">
-                    <Text className='header-store-name__text'>
-                        {snapshot?.store.name || 'Loading...'}
-                    </Text>
-                </Slot>
-
-                <Slot name="brand">
-                    <ShopBrand
-                        name={snapshot?.store.name}
-                        branchName={snapshot?.store.branchName}
-                        slogan={snapshot?.store.slogan}
-                        logo={snapshot?.store.logo}
-                        isOpen={snapshot?.store.isOpen}
-                    />
-                </Slot>
-
-                <Slot name="cards">
-                    <CustomerCardStack
-                        wallet={snapshot?.wallet}
-                        vouchers={snapshot?.vouchers}
-                        fragments={snapshot?.fragments}
-                    />
-                </Slot>
-
-                <Slot name="activity">
-                    <ActivityArea activities={snapshot?.activities} />
-                </Slot>
-            </wxs-scroll-view>
-
-            {lastReceipt && (
-                <View style={{ position: 'absolute', left: '32rpx', right: '32rpx', bottom: '196rpx', zIndex: 90 }}>
-                    <Text style={{ fontSize: '22rpx', color: '#1e293b', backgroundColor: 'rgba(241,245,249,0.95)', padding: '14rpx 18rpx', borderRadius: '20rpx' }}>
-                        {lastReceipt}
-                    </Text>
+        {!loading && snapshot ? (
+          <View className='index-content'>
+            <View className='index-card'>
+              <Text className='index-card__title'>我的资产</Text>
+              <View className='index-grid'>
+                <View className='index-grid__item'>
+                  <Text className='index-grid__label'>本金</Text>
+                  <Text className='index-grid__value'>{toMoney(snapshot.wallet.principal)}</Text>
                 </View>
-            )}
+                <View className='index-grid__item'>
+                  <Text className='index-grid__label'>赠送金</Text>
+                  <Text className='index-grid__value'>{toMoney(snapshot.wallet.bonus)}</Text>
+                </View>
+                <View className='index-grid__item'>
+                  <Text className='index-grid__label'>碎银</Text>
+                  <Text className='index-grid__value'>{toCount(snapshot.wallet.silver)} 两</Text>
+                </View>
+                <View className='index-grid__item'>
+                  <Text className='index-grid__label'>碎片</Text>
+                  <Text className='index-grid__value'>
+                    普通 {toCount(snapshot.fragments.common)} / 稀有 {toCount(snapshot.fragments.rare)}
+                  </Text>
+                </View>
+              </View>
+            </View>
 
-            <CustomerBottomDock quote={quote} onPay={() => handleCheckout(orderAmount)} disabled={!snapshot || isPaying} />
-        </View >
-    );
+            <View className='index-card'>
+              <Text className='index-card__title'>可用权益</Text>
+              {vouchers.length === 0 ? (
+                <Text className='index-empty'>暂无可用券</Text>
+              ) : (
+                vouchers.map((voucher) => (
+                  <View key={voucher.id} className='index-row'>
+                    <View>
+                      <Text className='index-row__title'>{voucher.name}</Text>
+                      <Text className='index-row__meta'>满 {toMoney(voucher.minSpend)} 可用</Text>
+                    </View>
+                    <Text className='index-row__value'>{toMoney(voucher.value)}</Text>
+                  </View>
+                ))
+              )}
+            </View>
+
+            <View className='index-card'>
+              <Text className='index-card__title'>今日活动</Text>
+              {activities.length === 0 ? (
+                <Text className='index-empty'>暂无活动</Text>
+              ) : (
+                activities.map((activity) => (
+                  <View key={activity.id} className='index-row'>
+                    <View>
+                      <Text className='index-row__title'>{activity.title}</Text>
+                      <Text className='index-row__meta'>{activity.desc}</Text>
+                    </View>
+                    <Text className='index-row__tag'>{activity.tag}</Text>
+                  </View>
+                ))
+              )}
+            </View>
+
+            {lastReceipt ? (
+              <View className='index-receipt'>
+                <Text className='index-receipt__text'>{lastReceipt}</Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+      </ScrollView>
+
+      <View className='index-dock'>
+        <View>
+          <Text className='index-dock__amount'>订单金额：{toMoney(orderAmount)}</Text>
+          <Text className='index-dock__payable'>
+            待外部支付：{toMoney(quote ? quote.payable : orderAmount)}
+          </Text>
+        </View>
+        <View id='index-pay-button' className='index-dock__button' onClick={handlePay}>
+          <Text className='index-dock__button-text'>{paying ? '支付中...' : '确认支付'}</Text>
+        </View>
+      </View>
+    </View>
+  );
 }

@@ -1,4 +1,3 @@
 export default definePageConfig({
-    navigationBarTitleText: '账户中心',
+  navigationBarTitleText: '账户中心',
 });
-

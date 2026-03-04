@@ -18,6 +18,13 @@ jest.mock('@/services/ApiDataService', () => ({
     ApiDataService: {
         isConfigured: jest.fn(() => true),
         isMerchantAvailable: jest.fn(async () => true),
+        getHomeSnapshot: jest.fn(async () => ({
+            store: { id: 'm_store_001' },
+            wallet: {},
+            fragments: {},
+            vouchers: [],
+            activities: [],
+        })),
     },
 }));
 
@@ -26,7 +33,7 @@ describe('Startup Page', () => {
         jest.clearAllMocks();
     });
 
-    it('New User: renders "Scan QR" button when no history', () => {
+    it('New User: renders "Scan QR" button when no history', async () => {
         // 1. Mock storage to return null (New User)
         (storage.getLastStoreId as jest.Mock).mockReturnValue(null);
 
@@ -34,12 +41,14 @@ describe('Startup Page', () => {
         render(<Startup />);
 
         // 3. Assertions
-        expect(document.getElementById('startup-scan-button')).toBeInTheDocument();
-        // Should NOT redirect
-        expect(Taro.reLaunch).not.toHaveBeenCalled();
+        await waitFor(() => {
+            expect(document.getElementById('startup-scan-button')).toBeInTheDocument();
+            // Should NOT redirect
+            expect(Taro.reLaunch).not.toHaveBeenCalled();
+        });
     });
 
-    it('Old User: redirects immediately if history exists', () => {
+    it('Old User: redirects immediately if history exists', async () => {
         // 1. Mock storage to return existing store
         (storage.getLastStoreId as jest.Mock).mockReturnValue('store_001');
 
@@ -47,16 +56,19 @@ describe('Startup Page', () => {
         render(<Startup />);
 
         // 3. Assertions
-        return waitFor(() => {
+        await waitFor(() => {
             expect(Taro.reLaunch).toHaveBeenCalledWith({ url: '/pages/index/index' });
         });
     });
 
-    it('Scan Action: saves store ID and redirects', () => {
+    it('Scan Action: saves store ID and redirects', async () => {
         (storage.getLastStoreId as jest.Mock).mockReturnValue(null);
         render(<Startup />);
 
         // Simulate click
+        await waitFor(() => {
+            expect(document.getElementById('startup-scan-button')).toBeInTheDocument();
+        });
         const scanButton = document.getElementById('startup-scan-button');
         expect(scanButton).not.toBeNull();
         fireEvent.click(scanButton as Element);
@@ -74,6 +86,9 @@ describe('Startup Page', () => {
         });
 
         render(<Startup />);
+        await waitFor(() => {
+            expect(document.getElementById('startup-scan-button')).toBeInTheDocument();
+        });
         const scanButton = document.getElementById('startup-scan-button');
         expect(scanButton).not.toBeNull();
         fireEvent.click(scanButton as Element);
@@ -96,6 +111,9 @@ describe('Startup Page', () => {
         });
 
         render(<Startup />);
+        await waitFor(() => {
+            expect(document.getElementById('startup-scan-button')).toBeInTheDocument();
+        });
         const scanButton = document.getElementById('startup-scan-button');
         expect(scanButton).not.toBeNull();
         fireEvent.click(scanButton as Element);

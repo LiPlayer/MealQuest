@@ -9,133 +9,149 @@ import { storage } from '@/utils/storage';
 import './index.scss';
 
 const DEFAULT_STORE_ID =
-    (typeof process !== 'undefined' && process.env && process.env.TARO_APP_DEFAULT_STORE_ID) || '';
+  (typeof process !== 'undefined' && process.env && process.env.TARO_APP_DEFAULT_STORE_ID) || '';
 
 const toMoney = (value: number) => `¥${Number(value || 0).toFixed(2)}`;
 
 export default function AccountPage() {
-    const [snapshot, setSnapshot] = useState<HomeSnapshot | null>(null);
-    const [ledger, setLedger] = useState<PaymentLedgerItem[]>([]);
-    const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [cancelArmed, setCancelArmed] = useState(false);
-    const [canceling, setCanceling] = useState(false);
-    const [customerUserId, setCustomerUserId] = useState('');
+  const [snapshot, setSnapshot] = useState<HomeSnapshot | null>(null);
+  const [ledger, setLedger] = useState<PaymentLedgerItem[]>([]);
+  const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [cancelArmed, setCancelArmed] = useState(false);
+  const [canceling, setCanceling] = useState(false);
+  const [customerUserId, setCustomerUserId] = useState('');
 
-    const storeId = useMemo(() => storage.getLastStoreId() || DEFAULT_STORE_ID || '', []);
-    const getResolvedUserId = () => String(storage.getCustomerUserId() || '').trim();
+  const storeId = useMemo(() => {
+    return String(storage.getLastStoreId() || DEFAULT_STORE_ID || '').trim();
+  }, []);
 
-    const loadData = useCallback(async () => {
-        if (!storeId) {
-            setLoading(false);
-            Taro.reLaunch({ url: '/pages/startup/index' });
-            return;
-        }
-        setLoading(true);
-        try {
-            const userId = getResolvedUserId();
-            const [nextSnapshot, nextLedger, nextInvoices] = await Promise.all([
-                DataService.getHomeSnapshot(storeId, userId),
-                DataService.getPaymentLedger(storeId, userId, 20),
-                DataService.getInvoices(storeId, userId, 20)
-            ]);
-            setSnapshot(nextSnapshot);
-            setLedger(nextLedger);
-            setInvoices(nextInvoices);
-            setCustomerUserId(getResolvedUserId());
-        } catch (error) {
-            console.error('Account page load failed:', error);
-            Taro.showToast({ title: '加载失败，请重试', icon: 'none' });
-        } finally {
-            setLoading(false);
-        }
-    }, [storeId]);
+  const resolveUserId = useCallback(() => {
+    return String(storage.getCustomerUserId() || '').trim();
+  }, []);
 
-    useEffect(() => {
-        void loadData();
-    }, [loadData]);
+  const loadData = useCallback(async () => {
+    if (!storeId) {
+      setLoading(false);
+      Taro.reLaunch({ url: '/pages/startup/index' });
+      return;
+    }
 
-    const handleCancelAccount = async () => {
-        if (canceling) {
-            return;
-        }
-        if (!cancelArmed) {
-            setCancelArmed(true);
-            Taro.showToast({ title: '再次点击确认注销', icon: 'none' });
-            return;
-        }
+    setLoading(true);
+    setErrorMessage('');
+    const resolvedUserId = resolveUserId();
+    try {
+      const [nextSnapshot, nextLedger, nextInvoices] = await Promise.all([
+        DataService.getHomeSnapshot(storeId, resolvedUserId),
+        DataService.getPaymentLedger(storeId, resolvedUserId, 20),
+        DataService.getInvoices(storeId, resolvedUserId, 20),
+      ]);
+      setSnapshot(nextSnapshot);
+      setLedger(nextLedger);
+      setInvoices(nextInvoices);
+      setCustomerUserId(resolveUserId());
+    } catch (error) {
+      console.error('[Account] load data failed', error);
+      setErrorMessage('加载失败，请重试');
+      Taro.showToast({ title: '加载失败，请重试', icon: 'none' });
+    } finally {
+      setLoading(false);
+    }
+  }, [resolveUserId, storeId]);
 
-        setCanceling(true);
-        try {
-            const resolvedUserId = customerUserId || getResolvedUserId();
-            await DataService.cancelAccount(storeId, resolvedUserId);
-            storage.clearCustomerSession(storeId, resolvedUserId);
-            Taro.showToast({ title: '账号已注销', icon: 'none' });
-            Taro.reLaunch({ url: '/pages/startup/index' });
-        } catch (error) {
-            console.error('Cancel account failed:', error);
-            Taro.showToast({ title: '注销失败，请稍后重试', icon: 'none' });
-        } finally {
-            setCancelArmed(false);
-            setCanceling(false);
-        }
-    };
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
 
-    return (
-        <View className='account-page'>
-            <View className='account-page__header'>
-                <Text id='account-page-title' className='account-page__title'>账户中心</Text>
-                <Text className='account-page__subtitle'>
-                    {snapshot?.store.name || 'MealQuest'} · {storeId}
-                </Text>
-            </View>
+  const handleCancelAccount = useCallback(async () => {
+    if (!storeId || canceling) {
+      return;
+    }
+    if (!cancelArmed) {
+      setCancelArmed(true);
+      Taro.showToast({ title: '再次点击确认注销', icon: 'none' });
+      return;
+    }
 
-            <View className='account-card'>
-                <Text className='account-card__title'>钱包资产</Text>
-                <View className='account-wallet'>
-                    <Text>本金：{toMoney(snapshot?.wallet.principal || 0)}</Text>
-                    <Text>赠送金：{toMoney(snapshot?.wallet.bonus || 0)}</Text>
-                    <Text>碎银：{Number(snapshot?.wallet.silver || 0).toFixed(0)} 两</Text>
-                </View>
-            </View>
+    setCanceling(true);
+    try {
+      const resolvedUserId = customerUserId || resolveUserId();
+      await DataService.cancelAccount(storeId, resolvedUserId);
+      storage.clearCustomerSession(storeId, resolvedUserId);
+      Taro.showToast({ title: '账号已注销', icon: 'none' });
+      Taro.reLaunch({ url: '/pages/startup/index' });
+    } catch (error) {
+      console.error('[Account] cancel account failed', error);
+      Taro.showToast({ title: '注销失败，请稍后重试', icon: 'none' });
+    } finally {
+      setCanceling(false);
+      setCancelArmed(false);
+    }
+  }, [cancelArmed, canceling, customerUserId, resolveUserId, storeId]);
 
-            <View className='account-actions'>
-                <Button id='account-refresh-button' className='account-btn account-btn--ghost' onClick={loadData} disabled={loading}>
-                    刷新
-                </Button>
-                <Button
-                    id='account-cancel-button'
-                    className='account-btn account-btn--danger'
-                    onClick={handleCancelAccount}
-                    disabled={canceling}
-                >
-                    {cancelArmed ? '确认注销' : '注销账号'}
-                </Button>
-            </View>
+  return (
+    <View className='account-page'>
+      <View className='account-page__header'>
+        <Text id='account-page-title' className='account-page__title'>
+          账户中心
+        </Text>
+        <Text className='account-page__subtitle'>{snapshot?.store.name || 'MealQuest'} · {storeId}</Text>
+      </View>
 
-            <View className='account-card'>
-                <Text id='account-ledger-title' className='account-card__title'>支付流水</Text>
-                {ledger.length === 0 && <Text className='account-empty'>暂无流水</Text>}
-                {ledger.map((item) => (
-                    <View className='account-row' key={item.txnId}>
-                        <Text>{item.type}</Text>
-                        <Text>{toMoney(item.amount)}</Text>
-                        <Text className='account-row__meta'>{new Date(item.timestamp).toLocaleString()}</Text>
-                    </View>
-                ))}
-            </View>
-
-            <View className='account-card'>
-                <Text id='account-invoice-title' className='account-card__title'>电子发票</Text>
-                {invoices.length === 0 && <Text className='account-empty'>暂无发票</Text>}
-                {invoices.map((invoice) => (
-                    <View className='account-row' key={invoice.invoiceNo}>
-                        <Text>{invoice.invoiceNo}</Text>
-                        <Text>{toMoney(invoice.amount)}</Text>
-                        <Text className='account-row__meta'>{invoice.status}</Text>
-                    </View>
-                ))}
-            </View>
+      <View className='account-card'>
+        <Text className='account-card__title'>钱包资产</Text>
+        <View className='account-wallet'>
+          <Text>本金：{toMoney(snapshot?.wallet.principal || 0)}</Text>
+          <Text>赠送金：{toMoney(snapshot?.wallet.bonus || 0)}</Text>
+          <Text>碎银：{Number(snapshot?.wallet.silver || 0).toFixed(0)} 两</Text>
         </View>
-    );
+      </View>
+
+      <View className='account-actions'>
+        <Button id='account-refresh-button' className='account-btn account-btn--ghost' onClick={loadData} disabled={loading}>
+          刷新
+        </Button>
+        <Button
+          id='account-cancel-button'
+          className='account-btn account-btn--danger'
+          onClick={handleCancelAccount}
+          disabled={canceling}
+        >
+          {cancelArmed ? '确认注销' : '注销账号'}
+        </Button>
+      </View>
+
+      {loading ? <Text className='account-loading'>加载中...</Text> : null}
+      {!loading && errorMessage ? <Text className='account-error'>{errorMessage}</Text> : null}
+
+      <View className='account-card'>
+        <Text id='account-ledger-title' className='account-card__title'>
+          支付流水
+        </Text>
+        {ledger.length === 0 && <Text className='account-empty'>暂无流水</Text>}
+        {ledger.map((item) => (
+          <View className='account-row' key={item.txnId}>
+            <Text>{item.type}</Text>
+            <Text>{toMoney(item.amount)}</Text>
+            <Text className='account-row__meta'>{new Date(item.timestamp).toLocaleString()}</Text>
+          </View>
+        ))}
+      </View>
+
+      <View className='account-card'>
+        <Text id='account-invoice-title' className='account-card__title'>
+          电子发票
+        </Text>
+        {invoices.length === 0 && <Text className='account-empty'>暂无发票</Text>}
+        {invoices.map((invoice) => (
+          <View className='account-row' key={invoice.invoiceNo}>
+            <Text>{invoice.invoiceNo}</Text>
+            <Text>{toMoney(invoice.amount)}</Text>
+            <Text className='account-row__meta'>{invoice.status}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
 }

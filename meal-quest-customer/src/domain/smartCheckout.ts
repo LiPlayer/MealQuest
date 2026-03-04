@@ -1,14 +1,21 @@
-import { Voucher } from '@/components/cards/P03_TicketCard';
-
 export interface CustomerWallet {
     principal: number;
     bonus: number;
     silver: number;
 }
 
+export interface CheckoutVoucher {
+    id: string;
+    name: string;
+    value: number;
+    minSpend?: number;
+    status?: string;
+    expiresAt?: string;
+}
+
 export interface CheckoutQuote {
     orderAmount: number;
-    selectedVoucher: Voucher | null;
+    selectedVoucher: CheckoutVoucher | null;
     deduction: {
         voucher: number;
         bonus: number;
@@ -22,7 +29,7 @@ export interface CheckoutQuote {
 
 const roundMoney = (value: number) => Math.round(value * 100) / 100;
 
-const sortVouchers = (vouchers: Voucher[], now: Date) => {
+const sortVouchers = (vouchers: CheckoutVoucher[], now: Date) => {
     return [...vouchers]
         .filter(v => {
             const expired = v.expiresAt ? new Date(v.expiresAt).getTime() <= now.getTime() : false;
@@ -41,7 +48,7 @@ const sortVouchers = (vouchers: Voucher[], now: Date) => {
 export const buildSmartCheckoutQuote = (
     orderAmount: number,
     wallet: CustomerWallet,
-    vouchers: Voucher[],
+    vouchers: CheckoutVoucher[],
     now = new Date()
 ): CheckoutQuote => {
     if (!Number.isFinite(orderAmount) || orderAmount <= 0) {
