@@ -109,9 +109,9 @@
 | StepID | Outcome（宏观结果） | Dependency | Status |
 | --- | --- | --- | --- |
 | S010 | 长期价值最大化目标口径冻结 | 无 | done |
-| S020 | 老板端基础闭环（登录、开店、看板） | S010 done | doing |
-| S030 | 顾客端基础闭环（扫码、资产、支付、账票） | S020 done | todo |
-| S040 | 数据与模型基础口径建立 | S030 done | todo |
+| S020 | 老板端基础闭环（登录、开店、看板） | S010 done | done |
+| S030 | 顾客端基础闭环（扫码、资产、支付、账票） | S020 done | done |
+| S040 | 数据与模型基础口径建立 | S030 done | doing |
 | S050 | 决策与执行治理闭环建立 | S040 done | todo |
 | S060 | 生命周期五阶段策略闭环建立 | S050 done | todo |
 | S070 | 老板端 AI 提案与决策闭环 | S060 done | todo |
@@ -142,11 +142,11 @@
 
 | PackageID | Lane | CapabilityID | Macro Requirement | Deliverable | DependsOn | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| PKG-S020-SRV-01 | server | SRV-C01 | 建立商户认证与门店上下文能力基线 | 商户认证与门店上下文能力 | none | todo |
-| PKG-S020-SRV-02 | server | SRV-C02 | 建立入店码状态校验与门店绑定能力 | 入店码校验规则 | PKG-S020-SRV-01 | todo |
-| PKG-S020-MER-01 | merchant | MER-C01, MER-C02, MER-C03 | 完成老板端登录、开店、看板宏观闭环 | 老板端基础闭环流程 | PKG-S020-SRV-01 | todo |
-| PKG-S020-MER-02 | merchant | MER-C11 | 完成入店二维码生成与管理能力 | 入店码管理流程 | PKG-S020-SRV-02 | todo |
-| PKG-S020-CUS-01 | customer | CUS-C01 | 对老板端基础与入店码能力做顾客侧兼容验证 | 顾客兼容性结论 | PKG-S020-MER-02 | todo |
+| PKG-S020-SRV-01 | server | SRV-C01 | 建立商户认证与门店上下文能力基线 | 商户认证与门店上下文能力 | none | done |
+| PKG-S020-SRV-02 | server | SRV-C02 | 建立入店码状态校验与门店绑定能力 | 入店码校验规则 | PKG-S020-SRV-01 | done |
+| PKG-S020-MER-01 | merchant | MER-C01, MER-C02, MER-C03 | 完成老板端登录、开店、看板宏观闭环 | 老板端基础闭环流程 | PKG-S020-SRV-01 | done |
+| PKG-S020-MER-02 | merchant | MER-C11 | 完成入店二维码生成与管理能力 | 入店码管理流程 | PKG-S020-SRV-02 | done |
+| PKG-S020-CUS-01 | customer | CUS-C01 | 对老板端基础与入店码能力做顾客侧兼容验证 | 顾客兼容性结论 | PKG-S020-MER-02 | done |
 
 ### S030 - 顾客端基础闭环
 
@@ -155,9 +155,9 @@
 
 | PackageID | Lane | CapabilityID | Macro Requirement | Deliverable | DependsOn | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| PKG-S030-SRV-01 | server | SRV-C02, SRV-C03, SRV-C04 | 建立顾客状态、支付、账票基础能力 | 顾客基础能力服务 | none | todo |
-| PKG-S030-CUS-01 | customer | CUS-C01, CUS-C02, CUS-C04, CUS-C05 | 完成顾客端基础功能闭环 | 小程序基础闭环流程 | PKG-S030-SRV-01 | todo |
-| PKG-S030-MER-01 | merchant | MER-C11, MER-C03 | 建立老板端入店码运营与顾客状态可见性 | 入店运营可见规则 | PKG-S030-CUS-01 | todo |
+| PKG-S030-SRV-01 | server | SRV-C02, SRV-C03, SRV-C04 | 建立顾客状态、支付、账票基础能力 | 顾客基础能力服务 | none | done |
+| PKG-S030-CUS-01 | customer | CUS-C01, CUS-C02, CUS-C04, CUS-C05 | 完成顾客端基础功能闭环 | 小程序基础闭环流程 | PKG-S030-SRV-01 | done |
+| PKG-S030-MER-01 | merchant | MER-C11, MER-C03 | 建立老板端入店码运营与顾客状态可见性 | 入店运营可见规则 | PKG-S030-CUS-01 | done |
 
 ### S040 - 数据与模型基础
 
@@ -297,3 +297,7 @@
 4. 2026-03-05：补充入店码管理、消息提醒中心、顾客反馈闭环三类缺失能力。
 5. 2026-03-05：S010 目标口径明确为“长期价值最大化”，商户收益/Uplift 作为执行代理指标。
 6. 2026-03-05：完成 S010 三端口径收口，关闭 PKG-S010-SRV-01/PKG-S010-MER-01/PKG-S010-CUS-01 并切换到 S020 doing。
+7. 2026-03-05：完成 PKG-S020-SRV-01（商户认证与门店上下文基线）并沉淀服务端验收记录。
+8. 2026-03-05：完成 PKG-S020-MER-01（老板端登录/开店/看板闭环）并补充商家端验收记录。
+9. 2026-03-05：完成 PKG-S020-SRV-02 / PKG-S020-MER-02 / PKG-S020-CUS-01，S020 关闭并切换 S030 doing。
+10. 2026-03-05：完成 PKG-S030-SRV-01 / PKG-S030-CUS-01 / PKG-S030-MER-01，S030 关闭并切换 S040 doing。
