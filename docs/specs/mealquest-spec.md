@@ -326,7 +326,7 @@
 
 ### 11.3 每族一策先行验证清单（首版必须）
 
-- `ACQ_WELCOME_FIRST_BIND_V1`（Acquisition）：新客首绑欢迎权益。
+- `ACQ_WELCOME_FIRST_BIND_V1`（Acquisition）：新客首绑欢迎权益（实现映射：`acquisition_welcome_gift` 模板默认分支）。
 - `ACT_CHECKIN_STREAK_RECOVERY_V1`（Activation）：低活跃顾客回店连签激活。
 - `REV_ADDON_UPSELL_SLOW_ITEM_V1`（Revenue）：慢销品加购激励与客单提升。
 - `RET_DORMANT_WINBACK_14D_V1`（Retention）：14 天沉默顾客召回。

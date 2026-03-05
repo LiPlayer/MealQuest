@@ -62,8 +62,8 @@
 | S040 | P0 | 顾客入口闭环（扫码入店/资产首屏）可回归 | S030 done | done |
 | S050 | P1 | 六策略族执行治理基座（审批/TTL/Kill Switch/风险红线）可回归 | S040 done | done |
 | S060 | P1 | 六策略族账务审计基座（payment->ledger->invoice->audit）可回归 | S050 done | done |
-| S110 | P1 | Acquisition 样例策略闭环（`ACQ_WELCOME_FIRST_BIND_V1`）可回归 | S060 done | doing |
-| S120 | P1 | Activation 样例策略闭环（`ACT_CHECKIN_STREAK_RECOVERY_V1`）可回归 | S110 done | todo |
+| S110 | P1 | Acquisition 样例策略闭环（`ACQ_WELCOME_FIRST_BIND_V1`）可回归 | S060 done | done |
+| S120 | P1 | Activation 样例策略闭环（`ACT_CHECKIN_STREAK_RECOVERY_V1`）可回归 | S110 done | doing |
 | S130 | P1 | Revenue 样例策略闭环（`REV_ADDON_UPSELL_SLOW_ITEM_V1`）可回归 | S120 done | todo |
 | S140 | P1 | Retention 样例策略闭环（`RET_DORMANT_WINBACK_14D_V1`）可回归 | S130 done | todo |
 | S150 | P1 | Social Viral 样例策略闭环（`SOC_REFER_DUAL_REWARD_FIRST_PAY_V1`）可回归 | S140 done | todo |
@@ -402,9 +402,9 @@
 
 | task_id | lane | task | status | output |
 | --- | --- | --- | --- | --- |
-| S110-SRV-01 | server | 完成 `ACQ_WELCOME_FIRST_BIND_V1` 触发、判定、执行与风控门 | todo | 样例闭环可回归 |
-| S110-MER-01 | merchant | 展示命中/拦截结果与原因摘要 | todo | 商户可见结果 |
-| S110-CUS-01 | customer | 展示 Welcome 命中反馈与状态可见性 | todo | 顾客可见结果 |
+| S110-SRV-01 | server | 完成 `ACQ_WELCOME_FIRST_BIND_V1` 触发、判定、执行与风控门 | done | 样例闭环可回归 |
+| S110-MER-01 | merchant | 展示命中/拦截结果与原因摘要 | done | 商户可见结果 |
+| S110-CUS-01 | customer | 展示 Welcome 命中反馈与状态可见性 | done | 顾客可见结果 |
 
 - Deliverables：
 1. 四场景回归结果（命中/预算耗尽/库存不足/风险拦截）。
@@ -417,7 +417,7 @@
 3. 顾客端与商户端可查看一致判定结果。
 
 - Acceptance Commands：
-1. `cd MealQuestServer && npm run test:step:s060`
+1. `cd MealQuestServer && npm run test:step:s110`
 2. `cd MealQuestMerchant && npm run lint && npm run typecheck`
 3. `cd meal-quest-customer && npm run test:regression:ui`
 
@@ -450,7 +450,7 @@
 3. 支付主链路不受影响。
 
 - Acceptance Commands：
-1. `cd MealQuestServer && npm run test:step:s060`
+1. `cd MealQuestServer && npm run test:step:s110`
 2. `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.constraints.test.ts`
 3. `cd MealQuestMerchant && npm run lint && npm run typecheck`
 4. `cd meal-quest-customer && npm run test:regression:ui`
@@ -956,7 +956,7 @@
 ## 04. 证据账本（按 Step 回填）
 
 - Reindex Note（2026-03-05）：主路线已按六策略族重排并新增 `S050/S060`。旧路线下的 `S110` 完成证据保留在 `docs/qa/s110-acquisition-welcome-closure.md` 作为历史记录，不作为新路线当前指针状态。
-- Test Layering Note（2026-03-05）：为保持 `S050` 阶段指针与默认回归门一致，默认 `npm test` 绑定 `test:step:s050`；`S110` 自动化用例入口已移除，待 S110 开发阶段补齐。
+- Test Layering Note（2026-03-05）：默认 `npm test` 继续绑定 `test:step:s050` 作为治理基线；`S110` 已恢复独立 step suite（`test:step:s110`）用于当前阶段回归门。
 
 | StepID | Test Ref | Runtime Ref | Review Ref | Result | Verified By | Verified At |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -966,7 +966,7 @@
 | S040 | historical baseline: `cd MealQuestServer && npm test`（66/66）；latest reopen checks: `cd MealQuestMerchant && npm run lint && npm run typecheck`（pass）；`cd meal-quest-customer && npm run typecheck`（pass）；`cd meal-quest-customer && npm test -- --runInBand test/pages/startup.test.tsx test/pages/account.test.tsx`（8/8）；`npm run check:encoding`（pass）；`cd meal-quest-customer && npm run test:e2e:core`（skipped on Ubuntu: windows-only policy）；merchant QR save/share manual smoke（pass） | `docs/qa/s040-customer-entry-closure.md` | `MealQuestServer/test/http.integration.test.ts`；`MealQuestMerchant/app/_layout.tsx`；`MealQuestMerchant/app/(tabs)/_layout.tsx`；`MealQuestMerchant/app/(tabs)/dashboard.tsx`；`MealQuestMerchant/app/(tabs)/approvals.tsx`；`MealQuestMerchant/app/(tabs)/replay.tsx`；`MealQuestMerchant/app/(tabs)/risk.tsx`；`MealQuestMerchant/src/screens/AgentScreen.tsx`；`MealQuestMerchant/src/screens/EntryQrScreen.tsx`；`MealQuestMerchant/src/services/entryQrService.ts`；`meal-quest-customer/src/pages/startup/index.tsx`；`meal-quest-customer/src/pages/index/index.tsx`；`meal-quest-customer/src/pages/account/index.tsx`；`meal-quest-customer/test/pages/startup.test.tsx`；`meal-quest-customer/test/pages/account.test.tsx`；`meal-quest-customer/test/e2e/customer-core-flow.spec.js`；`meal-quest-customer/test/e2e/utils/mini-program-session.js` | pass | AI/Agent | 2026-03-04 |
 | S050 | `cd MealQuestServer && npm run test:step:s050`; `cd MealQuestMerchant && npm run lint && npm run typecheck`; `cd meal-quest-customer && npm run test:regression:ui`; `npm run check:encoding` | `docs/qa/s050-governance-baseline-closure.md` | `MealQuestServer/src/policyos/policyRegistry.ts`; `MealQuestServer/src/policyos/approvalTokenService.ts`; `MealQuestServer/src/policyos/plugins/defaultPlugins.ts`; `MealQuestServer/test/policyOs.http.integration.test.ts`; `MealQuestServer/package.json` | pass | AI/Agent | 2026-03-05 |
 | S060 | `cd MealQuestServer && npm run test:step:s060`（非沙箱通过，12/12）；`cd MealQuestMerchant && npm run lint && npm run typecheck`；`cd meal-quest-customer && npm test -- --runInBand test/services/api-data-service-customer-center.test.ts test/pages/account.test.tsx` | `docs/qa/s060-ledger-audit-baseline-closure.md` | `MealQuestServer/src/policyos/policyRegistry.ts`; `MealQuestServer/src/policyos/policyOsService.ts`; `MealQuestServer/src/http/routes/paymentRoutes.ts`; `MealQuestServer/src/services/merchantService.ts`; `MealQuestServer/test/policyOs.constraints.test.ts`; `MealQuestMerchant/src/services/apiClient.ts`; `MealQuestMerchant/src/context/MerchantContext.tsx`; `MealQuestMerchant/src/domain/merchantEngine.ts`; `MealQuestMerchant/src/screens/DashboardScreen.tsx`; `meal-quest-customer/src/services/customerApp/mappers.ts`; `meal-quest-customer/test/services/api-data-service-customer-center.test.ts` | pass | AI/Agent | 2026-03-05 |
-| S110 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
+| S110 | `cd MealQuestServer && npm run test:step:s110`（非沙箱通过，19/19）；`cd MealQuestMerchant && npm run lint && npm run typecheck`；`cd meal-quest-customer && npm run test:regression:ui` | `docs/qa/s110-acquisition-first-bind-closure.md` | `MealQuestServer/src/policyos/templates/strategy-templates.v1.json`; `MealQuestServer/src/services/merchantService.ts`; `MealQuestServer/src/http/routes/stateSnapshot.ts`; `MealQuestServer/test/policyOs.s110.acquisition.test.ts`; `MealQuestServer/test/policyOs.s110.visibility.http.test.ts`; `MealQuestServer/package.json`; `meal-quest-customer/test/pages/index.test.tsx`; `meal-quest-customer/package.json` | pass | AI/Agent | 2026-03-05 |
 | S120 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S130 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S140 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
@@ -992,12 +992,12 @@
 | RB-CONTRACT-001 | 字段不一致/接口解析失败 | `cd MealQuestServer && npm test` | server + customer |
 | RB-CONTRACT-002 | 契约回归不稳定 | `npm run test:contract:baseline` | server + merchant + customer |
 | RB-MERCHANT-030 | 商户登录/开店链路中断 | `cd MealQuestMerchant && npm run lint && npm run typecheck` | merchant + server |
-| RB-CUSTOMER-040 | 扫码入店/会话建立失败 | Windows: `cd meal-quest-customer && Remove-Item Env:WECHAT_WS_ENDPOINT -ErrorAction SilentlyContinue; Remove-Item Env:WECHAT_SERVICE_PORT -ErrorAction SilentlyContinue; $env:WECHAT_CLI_PATH='D:\Program Files (x86)\Tencent\微信web开发者工具\cli.bat'; npm run test:e2e:core`；非 Windows: `cd meal-quest-customer && npm run typecheck && npm test -- --runInBand test/pages/startup.test.tsx test/pages/account.test.tsx` | customer + server |
+| RB-CUSTOMER-040 | 扫码入店/会话建立失败 | Windows: `cd meal-quest-customer && Remove-Item Env:WECHAT_WS_ENDPOINT -ErrorAction SilentlyContinue; Remove-Item Env:WECHAT_SERVICE_PORT -ErrorAction SilentlyContinue; $env:WECHAT_CLI_PATH='D:\Program Files (x86)\Tencent\微信web开发者工具\cli.bat'; npm run test:e2e:core`；非 Windows: `cd meal-quest-customer && npm run typecheck && npm run test:regression:ui` | customer + server |
 | RB-MERCHANT-QR-040 | Merchant app cannot generate/save/share entry QR | `cd MealQuestMerchant && npm run lint && npm run typecheck` | merchant |
 | RB-MERCHANT-NAV-040 | Merchant app crashes when returning from entry QR page | `cd MealQuestMerchant && npm run lint && npm run typecheck` | merchant |
 | RB-GOV-050 | 治理硬门（审批/TTL/Kill Switch/红线）异常 | `cd MealQuestServer && npm run test:step:s050` | server + merchant |
 | RB-LEDGER-060 | 账务审计链路（payment->ledger->invoice->audit）不一致 | `cd MealQuestServer && npm run test:step:s060` | server + customer |
-| RB-ACQ-110 | Acquisition 样例策略误发放/误拦截 | `cd MealQuestServer && npm run test:step:s060`（S110 自动化待补齐） | server |
+| RB-ACQ-110 | Acquisition 样例策略误发放/误拦截 | `cd MealQuestServer && npm run test:step:s110` | server + merchant + customer |
 | RB-ACT-120 | Activation 样例策略触发/频控异常 | `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.constraints.test.ts` | server + customer |
 | RB-REV-130 | Revenue 样例策略收益/库存约束异常 | `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.ledger.test.ts` | server + merchant |
 | RB-RET-140 | Retention 样例策略召回异常 | `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.constraints.test.ts` | server + customer |
@@ -1094,3 +1094,4 @@
 4. 2026-03-05：按当前指针策略移除 `S110` 独立测试套件入口，待 `S110` 阶段恢复专用自动化。
 5. 2026-03-05：完成 `S050` 收口与证据回填，主路线指针推进至 `S060 doing`。
 6. 2026-03-05：完成 `S060` 账务审计基座收口与证据回填，主路线指针推进至 `S110 doing`。
+7. 2026-03-05：完成 `S110` Acquisition 样例闭环（`ACQ_WELCOME_FIRST_BIND_V1`）并恢复 `test:step:s110`，主路线指针推进至 `S120 doing`。

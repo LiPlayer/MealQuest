@@ -146,6 +146,7 @@ async function buildStateSnapshot({
         merchantId,
         userId: user.uid,
         event: "USER_ENTER_SHOP",
+        mode: "EXECUTE",
         limit: 1,
       })[0] || null
       : null;

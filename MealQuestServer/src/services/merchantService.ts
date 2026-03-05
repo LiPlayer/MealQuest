@@ -183,13 +183,15 @@ function createMerchantService(db, options = {}) {
     };
   }
 
-  function buildDecisionSummary({ merchantId, event, limit = 80 }) {
+  function buildDecisionSummary({ merchantId, event, mode = "EXECUTE", limit = 80 }) {
     if (!policyOsService || typeof policyOsService.listDecisions !== "function") {
       return createEmptyDecisionSummary();
     }
+    const normalizedMode = String(mode || "").trim().toUpperCase();
     const decisions = policyOsService.listDecisions({
       merchantId,
       event,
+      mode: normalizedMode || "",
       limit: Math.max(1, Math.min(200, Math.floor(Number(limit) || 80))),
     });
     const nowMs = Date.now();
