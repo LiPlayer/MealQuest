@@ -117,6 +117,18 @@
 
 > 目标：先“做实通用引擎粗核”，再挂载六策略族样例，避免按策略族重复开发。
 
+#### 03.0.0 模块总览（粗颗粒）
+
+| 模块ID | 模块名称 | 目标 | Owner Lane | Primary Step |
+| --- | --- | --- | --- | --- |
+| M1 | 策略合同与生命周期模块 | 统一策略合同、Draft/Approve/Publish、审批令牌与 TTL | server 主，merchant 辅 | S050 |
+| M2 | 决策编排模块 | 统一触发、分群、约束校验、候选排序、执行入口 | server 主 | S050 |
+| M3 | 约束与动作插件模块 | trigger/segment/constraint/action 插件参数化复用 | server 主 | S050, S110-S160 |
+| M4 | 账务审计与追溯模块 | payment->ledger->invoice->audit 与 trace/回放链路统一 | server 主，merchant/customer 辅 | S060 |
+| M5 | 商户可见性模块 | 命中/拦截/原因/最近结果统一摘要口径 | merchant 主，server 辅 | S110-S160, S210 |
+| M6 | 顾客反馈与降级模块 | 触达反馈、奖励可见、失败降级不阻断支付 | customer 主，server 辅 | S110-S160, S310 |
+| M7 | 观测与运行手册模块 | Triage Key、验收命令、故障定位路径统一 | server 主，三端协同 | S320, S410, S420 |
+
 #### 03.0.1 Server 任务分配（引擎层优先）
 
 | Engine Layer | Existing Policy OS Module | Core Responsibility | Primary Step |
@@ -135,13 +147,31 @@
 4. 约束插件优先复用现有能力：`budget_guard_v1`、`frequency_cap_v1`、`anti_fraud_hook_v1`、`inventory_lock_v1`、`game_collectible_cap_v1`。
 5. 仅在“无法通过参数化复用”时新增插件，新增插件必须先登记到 `defaultPlugins.ts` 并补契约测试。
 
-#### 03.0.3 Lane Ownership（防止职责漂移）
+#### 03.0.3 六策略族样例映射（每族一策）
+
+| 策略族 | 样例策略ID | 主要复用模块 |
+| --- | --- | --- |
+| Acquisition | `ACQ_WELCOME_FIRST_BIND_V1` | M1, M2, M3, M4, M5, M6 |
+| Activation | `ACT_CHECKIN_STREAK_RECOVERY_V1` | M1, M2, M3, M5, M6 |
+| Revenue | `REV_ADDON_UPSELL_SLOW_ITEM_V1` | M1, M2, M3, M4, M5, M6 |
+| Retention | `RET_DORMANT_WINBACK_14D_V1` | M1, M2, M3, M5, M6 |
+| Social Viral | `SOC_REFER_DUAL_REWARD_FIRST_PAY_V1` | M1, M2, M3, M4, M5, M6 |
+| Mini-Game Ops | `GMO_NEW_GAME_UNLOCK_DROP_V1` | M1, M2, M3, M4, M5, M6 |
+
+#### 03.0.4 Lane Ownership（防止职责漂移）
 
 | Lane | Responsibility | Must Not Do |
 | --- | --- | --- |
 | server | 引擎合同、插件执行、治理硬门、账务审计与回放链路 | 在 S110-S160 为单个策略族临时改写通用引擎分支逻辑 |
 | merchant | 汇总可见性、命中/拦截解释、运营视图 | 绕开服务端判定做本地策略计算 |
 | customer | 触达反馈、奖励可见、降级体验 | 直接推断策略结果替代服务端决策 |
+
+#### 03.0.5 阶段收口规则（模块 -> Step）
+
+1. `S050` 只收口 M1-M3（治理与决策基座），不混入单策略族特化逻辑。
+2. `S060` 只收口 M4（账务审计基座），保证后续六族执行统一追溯。
+3. `S110-S160` 只收口“族样例目标 + 复用模块挂载 + 三端可见性一致性”。
+4. `S210/S310/S320` 分别收口 M5/M6/M7 的横向一致性与运营可观测能力。
 
 ### S010 - 冻结 Acquisition（Welcome 子场景）最小契约
 
