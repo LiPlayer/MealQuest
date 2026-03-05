@@ -146,6 +146,7 @@
 3. 每族样例必须复用统一决策可见性出口：商户 dashboard 摘要 + 顾客 state activities + 审计 trace。
 4. 约束插件优先复用现有能力：`budget_guard_v1`、`frequency_cap_v1`、`anti_fraud_hook_v1`、`inventory_lock_v1`、`game_collectible_cap_v1`。
 5. 仅在“无法通过参数化复用”时新增插件，新增插件必须先登记到 `defaultPlugins.ts` 并补契约测试。
+6. 每族样例参数必须支持“老板手动配置 + Agent 全局最优建议辅助”，且发布执行仍遵循审批确认链路。
 
 #### 03.0.3 六策略族样例映射（每族一策）
 
@@ -476,9 +477,9 @@
 
 | task_id | lane | task | status | output |
 | --- | --- | --- | --- | --- |
-| S130-SRV-01 | server | 完成 `REV_ADDON_UPSELL_SLOW_ITEM_V1` 触发、库存约束与奖励执行链路 | todo | 样例闭环可回归 |
-| S130-MER-01 | merchant | 展示客单提升效果、慢销库存消耗与拦截原因 | todo | 商户收益视图 |
-| S130-CUS-01 | customer | 展示加购激励反馈与核销一致性 | todo | 顾客支付反馈 |
+| S130-SRV-01 | server | 完成 `REV_ADDON_UPSELL_SLOW_ITEM_V1` 默认 `PAYMENT_VERIFY` 触发、策略库存池约束、奖励执行与参数可配置链路 | todo | 样例闭环可回归 |
+| S130-MER-01 | merchant | 提供老板手动配置入口（含 Agent 建议应用），并展示客单提升、库存消耗与拦截原因 | todo | 商户收益视图 |
+| S130-CUS-01 | customer | 展示支付后加购激励反馈、拦截原因与核销一致性 | todo | 顾客支付反馈 |
 
 - Deliverables：
 1. 提客单与去库存效果证据。
@@ -491,7 +492,7 @@
 3. 奖励核销与账务审计一致。
 
 - Acceptance Commands：
-1. `cd MealQuestServer && npm test`
+1. `cd MealQuestServer && npm run test:step:s130`
 2. `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.ledger.test.ts`
 3. `cd MealQuestMerchant && npm run lint && npm run typecheck`
 4. `cd meal-quest-customer && npm run test:regression:ui`
@@ -502,6 +503,13 @@
 3. 核销与台账不一致。
 
 - Triage Key：`RB-REV-130`
+
+- Decision Notes（已确认）：
+1. `REV_ADDON_UPSELL_SLOW_ITEM_V1` 采用灵活可配置模型，默认触发冻结为 `PAYMENT_VERIFY`。
+2. 慢销库存口径采用策略库存池（`inventory_lock_v1`），不接入 ERP/进销存系统。
+3. S130 必须交付老板手动配置入口；Agent 提供全局最优建议参数并支持老板应用。
+4. Agent 建议不等于自动执行，发布仍需老板确认并进入审批审计链路。
+5. 商户端与顾客端必须对齐命中/拦截可见性，且与 payment->ledger->invoice->audit 审计链路一致。
 
 ### S140 - Retention 样例策略闭环（`RET_DORMANT_WINBACK_14D_V1`）
 
@@ -963,7 +971,7 @@
 ## 04. 证据账本（按 Step 回填）
 
 - Reindex Note（2026-03-05）：主路线已按六策略族重排并新增 `S050/S060`。旧路线下的 `S110` 完成证据保留在 `docs/qa/s110-acquisition-welcome-closure.md` 作为历史记录，不作为新路线当前指针状态。
-- Test Layering Note（2026-03-05）：默认 `npm test` 继续绑定 `test:step:s050` 作为治理基线；`S110` 与 `S120` 均提供独立 step suite（`test:step:s110` / `test:step:s120`）用于阶段回归门。
+- Test Layering Note（2026-03-05）：默认 `npm test` 继续绑定 `test:step:s050` 作为治理基线；`S110`、`S120` 与 `S130` 均提供独立 step suite（`test:step:s110` / `test:step:s120` / `test:step:s130`）用于阶段回归门。
 
 | StepID | Test Ref | Runtime Ref | Review Ref | Result | Verified By | Verified At |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -1006,7 +1014,7 @@
 | RB-LEDGER-060 | 账务审计链路（payment->ledger->invoice->audit）不一致 | `cd MealQuestServer && npm run test:step:s060` | server + customer |
 | RB-ACQ-110 | Acquisition 样例策略误发放/误拦截 | `cd MealQuestServer && npm run test:step:s110` | server + merchant + customer |
 | RB-ACT-120 | Activation 样例策略触发/频控异常 | `cd MealQuestServer && npm run test:step:s120` | server + customer |
-| RB-REV-130 | Revenue 样例策略收益/库存约束异常 | `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.ledger.test.ts` | server + merchant |
+| RB-REV-130 | Revenue 样例策略收益/库存约束异常 | `cd MealQuestServer && npm run test:step:s130` | server + merchant |
 | RB-RET-140 | Retention 样例策略召回异常 | `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.constraints.test.ts` | server + customer |
 | RB-SOC-150 | Social Viral 样例策略归因或防作弊异常 | `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.constraints.test.ts` | server + merchant + customer |
 | RB-MGO-160 | Mini-Game Ops 样例策略解锁/掉落路由异常 | `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/http.integration.test.ts && node -r ts-node/register/transpile-only --test test/policyOs.ledger.test.ts` | server + customer |
@@ -1103,3 +1111,4 @@
 6. 2026-03-05：完成 `S060` 账务审计基座收口与证据回填，主路线指针推进至 `S110 doing`。
 7. 2026-03-05：完成 `S110` Acquisition 样例闭环（`ACQ_WELCOME_FIRST_BIND_V1`）并恢复 `test:step:s110`，主路线指针推进至 `S120 doing`。
 8. 2026-03-05：完成 `S120` Activation 样例闭环（`ACT_CHECKIN_STREAK_RECOVERY_V1`）并新增 `test:step:s120`，主路线指针推进至 `S130 doing`。
+9. 2026-03-05：冻结 S130 Revenue 可配置模型口径（老板手动配置 + Agent 建议辅助，默认 `PAYMENT_VERIFY`，策略库存池），并补齐 roadmap 验收与排障合同。
