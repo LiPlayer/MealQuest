@@ -80,7 +80,7 @@ export function toPaymentLedger(items: unknown[], defaults: { merchantId: string
       userId: toString(row.userId, defaults.userId),
       type: toString(row.type, 'PAYMENT') as PaymentLedgerItem['type'],
       amount: toNumber(row.amount),
-      timestamp: toString(row.timestamp, new Date().toISOString()),
+      timestamp: toString(row.timestamp || row.createdAt, new Date().toISOString()),
       paymentTxnId: toString(
         (row.details as Record<string, unknown> | undefined)?.paymentTxnId || row.paymentTxnId,
       ),

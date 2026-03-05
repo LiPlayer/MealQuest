@@ -389,6 +389,44 @@ function createPolicyRegistry({
     return state.decisions[decisionId] ? clone(state.decisions[decisionId]) : null;
   }
 
+  function listDecisions({
+    merchantId,
+    userId = "",
+    event = "",
+    mode = "",
+    limit = 20
+  }) {
+    const state = ensureState();
+    const normalizedMerchantId = String(merchantId || "").trim();
+    if (!normalizedMerchantId) {
+      return [];
+    }
+    const normalizedUserId = String(userId || "").trim();
+    const normalizedEvent = String(event || "").trim().toUpperCase();
+    const normalizedMode = String(mode || "").trim().toUpperCase();
+    const max = Math.min(Math.max(Math.floor(Number(limit) || 20), 1), 200);
+    return Object.values(state.decisions || {})
+      .filter((item) => item && item.merchant_id === normalizedMerchantId)
+      .filter((item) => (normalizedUserId ? String(item.user_id || "") === normalizedUserId : true))
+      .filter((item) =>
+        normalizedEvent ? String(item.event || "").trim().toUpperCase() === normalizedEvent : true
+      )
+      .filter((item) =>
+        normalizedMode ? String(item.mode || "").trim().toUpperCase() === normalizedMode : true
+      )
+      .sort((left, right) => {
+        const leftCreatedAt = String(left.created_at || "");
+        const rightCreatedAt = String(right.created_at || "");
+        const createdAtCompare = rightCreatedAt.localeCompare(leftCreatedAt);
+        if (createdAtCompare !== 0) {
+          return createdAtCompare;
+        }
+        return String(right.decision_id || "").localeCompare(String(left.decision_id || ""));
+      })
+      .slice(0, max)
+      .map((item) => clone(item));
+  }
+
   return {
     createDraft,
     submitDraft,
@@ -404,6 +442,7 @@ function createPolicyRegistry({
     getExecutionPlan,
     saveDecision,
     getDecision,
+    listDecisions,
     expirePolicies
   };
 }

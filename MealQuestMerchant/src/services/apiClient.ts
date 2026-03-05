@@ -60,6 +60,27 @@ export type MerchantDashboardResponse = {
   };
   acquisitionWelcomeSummary?: DecisionSummaryResponse;
   gameMarketingSummary?: DecisionSummaryResponse;
+  traceSummary?: {
+    last24h?: {
+      payments?: number;
+      ledgerRows?: number;
+      invoices?: number;
+      audits?: number;
+      policyDecisions?: number;
+      traceLinkedPayments?: number;
+      tracePendingPayments?: number;
+    };
+    latestTrace?: {
+      paymentTxnId?: string;
+      userId?: string;
+      status?: string;
+      createdAt?: string;
+      chainComplete?: boolean;
+      hasLedger?: boolean;
+      hasInvoice?: boolean;
+      hasAudit?: boolean;
+    }[];
+  };
 };
 
 export type DecisionSummaryResponse = {

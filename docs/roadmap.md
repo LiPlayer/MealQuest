@@ -61,8 +61,8 @@
 | S030 | P0 | 商户入口闭环（登录/开店/会话恢复）可回归 | S020 done | done |
 | S040 | P0 | 顾客入口闭环（扫码入店/资产首屏）可回归 | S030 done | done |
 | S050 | P1 | 六策略族执行治理基座（审批/TTL/Kill Switch/风险红线）可回归 | S040 done | done |
-| S060 | P1 | 六策略族账务审计基座（payment->ledger->invoice->audit）可回归 | S050 done | doing |
-| S110 | P1 | Acquisition 样例策略闭环（`ACQ_WELCOME_FIRST_BIND_V1`）可回归 | S060 done | todo |
+| S060 | P1 | 六策略族账务审计基座（payment->ledger->invoice->audit）可回归 | S050 done | done |
+| S110 | P1 | Acquisition 样例策略闭环（`ACQ_WELCOME_FIRST_BIND_V1`）可回归 | S060 done | doing |
 | S120 | P1 | Activation 样例策略闭环（`ACT_CHECKIN_STREAK_RECOVERY_V1`）可回归 | S110 done | todo |
 | S130 | P1 | Revenue 样例策略闭环（`REV_ADDON_UPSELL_SLOW_ITEM_V1`）可回归 | S120 done | todo |
 | S140 | P1 | Retention 样例策略闭环（`RET_DORMANT_WINBACK_14D_V1`）可回归 | S130 done | todo |
@@ -136,7 +136,7 @@
 | 策略合同与草案发布层 | `schemaRegistry.ts`, `policyRegistry.ts`, `approvalTokenService.ts` | 统一策略合同校验、Draft/Approve/Publish 生命周期、审批令牌与 TTL | S050 |
 | 决策编排层 | `decisionService.ts`, `policyOsService.ts` | 触发匹配、分群判定、约束校验、执行计划生成、决策持久化 | S050 |
 | 插件能力层 | `plugins/defaultPlugins.ts`, `pluginRegistry.ts`, `adapters/policyRuntimeExecutor.ts` | trigger/segment/constraint/action 插件可插拔化，复用在六策略族样例 | S050, S110-S160 |
-| 账务审计层 | `ledgerService.ts`, `policyRegistry.ts(listDecisions)`, `wsDispatcher.ts` | payment->ledger->invoice->audit 串联、decision trace 回放、事件分发 | S060 |
+| 账务审计层 | `ledgerService.ts`, `policyRegistry.ts(listDecisions)`, `policyOsService.ts(listDecisions)`, `wsDispatcher.ts` | payment->ledger->invoice->audit 串联、decision trace 回放、事件分发 | S060 |
 | 状态与资源层 | `state.ts` | 预算/频控/库存/收集物等资源状态桶统一管理 | S050, S060 |
 
 #### 03.0.2 六策略族任务分配原则（样例层）
@@ -369,9 +369,9 @@
 
 | task_id | lane | task | status | output |
 | --- | --- | --- | --- | --- |
-| S060-SRV-01 | server | 基于 `ledgerService/policyRegistry/wsDispatcher` 固化 payment->ledger->invoice->audit 一致性与 trace 串联 | todo | 一致性链路 |
-| S060-MER-01 | merchant | 提供商户侧交易/执行结果追溯视图 | todo | 商户追溯能力 |
-| S060-CUS-01 | customer | 提供顾客账本与发票查询一致性展示 | todo | 顾客追溯能力 |
+| S060-SRV-01 | server | 基于 `ledgerService/policyRegistry/wsDispatcher` 固化 payment->ledger->invoice->audit 一致性与 trace 串联 | done | 一致性链路 |
+| S060-MER-01 | merchant | 提供商户侧交易/执行结果追溯视图 | done | 商户追溯能力 |
+| S060-CUS-01 | customer | 提供顾客账本与发票查询一致性展示 | done | 顾客追溯能力 |
 
 - Deliverables：
 1. 对账证据。
@@ -450,7 +450,7 @@
 3. 支付主链路不受影响。
 
 - Acceptance Commands：
-1. `cd MealQuestServer && npm test`
+1. `cd MealQuestServer && npm run test:step:s060`
 2. `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.constraints.test.ts`
 3. `cd MealQuestMerchant && npm run lint && npm run typecheck`
 4. `cd meal-quest-customer && npm run test:regression:ui`
@@ -965,7 +965,7 @@
 | S030 | `cd MealQuestServer && npm test`（非沙箱重跑通过，65/65）；`cd MealQuestMerchant && npm run lint && npm run typecheck`；`cd meal-quest-customer && npm run typecheck && npm test -- --runInBand` | `docs/qa/s030-merchant-entry-closure.md` | `MealQuestServer/test/http.integration.test.ts`；`MealQuestMerchant/src/context/MerchantContext.tsx`；`MealQuestMerchant/src/services/apiClient.ts`；`MealQuestMerchant/src/services/authSessionStorage.ts`；`meal-quest-customer/test/pages/startup.test.tsx` | pass | AI/Agent | 2026-03-04 |
 | S040 | historical baseline: `cd MealQuestServer && npm test`（66/66）；latest reopen checks: `cd MealQuestMerchant && npm run lint && npm run typecheck`（pass）；`cd meal-quest-customer && npm run typecheck`（pass）；`cd meal-quest-customer && npm test -- --runInBand test/pages/startup.test.tsx test/pages/account.test.tsx`（8/8）；`npm run check:encoding`（pass）；`cd meal-quest-customer && npm run test:e2e:core`（skipped on Ubuntu: windows-only policy）；merchant QR save/share manual smoke（pass） | `docs/qa/s040-customer-entry-closure.md` | `MealQuestServer/test/http.integration.test.ts`；`MealQuestMerchant/app/_layout.tsx`；`MealQuestMerchant/app/(tabs)/_layout.tsx`；`MealQuestMerchant/app/(tabs)/dashboard.tsx`；`MealQuestMerchant/app/(tabs)/approvals.tsx`；`MealQuestMerchant/app/(tabs)/replay.tsx`；`MealQuestMerchant/app/(tabs)/risk.tsx`；`MealQuestMerchant/src/screens/AgentScreen.tsx`；`MealQuestMerchant/src/screens/EntryQrScreen.tsx`；`MealQuestMerchant/src/services/entryQrService.ts`；`meal-quest-customer/src/pages/startup/index.tsx`；`meal-quest-customer/src/pages/index/index.tsx`；`meal-quest-customer/src/pages/account/index.tsx`；`meal-quest-customer/test/pages/startup.test.tsx`；`meal-quest-customer/test/pages/account.test.tsx`；`meal-quest-customer/test/e2e/customer-core-flow.spec.js`；`meal-quest-customer/test/e2e/utils/mini-program-session.js` | pass | AI/Agent | 2026-03-04 |
 | S050 | `cd MealQuestServer && npm run test:step:s050`; `cd MealQuestMerchant && npm run lint && npm run typecheck`; `cd meal-quest-customer && npm run test:regression:ui`; `npm run check:encoding` | `docs/qa/s050-governance-baseline-closure.md` | `MealQuestServer/src/policyos/policyRegistry.ts`; `MealQuestServer/src/policyos/approvalTokenService.ts`; `MealQuestServer/src/policyos/plugins/defaultPlugins.ts`; `MealQuestServer/test/policyOs.http.integration.test.ts`; `MealQuestServer/package.json` | pass | AI/Agent | 2026-03-05 |
-| S060 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
+| S060 | `cd MealQuestServer && npm run test:step:s060`（非沙箱通过，12/12）；`cd MealQuestMerchant && npm run lint && npm run typecheck`；`cd meal-quest-customer && npm test -- --runInBand test/services/api-data-service-customer-center.test.ts test/pages/account.test.tsx` | `docs/qa/s060-ledger-audit-baseline-closure.md` | `MealQuestServer/src/policyos/policyRegistry.ts`; `MealQuestServer/src/policyos/policyOsService.ts`; `MealQuestServer/src/http/routes/paymentRoutes.ts`; `MealQuestServer/src/services/merchantService.ts`; `MealQuestServer/test/policyOs.constraints.test.ts`; `MealQuestMerchant/src/services/apiClient.ts`; `MealQuestMerchant/src/context/MerchantContext.tsx`; `MealQuestMerchant/src/domain/merchantEngine.ts`; `MealQuestMerchant/src/screens/DashboardScreen.tsx`; `meal-quest-customer/src/services/customerApp/mappers.ts`; `meal-quest-customer/test/services/api-data-service-customer-center.test.ts` | pass | AI/Agent | 2026-03-05 |
 | S110 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S120 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S130 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
@@ -1093,3 +1093,4 @@
 3. 2026-03-05：完成 Server 测试分层，默认 `npm test` 与当前指针 `S050` 对齐，`S110` 用例独立为 step suite。
 4. 2026-03-05：按当前指针策略移除 `S110` 独立测试套件入口，待 `S110` 阶段恢复专用自动化。
 5. 2026-03-05：完成 `S050` 收口与证据回填，主路线指针推进至 `S060 doing`。
+6. 2026-03-05：完成 `S060` 账务审计基座收口与证据回填，主路线指针推进至 `S110 doing`。

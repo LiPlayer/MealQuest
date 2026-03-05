@@ -287,3 +287,54 @@ test("global budget constraint shares cap across users and policies in time wind
     )
   );
 });
+
+test("policy os decision list supports merchant and event filters", async () => {
+  const db = createInMemoryDb();
+  db.save = () => {};
+  seedMerchantAndUser(db, "m_list_decision");
+  const policyOsService = createPolicyOsService(db);
+  const draft = policyOsService.createDraft({
+    merchantId: "m_list_decision",
+    operatorId: "owner",
+    spec: createSpec("m_list_decision")
+  });
+  policyOsService.submitDraft({
+    merchantId: "m_list_decision",
+    draftId: draft.draft_id,
+    operatorId: "owner"
+  });
+  const approval = policyOsService.approveDraft({
+    merchantId: "m_list_decision",
+    draftId: draft.draft_id,
+    operatorId: "owner"
+  });
+  policyOsService.publishDraft({
+    merchantId: "m_list_decision",
+    draftId: draft.draft_id,
+    operatorId: "owner",
+    approvalId: approval.approvalId
+  });
+
+  await policyOsService.executeDecision({
+    merchantId: "m_list_decision",
+    userId: "u_001",
+    event: "APP_OPEN",
+    context: {}
+  });
+  await policyOsService.evaluateDecision({
+    merchantId: "m_list_decision",
+    userId: "u_001",
+    event: "APP_OPEN",
+    context: {}
+  });
+
+  const decisions = policyOsService.listDecisions({
+    merchantId: "m_list_decision",
+    userId: "u_001",
+    event: "APP_OPEN",
+    limit: 10
+  });
+  assert.ok(decisions.length >= 2);
+  assert.ok(decisions.every((item) => item.merchant_id === "m_list_decision"));
+  assert.ok(decisions.every((item) => item.event === "APP_OPEN"));
+});

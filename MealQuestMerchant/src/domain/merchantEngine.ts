@@ -59,6 +59,27 @@ export interface MerchantState {
       createdAt: string;
     }[];
   };
+  traceSummary: {
+    last24h: {
+      payments: number;
+      ledgerRows: number;
+      invoices: number;
+      audits: number;
+      policyDecisions: number;
+      traceLinkedPayments: number;
+      tracePendingPayments: number;
+    };
+    latestTrace: {
+      paymentTxnId: string;
+      userId: string;
+      status: string;
+      createdAt: string;
+      chainComplete: boolean;
+      hasLedger: boolean;
+      hasInvoice: boolean;
+      hasAudit: boolean;
+    }[];
+  };
 }
 
 export interface CashierInput {
@@ -104,6 +125,18 @@ export const createInitialMerchantState = (): MerchantState => ({
     blockedCount24h: 0,
     topBlockedReasons: [],
     latestResults: [],
+  },
+  traceSummary: {
+    last24h: {
+      payments: 0,
+      ledgerRows: 0,
+      invoices: 0,
+      audits: 0,
+      policyDecisions: 0,
+      traceLinkedPayments: 0,
+      tracePendingPayments: 0,
+    },
+    latestTrace: [],
   },
 });
 

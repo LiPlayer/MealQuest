@@ -13,6 +13,7 @@ export default function DashboardScreen() {
   const { merchantState } = useMerchant();
   const welcomeTopReason = merchantState.acquisitionWelcomeSummary.topBlockedReasons[0];
   const welcomeLatest = merchantState.acquisitionWelcomeSummary.latestResults[0];
+  const latestTrace = merchantState.traceSummary.latestTrace[0];
 
   return (
     <AppShell>
@@ -46,6 +47,25 @@ export default function DashboardScreen() {
           {welcomeLatest && welcomeLatest.outcome
             ? `最近结果：${welcomeLatest.outcome}${welcomeLatest.reasonCode ? ` · ${welcomeLatest.reasonCode}` : ''}`
             : '最近结果：暂无'}
+        </Text>
+      </SurfaceCard>
+
+      <SurfaceCard>
+        <Text style={styles.sectionTitle}>账务追溯摘要（24h）</Text>
+        <View style={styles.grid}>
+          <StatTile label="支付" value={merchantState.traceSummary.last24h.payments} />
+          <StatTile label="账本" value={merchantState.traceSummary.last24h.ledgerRows} />
+          <StatTile label="发票" value={merchantState.traceSummary.last24h.invoices} />
+        </View>
+        <View style={styles.grid}>
+          <StatTile label="审计" value={merchantState.traceSummary.last24h.audits} />
+          <StatTile label="决策" value={merchantState.traceSummary.last24h.policyDecisions} />
+          <StatTile label="待补链" value={merchantState.traceSummary.last24h.tracePendingPayments} />
+        </View>
+        <Text style={styles.hintText}>
+          {latestTrace && latestTrace.paymentTxnId
+            ? `最近链路：${latestTrace.paymentTxnId} · ${latestTrace.chainComplete ? '完整' : '待补齐'}`
+            : '最近链路：暂无'}
         </Text>
       </SurfaceCard>
 

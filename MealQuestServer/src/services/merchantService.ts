@@ -108,6 +108,81 @@ function createMerchantService(db, options = {}) {
     };
   }
 
+  function toTimestampMs(value) {
+    const ts = Date.parse(String(value || ""));
+    return Number.isFinite(ts) ? ts : 0;
+  }
+
+  function buildLedgerTraceSummary({ merchantId, windowHours = 24, traceLimit = 5 }) {
+    const nowMs = Date.now();
+    const cutoffMs = nowMs - Math.max(1, Number(windowHours) || 24) * 60 * 60 * 1000;
+    const allLedgerRows = Array.isArray(db.ledger) ? db.ledger : [];
+    const ledgerRows = allLedgerRows
+      .filter((item) => item && item.merchantId === merchantId)
+      .filter((item) => toTimestampMs(item.timestamp || item.createdAt) >= cutoffMs);
+    const invoices = Object.values((db.invoicesByMerchant && db.invoicesByMerchant[merchantId]) || {});
+    const recentInvoices = invoices.filter((item) => toTimestampMs(item.issuedAt) >= cutoffMs);
+    const invoiceByPaymentTxnId = new Map(
+      recentInvoices
+        .filter((item) => item && item.paymentTxnId)
+        .map((item) => [String(item.paymentTxnId), item])
+    );
+    const payments = Object.values((db.paymentsByMerchant && db.paymentsByMerchant[merchantId]) || {});
+    const recentPayments = payments
+      .filter((item) => toTimestampMs(item.createdAt) >= cutoffMs)
+      .sort((left, right) => String(right.createdAt || "").localeCompare(String(left.createdAt || "")));
+    const auditRows = (Array.isArray(db.auditLogs) ? db.auditLogs : [])
+      .filter((item) => item && item.merchantId === merchantId)
+      .filter((item) => toTimestampMs(item.timestamp) >= cutoffMs);
+    const decisions =
+      policyOsService && typeof policyOsService.listDecisions === "function"
+        ? policyOsService.listDecisions({ merchantId, limit: 300 }).filter(
+            (item) => toTimestampMs(item.created_at) >= cutoffMs
+          )
+        : [];
+
+    const latestTrace = recentPayments.slice(0, Math.max(1, Math.min(20, Number(traceLimit) || 5))).map((item) => {
+      const paymentTxnId = String(item.paymentTxnId || "");
+      const hasLedger = ledgerRows.some((row) => {
+        const details = row && row.details && typeof row.details === "object" ? row.details : {};
+        return row.txnId === paymentTxnId || String(details.paymentTxnId || "") === paymentTxnId;
+      });
+      const hasInvoice = invoiceByPaymentTxnId.has(paymentTxnId);
+      const hasAudit = auditRows.some((row) => {
+        const details = row && row.details && typeof row.details === "object" ? row.details : {};
+        return String(details.paymentTxnId || "") === paymentTxnId;
+      });
+      const isPaid = String(item.status || "").toUpperCase() === "PAID";
+      return {
+        paymentTxnId,
+        userId: String(item.userId || ""),
+        status: String(item.status || ""),
+        createdAt: String(item.createdAt || ""),
+        chainComplete: isPaid ? hasLedger && hasInvoice && hasAudit : false,
+        hasLedger,
+        hasInvoice,
+        hasAudit
+      };
+    });
+
+    const paidTraces = latestTrace.filter((item) => String(item.status || "").toUpperCase() === "PAID");
+    const traceLinkedPayments = paidTraces.filter((item) => item.chainComplete).length;
+    const tracePendingPayments = paidTraces.filter((item) => !item.chainComplete).length;
+
+    return {
+      last24h: {
+        payments: recentPayments.length,
+        ledgerRows: ledgerRows.length,
+        invoices: recentInvoices.length,
+        audits: auditRows.length,
+        policyDecisions: decisions.length,
+        traceLinkedPayments,
+        tracePendingPayments
+      },
+      latestTrace
+    };
+  }
+
   function buildDecisionSummary({ merchantId, event, limit = 80 }) {
     if (!policyOsService || typeof policyOsService.listDecisions !== "function") {
       return createEmptyDecisionSummary();
@@ -1446,6 +1521,7 @@ function createMerchantService(db, options = {}) {
         gameMarketingService && typeof gameMarketingService.buildGameMarketingSummary === "function"
           ? gameMarketingService.buildGameMarketingSummary({ merchantId })
           : createEmptyDecisionSummary(),
+      traceSummary: buildLedgerTraceSummary({ merchantId }),
     };
   }
 

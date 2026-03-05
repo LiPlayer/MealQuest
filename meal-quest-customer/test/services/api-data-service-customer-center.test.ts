@@ -72,6 +72,30 @@ describe('ApiDataService customer center', () => {
         );
     });
 
+    it('maps createdAt as fallback ledger timestamp', async () => {
+        requestMock.mockResolvedValueOnce({
+            statusCode: 200,
+            data: {
+                items: [
+                    {
+                        txnId: 'txn_created_at',
+                        merchantId: 'm_store_001',
+                        userId: 'u_fixture_001',
+                        type: 'POLICYOS_GRANT',
+                        amount: 0,
+                        createdAt: '2026-02-22T00:00:00.000Z'
+                    }
+                ]
+            }
+        });
+
+        const { ApiDataService } = require('@/services/ApiDataService');
+        const rows = await ApiDataService.getPaymentLedger('m_store_001', 'u_fixture_001', 10);
+
+        expect(rows.length).toBe(1);
+        expect(rows[0].timestamp).toBe('2026-02-22T00:00:00.000Z');
+    });
+
     it('loads invoice rows', async () => {
         requestMock.mockResolvedValueOnce({
             statusCode: 200,

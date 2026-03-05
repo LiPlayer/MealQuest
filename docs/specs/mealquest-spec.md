@@ -119,6 +119,7 @@
 - 经营形态：看板看结果、Agent 给建议、审批控风险、回放看过程、停机控风险
 - 操作形态：关键动作可确认、可撤回、可追溯
 - 体验目标：老板在 10 分钟内看懂经营状态并完成一次策略执行
+- 首版追溯基线：看板需提供最近 24 小时 payment->ledger->invoice->audit 一致性摘要，作为执行回放前置视图
 
 - Entry QR operation: owner can open a dedicated page to generate a fixed store entry QR and distribute it offline.
 

@@ -12,6 +12,27 @@ function toBooleanFlag(value) {
   return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
 }
 
+function resolveLedgerTimestamp(row) {
+  if (!row || typeof row !== "object") {
+    return "";
+  }
+  const timestamp = String(row.timestamp || row.createdAt || "").trim();
+  return timestamp;
+}
+
+function normalizeLedgerRow(row) {
+  if (!row || typeof row !== "object") {
+    return row;
+  }
+  const timestamp = resolveLedgerTimestamp(row) || new Date(0).toISOString();
+  const createdAt = String(row.createdAt || row.timestamp || timestamp).trim() || timestamp;
+  return {
+    ...row,
+    timestamp,
+    createdAt
+  };
+}
+
 function createPaymentRoutesHandler({
   tenantPolicyManager,
   getServicesForMerchant,
@@ -150,7 +171,8 @@ function createPaymentRoutesHandler({
       const items = (scopedDb.ledger || [])
         .filter((row) => row.merchantId === merchantId)
         .filter((row) => (userId ? row.userId === userId : true))
-        .sort((a, b) => String(b.timestamp || "").localeCompare(String(a.timestamp || "")))
+        .map((row) => normalizeLedgerRow(row))
+        .sort((a, b) => String(resolveLedgerTimestamp(b)).localeCompare(String(resolveLedgerTimestamp(a))))
         .slice(0, limit);
 
       sendJson(res, 200, {

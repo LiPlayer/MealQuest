@@ -188,6 +188,39 @@ function normalizeDecisionSummary(raw: DecisionSummaryResponse | unknown): Merch
   };
 }
 
+function normalizeTraceSummary(raw: unknown): MerchantState['traceSummary'] {
+  const safe = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const rawLast24h =
+    safe.last24h && typeof safe.last24h === 'object'
+      ? (safe.last24h as Record<string, unknown>)
+      : {};
+  const rawLatestTrace = Array.isArray(safe.latestTrace) ? safe.latestTrace : [];
+  return {
+    last24h: {
+      payments: Number(rawLast24h.payments) || 0,
+      ledgerRows: Number(rawLast24h.ledgerRows) || 0,
+      invoices: Number(rawLast24h.invoices) || 0,
+      audits: Number(rawLast24h.audits) || 0,
+      policyDecisions: Number(rawLast24h.policyDecisions) || 0,
+      traceLinkedPayments: Number(rawLast24h.traceLinkedPayments) || 0,
+      tracePendingPayments: Number(rawLast24h.tracePendingPayments) || 0,
+    },
+    latestTrace: rawLatestTrace.map((item) => {
+      const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+      return {
+        paymentTxnId: typeof row.paymentTxnId === 'string' ? row.paymentTxnId : '',
+        userId: typeof row.userId === 'string' ? row.userId : '',
+        status: typeof row.status === 'string' ? row.status : '',
+        createdAt: typeof row.createdAt === 'string' ? row.createdAt : '',
+        chainComplete: Boolean(row.chainComplete),
+        hasLedger: Boolean(row.hasLedger),
+        hasInvoice: Boolean(row.hasInvoice),
+        hasAudit: Boolean(row.hasAudit),
+      };
+    }),
+  };
+}
+
 async function runAgentTask(params: {
   merchantId: string;
   token: string;
@@ -337,6 +370,7 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
           customerEntry: normalizeCustomerEntry(dashboard.customerEntry),
           acquisitionWelcomeSummary: normalizeDecisionSummary(dashboard.acquisitionWelcomeSummary),
           gameMarketingSummary: normalizeDecisionSummary(dashboard.gameMarketingSummary),
+          traceSummary: normalizeTraceSummary(dashboard.traceSummary),
         }));
       } catch (error) {
         console.warn('[MerchantContext] refresh dashboard failed', error);
