@@ -417,7 +417,7 @@
 3. 顾客端与商户端可查看一致判定结果。
 
 - Acceptance Commands：
-1. `cd MealQuestServer && npm run test:step:s110`
+1. `cd MealQuestServer && npm run test:step:s060`
 2. `cd MealQuestMerchant && npm run lint && npm run typecheck`
 3. `cd meal-quest-customer && npm run test:regression:ui`
 
@@ -956,7 +956,7 @@
 ## 04. 证据账本（按 Step 回填）
 
 - Reindex Note（2026-03-05）：主路线已按六策略族重排并新增 `S050/S060`。旧路线下的 `S110` 完成证据保留在 `docs/qa/s110-acquisition-welcome-closure.md` 作为历史记录，不作为新路线当前指针状态。
-- Test Layering Note（2026-03-05）：为保持 `S050 doing` 指针与默认回归门一致，`S110` Welcome 自动执行可见性用例已拆分到 `MealQuestServer/test/http.s110.integration.ts`，默认 `npm test` 绑定 `test:step:s050`。
+- Test Layering Note（2026-03-05）：为保持 `S050 doing` 指针与默认回归门一致，默认 `npm test` 绑定 `test:step:s050`；`S110` 自动化用例入口已移除，待 S110 开发阶段补齐。
 
 | StepID | Test Ref | Runtime Ref | Review Ref | Result | Verified By | Verified At |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -997,7 +997,7 @@
 | RB-MERCHANT-NAV-040 | Merchant app crashes when returning from entry QR page | `cd MealQuestMerchant && npm run lint && npm run typecheck` | merchant |
 | RB-GOV-050 | 治理硬门（审批/TTL/Kill Switch/红线）异常 | `cd MealQuestServer && npm run test:step:s050` | server + merchant |
 | RB-LEDGER-060 | 账务审计链路（payment->ledger->invoice->audit）不一致 | `cd MealQuestServer && npm run test:step:s060` | server + customer |
-| RB-ACQ-110 | Acquisition 样例策略误发放/误拦截 | `cd MealQuestServer && npm run test:step:s110` | server |
+| RB-ACQ-110 | Acquisition 样例策略误发放/误拦截 | `cd MealQuestServer && npm run test:step:s060`（S110 自动化待补齐） | server |
 | RB-ACT-120 | Activation 样例策略触发/频控异常 | `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.constraints.test.ts` | server + customer |
 | RB-REV-130 | Revenue 样例策略收益/库存约束异常 | `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.ledger.test.ts` | server + merchant |
 | RB-RET-140 | Retention 样例策略召回异常 | `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.constraints.test.ts` | server + customer |
@@ -1091,3 +1091,4 @@
 1. 2026-03-04：Init version（roadmap baseline established）。
 2. 2026-03-05：完成六策略族首版商用重排，新增治理/账务基座 Step（S050/S060）并固化每族一策验证路线（S110-S160）。
 3. 2026-03-05：完成 Server 测试分层，默认 `npm test` 与当前指针 `S050` 对齐，`S110` 用例独立为 step suite。
+4. 2026-03-05：按当前指针策略移除 `S110` 独立测试套件入口，待 `S110` 阶段恢复专用自动化。
