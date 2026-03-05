@@ -42,6 +42,10 @@ function createDefaultState() {
         sequenceByMerchant: {},
         dedupe: {}
       },
+      notifications: {
+        byId: {},
+        sequenceByMerchant: {}
+      },
       compliance: {
         behaviorLogs: [],
         deletionQueue: []

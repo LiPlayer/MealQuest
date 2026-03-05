@@ -9,7 +9,16 @@ const { registerDefaultPlugins } = require("./plugins/defaultPlugins");
 const { createWsDispatcher } = require("./wsDispatcher");
 const { ensurePolicyOsState } = require("./state");
 
-function createPolicyOsService(db, { wsHub = null, metrics = null, now = () => Date.now() } = {}) {
+function createPolicyOsService(
+  db,
+  {
+    wsHub = null,
+    metrics = null,
+    now = () => Date.now(),
+    onDraftSubmitted = null,
+    onDecisionExecuted = null
+  } = {}
+) {
   if (!db) {
     throw new Error("db is required");
   }
@@ -101,7 +110,54 @@ function createPolicyOsService(db, { wsHub = null, metrics = null, now = () => D
       },
       messageId: decision.decision_id
     });
+    if (typeof onDecisionExecuted === "function") {
+      const rejected = Array.isArray(decision.rejected) ? decision.rejected : [];
+      const reasonCodes = Array.from(
+        new Set(
+          rejected
+            .map((item) => String((item && item.reason) || "").trim())
+            .filter(Boolean)
+        )
+      );
+      const outcome =
+        Array.isArray(decision.executed) && decision.executed.length > 0
+          ? "HIT"
+          : rejected.length > 0
+            ? "BLOCKED"
+            : "NO_POLICY";
+      try {
+        onDecisionExecuted({
+          merchantId,
+          userId: user ? user.uid : userId || "",
+          event: normalizedEvent,
+          decisionId: decision.decision_id,
+          outcome,
+          reasonCodes
+        });
+      } catch {
+        // notification failures must not break policy execution path
+      }
+    }
     return decision;
+  }
+
+  function submitDraft(payload) {
+    const draft = policyRegistry.submitDraft(payload);
+    if (typeof onDraftSubmitted === "function") {
+      try {
+        onDraftSubmitted({
+          merchantId: draft.merchant_id,
+          draftId: draft.draft_id,
+          policyKey: draft.spec && draft.spec.policy_key ? draft.spec.policy_key : "",
+          policyName: draft.spec && draft.spec.name ? draft.spec.name : "",
+          submittedBy: draft.submitted_by || "",
+          submittedAt: draft.submitted_at || ""
+        });
+      } catch {
+        // notification failures must not break draft submit path
+      }
+    }
+    return draft;
   }
 
   async function evaluateDecision({
@@ -237,7 +293,7 @@ function createPolicyOsService(db, { wsHub = null, metrics = null, now = () => D
       actions: pluginRegistry.list("action")
     }),
     createDraft: policyRegistry.createDraft,
-    submitDraft: policyRegistry.submitDraft,
+    submitDraft,
     approveDraft: policyRegistry.approveDraft,
     publishDraft: policyRegistry.publishDraft,
     pausePolicy: policyRegistry.pausePolicy,

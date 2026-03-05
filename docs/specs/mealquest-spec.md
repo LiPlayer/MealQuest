@@ -262,6 +262,71 @@
 - 审计链路：建议 -> 确认 -> 执行 -> 回放 全程留痕
 - 熔断与降级：策略异常可一键停机与自动过期
 
+#### 4.4.1 消息触达中心接口（S050-SRV-02）
+
+为支撑老板端提醒中心与顾客消息接收，服务端提供收件箱查询 + 实时推送能力：
+
+- 接口：`GET /api/notifications/inbox`
+  - 角色：`OWNER / MANAGER / CLERK / CUSTOMER`
+  - 作用：查询当前登录主体的消息收件箱
+  - 过滤：`status=ALL|UNREAD|READ`、`category=ALL|APPROVAL_TODO|EXECUTION_RESULT`
+  - 分页：`limit` + `cursor`
+  - 缓存：支持 `ETag` 与 `If-None-Match`，命中返回 `304`
+
+- 接口：`GET /api/notifications/unread-summary`
+  - 角色：`OWNER / MANAGER / CLERK / CUSTOMER`
+  - 作用：返回当前登录主体未读总数与分类统计
+  - 缓存：支持 `ETag` 与 `If-None-Match`，命中返回 `304`
+
+- 接口：`POST /api/notifications/read`
+  - 角色：`OWNER / MANAGER / CLERK / CUSTOMER`
+  - 作用：单条或批量已读回执（`notificationIds` 或 `markAll`）
+  - 边界：仅允许标记当前登录主体自己的消息
+
+触发规则（当前生效）：
+- `POLICY_DRAFT_SUBMIT` 成功后，向老板侧发送 `APPROVAL_TODO`
+- `POLICY_EXECUTE` 成功后，向老板侧与命中顾客发送 `EXECUTION_RESULT`
+
+实时推送：
+- WebSocket 事件：`NOTIFICATION_CREATED`、`NOTIFICATION_READ`
+- 推送范围：按 `merchantId + recipient` 定向推送，不做跨主体广播
+
+作用域与安全要求：
+- 若携带 `merchantId` 且与登录态 `auth.merchantId` 不一致，返回 `403 merchant scope denied`
+- `merchantId` 不存在时返回 `404 merchant not found`
+- 顾客角色必须具备自身 `userId` 身份才能查询或回执消息
+
+#### 4.4.2 老板端治理闭环（S050-MER-01）
+
+老板端 App 在 S050 阶段必须落地“审批中心 + 执行回放 + 风险控制”闭环，不再使用占位页。
+
+- 审批中心（Approvals）
+  - 接入 `GET /api/policyos/governance/overview` 与 `GET /api/policyos/governance/approvals`
+  - 支持 `status=ALL|SUBMITTED|APPROVED|PUBLISHED` 过滤
+  - `OWNER` 可执行：
+    - 草稿审批：`POST /api/policyos/drafts/{draftId}/approve`
+    - 策略发布：`POST /api/policyos/drafts/{draftId}/publish`
+  - `MANAGER` 仅可查看，不可执行审批/发布动作
+
+- 执行回放（Replay）
+  - 接入 `GET /api/policyos/governance/replays`
+  - 支持 `mode`、`outcome`、`event` 过滤
+  - 回放卡片需展示：`decisionId`、`traceId`、`outcome`、`reasonCodes`、`createdAt`
+  - 用于老板侧解释“为何命中/为何拦截/为何无策略”
+
+- 风险控制（Risk）
+  - 风险页接入治理总览，展示待审批、活跃/暂停策略、24h 命中/拦截与停机状态
+  - `OWNER` 可执行紧急停机：
+    - `POST /api/merchant/kill-switch`
+  - `OWNER` 可执行策略启停：
+    - 暂停：`POST /api/policyos/policies/{policyId}/pause`
+    - 恢复：`POST /api/policyos/policies/{policyId}/resume`
+  - 非 OWNER 角色仅可查看风险状态，不可执行启停动作
+
+降级要求：
+- 审批/回放/风险任一接口异常时，页面显示错误并允许刷新重试
+- 异常不得影响老板端登录、看板、支付链路相关可见能力
+
 ---
 
 ## 5. 补贴效率与长期最优

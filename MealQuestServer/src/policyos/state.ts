@@ -24,6 +24,11 @@ function ensurePolicyOsState(db) {
   db.policyOs.dispatcher = ensureObject(db.policyOs.dispatcher);
   db.policyOs.dispatcher.sequenceByMerchant = ensureObject(db.policyOs.dispatcher.sequenceByMerchant);
   db.policyOs.dispatcher.dedupe = ensureObject(db.policyOs.dispatcher.dedupe);
+  db.policyOs.notifications = ensureObject(db.policyOs.notifications);
+  db.policyOs.notifications.byId = ensureObject(db.policyOs.notifications.byId);
+  db.policyOs.notifications.sequenceByMerchant = ensureObject(
+    db.policyOs.notifications.sequenceByMerchant
+  );
   db.policyOs.compliance = ensureObject(db.policyOs.compliance);
   if (!Array.isArray(db.policyOs.compliance.behaviorLogs)) {
     db.policyOs.compliance.behaviorLogs = [];

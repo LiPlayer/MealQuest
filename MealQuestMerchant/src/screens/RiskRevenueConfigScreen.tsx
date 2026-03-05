@@ -6,10 +6,17 @@ import AppShell from '../components/ui/AppShell';
 import SurfaceCard from '../components/ui/SurfaceCard';
 import { useMerchant } from '../context/MerchantContext';
 import {
+  GovernanceOverviewResponse,
+  PolicyRecord,
   RevenueStrategyConfig,
   RevenueStrategyRecommendationResponse,
+  getPolicies,
+  getPolicyGovernanceOverview,
   getRevenueStrategyConfig,
+  pausePolicy,
   recommendRevenueStrategyConfig,
+  resumePolicy,
+  setMerchantKillSwitch,
   setRevenueStrategyConfig,
 } from '../services/apiClient';
 import { mqTheme } from '../theme/tokens';
@@ -99,14 +106,20 @@ function Field({
 export default function RiskRevenueConfigScreen() {
   const { authSession, merchantState } = useMerchant();
   const [loading, setLoading] = useState(true);
+  const [riskLoading, setRiskLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [recommending, setRecommending] = useState(false);
   const [draft, setDraft] = useState<RevenueConfigDraft | null>(null);
   const [configError, setConfigError] = useState('');
   const [configNotice, setConfigNotice] = useState('');
+  const [riskError, setRiskError] = useState('');
+  const [riskNotice, setRiskNotice] = useState('');
+  const [riskActionId, setRiskActionId] = useState('');
   const [recommendation, setRecommendation] = useState<RevenueStrategyRecommendationResponse | null>(null);
   const [policyId, setPolicyId] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
+  const [overview, setOverview] = useState<GovernanceOverviewResponse | null>(null);
+  const [policyRows, setPolicyRows] = useState<PolicyRecord[]>([]);
 
   const loadConfig = useCallback(async () => {
     if (!authSession || !authSession.token || !authSession.merchantId) {
@@ -131,9 +144,42 @@ export default function RiskRevenueConfigScreen() {
     }
   }, [authSession]);
 
+  const loadRiskSnapshot = useCallback(async () => {
+    if (!authSession || !authSession.token || !authSession.merchantId) {
+      setRiskLoading(false);
+      return;
+    }
+    setRiskLoading(true);
+    setRiskError('');
+    try {
+      const [overviewResult, policiesResult] = await Promise.all([
+        getPolicyGovernanceOverview({
+          merchantId: authSession.merchantId,
+          token: authSession.token,
+        }),
+        getPolicies({
+          merchantId: authSession.merchantId,
+          token: authSession.token,
+          includeInactive: true,
+        }),
+      ]);
+      setOverview(overviewResult);
+      setPolicyRows(Array.isArray(policiesResult.items) ? policiesResult.items : []);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'load risk snapshot failed';
+      setRiskError(message);
+    } finally {
+      setRiskLoading(false);
+    }
+  }, [authSession]);
+
   useEffect(() => {
     void loadConfig();
   }, [loadConfig]);
+
+  useEffect(() => {
+    void loadRiskSnapshot();
+  }, [loadRiskSnapshot]);
 
   const revenueTopReason = merchantState.revenueUpsellSummary.topBlockedReasons[0];
   const revenueLatest = merchantState.revenueUpsellSummary.latestResults[0];
@@ -149,6 +195,8 @@ export default function RiskRevenueConfigScreen() {
       netRevenue: recommendation.salesSnapshot.netRevenue,
     };
   }, [recommendation]);
+
+  const isOwner = String(authSession?.role || '').toUpperCase() === 'OWNER';
 
   const updateDraftField = (key: keyof RevenueConfigDraft, value: string) => {
     setDraft((prev) => ({
@@ -223,12 +271,144 @@ export default function RiskRevenueConfigScreen() {
     setConfigError('');
   };
 
+  const handleKillSwitch = async (enabled: boolean) => {
+    if (!authSession || !authSession.token || !authSession.merchantId) {
+      return;
+    }
+    setRiskActionId(enabled ? 'kill-switch-enable' : 'kill-switch-disable');
+    setRiskError('');
+    setRiskNotice('');
+    try {
+      await setMerchantKillSwitch({
+        merchantId: authSession.merchantId,
+        token: authSession.token,
+        enabled,
+      });
+      setRiskNotice(enabled ? '已开启紧急停机，策略执行将被拦截。' : '已关闭紧急停机，策略可恢复执行。');
+      await loadRiskSnapshot();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'set kill switch failed';
+      setRiskError(message);
+    } finally {
+      setRiskActionId('');
+    }
+  };
+
+  const handlePauseResumePolicy = async (policy: PolicyRecord) => {
+    if (!authSession || !authSession.token || !authSession.merchantId) {
+      return;
+    }
+    const policyIdValue = String(policy.policy_id || '').trim();
+    if (!policyIdValue) {
+      return;
+    }
+    setRiskActionId(policyIdValue);
+    setRiskError('');
+    setRiskNotice('');
+    try {
+      const status = String(policy.status || '').trim().toUpperCase();
+      if (status === 'PUBLISHED') {
+        await pausePolicy({
+          merchantId: authSession.merchantId,
+          policyId: policyIdValue,
+          token: authSession.token,
+          reason: 'owner_manual_pause',
+        });
+        setRiskNotice(`已暂停策略：${policy.policy_key || policyIdValue}`);
+      } else if (status === 'PAUSED') {
+        await resumePolicy({
+          merchantId: authSession.merchantId,
+          policyId: policyIdValue,
+          token: authSession.token,
+        });
+        setRiskNotice(`已恢复策略：${policy.policy_key || policyIdValue}`);
+      }
+      await loadRiskSnapshot();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'policy status update failed';
+      setRiskError(message);
+    } finally {
+      setRiskActionId('');
+    }
+  };
+
   return (
     <AppShell scroll>
       <View style={styles.headerWrap}>
         <Text style={styles.title}>Revenue 风控配置</Text>
         <Text style={styles.subtitle}>手动配置慢销加购策略，或先获取 Agent 建议再应用。</Text>
       </View>
+
+      <SurfaceCard>
+        <Text style={styles.sectionTitle}>风险治理与紧急停机</Text>
+        <Text style={styles.summaryLine}>
+          紧急停机：{overview?.killSwitchEnabled ? '已开启（执行拦截）' : '未开启（正常执行）'}
+        </Text>
+        <View style={styles.grid}>
+          <Text style={styles.summaryLine}>待审批：{overview?.pendingApprovalCount ?? 0}</Text>
+          <Text style={styles.summaryLine}>待发布：{overview?.approvedAwaitPublishCount ?? 0}</Text>
+        </View>
+        <View style={styles.grid}>
+          <Text style={styles.summaryLine}>活跃策略：{overview?.activePolicyCount ?? 0}</Text>
+          <Text style={styles.summaryLine}>暂停策略：{overview?.pausedPolicyCount ?? 0}</Text>
+        </View>
+        {!isOwner ? <Text style={styles.metaText}>当前角色仅可查看，风控开关与策略启停需 OWNER 权限。</Text> : null}
+        {riskError ? <Text style={styles.errorText}>{riskError}</Text> : null}
+        {riskNotice ? <Text style={styles.noticeText}>{riskNotice}</Text> : null}
+        {riskLoading ? <Text style={styles.metaText}>风险治理数据加载中...</Text> : null}
+        <View style={styles.actionWrap}>
+          <ActionButton
+            label={overview?.killSwitchEnabled ? '关闭紧急停机' : '开启紧急停机'}
+            icon={riskActionId.startsWith('kill-switch') ? 'hourglass-top' : 'power-settings-new'}
+            variant={overview?.killSwitchEnabled ? 'secondary' : 'danger'}
+            onPress={() => {
+              void handleKillSwitch(!Boolean(overview?.killSwitchEnabled));
+            }}
+            disabled={!isOwner || riskLoading || riskActionId.startsWith('kill-switch')}
+            busy={riskActionId.startsWith('kill-switch')}
+          />
+          <ActionButton
+            label="刷新治理状态"
+            icon="refresh"
+            variant="secondary"
+            onPress={() => {
+              void loadRiskSnapshot();
+            }}
+            disabled={riskLoading || Boolean(riskActionId)}
+          />
+        </View>
+
+        <Text style={styles.sectionSubTitle}>策略启停</Text>
+        {policyRows.length === 0 ? (
+          <Text style={styles.metaText}>当前无可管理策略。</Text>
+        ) : (
+          policyRows.map((item) => {
+            const itemStatus = String(item.status || '').toUpperCase();
+            const canToggle = itemStatus === 'PUBLISHED' || itemStatus === 'PAUSED';
+            const itemBusy = riskActionId === item.policy_id;
+            return (
+              <View key={item.policy_id} style={styles.policyRow}>
+                <Text style={styles.policyTitle}>{item.name || item.policy_key || item.policy_id}</Text>
+                <Text style={styles.metaText}>状态：{itemStatus || '-'}</Text>
+                <Text style={styles.metaText}>policyId：{item.policy_id}</Text>
+                <Text style={styles.metaText}>更新时间：{item.updated_at || item.published_at || '暂无'}</Text>
+                {canToggle ? (
+                  <ActionButton
+                    label={itemBusy ? '处理中...' : itemStatus === 'PUBLISHED' ? '暂停策略' : '恢复策略'}
+                    icon={itemBusy ? 'hourglass-top' : itemStatus === 'PUBLISHED' ? 'pause-circle' : 'play-circle'}
+                    variant={itemStatus === 'PUBLISHED' ? 'danger' : 'secondary'}
+                    onPress={() => {
+                      void handlePauseResumePolicy(item);
+                    }}
+                    disabled={!isOwner || itemBusy || Boolean(riskActionId && !itemBusy)}
+                    busy={itemBusy}
+                  />
+                ) : null}
+              </View>
+            );
+          })
+        )}
+      </SurfaceCard>
 
       <SurfaceCard>
         <Text style={styles.sectionTitle}>24h 执行摘要</Text>
@@ -387,6 +567,15 @@ const styles = StyleSheet.create({
   sectionTitle: {
     ...mqTheme.typography.sectionTitle,
   },
+  sectionSubTitle: {
+    ...mqTheme.typography.caption,
+    color: '#3c5373',
+    fontWeight: '700',
+  },
+  grid: {
+    flexDirection: 'row',
+    gap: mqTheme.spacing.sm,
+  },
   summaryLine: {
     ...mqTheme.typography.body,
     color: '#2e425e',
@@ -425,6 +614,19 @@ const styles = StyleSheet.create({
   metaText: {
     ...mqTheme.typography.caption,
     color: '#5b6f8f',
+  },
+  policyRow: {
+    borderWidth: 1,
+    borderColor: mqTheme.colors.border,
+    borderRadius: mqTheme.radius.md,
+    backgroundColor: '#ffffff',
+    padding: mqTheme.spacing.sm,
+    gap: 4,
+  },
+  policyTitle: {
+    ...mqTheme.typography.body,
+    color: mqTheme.colors.ink,
+    fontWeight: '700',
   },
   errorText: {
     fontSize: 12,

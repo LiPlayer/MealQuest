@@ -200,6 +200,123 @@ export type StateModelContractResponse = {
   } | null;
 };
 
+export type GovernanceOverviewResponse = {
+  merchantId: string;
+  pendingApprovalCount: number;
+  approvedAwaitPublishCount: number;
+  activePolicyCount: number;
+  pausedPolicyCount: number;
+  killSwitchEnabled: boolean;
+  decision24h: {
+    hit: number;
+    blocked: number;
+    noPolicy: number;
+    total: number;
+  };
+  audit24h: {
+    success: number;
+    blocked: number;
+    failed: number;
+    total: number;
+  };
+  lastUpdatedAt: string | null;
+};
+
+export type GovernanceApprovalsStatus = 'ALL' | 'SUBMITTED' | 'APPROVED' | 'PUBLISHED';
+
+export type GovernanceApprovalItem = {
+  draftId: string;
+  policyKey: string;
+  policyName: string;
+  status: GovernanceApprovalsStatus;
+  submittedAt: string | null;
+  submittedBy: string | null;
+  approvalId: string | null;
+  approvedAt: string | null;
+  approverId: string | null;
+  publishedPolicyId: string | null;
+  publishedAt: string | null;
+  updatedAt: string | null;
+};
+
+export type GovernanceApprovalsResponse = {
+  merchantId: string;
+  status: GovernanceApprovalsStatus;
+  items: GovernanceApprovalItem[];
+  pageInfo: {
+    limit: number;
+    returned: number;
+    total: number;
+  };
+};
+
+export type GovernanceReplayMode = 'EXECUTE' | 'EVALUATE';
+export type GovernanceReplayOutcome = 'ALL' | 'HIT' | 'BLOCKED' | 'NO_POLICY';
+
+export type GovernanceReplayItem = {
+  decisionId: string;
+  traceId: string;
+  event: string;
+  mode: GovernanceReplayMode;
+  userId: string;
+  outcome: Exclude<GovernanceReplayOutcome, 'ALL'>;
+  executed: unknown[];
+  rejected: unknown[];
+  reasonCodes: string[];
+  createdAt: string;
+};
+
+export type GovernanceReplaysResponse = {
+  merchantId: string;
+  event: string | null;
+  mode: GovernanceReplayMode;
+  outcome: GovernanceReplayOutcome;
+  items: GovernanceReplayItem[];
+  pageInfo: {
+    limit: number;
+    returned: number;
+    total: number;
+  };
+};
+
+export type PolicyLifecycleResult = {
+  merchantId?: string;
+  draft?: {
+    draft_id?: string;
+    status?: string;
+    approval_id?: string;
+    published_policy_id?: string;
+  };
+  policy?: {
+    policy_id?: string;
+    policy_key?: string;
+    status?: string;
+    published_at?: string;
+    updated_at?: string;
+  };
+  approvalId?: string;
+  approvalToken?: string;
+};
+
+export type PolicyRecord = {
+  policy_id: string;
+  policy_key: string;
+  name: string;
+  status: string;
+  published_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type PolicyListResponse = {
+  merchantId: string;
+  items: PolicyRecord[];
+};
+
+export type KillSwitchResponse = {
+  merchantId: string;
+  killSwitchEnabled: boolean;
+};
+
 const DEFAULT_BASE_URL = Platform.select({
   android: 'http://10.0.2.2:3030',
   default: 'http://127.0.0.1:3030',
@@ -414,6 +531,193 @@ export async function getStateModelContract(params: {
   }
   return getJson<StateModelContractResponse>(
     `/api/state/model-contract?merchantId=${encodeURIComponent(merchantId)}`,
+    { token: params.token },
+  );
+}
+
+export async function getPolicyGovernanceOverview(params: {
+  merchantId: string;
+  token: string;
+}): Promise<GovernanceOverviewResponse> {
+  const merchantId = String(params.merchantId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  return getJson<GovernanceOverviewResponse>(
+    `/api/policyos/governance/overview?merchantId=${encodeURIComponent(merchantId)}`,
+    { token: params.token },
+  );
+}
+
+export async function getPolicyGovernanceApprovals(params: {
+  merchantId: string;
+  token: string;
+  status?: GovernanceApprovalsStatus;
+  limit?: number;
+}): Promise<GovernanceApprovalsResponse> {
+  const merchantId = String(params.merchantId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  const status = String(params.status || 'ALL').trim().toUpperCase();
+  const limit = Math.min(Math.max(Math.floor(Number(params.limit) || 20), 1), 100);
+  return getJson<GovernanceApprovalsResponse>(
+    `/api/policyos/governance/approvals?merchantId=${encodeURIComponent(merchantId)}&status=${encodeURIComponent(status)}&limit=${limit}`,
+    { token: params.token },
+  );
+}
+
+export async function getPolicyGovernanceReplays(params: {
+  merchantId: string;
+  token: string;
+  event?: string;
+  mode?: GovernanceReplayMode;
+  outcome?: GovernanceReplayOutcome;
+  limit?: number;
+}): Promise<GovernanceReplaysResponse> {
+  const merchantId = String(params.merchantId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  const event = String(params.event || '').trim().toUpperCase();
+  const mode = String(params.mode || 'EXECUTE').trim().toUpperCase();
+  const outcome = String(params.outcome || 'ALL').trim().toUpperCase();
+  const limit = Math.min(Math.max(Math.floor(Number(params.limit) || 20), 1), 100);
+  const query = [
+    `merchantId=${encodeURIComponent(merchantId)}`,
+    `mode=${encodeURIComponent(mode)}`,
+    `outcome=${encodeURIComponent(outcome)}`,
+    `limit=${limit}`,
+    event ? `event=${encodeURIComponent(event)}` : '',
+  ]
+    .filter(Boolean)
+    .join('&');
+  return getJson<GovernanceReplaysResponse>(`/api/policyos/governance/replays?${query}`, {
+    token: params.token,
+  });
+}
+
+export async function approvePolicyDraft(params: {
+  merchantId: string;
+  draftId: string;
+  token: string;
+}): Promise<PolicyLifecycleResult> {
+  const merchantId = String(params.merchantId || '').trim();
+  const draftId = String(params.draftId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  if (!draftId) {
+    throw new Error('draftId is required');
+  }
+  return postJson<PolicyLifecycleResult>(
+    `/api/policyos/drafts/${encodeURIComponent(draftId)}/approve`,
+    { merchantId },
+    { token: params.token },
+  );
+}
+
+export async function publishPolicyDraft(params: {
+  merchantId: string;
+  draftId: string;
+  token: string;
+  approvalId?: string | null;
+  approvalToken?: string | null;
+}): Promise<PolicyLifecycleResult> {
+  const merchantId = String(params.merchantId || '').trim();
+  const draftId = String(params.draftId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  if (!draftId) {
+    throw new Error('draftId is required');
+  }
+  return postJson<PolicyLifecycleResult>(
+    `/api/policyos/drafts/${encodeURIComponent(draftId)}/publish`,
+    {
+      merchantId,
+      approvalId: params.approvalId || undefined,
+      approvalToken: params.approvalToken || undefined,
+    },
+    { token: params.token },
+  );
+}
+
+export async function getPolicies(params: {
+  merchantId: string;
+  token: string;
+  includeInactive?: boolean;
+}): Promise<PolicyListResponse> {
+  const merchantId = String(params.merchantId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  const includeInactive = Boolean(params.includeInactive);
+  return getJson<PolicyListResponse>(
+    `/api/policyos/policies?merchantId=${encodeURIComponent(merchantId)}&includeInactive=${includeInactive ? 'true' : 'false'}`,
+    { token: params.token },
+  );
+}
+
+export async function pausePolicy(params: {
+  merchantId: string;
+  policyId: string;
+  token: string;
+  reason?: string;
+}): Promise<{ merchantId: string; policy: PolicyRecord }> {
+  const merchantId = String(params.merchantId || '').trim();
+  const policyId = String(params.policyId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  if (!policyId) {
+    throw new Error('policyId is required');
+  }
+  return postJson<{ merchantId: string; policy: PolicyRecord }>(
+    `/api/policyos/policies/${encodeURIComponent(policyId)}/pause`,
+    {
+      merchantId,
+      reason: String(params.reason || '').trim() || undefined,
+    },
+    { token: params.token },
+  );
+}
+
+export async function resumePolicy(params: {
+  merchantId: string;
+  policyId: string;
+  token: string;
+}): Promise<{ merchantId: string; policy: PolicyRecord }> {
+  const merchantId = String(params.merchantId || '').trim();
+  const policyId = String(params.policyId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  if (!policyId) {
+    throw new Error('policyId is required');
+  }
+  return postJson<{ merchantId: string; policy: PolicyRecord }>(
+    `/api/policyos/policies/${encodeURIComponent(policyId)}/resume`,
+    { merchantId },
+    { token: params.token },
+  );
+}
+
+export async function setMerchantKillSwitch(params: {
+  merchantId: string;
+  token: string;
+  enabled: boolean;
+}): Promise<KillSwitchResponse> {
+  const merchantId = String(params.merchantId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  return postJson<KillSwitchResponse>(
+    '/api/merchant/kill-switch',
+    {
+      merchantId,
+      enabled: Boolean(params.enabled),
+    },
     { token: params.token },
   );
 }

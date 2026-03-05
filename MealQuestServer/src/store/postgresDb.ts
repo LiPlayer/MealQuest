@@ -486,6 +486,10 @@ function createEmptyState() {
         sequenceByMerchant: {},
         dedupe: {},
       },
+      notifications: {
+        byId: {},
+        sequenceByMerchant: {},
+      },
       compliance: {
         behaviorLogs: [],
         deletionQueue: [],

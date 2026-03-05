@@ -26,6 +26,8 @@ const TENANT_LIMIT_OPERATIONS = [
   "POLICY_RESUME",
   "POLICY_EVALUATE",
   "POLICY_EXECUTE",
+  "NOTIFICATION_QUERY",
+  "NOTIFICATION_ACK",
   "WS_CONNECT",
   "WS_STATUS_QUERY"
 ];
@@ -192,6 +194,16 @@ function resolveAuditAction(method, pathname) {
     pathname === "/api/policyos/decision/execute"
   ) {
     return "POLICY_EXECUTE";
+  }
+  if (
+    method === "GET" &&
+    (pathname === "/api/notifications/inbox" ||
+      pathname === "/api/notifications/unread-summary")
+  ) {
+    return "NOTIFICATION_QUERY";
+  }
+  if (method === "POST" && pathname === "/api/notifications/read") {
+    return "NOTIFICATION_ACK";
   }
   return null;
 }
@@ -1061,6 +1073,10 @@ function copyMerchantSlice({ sourceDb, targetDb, merchantId }) {
   targetDb.policyOs.dispatcher = targetDb.policyOs.dispatcher || {};
   targetDb.policyOs.dispatcher.sequenceByMerchant = targetDb.policyOs.dispatcher.sequenceByMerchant || {};
   targetDb.policyOs.dispatcher.dedupe = targetDb.policyOs.dispatcher.dedupe || {};
+  targetDb.policyOs.notifications = targetDb.policyOs.notifications || {};
+  targetDb.policyOs.notifications.byId = targetDb.policyOs.notifications.byId || {};
+  targetDb.policyOs.notifications.sequenceByMerchant =
+    targetDb.policyOs.notifications.sequenceByMerchant || {};
   targetDb.policyOs.compliance = targetDb.policyOs.compliance || {};
   targetDb.policyOs.compliance.behaviorLogs = targetDb.policyOs.compliance.behaviorLogs || [];
   targetDb.policyOs.compliance.deletionQueue = targetDb.policyOs.compliance.deletionQueue || [];
@@ -1089,6 +1105,20 @@ function copyMerchantSlice({ sourceDb, targetDb, merchantId }) {
     if (approval && approval.merchant_id === merchantId) {
       targetDb.policyOs.approvals[approvalId] = jsonClone(approval);
     }
+  }
+  for (const [notificationId, notification] of Object.entries(
+    (sourcePolicyOs.notifications && sourcePolicyOs.notifications.byId) || {}
+  )) {
+    if (notification && notification.merchantId === merchantId) {
+      targetDb.policyOs.notifications.byId[notificationId] = jsonClone(notification);
+    }
+  }
+  const sourceNotificationSeq =
+    (sourcePolicyOs.notifications && sourcePolicyOs.notifications.sequenceByMerchant) || {};
+  if (Object.prototype.hasOwnProperty.call(sourceNotificationSeq, merchantId)) {
+    targetDb.policyOs.notifications.sequenceByMerchant[merchantId] = Number(
+      sourceNotificationSeq[merchantId] || 0
+    );
   }
   targetDb.policyOs.publishedByMerchant[merchantId] = jsonClone(
     (sourcePolicyOs.publishedByMerchant && sourcePolicyOs.publishedByMerchant[merchantId]) || []

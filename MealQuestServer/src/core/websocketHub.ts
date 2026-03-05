@@ -160,6 +160,67 @@ function createWebSocketHub() {
     }
   }
 
+  function isRecipientMatched(client, recipient) {
+    if (!client || !recipient || typeof recipient !== "object") {
+      return false;
+    }
+    if (client.merchantId !== recipient.merchantId) {
+      return false;
+    }
+    const recipientType = String(recipient.recipientType || "").trim().toUpperCase();
+    const recipientId = String(recipient.recipientId || "").trim();
+    if (!recipientType || !recipientId) {
+      return false;
+    }
+    if (recipientType === "CUSTOMER_USER") {
+      return (
+        String(client.role || "").trim().toUpperCase() === "CUSTOMER" &&
+        String((client.auth && client.auth.userId) || "").trim() === recipientId
+      );
+    }
+    if (recipientType === "MERCHANT_STAFF") {
+      if (String(client.role || "").trim().toUpperCase() === "CUSTOMER") {
+        return false;
+      }
+      const actorId = String(
+        (client.auth && (client.auth.operatorId || client.auth.userId)) || ""
+      ).trim();
+      return actorId === recipientId;
+    }
+    return false;
+  }
+
+  function broadcastToRecipients(merchantId, event, payload, recipients = []) {
+    const safeRecipients = Array.isArray(recipients) ? recipients : [];
+    if (safeRecipients.length === 0) {
+      broadcast(merchantId, event, payload);
+      return;
+    }
+    const message = JSON.stringify({
+      type: event,
+      merchantId,
+      payload,
+      timestamp: new Date().toISOString()
+    });
+    const frame = encodeTextFrame(message);
+    for (const client of clients) {
+      if (client.socket.destroyed) {
+        clients.delete(client);
+        continue;
+      }
+      const matched = safeRecipients.some((recipient) =>
+        isRecipientMatched(client, { ...recipient, merchantId })
+      );
+      if (!matched) {
+        continue;
+      }
+      try {
+        client.socket.write(frame);
+      } catch {
+      }
+    }
+  }
+
   function onMessage(handler) {
     messageHandler = handler;
   }
@@ -173,6 +234,7 @@ function createWebSocketHub() {
   return {
     handleUpgrade,
     broadcast,
+    broadcastToRecipients,
     onMessage,
     closeAll
   };

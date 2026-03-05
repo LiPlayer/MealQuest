@@ -20,6 +20,7 @@ const { createOmniAgentService } = require("../services/omniAgentService");
 const { createAgentRuntimeService } = require("../services/agentRuntimeService");
 const { createPolicyOsService } = require("../policyos/policyOsService");
 const { createPolicyGovernanceService } = require("../services/policyGovernanceService");
+const { createNotificationService } = require("../services/notificationService");
 const {
   createSocialAuthService
 } = require("../services/socialAuthService");
@@ -120,7 +121,13 @@ function createAppServer({
   const getServicesForDb = (scopedDb) => {
     let services = serviceCache.get(scopedDb);
     if (!services) {
-      const policyOsService = createPolicyOsService(scopedDb, { wsHub, metrics });
+      const notificationService = createNotificationService(scopedDb, { wsHub });
+      const policyOsService = createPolicyOsService(scopedDb, {
+        wsHub,
+        metrics,
+        onDraftSubmitted: (payload) => notificationService.emitApprovalTodo(payload),
+        onDecisionExecuted: (payload) => notificationService.emitExecutionResult(payload)
+      });
       services = {
         paymentService: createPaymentService(scopedDb, { paymentProvider, policyOsService }),
         merchantService: createMerchantService(scopedDb, {
@@ -136,7 +143,8 @@ function createAppServer({
         privacyService: createPrivacyService(scopedDb),
         supplierService: createSupplierService(scopedDb),
         policyOsService,
-        policyGovernanceService: createPolicyGovernanceService(scopedDb, { policyOsService })
+        policyGovernanceService: createPolicyGovernanceService(scopedDb, { policyOsService }),
+        notificationService
       };
       serviceCache.set(scopedDb, services);
     }
