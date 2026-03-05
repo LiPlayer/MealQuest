@@ -1,7 +1,11 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { createSchemaRegistry } = require("../src/policyos/schemaRegistry");
+const {
+  OBJECTIVE_TARGET_METRIC,
+  OBJECTIVE_WINDOW_DAYS,
+  createSchemaRegistry
+} = require("../src/policyos/schemaRegistry");
 
 function createValidSpec() {
   return {
@@ -15,19 +19,15 @@ function createValidSpec() {
     },
     stage: "EXPANSION",
     objective: {
-      valueFunction: "GLOBAL_ECOSYSTEM_VALUE_V1",
-      weights: {
-        customerLtv: 0.5,
-        merchantNetProfit: 0.3,
-        platformProfit: 0.2
-      },
-      windowDays: 30
+      targetMetric: OBJECTIVE_TARGET_METRIC,
+      windowDays: OBJECTIVE_WINDOW_DAYS
     },
     decisionSignals: {
-      intentScore: 0.5,
+      upliftProbability: 0.5,
       fatigueScore: 0.1,
       riskScore: 0.1,
-      expectedProfit30dProxy: 8
+      expectedMerchantProfitLift30d: 8,
+      expectedMerchantRevenueLift30d: 12
     },
     gameSupport: {
       enabled: false,
@@ -90,7 +90,9 @@ test("policy schema validation accepts valid spec", () => {
   assert.equal(result.policy_key, "rainy_soup");
   assert.equal(result.resource_scope.merchant_id, "m_policy");
   assert.equal(result.stage, "EXPANSION");
-  assert.equal(result.objective.windowDays, 30);
+  assert.equal(result.objective.targetMetric, OBJECTIVE_TARGET_METRIC);
+  assert.equal(result.objective.windowDays, OBJECTIVE_WINDOW_DAYS);
+  assert.equal(result.decisionSignals.expectedMerchantProfitLift30d, 8);
 });
 
 test("policy schema validation rejects invalid spec", () => {
@@ -114,6 +116,47 @@ test("story schema validation rejects missing required fields", () => {
         narrative: "missing template",
         assets: [],
         triggers: []
+      }),
+    (error) => error && error.code === "POLICY_SCHEMA_INVALID"
+  );
+});
+
+test("policy schema validation normalizes legacy objective and decision signals", () => {
+  const schemaRegistry = createSchemaRegistry();
+  const result = schemaRegistry.validatePolicySpec({
+    ...createValidSpec(),
+    objective: {
+      valueFunction: "GLOBAL_ECOSYSTEM_VALUE_V1",
+      weights: {
+        customerLtv: 0.5,
+        merchantNetProfit: 0.3,
+        platformProfit: 0.2
+      },
+      windowDays: 30
+    },
+    decisionSignals: {
+      intentScore: 0.65,
+      expectedProfit30dProxy: 15,
+      riskScore: 0.2,
+      fatigueScore: 0.1
+    }
+  });
+  assert.equal(result.objective.targetMetric, OBJECTIVE_TARGET_METRIC);
+  assert.equal(result.objective.windowDays, OBJECTIVE_WINDOW_DAYS);
+  assert.equal(result.decisionSignals.upliftProbability, 0.65);
+  assert.equal(result.decisionSignals.expectedMerchantProfitLift30d, 15);
+});
+
+test("policy schema validation rejects non-standard objective target metric", () => {
+  const schemaRegistry = createSchemaRegistry();
+  assert.throws(
+    () =>
+      schemaRegistry.validatePolicySpec({
+        ...createValidSpec(),
+        objective: {
+          targetMetric: "GLOBAL_ECOSYSTEM_VALUE_V1",
+          windowDays: 30
+        }
       }),
     (error) => error && error.code === "POLICY_SCHEMA_INVALID"
   );

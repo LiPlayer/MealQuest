@@ -118,19 +118,16 @@
             },
             "stage": "ACQUISITION",
             "objective": {
-              "valueFunction": "GLOBAL_ECOSYSTEM_VALUE_V1",
-              "weights": {
-                "customerLtv": 0.5,
-                "merchantNetProfit": 0.3,
-                "platformProfit": 0.2
-              },
+              "targetMetric": "MERCHANT_LONG_TERM_VALUE_30D",
               "windowDays": 30
             },
             "decisionSignals": {
-              "intentScore": 0.65,
+              "upliftProbability": 0.65,
+              "expectedMerchantProfitLift30d": 12,
+              "expectedMerchantRevenueLift30d": 12,
               "fatigueScore": 0.1,
               "riskScore": 0.1,
-              "expectedProfit30dProxy": 12
+              "uncertainty": 0.15
             },
             "gameSupport": {
               "enabled": false,
@@ -241,19 +238,16 @@
             },
             "stage": "ACQUISITION",
             "objective": {
-              "valueFunction": "GLOBAL_ECOSYSTEM_VALUE_V1",
-              "weights": {
-                "customerLtv": 0.5,
-                "merchantNetProfit": 0.3,
-                "platformProfit": 0.2
-              },
+              "targetMetric": "MERCHANT_LONG_TERM_VALUE_30D",
               "windowDays": 30
             },
             "decisionSignals": {
-              "intentScore": 0.65,
+              "upliftProbability": 0.65,
+              "expectedMerchantProfitLift30d": 12,
+              "expectedMerchantRevenueLift30d": 12,
               "fatigueScore": 0.1,
               "riskScore": 0.1,
-              "expectedProfit30dProxy": 12
+              "uncertainty": 0.15
             },
             "gameSupport": {
               "enabled": false,
@@ -372,19 +366,16 @@
             },
             "stage": "ACTIVATION",
             "objective": {
-              "valueFunction": "GLOBAL_ECOSYSTEM_VALUE_V1",
-              "weights": {
-                "customerLtv": 0.5,
-                "merchantNetProfit": 0.3,
-                "platformProfit": 0.2
-              },
+              "targetMetric": "MERCHANT_LONG_TERM_VALUE_30D",
               "windowDays": 30
             },
             "decisionSignals": {
-              "intentScore": 0.55,
+              "upliftProbability": 0.55,
+              "expectedMerchantProfitLift30d": 8,
+              "expectedMerchantRevenueLift30d": 8,
               "fatigueScore": 0.08,
               "riskScore": 0.1,
-              "expectedProfit30dProxy": 8
+              "uncertainty": 0.15
             },
             "gameSupport": {
               "enabled": false,
@@ -511,19 +502,16 @@
             },
             "stage": "EXPANSION",
             "objective": {
-              "valueFunction": "GLOBAL_ECOSYSTEM_VALUE_V1",
-              "weights": {
-                "customerLtv": 0.5,
-                "merchantNetProfit": 0.3,
-                "platformProfit": 0.2
-              },
+              "targetMetric": "MERCHANT_LONG_TERM_VALUE_30D",
               "windowDays": 30
             },
             "decisionSignals": {
-              "intentScore": 0.6,
+              "upliftProbability": 0.6,
+              "expectedMerchantProfitLift30d": 15,
+              "expectedMerchantRevenueLift30d": 15,
               "fatigueScore": 0.1,
               "riskScore": 0.1,
-              "expectedProfit30dProxy": 15
+              "uncertainty": 0.15
             },
             "gameSupport": {
               "enabled": false,
@@ -647,19 +635,16 @@
             },
             "stage": "RETENTION",
             "objective": {
-              "valueFunction": "GLOBAL_ECOSYSTEM_VALUE_V1",
-              "weights": {
-                "customerLtv": 0.5,
-                "merchantNetProfit": 0.3,
-                "platformProfit": 0.2
-              },
+              "targetMetric": "MERCHANT_LONG_TERM_VALUE_30D",
               "windowDays": 30
             },
             "decisionSignals": {
-              "intentScore": 0.58,
+              "upliftProbability": 0.58,
+              "expectedMerchantProfitLift30d": 10,
+              "expectedMerchantRevenueLift30d": 10,
               "fatigueScore": 0.06,
               "riskScore": 0.1,
-              "expectedProfit30dProxy": 10
+              "uncertainty": 0.15
             },
             "gameSupport": {
               "enabled": false,

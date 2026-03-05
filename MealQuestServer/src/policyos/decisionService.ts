@@ -42,51 +42,20 @@ function createDecisionService({
     metrics.policyOs[name] = toNumber(metrics.policyOs[name], 0) + value;
   }
 
-  function resolveObjectiveWeights(policy) {
-    const objective =
-      policy && policy.objective && typeof policy.objective === "object"
-        ? policy.objective
-        : {};
-    const weights =
-      objective.weights && typeof objective.weights === "object"
-        ? objective.weights
-        : {};
-    const customerLtv = toNumber(weights.customerLtv, 0.5);
-    const merchantNetProfit = toNumber(weights.merchantNetProfit, 0.3);
-    const platformProfit = toNumber(weights.platformProfit, 0.2);
-    return {
-      customerLtv,
-      merchantNetProfit,
-      platformProfit
-    };
-  }
-
   function buildModelEstimate({ policy, ctxBase, estimate }) {
     const signals =
       policy && policy.decisionSignals && typeof policy.decisionSignals === "object"
         ? policy.decisionSignals
         : {};
-    const weights = resolveObjectiveWeights(policy);
-    const customerValue = toNumber(
-      signals.customerValue,
-      toNumber(signals.expectedProfit30dProxy, 1)
-    );
-    const merchantValue = toNumber(
-      signals.merchantValue,
-      Math.max(0, customerValue * 0.8)
-    );
-    const platformValue = toNumber(
-      signals.platformValue,
-      Math.max(0, customerValue * 0.5)
-    );
-    const globalValue = (
-      weights.customerLtv * customerValue +
-      weights.merchantNetProfit * merchantValue +
-      weights.platformProfit * platformValue
+    const upliftProbability = toNumber(signals.upliftProbability, 0.5);
+    const expectedMerchantProfitLift30d = toNumber(signals.expectedMerchantProfitLift30d, 1);
+    const expectedMerchantRevenueLift30d = toNumber(
+      signals.expectedMerchantRevenueLift30d,
+      Math.max(0, expectedMerchantProfitLift30d)
     );
     return {
-      p: toNumber(signals.intentScore, 0.5),
-      v: globalValue,
+      p: upliftProbability,
+      v: expectedMerchantProfitLift30d,
       c: toNumber(estimate && estimate.cost, 0),
       riskPenalty:
         toNumber(signals.riskScore, 0) +
@@ -95,11 +64,13 @@ function createDecisionService({
         toNumber(signals.fatigueScore, 0) +
         toNumber(ctxBase && ctxBase.fatigueScore, 0),
       uncertainty: toNumber(signals.uncertainty, 0.15),
-      customerValue,
-      merchantValue,
-      platformValue,
-      globalValue,
-      objectiveWeights: weights,
+      upliftProbability,
+      expectedMerchantProfitLift30d,
+      expectedMerchantRevenueLift30d,
+      objectiveMetric:
+        policy && policy.objective && typeof policy.objective === "object"
+          ? String(policy.objective.targetMetric || "MERCHANT_LONG_TERM_VALUE_30D")
+          : "MERCHANT_LONG_TERM_VALUE_30D"
     };
   }
 

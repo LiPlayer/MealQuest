@@ -1,11 +1,11 @@
-# MealQuest 商业化落地规范（V15.2）
+# MealQuest 商业化落地规范（V15.4）
 
 > 文档定位：MealQuest 产品与商业规范真源（唯一真源）。
 > 适用范围：`MealQuestServer`、`MealQuestMerchant`、`meal-quest-customer` 三端协同建设。
 
 ## 0. 版本与治理
 
-- 版本：V15.2（新项目基线：长期价值优化 + 生命周期五阶段）
+- 版本：V15.4（新项目基线：长期价值最大化 + 生命周期五阶段）
 - 首发区域：中国大陆
 - 目标客群：单店与小连锁餐饮商户
 - 商业主轴：支付抽佣为主，订阅与增值服务为辅
@@ -13,10 +13,10 @@
 
 ### 0.1 当前生效口径
 
-- 营销系统目标：全局价值最大化（Global Value Maximization）
+- 营销系统目标：长期价值最大化（Long-term Value Maximization）
 - 问题类型：长期收益优化问题（Long-term Optimization Problem）
 - 核心矛盾：短期营销动作（发券、补贴、活动）服务长期价值（LTV）
-- 核心原则：优化长期客户价值，而不是单次转化
+- 核心原则：以长期价值为北极星，用商户收益与 Uplift 作为执行代理指标
 
 ### 0.2 三端交付完整性原则
 
@@ -77,38 +77,37 @@
 
 ---
 
-## 3. 全局价值函数（唯一优化目标）
+## 3. 长期价值目标函数（北极星）与执行代理指标
 
-### 3.1 主目标函数
+### 3.1 北极星目标函数（长期价值最大化）
 
 ```text
-全局价值（Global Value） = Σ(客户生命周期价值（LTV） - 营销成本)
+长期价值（Long-term Value） = Σ(客户生命周期长期价值贡献 - 营销成本)
 ```
 
 解释：
-- 客户生命周期价值（LTV）：客户生命周期价值，客户未来贡献的总利润
-- 营销成本：优惠券、补贴、广告、渠道费用
+- 长期价值：商户长期净收益、留存质量与可持续增长能力的综合结果
+- 营销成本：优惠券、补贴、活动资源与触达成本
 
 目标：
 
 ```text
-最大化全局价值
+最大化长期价值
 ```
 
-即最大化长期利润，而非短期收入。
+即最大化长期收益，而非单次转化。
 
-### 3.2 平台生态扩展目标
+### 3.2 执行代理指标（当前决策主输入）
 
-在平台层，系统同时关注：
-- 用户价值（LTV）
-- 商户价值（商户净收益）
-- 平台利润（Platform Profit）
+当前策略排序与执行用以下代理指标落地：
+- 商户净收益提升（Merchant Net Profit Uplift）
+- 商户收入提升（Merchant Revenue Uplift）
+- Uplift 命中率（Uplift Hit Rate）
 
-最终目标：
-
-```text
-最大化平台生态价值
-```
+说明：
+- 代理指标服务北极星目标，不替代长期价值目标
+- 平台侧保留成本观测（服务器、LLM Token），当前不作为决策硬门
+- 服务端 objective 合同固定：`targetMetric = MERCHANT_LONG_TERM_VALUE_30D`，`windowDays = 30`
 
 ---
 
@@ -138,10 +137,10 @@
 
 ### 4.2 模型层（Model Layer）
 
-模型目标：预测未来价值与行为响应。
+模型目标：预测长期价值趋势与可执行增量收益。
 
 核心模型：
-- LTV 预测：输出 `预测LTV`
+- 商户收益 Uplift 预测：输出 `预测商户收益提升`
 - 流失预测：输出 `流失概率`
 - 响应预测：输出 `转化概率`
 
@@ -160,7 +159,7 @@
 基础决策公式：
 
 ```text
-期望价值（Expected Value） = 转化概率（Conversion Probability） × 期望收入 - 营销成本
+期望长期收益代理值（Expected Long-term Proxy） = Uplift 概率 × 期望商户净收益提升
 ```
 
 当前治理要求：
@@ -244,18 +243,20 @@
 
 ### 8.1 核心 KPI（长期口径）
 
-- `CustomerLTV30`
 - `MerchantNetProfit30`
-- `PlatformProfit30`
+- `LongTermValueIndex`
+- `MerchantProfitUplift30`
+- `MerchantRevenueUplift30`
+- `UpliftHitRate30`
 - `Retention30`
-- `GlobalValueIndex`
 - `SubsidyWasteProxy`
+- `PlatformCost30`（观测项）
 - 支付成功率 >= 99.5%
 - 风险损失（套利/欺诈）占 GMV <= 0.3%
 
 ### 8.2 Go/No-Go 门
 
-- 业务门：`GlobalValueIndex` 达标或具备可验证改善趋势
+- 业务门：`LongTermValueIndex` 达标，且 `MerchantProfitUplift30` 具备可验证改善趋势
 - 技术门：核心链路稳定，无主路径阻断
 - 风控门：预算/风险/毛利硬门生效
 - 合规门：隐私、日志、发票流程满足首发区域要求
@@ -304,8 +305,9 @@
 
 ## 附录 A：术语最小集
 
-- 全局价值（Global Value）：长期价值总目标
-- LTV：客户生命周期价值（Customer Lifetime Value）
+- 长期价值（Long-term Value）：平台以长期收益为导向的北极星目标
+- 商户收益 Uplift：营销干预带来的商户净收益增量（执行代理指标）
+- Uplift 概率：策略触发后产生增量收益的概率
 - Uplift：营销动作增量效果
 - 生命周期（Lifecycle）：获客/激活/活跃/扩展收入/留存
 - 规则引擎：规则触发与执行编排引擎

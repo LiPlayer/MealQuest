@@ -560,19 +560,15 @@ function createMerchantService(db, options = {}) {
       name: "Slow Item Add-on Upsell - Configured",
       stage: "EXPANSION",
       objective: {
-        valueFunction: "GLOBAL_ECOSYSTEM_VALUE_V1",
-        weights: {
-          customerLtv: 0.5,
-          merchantNetProfit: 0.3,
-          platformProfit: 0.2
-        },
+        targetMetric: "MERCHANT_LONG_TERM_VALUE_30D",
         windowDays: 30
       },
       decisionSignals: {
-        intentScore: 0.55,
+        upliftProbability: 0.55,
         fatigueScore: 0.1,
         riskScore: 0.1,
-        expectedProfit30dProxy: normalized.voucherValue
+        expectedMerchantProfitLift30d: normalized.voucherValue,
+        expectedMerchantRevenueLift30d: normalized.voucherValue
       },
       gameSupport: {
         enabled: false,

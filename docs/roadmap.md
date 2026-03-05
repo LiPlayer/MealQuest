@@ -37,7 +37,7 @@
 | MER-C01 | 登录与会话 | 登录页、启动页 | 老板可稳定登录、会话可恢复 |
 | MER-C02 | 开店与门店管理 | 开店流程页 | 新店可完成初始化并进入经营态 |
 | MER-C11 | 顾客入店码管理 | 入店二维码页 | 可生成、更新、分发入店二维码 |
-| MER-C03 | 经营看板 | Dashboard | 可查看经营趋势与长期价值指标 |
+| MER-C03 | 经营看板 | Dashboard | 可查看经营趋势与商户收益/Uplift 指标 |
 | MER-C04 | AI 对话与提案 | Agent 页面 | 可发起 AI 对话并接收策略提案 |
 | MER-C05 | 提案决策 | 提案卡、审批入口 | 可同意/驳回策略并留痕 |
 | MER-C06 | 审批中心 | Approvals | 可管理审批队列与状态 |
@@ -108,7 +108,7 @@
 
 | StepID | Outcome（宏观结果） | Dependency | Status |
 | --- | --- | --- | --- |
-| S010 | 全局价值目标与生命周期口径冻结 | 无 | doing |
+| S010 | 长期价值最大化目标口径冻结 | 无 | doing |
 | S020 | 老板端基础闭环（登录、开店、看板） | S010 done | todo |
 | S030 | 顾客端基础闭环（扫码、资产、支付、账票） | S020 done | todo |
 | S040 | 数据与模型基础口径建立 | S030 done | todo |
@@ -126,12 +126,12 @@
 
 ### S010 - 目标与口径冻结
 
-- 老板视角完成标准：老板端所有策略目标统一为长期价值。
+- 老板视角完成标准：老板端所有策略目标统一为长期价值最大化（执行代理为商户收益与 Uplift）。
 - 顾客视角完成标准：顾客侧触达与权益口径一致。
 
 | PackageID | Lane | CapabilityID | Macro Requirement | Deliverable | DependsOn | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| PKG-S010-SRV-01 | server | SRV-C05 | 冻结全局价值函数与生命周期口径 | 统一目标口径文档 | none | doing |
+| PKG-S010-SRV-01 | server | SRV-C05 | 冻结长期价值北极星与商户收益/Uplift 代理口径 | 统一目标口径文档 | none | doing |
 | PKG-S010-MER-01 | merchant | MER-C04 | 冻结老板端策略文案口径 | 老板端口径映射清单 | PKG-S010-SRV-01 | doing |
 | PKG-S010-CUS-01 | customer | CUS-C03 | 冻结顾客触达与权益口径 | 顾客端口径映射清单 | PKG-S010-SRV-01 | doing |
 
@@ -167,7 +167,7 @@
 | PackageID | Lane | CapabilityID | Macro Requirement | Deliverable | DependsOn | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | PKG-S040-SRV-01 | server | SRV-C02, SRV-C05 | 建立用户/订单/营销/行为数据口径 | 数据口径基线 | none | todo |
-| PKG-S040-SRV-02 | server | SRV-C05 | 建立 LTV/流失/响应模型口径 | 模型口径基线 | PKG-S040-SRV-01 | todo |
+| PKG-S040-SRV-02 | server | SRV-C05 | 建立 Uplift/流失/响应模型口径 | 模型口径基线 | PKG-S040-SRV-01 | todo |
 | PKG-S040-MER-01 | merchant | MER-C03, MER-C04 | 建立老板端数据与模型可见口径 | 老板端口径清单 | PKG-S040-SRV-02 | todo |
 | PKG-S040-CUS-01 | customer | CUS-C03 | 建立顾客端行为与触达口径 | 顾客端口径清单 | PKG-S040-SRV-01 | todo |
 
@@ -295,3 +295,4 @@
 2. 2026-03-05：补齐老板端 App 与顾客端小程序功能完整性矩阵。
 3. 2026-03-05：S010-S110 全量改造成可独立领取的宏观任务包。
 4. 2026-03-05：补充入店码管理、消息提醒中心、顾客反馈闭环三类缺失能力。
+5. 2026-03-05：S010 目标口径明确为“长期价值最大化”，商户收益/Uplift 作为执行代理指标。

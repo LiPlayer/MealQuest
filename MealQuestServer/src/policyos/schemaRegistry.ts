@@ -3,6 +3,8 @@ const { z } = require("zod");
 const POLICY_SCHEMA_VERSION = "policyos.v1";
 const STORY_SCHEMA_VERSION = "story.v1";
 const POLICY_STAGES = ["ACQUISITION", "ACTIVATION", "ENGAGEMENT", "EXPANSION", "RETENTION"];
+const OBJECTIVE_TARGET_METRIC = "MERCHANT_LONG_TERM_VALUE_30D";
+const OBJECTIVE_WINDOW_DAYS = 30;
 
 const triggerSchema = z.object({
   plugin: z.string().min(1),
@@ -22,29 +24,49 @@ const actionSchema = z.object({
 });
 
 const policyObjectiveSchema = z.object({
-  valueFunction: z.string().min(1).default("GLOBAL_ECOSYSTEM_VALUE_V1"),
-  weights: z.object({
-    customerLtv: z.number().nonnegative().default(0.5),
-    merchantNetProfit: z.number().nonnegative().default(0.3),
-    platformProfit: z.number().nonnegative().default(0.2)
-  }).default({
-    customerLtv: 0.5,
-    merchantNetProfit: 0.3,
-    platformProfit: 0.2
-  }),
-  windowDays: z.number().int().positive().default(30)
+  targetMetric: z.string().min(1).optional(),
+  windowDays: z.number().int().positive().optional(),
+  valueFunction: z.string().min(1).optional(),
+  weights: z
+    .object({
+      customerLtv: z.number().nonnegative().optional(),
+      merchantNetProfit: z.number().nonnegative().optional(),
+      platformProfit: z.number().nonnegative().optional()
+    })
+    .optional()
 });
 
+const policyObjectiveContractSchema = z
+  .object({
+    targetMetric: z.literal(OBJECTIVE_TARGET_METRIC).default(OBJECTIVE_TARGET_METRIC),
+    windowDays: z.literal(OBJECTIVE_WINDOW_DAYS).default(OBJECTIVE_WINDOW_DAYS)
+  })
+  .strict();
+
 const decisionSignalsSchema = z.object({
-  intentScore: z.number().min(0).max(1).default(0.5),
-  fatigueScore: z.number().nonnegative().default(0),
-  riskScore: z.number().nonnegative().default(0),
-  expectedProfit30dProxy: z.number().default(1),
+  upliftProbability: z.number().min(0).max(1).optional(),
+  expectedMerchantProfitLift30d: z.number().optional(),
+  expectedMerchantRevenueLift30d: z.number().optional(),
+  intentScore: z.number().min(0).max(1).optional(),
+  expectedProfit30dProxy: z.number().optional(),
   customerValue: z.number().optional(),
   merchantValue: z.number().optional(),
   platformValue: z.number().optional(),
-  uncertainty: z.number().min(0).max(1).default(0.15)
+  fatigueScore: z.number().nonnegative().optional(),
+  riskScore: z.number().nonnegative().optional(),
+  uncertainty: z.number().min(0).max(1).optional()
 });
+
+const decisionSignalsContractSchema = z
+  .object({
+    upliftProbability: z.number().min(0).max(1).default(0.5),
+    expectedMerchantProfitLift30d: z.number().default(1),
+    expectedMerchantRevenueLift30d: z.number().default(1),
+    fatigueScore: z.number().nonnegative().default(0),
+    riskScore: z.number().nonnegative().default(0),
+    uncertainty: z.number().min(0).max(1).default(0.15)
+  })
+  .strict();
 
 const gameSupportSchema = z.object({
   enabled: z.boolean().default(false),
@@ -146,16 +168,53 @@ function inferStageFromGoal(goalType = "") {
   return "ENGAGEMENT";
 }
 
+function normalizeObjectiveContract(objective) {
+  const safe = objective && typeof objective === "object" ? objective : {};
+  return policyObjectiveContractSchema.parse({
+    targetMetric: safe.targetMetric || OBJECTIVE_TARGET_METRIC,
+    windowDays: safe.windowDays || OBJECTIVE_WINDOW_DAYS
+  });
+}
+
+function toFiniteNumber(...values) {
+  for (const value of values) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return Number.NaN;
+}
+
+function normalizeDecisionSignalsContract(decisionSignals) {
+  const safe = decisionSignals && typeof decisionSignals === "object" ? decisionSignals : {};
+  const upliftProbability = toFiniteNumber(safe.upliftProbability, safe.intentScore, 0.5);
+  const expectedMerchantProfitLift30d = toFiniteNumber(
+    safe.expectedMerchantProfitLift30d,
+    safe.merchantValue,
+    safe.expectedProfit30dProxy,
+    safe.customerValue,
+    1
+  );
+  const expectedMerchantRevenueLift30d = toFiniteNumber(
+    safe.expectedMerchantRevenueLift30d,
+    safe.customerValue,
+    expectedMerchantProfitLift30d
+  );
+  return decisionSignalsContractSchema.parse({
+    upliftProbability,
+    expectedMerchantProfitLift30d,
+    expectedMerchantRevenueLift30d,
+    fatigueScore: toFiniteNumber(safe.fatigueScore, 0),
+    riskScore: toFiniteNumber(safe.riskScore, 0),
+    uncertainty: toFiniteNumber(safe.uncertainty, 0.15)
+  });
+}
+
 function normalizePolicySpecContract(spec) {
   const safe = spec && typeof spec === "object" ? spec : {};
-  const objective =
-    safe.objective && typeof safe.objective === "object"
-      ? safe.objective
-      : policyObjectiveSchema.parse({});
-  const decisionSignals =
-    safe.decisionSignals && typeof safe.decisionSignals === "object"
-      ? safe.decisionSignals
-      : decisionSignalsSchema.parse({});
+  const objective = normalizeObjectiveContract(safe.objective);
+  const decisionSignals = normalizeDecisionSignalsContract(safe.decisionSignals);
   const gameSupport =
     safe.gameSupport && typeof safe.gameSupport === "object"
       ? safe.gameSupport
@@ -250,7 +309,18 @@ function createSchemaRegistry() {
       error.details = flattenIssues(result.error.issues);
       throw error;
     }
-    const normalized = normalizePolicySpecContract(result.data);
+    let normalized;
+    try {
+      normalized = normalizePolicySpecContract(result.data);
+    } catch (error) {
+      if (error && Array.isArray(error.issues)) {
+        const schemaError = new Error("invalid policy schema");
+        schemaError.code = "POLICY_SCHEMA_INVALID";
+        schemaError.details = flattenIssues(error.issues);
+        throw schemaError;
+      }
+      throw error;
+    }
     if (normalized.story) {
       validateStory(normalized.story);
     }
@@ -270,6 +340,8 @@ function createSchemaRegistry() {
 }
 
 module.exports = {
+  OBJECTIVE_TARGET_METRIC,
+  OBJECTIVE_WINDOW_DAYS,
   POLICY_SCHEMA_VERSION,
   STORY_SCHEMA_VERSION,
   createSchemaRegistry
