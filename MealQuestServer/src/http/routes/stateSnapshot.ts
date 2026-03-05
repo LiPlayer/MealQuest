@@ -28,6 +28,11 @@ function toPolicyView(policy) {
     safe.constraints.find(
       (item) => item && item.plugin === "budget_guard_v1" && item.params
     );
+  const stage = safe.stage
+    ? String(safe.stage).toUpperCase()
+    : safe.goal && safe.goal.type
+      ? String(safe.goal.type).toUpperCase()
+      : "ENGAGEMENT";
   return {
     id: safe.policy_id || "",
     merchantId:
@@ -54,7 +59,7 @@ function toPolicyView(policy) {
           }
         : null,
     strategyMeta: {
-      category: safe.goal && safe.goal.type ? safe.goal.type : "ACTIVATION"
+      category: stage
     }
   };
 }

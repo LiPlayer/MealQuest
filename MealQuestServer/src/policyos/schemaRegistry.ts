@@ -2,6 +2,7 @@ const { z } = require("zod");
 
 const POLICY_SCHEMA_VERSION = "policyos.v1";
 const STORY_SCHEMA_VERSION = "story.v1";
+const POLICY_STAGES = ["ACQUISITION", "ACTIVATION", "ENGAGEMENT", "EXPANSION", "RETENTION"];
 
 const triggerSchema = z.object({
   plugin: z.string().min(1),
@@ -18,6 +19,36 @@ const actionSchema = z.object({
   plugin: z.string().min(1),
   channel: z.string().min(1).default("default"),
   params: z.record(z.string(), z.any()).default({})
+});
+
+const policyObjectiveSchema = z.object({
+  valueFunction: z.string().min(1).default("GLOBAL_ECOSYSTEM_VALUE_V1"),
+  weights: z.object({
+    customerLtv: z.number().nonnegative().default(0.5),
+    merchantNetProfit: z.number().nonnegative().default(0.3),
+    platformProfit: z.number().nonnegative().default(0.2)
+  }).default({
+    customerLtv: 0.5,
+    merchantNetProfit: 0.3,
+    platformProfit: 0.2
+  }),
+  windowDays: z.number().int().positive().default(30)
+});
+
+const decisionSignalsSchema = z.object({
+  intentScore: z.number().min(0).max(1).default(0.5),
+  fatigueScore: z.number().nonnegative().default(0),
+  riskScore: z.number().nonnegative().default(0),
+  expectedProfit30dProxy: z.number().default(1),
+  customerValue: z.number().optional(),
+  merchantValue: z.number().optional(),
+  platformValue: z.number().optional(),
+  uncertainty: z.number().min(0).max(1).default(0.15)
+});
+
+const gameSupportSchema = z.object({
+  enabled: z.boolean().default(false),
+  touchpoint: z.string().default("none")
 });
 
 const overlapPolicySchema = z.object({
@@ -56,6 +87,10 @@ const policySpecSchema = z.object({
     kpi: z.string().min(1),
     target: z.any().optional()
   }),
+  stage: z.enum(POLICY_STAGES).optional(),
+  objective: policyObjectiveSchema.optional(),
+  decisionSignals: decisionSignalsSchema.optional(),
+  gameSupport: gameSupportSchema.optional(),
   segment: pluginRefSchema,
   triggers: z.array(triggerSchema).min(1),
   program: z.object({
@@ -88,6 +123,52 @@ const policySpecSchema = z.object({
   })
 });
 
+function inferStageFromGoal(goalType = "") {
+  const normalized = String(goalType || "").trim().toUpperCase();
+  if (normalized === "ACQUISITION") {
+    return "ACQUISITION";
+  }
+  if (normalized === "ACTIVATION") {
+    return "ACTIVATION";
+  }
+  if (normalized === "REVENUE") {
+    return "EXPANSION";
+  }
+  if (normalized === "RETENTION") {
+    return "RETENTION";
+  }
+  if (normalized === "SOCIAL_VIRAL" || normalized === "MINI_GAME_OPS") {
+    return "ENGAGEMENT";
+  }
+  if (POLICY_STAGES.includes(normalized)) {
+    return normalized;
+  }
+  return "ENGAGEMENT";
+}
+
+function normalizePolicySpecContract(spec) {
+  const safe = spec && typeof spec === "object" ? spec : {};
+  const objective =
+    safe.objective && typeof safe.objective === "object"
+      ? safe.objective
+      : policyObjectiveSchema.parse({});
+  const decisionSignals =
+    safe.decisionSignals && typeof safe.decisionSignals === "object"
+      ? safe.decisionSignals
+      : decisionSignalsSchema.parse({});
+  const gameSupport =
+    safe.gameSupport && typeof safe.gameSupport === "object"
+      ? safe.gameSupport
+      : gameSupportSchema.parse({});
+  return {
+    ...safe,
+    stage: safe.stage || inferStageFromGoal(safe.goal && safe.goal.type),
+    objective,
+    decisionSignals,
+    gameSupport
+  };
+}
+
 const policyJsonSchemaV1 = {
   $id: POLICY_SCHEMA_VERSION,
   type: "object",
@@ -96,6 +177,8 @@ const policyJsonSchemaV1 = {
     "policy_key",
     "name",
     "goal",
+    "stage",
+    "objective",
     "segment",
     "triggers",
     "program",
@@ -110,7 +193,8 @@ const policyJsonSchemaV1 = {
     policy_key: { type: "string", minLength: 1 },
     name: { type: "string", minLength: 1 },
     lane: { enum: ["GUARDED", "NORMAL", "BACKGROUND"] },
-    tie_breaker: { enum: ["UTILITY_DESC", "EXPIRY_SOONER", "HIGHER_MARGIN", "RANDOM_JITTER"] }
+    tie_breaker: { enum: ["UTILITY_DESC", "EXPIRY_SOONER", "HIGHER_MARGIN", "RANDOM_JITTER"] },
+    stage: { enum: POLICY_STAGES }
   }
 };
 
@@ -166,10 +250,11 @@ function createSchemaRegistry() {
       error.details = flattenIssues(result.error.issues);
       throw error;
     }
-    if (result.data.story) {
-      validateStory(result.data.story);
+    const normalized = normalizePolicySpecContract(result.data);
+    if (normalized.story) {
+      validateStory(normalized.story);
     }
-    return result.data;
+    return normalized;
   }
 
   function getSchema(version) {

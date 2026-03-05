@@ -13,6 +13,26 @@ function createValidSpec() {
       type: "CLEAR_STOCK",
       kpi: "inventory_days"
     },
+    stage: "EXPANSION",
+    objective: {
+      valueFunction: "GLOBAL_ECOSYSTEM_VALUE_V1",
+      weights: {
+        customerLtv: 0.5,
+        merchantNetProfit: 0.3,
+        platformProfit: 0.2
+      },
+      windowDays: 30
+    },
+    decisionSignals: {
+      intentScore: 0.5,
+      fatigueScore: 0.1,
+      riskScore: 0.1,
+      expectedProfit30dProxy: 8
+    },
+    gameSupport: {
+      enabled: false,
+      touchpoint: "none"
+    },
     segment: {
       plugin: "all_users_v1",
       params: {}
@@ -69,6 +89,8 @@ test("policy schema validation accepts valid spec", () => {
   const result = schemaRegistry.validatePolicySpec(createValidSpec());
   assert.equal(result.policy_key, "rainy_soup");
   assert.equal(result.resource_scope.merchant_id, "m_policy");
+  assert.equal(result.stage, "EXPANSION");
+  assert.equal(result.objective.windowDays, 30);
 });
 
 test("policy schema validation rejects invalid spec", () => {

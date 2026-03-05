@@ -558,6 +558,26 @@ function createMerchantService(db, options = {}) {
       ...base,
       policy_key: REVENUE_POLICY_KEY,
       name: "Slow Item Add-on Upsell - Configured",
+      stage: "EXPANSION",
+      objective: {
+        valueFunction: "GLOBAL_ECOSYSTEM_VALUE_V1",
+        weights: {
+          customerLtv: 0.5,
+          merchantNetProfit: 0.3,
+          platformProfit: 0.2
+        },
+        windowDays: 30
+      },
+      decisionSignals: {
+        intentScore: 0.55,
+        fatigueScore: 0.1,
+        riskScore: 0.1,
+        expectedProfit30dProxy: normalized.voucherValue
+      },
+      gameSupport: {
+        enabled: false,
+        touchpoint: "none"
+      },
       resource_scope: {
         merchant_id: merchantId
       },

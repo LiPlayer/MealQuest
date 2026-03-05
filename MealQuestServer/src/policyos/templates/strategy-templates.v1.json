@@ -1,6 +1,6 @@
 {
   "catalog_version": "strategy_templates.v1",
-  "updated_at": "2026-02-28T00:00:00.000Z",
+  "updated_at": "2026-03-05T12:18:23.602Z",
   "templates": [
     {
       "templateId": "acquisition_welcome_gift",
@@ -115,6 +115,26 @@
               "approval_required": true,
               "approval_level": "OWNER",
               "approval_token_ttl_sec": 3600
+            },
+            "stage": "ACQUISITION",
+            "objective": {
+              "valueFunction": "GLOBAL_ECOSYSTEM_VALUE_V1",
+              "weights": {
+                "customerLtv": 0.5,
+                "merchantNetProfit": 0.3,
+                "platformProfit": 0.2
+              },
+              "windowDays": 30
+            },
+            "decisionSignals": {
+              "intentScore": 0.65,
+              "fatigueScore": 0.1,
+              "riskScore": 0.1,
+              "expectedProfit30dProxy": 12
+            },
+            "gameSupport": {
+              "enabled": false,
+              "touchpoint": "none"
             }
           }
         },
@@ -218,10 +238,31 @@
               "approval_required": true,
               "approval_level": "OWNER",
               "approval_token_ttl_sec": 3600
+            },
+            "stage": "ACQUISITION",
+            "objective": {
+              "valueFunction": "GLOBAL_ECOSYSTEM_VALUE_V1",
+              "weights": {
+                "customerLtv": 0.5,
+                "merchantNetProfit": 0.3,
+                "platformProfit": 0.2
+              },
+              "windowDays": 30
+            },
+            "decisionSignals": {
+              "intentScore": 0.65,
+              "fatigueScore": 0.1,
+              "riskScore": 0.1,
+              "expectedProfit30dProxy": 12
+            },
+            "gameSupport": {
+              "enabled": false,
+              "touchpoint": "none"
             }
           }
         }
-      ]
+      ],
+      "lifecycleStage": "ACQUISITION"
     },
     {
       "templateId": "activation_checkin_streak_recovery",
@@ -328,14 +369,35 @@
               "approval_required": true,
               "approval_level": "OWNER",
               "approval_token_ttl_sec": 3600
+            },
+            "stage": "ACTIVATION",
+            "objective": {
+              "valueFunction": "GLOBAL_ECOSYSTEM_VALUE_V1",
+              "weights": {
+                "customerLtv": 0.5,
+                "merchantNetProfit": 0.3,
+                "platformProfit": 0.2
+              },
+              "windowDays": 30
+            },
+            "decisionSignals": {
+              "intentScore": 0.55,
+              "fatigueScore": 0.08,
+              "riskScore": 0.1,
+              "expectedProfit30dProxy": 8
+            },
+            "gameSupport": {
+              "enabled": false,
+              "touchpoint": "none"
             }
           }
         }
-      ]
+      ],
+      "lifecycleStage": "ACTIVATION"
     },
     {
       "templateId": "revenue_addon_upsell_slow_item",
-      "category": "REVENUE",
+      "category": "EXPANSION",
       "phase": "P1",
       "name": "Slow Item Add-on Upsell",
       "description": "Increase paid order value while consuming slow-item incentive inventory.",
@@ -446,10 +508,31 @@
               "approval_required": true,
               "approval_level": "OWNER",
               "approval_token_ttl_sec": 3600
+            },
+            "stage": "EXPANSION",
+            "objective": {
+              "valueFunction": "GLOBAL_ECOSYSTEM_VALUE_V1",
+              "weights": {
+                "customerLtv": 0.5,
+                "merchantNetProfit": 0.3,
+                "platformProfit": 0.2
+              },
+              "windowDays": 30
+            },
+            "decisionSignals": {
+              "intentScore": 0.6,
+              "fatigueScore": 0.1,
+              "riskScore": 0.1,
+              "expectedProfit30dProxy": 15
+            },
+            "gameSupport": {
+              "enabled": false,
+              "touchpoint": "none"
             }
           }
         }
-      ]
+      ],
+      "lifecycleStage": "EXPANSION"
     },
     {
       "templateId": "retention_dormant_winback_14d",
@@ -561,10 +644,31 @@
               "approval_required": true,
               "approval_level": "OWNER",
               "approval_token_ttl_sec": 3600
+            },
+            "stage": "RETENTION",
+            "objective": {
+              "valueFunction": "GLOBAL_ECOSYSTEM_VALUE_V1",
+              "weights": {
+                "customerLtv": 0.5,
+                "merchantNetProfit": 0.3,
+                "platformProfit": 0.2
+              },
+              "windowDays": 30
+            },
+            "decisionSignals": {
+              "intentScore": 0.58,
+              "fatigueScore": 0.06,
+              "riskScore": 0.1,
+              "expectedProfit30dProxy": 10
+            },
+            "gameSupport": {
+              "enabled": false,
+              "touchpoint": "none"
             }
           }
         }
-      ]
+      ],
+      "lifecycleStage": "RETENTION"
     }
   ]
 }

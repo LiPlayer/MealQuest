@@ -42,6 +42,67 @@ function createDecisionService({
     metrics.policyOs[name] = toNumber(metrics.policyOs[name], 0) + value;
   }
 
+  function resolveObjectiveWeights(policy) {
+    const objective =
+      policy && policy.objective && typeof policy.objective === "object"
+        ? policy.objective
+        : {};
+    const weights =
+      objective.weights && typeof objective.weights === "object"
+        ? objective.weights
+        : {};
+    const customerLtv = toNumber(weights.customerLtv, 0.5);
+    const merchantNetProfit = toNumber(weights.merchantNetProfit, 0.3);
+    const platformProfit = toNumber(weights.platformProfit, 0.2);
+    return {
+      customerLtv,
+      merchantNetProfit,
+      platformProfit
+    };
+  }
+
+  function buildModelEstimate({ policy, ctxBase, estimate }) {
+    const signals =
+      policy && policy.decisionSignals && typeof policy.decisionSignals === "object"
+        ? policy.decisionSignals
+        : {};
+    const weights = resolveObjectiveWeights(policy);
+    const customerValue = toNumber(
+      signals.customerValue,
+      toNumber(signals.expectedProfit30dProxy, 1)
+    );
+    const merchantValue = toNumber(
+      signals.merchantValue,
+      Math.max(0, customerValue * 0.8)
+    );
+    const platformValue = toNumber(
+      signals.platformValue,
+      Math.max(0, customerValue * 0.5)
+    );
+    const globalValue = (
+      weights.customerLtv * customerValue +
+      weights.merchantNetProfit * merchantValue +
+      weights.platformProfit * platformValue
+    );
+    return {
+      p: toNumber(signals.intentScore, 0.5),
+      v: globalValue,
+      c: toNumber(estimate && estimate.cost, 0),
+      riskPenalty:
+        toNumber(signals.riskScore, 0) +
+        toNumber(ctxBase && ctxBase.riskScore, 0) * 2,
+      fatiguePenalty:
+        toNumber(signals.fatigueScore, 0) +
+        toNumber(ctxBase && ctxBase.fatigueScore, 0),
+      uncertainty: toNumber(signals.uncertainty, 0.15),
+      customerValue,
+      merchantValue,
+      platformValue,
+      globalValue,
+      objectiveWeights: weights,
+    };
+  }
+
   function tieBreakCompare(left, right) {
     const strategy = left.policy.tie_breaker || "UTILITY_DESC";
     if (strategy === "EXPIRY_SOONER") {
@@ -298,7 +359,12 @@ function createDecisionService({
           ctx: {
             ...ctxBase,
             policy,
-            user
+            user,
+            modelEstimate: buildModelEstimate({
+              policy,
+              ctxBase,
+              estimate
+            })
           }
         });
         for (const instance of instances.length > 0 ? instances : [{}]) {

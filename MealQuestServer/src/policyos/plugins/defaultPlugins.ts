@@ -557,15 +557,27 @@ function registerDefaultPlugins({ pluginRegistry, db, ledgerService, now = () =>
       const fatiguePenalty = toNumber(estimate.fatiguePenalty, 0);
       const utility = p * v - c - riskPenalty - fatiguePenalty;
       const spread = Math.max(0.05, Math.abs(utility) * 0.25);
+      const objectiveWeights =
+        estimate.objectiveWeights && typeof estimate.objectiveWeights === "object"
+          ? estimate.objectiveWeights
+          : null;
+      const scoreSuffix = objectiveWeights ? "global_value" : "expected_profit";
       return {
         utility,
         uncertainty: Math.min(1, Math.max(0, toNumber(estimate.uncertainty, 0.15))),
         estimateCost: c,
+        model: {
+          customerValue: toNumber(estimate.customerValue, 0),
+          merchantValue: toNumber(estimate.merchantValue, 0),
+          platformValue: toNumber(estimate.platformValue, 0),
+          globalValue: toNumber(estimate.globalValue, 0),
+          objectiveWeights
+        },
         expectedRange: {
           min: utility - spread,
           max: utility + spread
         },
-        reasonCodes: [`score:${policy.scoring.plugin}`]
+        reasonCodes: [`score:${policy.scoring.plugin}:${scoreSuffix}`]
       };
     }
   });

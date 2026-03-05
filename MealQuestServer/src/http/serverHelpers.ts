@@ -425,8 +425,11 @@ function toActivityTag(category = "") {
   if (normalized === "ACTIVATION") {
     return "HOT";
   }
-  if (normalized === "REVENUE") {
+  if (normalized === "REVENUE" || normalized === "EXPANSION") {
     return "PAY";
+  }
+  if (normalized === "ENGAGEMENT") {
+    return "PLAY";
   }
   if (normalized === "RETENTION") {
     return "CARE";
@@ -445,8 +448,11 @@ function toActivityTheme(category = "") {
   if (normalized === "ACTIVATION") {
     return { color: "bg-blue-50", textColor: "text-blue-600" };
   }
-  if (normalized === "REVENUE") {
+  if (normalized === "REVENUE" || normalized === "EXPANSION") {
     return { color: "bg-amber-50", textColor: "text-amber-600" };
+  }
+  if (normalized === "ENGAGEMENT") {
+    return { color: "bg-violet-50", textColor: "text-violet-600" };
   }
   if (normalized === "RETENTION") {
     return { color: "bg-emerald-50", textColor: "text-emerald-600" };
