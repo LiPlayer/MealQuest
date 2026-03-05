@@ -1,8 +1,12 @@
 const {
   readJsonBody,
   sendJson,
+  sendNotModified,
   ensureRole,
-  enforceTenantPolicyForHttp
+  enforceTenantPolicyForHttp,
+  buildWeakEtag,
+  isIfNoneMatchFresh,
+  toListLimit
 } = require("../serverHelpers");
 
 function createPolicyOsRoutesHandler({
@@ -44,6 +48,94 @@ function createPolicyOsRoutesHandler({
   }
 
   return async function handlePolicyOsRoutes({ method, url, req, auth, res }) {
+    if (method === "GET" && url.pathname === "/api/policyos/governance/overview") {
+      ensureRole(auth, ["MANAGER", "OWNER"]);
+      const merchantId = url.searchParams.get("merchantId") || auth.merchantId;
+      if (!merchantId) {
+        sendJson(res, 400, { error: "merchantId is required" });
+        return true;
+      }
+      if (auth.merchantId && auth.merchantId !== merchantId) {
+        sendJson(res, 403, { error: "merchant scope denied" });
+        return true;
+      }
+      const { policyGovernanceService } = getServicesForMerchant(merchantId);
+      const payload = policyGovernanceService.getOverview({ merchantId });
+      const etag = buildWeakEtag(payload);
+      const cacheHeaders = {
+        ETag: etag,
+        "Cache-Control": "private, max-age=0, must-revalidate"
+      };
+      if (isIfNoneMatchFresh(req, etag)) {
+        sendNotModified(res, cacheHeaders);
+        return true;
+      }
+      sendJson(res, 200, payload, cacheHeaders);
+      return true;
+    }
+
+    if (method === "GET" && url.pathname === "/api/policyos/governance/approvals") {
+      ensureRole(auth, ["MANAGER", "OWNER"]);
+      const merchantId = url.searchParams.get("merchantId") || auth.merchantId;
+      if (!merchantId) {
+        sendJson(res, 400, { error: "merchantId is required" });
+        return true;
+      }
+      if (auth.merchantId && auth.merchantId !== merchantId) {
+        sendJson(res, 403, { error: "merchant scope denied" });
+        return true;
+      }
+      const { policyGovernanceService } = getServicesForMerchant(merchantId);
+      const payload = policyGovernanceService.listApprovals({
+        merchantId,
+        status: url.searchParams.get("status") || "ALL",
+        limit: toListLimit(url.searchParams.get("limit"), 20, 100)
+      });
+      const etag = buildWeakEtag(payload);
+      const cacheHeaders = {
+        ETag: etag,
+        "Cache-Control": "private, max-age=0, must-revalidate"
+      };
+      if (isIfNoneMatchFresh(req, etag)) {
+        sendNotModified(res, cacheHeaders);
+        return true;
+      }
+      sendJson(res, 200, payload, cacheHeaders);
+      return true;
+    }
+
+    if (method === "GET" && url.pathname === "/api/policyos/governance/replays") {
+      ensureRole(auth, ["MANAGER", "OWNER"]);
+      const merchantId = url.searchParams.get("merchantId") || auth.merchantId;
+      if (!merchantId) {
+        sendJson(res, 400, { error: "merchantId is required" });
+        return true;
+      }
+      if (auth.merchantId && auth.merchantId !== merchantId) {
+        sendJson(res, 403, { error: "merchant scope denied" });
+        return true;
+      }
+      const { policyGovernanceService } = getServicesForMerchant(merchantId);
+      const payload = policyGovernanceService.listReplays({
+        merchantId,
+        event: url.searchParams.get("event") || "",
+        outcome: url.searchParams.get("outcome") || "ALL",
+        mode: url.searchParams.get("mode") || "EXECUTE",
+        limit: toListLimit(url.searchParams.get("limit"), 20, 100)
+      });
+      const etag = buildWeakEtag(payload);
+      const cacheHeaders = {
+        ETag: etag,
+        "Cache-Control": "private, max-age=0, must-revalidate"
+      };
+      if (isIfNoneMatchFresh(req, etag)) {
+        sendNotModified(res, cacheHeaders);
+        return true;
+      }
+      sendJson(res, 200, payload, cacheHeaders);
+      return true;
+    }
+
     if (method === "GET" && url.pathname === "/api/policyos/schemas") {
       ensureRole(auth, ["MANAGER", "OWNER"]);
       const merchantId = url.searchParams.get("merchantId") || auth.merchantId;

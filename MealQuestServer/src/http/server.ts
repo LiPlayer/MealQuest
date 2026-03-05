@@ -19,6 +19,7 @@ const { createSupplierService } = require("../services/supplierService");
 const { createOmniAgentService } = require("../services/omniAgentService");
 const { createAgentRuntimeService } = require("../services/agentRuntimeService");
 const { createPolicyOsService } = require("../policyos/policyOsService");
+const { createPolicyGovernanceService } = require("../services/policyGovernanceService");
 const {
   createSocialAuthService
 } = require("../services/socialAuthService");
@@ -134,7 +135,8 @@ function createAppServer({
         invoiceService: createInvoiceService(scopedDb),
         privacyService: createPrivacyService(scopedDb),
         supplierService: createSupplierService(scopedDb),
-        policyOsService
+        policyOsService,
+        policyGovernanceService: createPolicyGovernanceService(scopedDb, { policyOsService })
       };
       serviceCache.set(scopedDb, services);
     }

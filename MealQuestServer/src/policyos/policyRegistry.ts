@@ -551,6 +551,41 @@ function createPolicyRegistry({
       .map((item) => clone(item));
   }
 
+  function listApprovals({
+    merchantId,
+    draftId = "",
+    status = "",
+    limit = 50
+  }) {
+    const state = ensureState();
+    const normalizedMerchantId = String(merchantId || "").trim();
+    if (!normalizedMerchantId) {
+      return [];
+    }
+    const normalizedDraftId = String(draftId || "").trim();
+    const normalizedStatus = String(status || "").trim().toUpperCase();
+    const max = Math.min(Math.max(Math.floor(Number(limit) || 50), 1), 200);
+    return Object.values(state.approvals || {})
+      .filter((item) => item && item.merchant_id === normalizedMerchantId)
+      .filter((item) => (normalizedDraftId ? String(item.draft_id || "") === normalizedDraftId : true))
+      .filter((item) =>
+        normalizedStatus && normalizedStatus !== "ALL"
+          ? String(item.status || "").trim().toUpperCase() === normalizedStatus
+          : true
+      )
+      .sort((left, right) => {
+        const leftApprovedAt = String(left.approved_at || "");
+        const rightApprovedAt = String(right.approved_at || "");
+        const approvedAtCompare = rightApprovedAt.localeCompare(leftApprovedAt);
+        if (approvedAtCompare !== 0) {
+          return approvedAtCompare;
+        }
+        return String(right.approval_id || "").localeCompare(String(left.approval_id || ""));
+      })
+      .slice(0, max)
+      .map((item) => clone(item));
+  }
+
   return {
     createDraft,
     submitDraft,
@@ -567,6 +602,7 @@ function createPolicyRegistry({
     saveDecision,
     getDecision,
     listDecisions,
+    listApprovals,
     expirePolicies
   };
 }

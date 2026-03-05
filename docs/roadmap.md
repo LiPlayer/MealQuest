@@ -178,7 +178,7 @@
 
 | PackageID | Lane | CapabilityID | Macro Requirement | Deliverable | DependsOn | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| PKG-S050-SRV-01 | server | SRV-C05, SRV-C06 | 建立策略决策、审批、执行、审计治理能力 | 治理闭环能力 | none | todo |
+| PKG-S050-SRV-01 | server | SRV-C05, SRV-C06 | 建立策略决策、审批、执行、审计治理能力 | 治理闭环能力 | none | done |
 | PKG-S050-SRV-02 | server | SRV-C11 | 建立审批待办与执行结果消息触达能力 | 消息触达规则 | PKG-S050-SRV-01 | todo |
 | PKG-S050-MER-01 | merchant | MER-C05, MER-C06, MER-C07, MER-C08 | 完成老板端审批、回放、风险控制闭环 | 老板端治理闭环流程 | PKG-S050-SRV-01 | todo |
 | PKG-S050-MER-02 | merchant | MER-C12 | 建立老板端提醒中心（待办/告警） | 老板端提醒流程 | PKG-S050-SRV-02 | todo |
@@ -305,3 +305,4 @@
 12. 2026-03-05：完成 PKG-S040-SRV-02，新增 `/api/state/model-contract` 模型口径基线接口，并将决策概率统一为 `uplift × response × (1 - churn)`。
 13. 2026-03-05：完成 PKG-S040-CUS-01，顾客端首页活动区与账户页新增触达口径可见化，支持用户友好解释与可选原因码展示。
 14. 2026-03-05：完成 PKG-S040-MER-01，老板端 Dashboard 与 Agent 接入口径可见化；S040 关闭并切换 S050 doing。
+15. 2026-03-05：完成 PKG-S050-SRV-01，新增治理聚合接口（overview/approvals/replays）并沉淀服务端验收记录；S050 继续推进剩余包。

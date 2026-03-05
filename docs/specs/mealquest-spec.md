@@ -229,6 +229,32 @@
 - 决策层负责建议排序
 - 执行层硬门（预算/风险/毛利）负责最终可执行性
 
+#### 4.3.1 决策与执行治理接口（S050-SRV-01）
+
+为支持老板端审批中心、执行回放与风险治理视图，服务端提供以下治理查询接口：
+
+- 接口：`GET /api/policyos/governance/overview`
+  - 角色：`OWNER / MANAGER`
+  - 作用：返回治理闭环总览（待审批、待发布、活跃策略、暂停策略、24h 决策结果、24h 审计状态、熔断状态）
+  - 缓存：支持 `ETag` 与 `If-None-Match`，命中返回 `304`
+
+- 接口：`GET /api/policyos/governance/approvals`
+  - 角色：`OWNER / MANAGER`
+  - 作用：返回审批队列，支持 `status=ALL|SUBMITTED|APPROVED|PUBLISHED`
+  - 输出：`draftId`、`policyKey`、`status`、`submittedAt`、`approvalId`、`publishedPolicyId` 等治理字段
+  - 缓存：支持 `ETag` 与 `If-None-Match`，命中返回 `304`
+
+- 接口：`GET /api/policyos/governance/replays`
+  - 角色：`OWNER / MANAGER`
+  - 作用：返回执行回放列表，支持 `event`、`mode`、`outcome` 过滤
+  - 输出：`decisionId`、`traceId`、`outcome`、`executed`、`rejected`、`reasonCodes`、`createdAt`
+  - 缓存：支持 `ETag` 与 `If-None-Match`，命中返回 `304`
+
+作用域与安全要求：
+- 若携带 `merchantId` 且与登录态 `auth.merchantId` 不一致，返回 `403 merchant scope denied`
+- `merchantId` 不存在时返回 `404 merchant not found`
+- 顾客角色不可访问治理接口
+
 ### 4.4 执行层（Execution Layer）
 
 - 规则引擎驱动触发与路由（规则引擎）

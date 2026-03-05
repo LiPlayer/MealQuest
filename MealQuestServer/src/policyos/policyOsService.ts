@@ -247,6 +247,7 @@ function createPolicyOsService(db, { wsHub = null, metrics = null, now = () => D
     listPolicies: policyRegistry.listPolicies,
     listActivePolicies: policyRegistry.listActivePolicies,
     listDecisions: policyRegistry.listDecisions,
+    listApprovals: policyRegistry.listApprovals,
     executeDecision,
     evaluateDecision,
     getDecisionExplain: decisionService.getDecisionExplain,
