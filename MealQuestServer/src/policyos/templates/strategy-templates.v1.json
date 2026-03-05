@@ -332,6 +332,124 @@
           }
         }
       ]
+    },
+    {
+      "templateId": "revenue_addon_upsell_slow_item",
+      "category": "REVENUE",
+      "phase": "P1",
+      "name": "Slow Item Add-on Upsell",
+      "description": "Increase paid order value while consuming slow-item incentive inventory.",
+      "triggerEvent": "PAYMENT_VERIFY",
+      "defaultBranchId": "DEFAULT",
+      "branches": [
+        {
+          "branchId": "DEFAULT",
+          "name": "Payment Verify Upsell",
+          "description": "Default profile: paid order reaches threshold and receives add-on incentive.",
+          "policySpec": {
+            "policy_key": "REV_ADDON_UPSELL_SLOW_ITEM_V1",
+            "name": "Slow Item Add-on Upsell - Default",
+            "lane": "NORMAL",
+            "tie_breaker": "UTILITY_DESC",
+            "goal": {
+              "type": "REVENUE",
+              "kpi": "aov_uplift"
+            },
+            "segment": {
+              "plugin": "condition_segment_v1",
+              "params": {
+                "logic": "AND",
+                "conditions": [
+                  {
+                    "field": "orderAmount",
+                    "op": "gte",
+                    "value": 30
+                  }
+                ]
+              }
+            },
+            "triggers": [
+              {
+                "plugin": "event_trigger_v1",
+                "event": "PAYMENT_VERIFY",
+                "params": {}
+              }
+            ],
+            "program": {
+              "ttl_sec": 86400,
+              "max_instances": 1,
+              "pacing": {
+                "max_cost_per_minute": 16
+              }
+            },
+            "actions": [
+              {
+                "plugin": "voucher_grant_v1",
+                "channel": "default",
+                "params": {
+                  "cost": 2,
+                  "expires_in_sec": 604800,
+                  "voucher": {
+                    "type": "ITEM_WARRANT",
+                    "name": "Slow Item Add-on Reward",
+                    "value": 6,
+                    "minSpend": 30
+                  }
+                }
+              }
+            ],
+            "constraints": [
+              {
+                "plugin": "kill_switch_v1",
+                "params": {}
+              },
+              {
+                "plugin": "budget_guard_v1",
+                "params": {
+                  "cap": 120,
+                  "cost_per_hit": 2
+                }
+              },
+              {
+                "plugin": "frequency_cap_v1",
+                "params": {
+                  "daily": 1,
+                  "window_sec": 86400
+                }
+              },
+              {
+                "plugin": "inventory_lock_v1",
+                "params": {
+                  "sku": "slow_item_upsell_pool",
+                  "max_units": 1000000,
+                  "reserve_units": 1
+                }
+              },
+              {
+                "plugin": "anti_fraud_hook_v1",
+                "params": {
+                  "max_risk_score": 0.75
+                }
+              }
+            ],
+            "scoring": {
+              "plugin": "expected_profit_v1",
+              "params": {}
+            },
+            "overlap_policy": {
+              "mode": "SOFT_EXCLUSIVE",
+              "conflict_set": "revenue_addon_upsell_slow_item",
+              "max_winners": 1,
+              "cooldown_sec": 0
+            },
+            "governance": {
+              "approval_required": true,
+              "approval_level": "OWNER",
+              "approval_token_ttl_sec": 3600
+            }
+          }
+        }
+      ]
     }
   ]
 }

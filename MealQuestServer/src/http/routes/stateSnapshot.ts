@@ -198,6 +198,17 @@ async function buildStateSnapshot({
         limit: 1,
       })[0] || null
       : null;
+  const revenueDecision =
+    user && policyOsService && typeof policyOsService.listDecisions === "function"
+      ? policyOsService.listDecisions({
+        merchantId,
+        userId: user.uid,
+        event: "PAYMENT_VERIFY",
+        mode: "EXECUTE",
+        policyKeyPrefix: "REV_ADDON_UPSELL_SLOW_ITEM_V1",
+        limit: 1,
+      })[0] || null
+      : null;
   const welcomeActivity = buildDecisionActivity({
     decision: welcomeDecision,
     policyKeyPrefix: "ACQ_WELCOME_FIRST_BIND_V1",
@@ -216,12 +227,24 @@ async function buildStateSnapshot({
     blockedTitle: "连签激活奖励未发放",
     blockedDescFallback: "本次未通过促活连签判定条件。",
   });
+  const revenueActivity = buildDecisionActivity({
+    decision: revenueDecision,
+    policyKeyPrefix: "REV_ADDON_UPSELL_SLOW_ITEM_V1",
+    tag: "REVENUE",
+    hitTitle: "加购激励已发放",
+    hitDesc: "已命中提客单策略，可前往资产区查看到账券。",
+    blockedTitle: "加购激励未发放",
+    blockedDescFallback: "本次未通过提客单判定条件。",
+  });
   const activities = buildCustomerActivities(activePolicyViews);
   if (welcomeActivity) {
     activities.unshift(welcomeActivity);
   }
   if (activationActivity) {
     activities.unshift(activationActivity);
+  }
+  if (revenueActivity) {
+    activities.unshift(revenueActivity);
   }
 
   return {

@@ -15,6 +15,8 @@ export default function DashboardScreen() {
   const welcomeLatest = merchantState.acquisitionWelcomeSummary.latestResults[0];
   const activationTopReason = merchantState.activationRecoverySummary.topBlockedReasons[0];
   const activationLatest = merchantState.activationRecoverySummary.latestResults[0];
+  const revenueTopReason = merchantState.revenueUpsellSummary.topBlockedReasons[0];
+  const revenueLatest = merchantState.revenueUpsellSummary.latestResults[0];
   const latestTrace = merchantState.traceSummary.latestTrace[0];
 
   return (
@@ -66,6 +68,24 @@ export default function DashboardScreen() {
         <Text style={styles.hintText}>
           {activationLatest && activationLatest.outcome
             ? `最近结果：${activationLatest.outcome}${activationLatest.reasonCode ? ` · ${activationLatest.reasonCode}` : ''}`
+            : '最近结果：暂无'}
+        </Text>
+      </SurfaceCard>
+
+      <SurfaceCard>
+        <Text style={styles.sectionTitle}>Revenue 提客单摘要（24h）</Text>
+        <View style={styles.grid}>
+          <StatTile label="命中" value={merchantState.revenueUpsellSummary.hitCount24h} />
+          <StatTile label="拦截" value={merchantState.revenueUpsellSummary.blockedCount24h} />
+        </View>
+        <Text style={styles.hintText}>
+          {revenueTopReason && revenueTopReason.reason
+            ? `Top 拦截原因：${revenueTopReason.reason}（${revenueTopReason.count}）`
+            : '当前无拦截记录。'}
+        </Text>
+        <Text style={styles.hintText}>
+          {revenueLatest && revenueLatest.outcome
+            ? `最近结果：${revenueLatest.outcome}${revenueLatest.reasonCode ? ` · ${revenueLatest.reasonCode}` : ''}`
             : '最近结果：暂无'}
         </Text>
       </SurfaceCard>

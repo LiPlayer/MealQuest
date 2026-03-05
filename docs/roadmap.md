@@ -64,8 +64,8 @@
 | S060 | P1 | 六策略族账务审计基座（payment->ledger->invoice->audit）可回归 | S050 done | done |
 | S110 | P1 | Acquisition 样例策略闭环（`ACQ_WELCOME_FIRST_BIND_V1`）可回归 | S060 done | done |
 | S120 | P1 | Activation 样例策略闭环（`ACT_CHECKIN_STREAK_RECOVERY_V1`）可回归 | S110 done | done |
-| S130 | P1 | Revenue 样例策略闭环（`REV_ADDON_UPSELL_SLOW_ITEM_V1`）可回归 | S120 done | doing |
-| S140 | P1 | Retention 样例策略闭环（`RET_DORMANT_WINBACK_14D_V1`）可回归 | S130 done | todo |
+| S130 | P1 | Revenue 样例策略闭环（`REV_ADDON_UPSELL_SLOW_ITEM_V1`）可回归 | S120 done | done |
+| S140 | P1 | Retention 样例策略闭环（`RET_DORMANT_WINBACK_14D_V1`）可回归 | S130 done | doing |
 | S150 | P1 | Social Viral 样例策略闭环（`SOC_REFER_DUAL_REWARD_FIRST_PAY_V1`）可回归 | S140 done | todo |
 | S160 | P1 | Mini-Game Ops 样例策略闭环（`GMO_NEW_GAME_UNLOCK_DROP_V1`）可回归 | S150 done | todo |
 | S210 | P2 | 商户经营看板最小可用 | S160 done | todo |
@@ -477,9 +477,9 @@
 
 | task_id | lane | task | status | output |
 | --- | --- | --- | --- | --- |
-| S130-SRV-01 | server | 完成 `REV_ADDON_UPSELL_SLOW_ITEM_V1` 默认 `PAYMENT_VERIFY` 触发、策略库存池约束、奖励执行与参数可配置链路 | todo | 样例闭环可回归 |
-| S130-MER-01 | merchant | 提供老板手动配置入口（含 Agent 建议应用），并展示客单提升、库存消耗与拦截原因 | todo | 商户收益视图 |
-| S130-CUS-01 | customer | 展示支付后加购激励反馈、拦截原因与核销一致性 | todo | 顾客支付反馈 |
+| S130-SRV-01 | server | 完成 `REV_ADDON_UPSELL_SLOW_ITEM_V1` 默认 `PAYMENT_VERIFY` 触发、策略库存池约束、奖励执行与参数可配置链路 | done | `MealQuestServer/src/services/paymentService.ts`; `MealQuestServer/src/services/merchantService.ts`; `MealQuestServer/test/policyOs.s130.revenue.test.ts`; `MealQuestServer/test/policyOs.s130.visibility.http.test.ts` |
+| S130-MER-01 | merchant | 提供老板手动配置入口（含 Agent 建议应用），并展示客单提升、库存消耗与拦截原因 | done | `MealQuestMerchant/app/(tabs)/risk.tsx`; `MealQuestMerchant/src/screens/RiskRevenueConfigScreen.tsx`; `MealQuestMerchant/src/services/apiClient.ts` |
+| S130-CUS-01 | customer | 展示支付后加购激励反馈、拦截原因与核销一致性 | done | `MealQuestServer/src/http/routes/stateSnapshot.ts`; `meal-quest-customer/test/pages/index.test.tsx` |
 
 - Deliverables：
 1. 提客单与去库存效果证据。
@@ -983,7 +983,7 @@
 | S060 | `cd MealQuestServer && npm run test:step:s060`（非沙箱通过，12/12）；`cd MealQuestMerchant && npm run lint && npm run typecheck`；`cd meal-quest-customer && npm test -- --runInBand test/services/api-data-service-customer-center.test.ts test/pages/account.test.tsx` | `docs/qa/s060-ledger-audit-baseline-closure.md` | `MealQuestServer/src/policyos/policyRegistry.ts`; `MealQuestServer/src/policyos/policyOsService.ts`; `MealQuestServer/src/http/routes/paymentRoutes.ts`; `MealQuestServer/src/services/merchantService.ts`; `MealQuestServer/test/policyOs.constraints.test.ts`; `MealQuestMerchant/src/services/apiClient.ts`; `MealQuestMerchant/src/context/MerchantContext.tsx`; `MealQuestMerchant/src/domain/merchantEngine.ts`; `MealQuestMerchant/src/screens/DashboardScreen.tsx`; `meal-quest-customer/src/services/customerApp/mappers.ts`; `meal-quest-customer/test/services/api-data-service-customer-center.test.ts` | pass | AI/Agent | 2026-03-05 |
 | S110 | `cd MealQuestServer && npm run test:step:s110`（非沙箱通过，19/19）；`cd MealQuestMerchant && npm run lint && npm run typecheck`；`cd meal-quest-customer && npm run test:regression:ui` | `docs/qa/s110-acquisition-first-bind-closure.md` | `MealQuestServer/src/policyos/templates/strategy-templates.v1.json`; `MealQuestServer/src/services/merchantService.ts`; `MealQuestServer/src/http/routes/stateSnapshot.ts`; `MealQuestServer/test/policyOs.s110.acquisition.test.ts`; `MealQuestServer/test/policyOs.s110.visibility.http.test.ts`; `MealQuestServer/package.json`; `meal-quest-customer/test/pages/index.test.tsx`; `meal-quest-customer/package.json` | pass | AI/Agent | 2026-03-05 |
 | S120 | `cd MealQuestServer && npm run test:step:s120`（非沙箱通过，27/27）；`cd MealQuestMerchant && npm run lint && npm run typecheck`；`cd meal-quest-customer && npm run test:regression:ui` | `docs/qa/s120-activation-streak-closure.md` | `MealQuestServer/src/policyos/templates/strategy-templates.v1.json`; `MealQuestServer/src/policyos/policyRegistry.ts`; `MealQuestServer/src/http/routes/preAuthRoutes.ts`; `MealQuestServer/src/http/routes/stateSnapshot.ts`; `MealQuestServer/src/services/merchantService.ts`; `MealQuestServer/test/policyOs.s120.activation.test.ts`; `MealQuestServer/test/policyOs.s120.visibility.http.test.ts`; `MealQuestServer/package.json`; `MealQuestMerchant/src/services/apiClient.ts`; `MealQuestMerchant/src/domain/merchantEngine.ts`; `MealQuestMerchant/src/context/MerchantContext.tsx`; `MealQuestMerchant/src/screens/DashboardScreen.tsx`; `meal-quest-customer/test/pages/index.test.tsx`; `docs/specs/mealquest-spec.md`; `docs/roadmap.md` | pass | AI/Agent | 2026-03-05 |
-| S130 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
+| S130 | `cd MealQuestServer && npm run test:step:s130`（非沙箱通过，34/34）；`cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.ledger.test.ts`（2/2）；`cd MealQuestMerchant && npm run lint && npm run typecheck`（pass）；`cd meal-quest-customer && npm run test:regression:ui`（14/14） | `docs/qa/s130-revenue-upsell-closure.md` | `MealQuestServer/src/policyos/templates/strategy-templates.v1.json`; `MealQuestServer/src/policyos/policyRegistry.ts`; `MealQuestServer/src/services/paymentService.ts`; `MealQuestServer/src/services/merchantService.ts`; `MealQuestServer/src/http/routes/merchantRoutes.ts`; `MealQuestServer/src/http/routes/stateSnapshot.ts`; `MealQuestServer/test/policyOs.s130.revenue.test.ts`; `MealQuestServer/test/policyOs.s130.visibility.http.test.ts`; `MealQuestServer/package.json`; `MealQuestMerchant/src/services/apiClient.ts`; `MealQuestMerchant/src/domain/merchantEngine.ts`; `MealQuestMerchant/src/context/MerchantContext.tsx`; `MealQuestMerchant/src/screens/DashboardScreen.tsx`; `MealQuestMerchant/src/screens/RiskRevenueConfigScreen.tsx`; `MealQuestMerchant/app/(tabs)/risk.tsx`; `meal-quest-customer/test/pages/index.test.tsx` | pass | AI/Agent | 2026-03-05 |
 | S140 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S150 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S160 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
@@ -1112,3 +1112,4 @@
 7. 2026-03-05：完成 `S110` Acquisition 样例闭环（`ACQ_WELCOME_FIRST_BIND_V1`）并恢复 `test:step:s110`，主路线指针推进至 `S120 doing`。
 8. 2026-03-05：完成 `S120` Activation 样例闭环（`ACT_CHECKIN_STREAK_RECOVERY_V1`）并新增 `test:step:s120`，主路线指针推进至 `S130 doing`。
 9. 2026-03-05：冻结 S130 Revenue 可配置模型口径（老板手动配置 + Agent 建议辅助，默认 `PAYMENT_VERIFY`，策略库存池），并补齐 roadmap 验收与排障合同。
+10. 2026-03-05：完成 `S130` Revenue 样例闭环（`REV_ADDON_UPSELL_SLOW_ITEM_V1`）并新增 `test:step:s130` 收口验证，主路线指针推进至 `S140 doing`。

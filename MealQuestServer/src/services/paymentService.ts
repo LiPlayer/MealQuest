@@ -30,6 +30,7 @@ function createDefaultPaymentProvider() {
 
 function createPaymentService(db, options = {}) {
   const paymentProvider = options.paymentProvider || createDefaultPaymentProvider();
+  const policyOsService = options.policyOsService || null;
   const fromFreshState = Boolean(options.__fromFreshState);
   const keyLocks = new Map();
 
@@ -151,11 +152,47 @@ function createPaymentService(db, options = {}) {
     return user.wallet;
   }
 
+  async function executeRevenueDecision({
+    merchantId,
+    userId,
+    orderAmount,
+    paymentTxnId,
+    deduction,
+    quote
+  }) {
+    if (!policyOsService || typeof policyOsService.executeDecision !== "function") {
+      return null;
+    }
+    try {
+      return await policyOsService.executeDecision({
+        merchantId,
+        userId,
+        event: "PAYMENT_VERIFY",
+        eventId: `evt_payment_verify_${String(paymentTxnId || Date.now())}`,
+        context: {
+          source: "PAYMENT_VERIFY",
+          orderAmount: Number(orderAmount || 0),
+          paymentTxnId: String(paymentTxnId || ""),
+          deduction: deduction || null,
+          quote: quote || null,
+          riskScore: 0
+        }
+      });
+    } catch (error) {
+      const message = error && error.message ? String(error.message) : "unknown";
+      // Revenue strategy execution must not block payment settlement.
+      // eslint-disable-next-line no-console
+      console.warn(`[payment] revenue decision skipped: ${message}`);
+      return null;
+    }
+  }
+
   async function verifyPayment({ merchantId, userId, orderAmount, idempotencyKey }) {
     if (!fromFreshState && typeof db.runWithFreshState === "function") {
       return db.runWithFreshState(async (workingDb) => {
         const scopedService = createPaymentService(workingDb, {
           paymentProvider,
+          policyOsService,
           __fromFreshState: true,
         });
         return scopedService.verifyPayment({
@@ -266,12 +303,21 @@ function createPaymentService(db, options = {}) {
       });
 
       merchant.budgetUsed = roundMoney(merchant.budgetUsed + quote.deduction.voucher);
+      const revenueDecision = await executeRevenueDecision({
+        merchantId,
+        userId,
+        orderAmount: Number(orderAmount),
+        paymentTxnId: paymentLedger.txnId,
+        deduction: quote.deduction,
+        quote
+      });
 
       const result = {
         paymentTxnId: paymentLedger.txnId,
         status: "PAID",
         quote,
         wallet: user.wallet,
+        revenueDecision,
         walletScope: {
           walletShared,
           walletMerchantId
@@ -295,6 +341,7 @@ function createPaymentService(db, options = {}) {
       return db.runWithFreshState(async (workingDb) => {
         const scopedService = createPaymentService(workingDb, {
           paymentProvider,
+          policyOsService,
           __fromFreshState: true,
         });
         return scopedService.confirmExternalPayment({
@@ -385,12 +432,21 @@ function createPaymentService(db, options = {}) {
       merchant.budgetUsed = roundMoney(
         merchant.budgetUsed + Number(payment.deduction && payment.deduction.voucher ? payment.deduction.voucher : 0)
       );
+      const revenueDecision = await executeRevenueDecision({
+        merchantId,
+        userId: payment.userId,
+        orderAmount: Number(payment.orderAmount || 0),
+        paymentTxnId: payment.paymentTxnId,
+        deduction: payment.deduction || null,
+        quote: payment.quote || null
+      });
 
       const result = {
         paymentTxnId: payment.paymentTxnId,
         status: payment.status,
         externalPayment: payment.externalPayment,
         wallet: user.wallet,
+        revenueDecision,
         walletScope: {
           walletShared: userScope.walletShared,
           walletMerchantId: userScope.walletMerchantId
@@ -413,6 +469,7 @@ function createPaymentService(db, options = {}) {
       return db.runWithFreshState(async (workingDb) => {
         const scopedService = createPaymentService(workingDb, {
           paymentProvider,
+          policyOsService,
           __fromFreshState: true,
         });
         return scopedService.refundPayment({

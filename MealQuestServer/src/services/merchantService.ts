@@ -1,3 +1,5 @@
+const templateCatalog = require("../policyos/templates/strategy-templates.v1.json");
+
 function createMerchantService(db, options = {}) {
   const agentService = options.omniAgentService;
   const policyOsService = options.policyOsService;
@@ -22,6 +24,18 @@ function createMerchantService(db, options = {}) {
   const MAX_EXECUTION_DETAIL_VALUE_LEN = 80;
   const MAX_TOTAL_PROPOSAL_CANDIDATES = 12;
   const SALES_WINDOWS_DAYS = [7, 30];
+  const REVENUE_TEMPLATE_ID = "revenue_addon_upsell_slow_item";
+  const REVENUE_POLICY_KEY = "REV_ADDON_UPSELL_SLOW_ITEM_V1";
+  const REVENUE_DEFAULT_CONFIG = {
+    minOrderAmount: 30,
+    voucherValue: 6,
+    voucherCost: 2,
+    budgetCap: 120,
+    frequencyWindowSec: 86400,
+    frequencyMaxHits: 1,
+    inventorySku: "slow_item_upsell_pool",
+    inventoryMaxUnits: 1000000
+  };
   const EVALUATION_CACHE_MAX_AGE_SEC = Math.max(
     30,
     Math.floor(Number(process.env.POLICY_EVALUATION_CACHE_MAX_AGE_SEC) || 900)
@@ -455,6 +469,260 @@ function createMerchantService(db, options = {}) {
       updatedAt: new Date().toISOString()
     };
     return bucket[templateId];
+  }
+
+  function resolveRevenueTemplateBranch() {
+    const template = (templateCatalog.templates || []).find(
+      (item) => item && item.templateId === REVENUE_TEMPLATE_ID
+    );
+    if (!template) {
+      throw new Error(`${REVENUE_TEMPLATE_ID} template not found`);
+    }
+    const branchId = String(template.defaultBranchId || "DEFAULT");
+    const branch = (template.branches || []).find((item) => item && item.branchId === branchId);
+    if (!branch || !branch.policySpec) {
+      throw new Error(`${REVENUE_TEMPLATE_ID} default branch not found`);
+    }
+    return branch;
+  }
+
+  function toPositiveMoney(value, fallback) {
+    const num = roundMoney(value);
+    if (!Number.isFinite(num) || num <= 0) {
+      return roundMoney(fallback);
+    }
+    return num;
+  }
+
+  function toPositiveInt(value, fallback, min = 1, max = Number.MAX_SAFE_INTEGER) {
+    const num = Math.floor(Number(value));
+    if (!Number.isFinite(num) || num < min) {
+      return Math.min(max, Math.max(min, Math.floor(Number(fallback) || min)));
+    }
+    return Math.min(max, Math.max(min, num));
+  }
+
+  function normalizeRevenueConfig(raw = {}) {
+    const safe = raw && typeof raw === "object" ? raw : {};
+    return {
+      minOrderAmount: toPositiveMoney(safe.minOrderAmount, REVENUE_DEFAULT_CONFIG.minOrderAmount),
+      voucherValue: toPositiveMoney(safe.voucherValue, REVENUE_DEFAULT_CONFIG.voucherValue),
+      voucherCost: toPositiveMoney(safe.voucherCost, REVENUE_DEFAULT_CONFIG.voucherCost),
+      budgetCap: toPositiveMoney(safe.budgetCap, REVENUE_DEFAULT_CONFIG.budgetCap),
+      frequencyWindowSec: toPositiveInt(
+        safe.frequencyWindowSec,
+        REVENUE_DEFAULT_CONFIG.frequencyWindowSec,
+        60,
+        30 * 24 * 60 * 60
+      ),
+      frequencyMaxHits: toPositiveInt(safe.frequencyMaxHits, REVENUE_DEFAULT_CONFIG.frequencyMaxHits, 1, 10),
+      inventorySku: String(safe.inventorySku || REVENUE_DEFAULT_CONFIG.inventorySku).trim() || REVENUE_DEFAULT_CONFIG.inventorySku,
+      inventoryMaxUnits: toPositiveInt(
+        safe.inventoryMaxUnits,
+        REVENUE_DEFAULT_CONFIG.inventoryMaxUnits,
+        1,
+        100000000
+      )
+    };
+  }
+
+  function findConstraintByPlugin(constraints, pluginId) {
+    const list = Array.isArray(constraints) ? constraints : [];
+    return list.find((item) => item && String(item.plugin || "").trim() === pluginId) || null;
+  }
+
+  function buildRevenuePolicySpec({ merchantId, config }) {
+    const branch = resolveRevenueTemplateBranch();
+    const base = cloneJson(branch.policySpec || {});
+    const normalized = normalizeRevenueConfig(config);
+    const existingAction =
+      Array.isArray(base.actions) &&
+      base.actions.find((item) => item && String(item.plugin || "").trim() === "voucher_grant_v1")
+        ? base.actions.find((item) => item && String(item.plugin || "").trim() === "voucher_grant_v1")
+        : {};
+    const existingVoucher =
+      existingAction &&
+      existingAction.params &&
+      existingAction.params.voucher &&
+      typeof existingAction.params.voucher === "object"
+        ? existingAction.params.voucher
+        : {};
+    const constraints = Array.isArray(base.constraints) ? base.constraints : [];
+    const budgetConstraint = findConstraintByPlugin(constraints, "budget_guard_v1");
+    const frequencyConstraint = findConstraintByPlugin(constraints, "frequency_cap_v1");
+    const inventoryConstraint = findConstraintByPlugin(constraints, "inventory_lock_v1");
+    const antiFraudConstraint = findConstraintByPlugin(constraints, "anti_fraud_hook_v1");
+
+    return {
+      ...base,
+      policy_key: REVENUE_POLICY_KEY,
+      name: "Slow Item Add-on Upsell - Configured",
+      resource_scope: {
+        merchant_id: merchantId
+      },
+      segment: {
+        plugin: "condition_segment_v1",
+        params: {
+          logic: "AND",
+          conditions: [
+            {
+              field: "orderAmount",
+              op: "gte",
+              value: normalized.minOrderAmount
+            }
+          ]
+        }
+      },
+      triggers: [
+        {
+          plugin: "event_trigger_v1",
+          event: "PAYMENT_VERIFY",
+          params: {}
+        }
+      ],
+      actions: [
+        {
+          plugin: "voucher_grant_v1",
+          channel: "default",
+          params: {
+            ...(existingAction && existingAction.params ? existingAction.params : {}),
+            cost: normalized.voucherCost,
+            expires_in_sec: 604800,
+            voucher: {
+              ...existingVoucher,
+              type: String(existingVoucher.type || "ITEM_WARRANT"),
+              name: String(existingVoucher.name || "Slow Item Add-on Reward"),
+              value: normalized.voucherValue,
+              minSpend: normalized.minOrderAmount
+            }
+          }
+        }
+      ],
+      constraints: [
+        {
+          plugin: "kill_switch_v1",
+          params: {}
+        },
+        {
+          plugin: "budget_guard_v1",
+          params: {
+            ...((budgetConstraint && budgetConstraint.params) || {}),
+            cap: normalized.budgetCap,
+            cost_per_hit: normalized.voucherCost
+          }
+        },
+        {
+          plugin: "frequency_cap_v1",
+          params: {
+            ...((frequencyConstraint && frequencyConstraint.params) || {}),
+            daily: normalized.frequencyMaxHits,
+            window_sec: normalized.frequencyWindowSec
+          }
+        },
+        {
+          plugin: "inventory_lock_v1",
+          params: {
+            ...((inventoryConstraint && inventoryConstraint.params) || {}),
+            sku: normalized.inventorySku,
+            max_units: normalized.inventoryMaxUnits,
+            reserve_units: 1
+          }
+        },
+        {
+          plugin: "anti_fraud_hook_v1",
+          params: {
+            ...((antiFraudConstraint && antiFraudConstraint.params) || {}),
+            max_risk_score: 0.75
+          }
+        }
+      ],
+      governance: {
+        approval_required: true,
+        approval_level: "OWNER",
+        approval_token_ttl_sec: 3600,
+        ...((base && base.governance) || {})
+      }
+    };
+  }
+
+  function listRevenuePolicies({ merchantId, includeInactive = true }) {
+    if (!policyOsService || typeof policyOsService.listPolicies !== "function") {
+      return [];
+    }
+    const all = policyOsService.listPolicies({ merchantId, includeInactive });
+    return all
+      .filter((item) => item && String(item.policy_key || "").trim() === REVENUE_POLICY_KEY)
+      .sort((left, right) => String(right.updated_at || "").localeCompare(String(left.updated_at || "")));
+  }
+
+  function getRevenueStrategyConfigSnapshot({ merchantId }) {
+    const bucket = ensureStrategyBucket(merchantId);
+    const strategyRecord = bucket[REVENUE_TEMPLATE_ID] || null;
+    const published = listRevenuePolicies({ merchantId, includeInactive: true }).find(
+      (item) => String(item.status || "").toUpperCase() === "PUBLISHED"
+    ) || null;
+    const config = normalizeRevenueConfig(
+      strategyRecord && strategyRecord.revenueConfig ? strategyRecord.revenueConfig : REVENUE_DEFAULT_CONFIG
+    );
+    return {
+      merchantId,
+      templateId: REVENUE_TEMPLATE_ID,
+      policyKey: REVENUE_POLICY_KEY,
+      status: strategyRecord && strategyRecord.status ? String(strategyRecord.status) : published ? "ACTIVE" : "DRAFT",
+      hasPublishedPolicy: Boolean(published),
+      policyId: published ? String(published.policy_id || "") : null,
+      config,
+      updatedAt: strategyRecord && strategyRecord.updatedAt ? strategyRecord.updatedAt : null
+    };
+  }
+
+  async function publishRevenuePolicyFromConfig({
+    merchantId,
+    operatorId = "system",
+    config
+  }) {
+    if (!policyOsService) {
+      throw new Error("policy os service is not configured");
+    }
+    const spec = buildRevenuePolicySpec({ merchantId, config });
+    const draft = policyOsService.createDraft({
+      merchantId,
+      operatorId,
+      spec,
+      templateId: REVENUE_TEMPLATE_ID
+    });
+    policyOsService.submitDraft({
+      merchantId,
+      draftId: draft.draft_id,
+      operatorId
+    });
+    const approval = policyOsService.approveDraft({
+      merchantId,
+      draftId: draft.draft_id,
+      operatorId,
+      approvalLevel: "OWNER"
+    });
+    const published = policyOsService.publishDraft({
+      merchantId,
+      draftId: draft.draft_id,
+      operatorId,
+      approvalId: approval.approvalId
+    });
+    const publishedPolicyId = String(published && published.policy && published.policy.policy_id ? published.policy.policy_id : "");
+    const stalePolicies = listRevenuePolicies({ merchantId, includeInactive: true }).filter(
+      (item) =>
+        String(item.status || "").toUpperCase() === "PUBLISHED" &&
+        String(item.policy_id || "") !== publishedPolicyId
+    );
+    for (const item of stalePolicies) {
+      policyOsService.pausePolicy({
+        merchantId,
+        policyId: String(item.policy_id || ""),
+        operatorId,
+        reason: "superseded_by_revenue_config"
+      });
+    }
+    return published;
   }
 
   function cloneJson(value) {
@@ -1562,11 +1830,123 @@ function createMerchantService(db, options = {}) {
         event: "USER_ENTER_SHOP",
         policyKeyPrefix: "ACT_CHECKIN_STREAK_RECOVERY_V1"
       }),
+      revenueUpsellSummary: buildDecisionSummary({
+        merchantId,
+        event: "PAYMENT_VERIFY",
+        policyKeyPrefix: REVENUE_POLICY_KEY
+      }),
       gameMarketingSummary:
         gameMarketingService && typeof gameMarketingService.buildGameMarketingSummary === "function"
           ? gameMarketingService.buildGameMarketingSummary({ merchantId })
           : createEmptyDecisionSummary(),
       traceSummary: buildLedgerTraceSummary({ merchantId }),
+    };
+  }
+
+  async function getRevenueStrategyConfig({ merchantId }) {
+    const freshResult = await runWithFreshRead("getRevenueStrategyConfig", { merchantId });
+    if (freshResult !== FRESH_NOT_USED) {
+      return freshResult;
+    }
+    if (!db.merchants || !db.merchants[merchantId]) {
+      throw new Error("merchant not found");
+    }
+    return getRevenueStrategyConfigSnapshot({ merchantId });
+  }
+
+  async function setRevenueStrategyConfig({
+    merchantId,
+    operatorId = "system",
+    config = {}
+  }) {
+    const freshResult = await runWithFreshState("setRevenueStrategyConfig", {
+      merchantId,
+      operatorId,
+      config
+    });
+    if (freshResult !== FRESH_NOT_USED) {
+      return freshResult;
+    }
+    if (!db.merchants || !db.merchants[merchantId]) {
+      throw new Error("merchant not found");
+    }
+    const normalizedConfig = normalizeRevenueConfig(config);
+    const published = await publishRevenuePolicyFromConfig({
+      merchantId,
+      operatorId,
+      config: normalizedConfig
+    });
+    const policyId =
+      published && published.policy && published.policy.policy_id
+        ? String(published.policy.policy_id)
+        : null;
+    const strategyRecord = setStrategyConfig(merchantId, REVENUE_TEMPLATE_ID, {
+      branchId: "DEFAULT",
+      status: policyId ? "ACTIVE" : "DRAFT",
+      lastPolicyId: policyId,
+      revenueConfig: normalizedConfig,
+      triggerEvent: "PAYMENT_VERIFY"
+    });
+    return {
+      ...getRevenueStrategyConfigSnapshot({ merchantId }),
+      updatedAt: strategyRecord.updatedAt,
+      policyId
+    };
+  }
+
+  async function recommendRevenueStrategyConfig({ merchantId }) {
+    const freshResult = await runWithFreshRead("recommendRevenueStrategyConfig", { merchantId });
+    if (freshResult !== FRESH_NOT_USED) {
+      return freshResult;
+    }
+    if (!db.merchants || !db.merchants[merchantId]) {
+      throw new Error("merchant not found");
+    }
+    const sales = getSalesSnapshotContext(merchantId);
+    const totals = sales && sales.totals ? sales.totals : {};
+    const ordersPaidCount = Math.max(0, Math.floor(Number(totals.ordersPaidCount) || 0));
+    const aov = Math.max(0, Number(totals.aov) || 0);
+    const netRevenue = Math.max(0, Number(totals.netRevenue) || 0);
+    const baselineSnapshot = getRevenueStrategyConfigSnapshot({ merchantId });
+    const baselineConfig = normalizeRevenueConfig(baselineSnapshot.config || REVENUE_DEFAULT_CONFIG);
+
+    const recommendedConfig = normalizeRevenueConfig({
+      minOrderAmount: Math.max(
+        20,
+        Math.round((aov > 0 ? aov * 0.75 : baselineConfig.minOrderAmount) / 5) * 5
+      ),
+      voucherValue: Math.max(4, Math.round((aov > 0 ? aov : baselineConfig.minOrderAmount) * 0.2)),
+      voucherCost: Math.max(1, roundMoney((aov > 0 ? aov : 20) * 0.08)),
+      budgetCap: Math.max(
+        baselineConfig.budgetCap,
+        roundMoney(Math.max(80, (ordersPaidCount > 0 ? ordersPaidCount : 40) * 2))
+      ),
+      frequencyWindowSec: baselineConfig.frequencyWindowSec,
+      frequencyMaxHits: baselineConfig.frequencyMaxHits,
+      inventorySku: baselineConfig.inventorySku,
+      inventoryMaxUnits: Math.max(
+        baselineConfig.inventoryMaxUnits,
+        Math.max(200, Math.floor((ordersPaidCount > 0 ? ordersPaidCount : 40) * 4))
+      )
+    });
+
+    return {
+      merchantId,
+      templateId: REVENUE_TEMPLATE_ID,
+      strategyId: REVENUE_POLICY_KEY,
+      generatedAt: new Date().toISOString(),
+      baselineConfig,
+      recommendedConfig,
+      salesSnapshot: {
+        ordersPaidCount,
+        aov: roundMoney(aov),
+        netRevenue: roundMoney(netRevenue)
+      },
+      rationale: [
+        "推荐门槛围绕近期开单客单价自动调整，优先提升加购命中率。",
+        "推荐预算与库存上限跟随支付样本规模放大，避免策略过早熔断。",
+        "频控保持 24h 内最多命中 1 次，降低补贴过发风险。"
+      ]
     };
   }
 
@@ -2422,6 +2802,9 @@ function createMerchantService(db, options = {}) {
 
   return {
     getDashboard,
+    getRevenueStrategyConfig,
+    setRevenueStrategyConfig,
+    recommendRevenueStrategyConfig,
     setKillSwitch,
     createAgentSession,
     getAgentSession,

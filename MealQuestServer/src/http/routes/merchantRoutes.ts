@@ -49,6 +49,83 @@ function createMerchantRoutesHandler({
       return true;
     }
 
+    if (method === "GET" && url.pathname === "/api/merchant/strategy-config/revenue") {
+      ensureRole(auth, MERCHANT_ROLES);
+      const merchantId = url.searchParams.get("merchantId") || auth.merchantId;
+      if (!merchantId) {
+        sendJson(res, 400, { error: "merchantId is required" });
+        return true;
+      }
+      if (auth.merchantId && auth.merchantId !== merchantId) {
+        sendJson(res, 403, { error: "merchant scope denied" });
+        return true;
+      }
+      const { merchantService } = getServicesForMerchant(merchantId);
+      sendJson(res, 200, await merchantService.getRevenueStrategyConfig({ merchantId }));
+      return true;
+    }
+
+    if (method === "PUT" && url.pathname === "/api/merchant/strategy-config/revenue") {
+      ensureRole(auth, ["OWNER"]);
+      const body = await readJsonBody(req);
+      const merchantId = auth.merchantId || body.merchantId;
+      if (!merchantId) {
+        sendJson(res, 400, { error: "merchantId is required" });
+        return true;
+      }
+      if (auth.merchantId && auth.merchantId !== merchantId) {
+        sendJson(res, 403, { error: "merchant scope denied" });
+        return true;
+      }
+      const { merchantService } = getServicesForMerchant(merchantId);
+      const result = await merchantService.setRevenueStrategyConfig({
+        merchantId,
+        operatorId: auth && (auth.operatorId || auth.userId) ? auth.operatorId || auth.userId : "owner",
+        config: body && body.config && typeof body.config === "object" ? body.config : body
+      });
+      appendAuditLog({
+        merchantId,
+        action: "STRATEGY_CONFIG_REVENUE_SET",
+        status: "SUCCESS",
+        auth,
+        details: {
+          templateId: result.templateId,
+          policyId: result.policyId,
+          hasPublishedPolicy: Boolean(result.hasPublishedPolicy)
+        }
+      });
+      sendJson(res, 200, result);
+      return true;
+    }
+
+    if (method === "POST" && url.pathname === "/api/merchant/strategy-config/revenue/recommend") {
+      ensureRole(auth, ["OWNER"]);
+      const body = await readJsonBody(req);
+      const merchantId = auth.merchantId || body.merchantId;
+      if (!merchantId) {
+        sendJson(res, 400, { error: "merchantId is required" });
+        return true;
+      }
+      if (auth.merchantId && auth.merchantId !== merchantId) {
+        sendJson(res, 403, { error: "merchant scope denied" });
+        return true;
+      }
+      const { merchantService } = getServicesForMerchant(merchantId);
+      const result = await merchantService.recommendRevenueStrategyConfig({ merchantId });
+      appendAuditLog({
+        merchantId,
+        action: "STRATEGY_CONFIG_REVENUE_RECOMMEND",
+        status: "SUCCESS",
+        auth,
+        details: {
+          templateId: result.templateId,
+          strategyId: result.strategyId
+        }
+      });
+      sendJson(res, 200, result);
+      return true;
+    }
+
     if (method === "GET" && url.pathname === "/api/merchant/contract/status") {
       ensureRole(auth, ["OWNER", "MANAGER"]);
       const merchantId = url.searchParams.get("merchantId") || auth.merchantId;

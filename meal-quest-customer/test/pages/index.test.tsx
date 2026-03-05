@@ -136,4 +136,43 @@ describe('Index page welcome activity visibility', () => {
       expect(document.body.textContent).toContain('原因：constraint:frequency_exceeded');
     });
   });
+
+  it('renders revenue hit activity card', async () => {
+    dataServiceMock.getHomeSnapshot.mockResolvedValue(
+      createSnapshot([
+        {
+          id: 'revenue_hit_1',
+          title: '加购激励已发放',
+          desc: '已命中提客单策略，可前往资产区查看到账券。',
+          tag: 'REVENUE',
+        },
+      ]) as any,
+    );
+
+    render(<IndexPage />);
+
+    await waitFor(() => {
+      expect(document.body.textContent).toContain('加购激励已发放');
+    });
+  });
+
+  it('renders revenue blocked activity card with reason', async () => {
+    dataServiceMock.getHomeSnapshot.mockResolvedValue(
+      createSnapshot([
+        {
+          id: 'revenue_block_1',
+          title: '加购激励未发放',
+          desc: '原因：constraint:frequency_exceeded',
+          tag: 'REVENUE',
+        },
+      ]) as any,
+    );
+
+    render(<IndexPage />);
+
+    await waitFor(() => {
+      expect(document.body.textContent).toContain('加购激励未发放');
+      expect(document.body.textContent).toContain('原因：constraint:frequency_exceeded');
+    });
+  });
 });

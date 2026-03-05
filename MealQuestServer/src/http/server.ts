@@ -121,7 +121,7 @@ function createAppServer({
     if (!services) {
       const policyOsService = createPolicyOsService(scopedDb, { wsHub, metrics });
       services = {
-        paymentService: createPaymentService(scopedDb, { paymentProvider }),
+        paymentService: createPaymentService(scopedDb, { paymentProvider, policyOsService }),
         merchantService: createMerchantService(scopedDb, {
           policyOsService,
           wsHub,

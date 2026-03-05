@@ -78,6 +78,25 @@ function assertActionParamCompleteness(policySpec) {
       throw new Error("policy action params incomplete: ACT_CHECKIN_STREAK_RECOVERY_V1");
     }
   }
+  if (policyKey === "REV_ADDON_UPSELL_SLOW_ITEM_V1") {
+    const hasVoucherGrant = actions.some(
+      (item) => String(item && item.plugin ? item.plugin : "").trim() === "voucher_grant_v1"
+    );
+    const constraints = Array.isArray(policySpec && policySpec.constraints) ? policySpec.constraints : [];
+    const inventoryConstraint = constraints.find(
+      (item) => String(item && item.plugin ? item.plugin : "").trim() === "inventory_lock_v1"
+    );
+    const inventorySku = String(
+      inventoryConstraint &&
+      inventoryConstraint.params &&
+      inventoryConstraint.params.sku
+        ? inventoryConstraint.params.sku
+        : ""
+    ).trim();
+    if (!hasVoucherGrant || !inventorySku) {
+      throw new Error("policy action params incomplete: REV_ADDON_UPSELL_SLOW_ITEM_V1");
+    }
+  }
 }
 
 function createPolicyRegistry({

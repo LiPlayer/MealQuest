@@ -60,6 +60,7 @@ export type MerchantDashboardResponse = {
   };
   acquisitionWelcomeSummary?: DecisionSummaryResponse;
   activationRecoverySummary?: DecisionSummaryResponse;
+  revenueUpsellSummary?: DecisionSummaryResponse;
   gameMarketingSummary?: DecisionSummaryResponse;
   traceSummary?: {
     last24h?: {
@@ -82,6 +83,43 @@ export type MerchantDashboardResponse = {
       hasAudit?: boolean;
     }[];
   };
+};
+
+export type RevenueStrategyConfig = {
+  minOrderAmount: number;
+  voucherValue: number;
+  voucherCost: number;
+  budgetCap: number;
+  frequencyWindowSec: number;
+  frequencyMaxHits: number;
+  inventorySku: string;
+  inventoryMaxUnits: number;
+};
+
+export type RevenueStrategyConfigResponse = {
+  merchantId: string;
+  templateId: string;
+  policyKey: string;
+  status: string;
+  hasPublishedPolicy: boolean;
+  policyId: string | null;
+  config: RevenueStrategyConfig;
+  updatedAt: string | null;
+};
+
+export type RevenueStrategyRecommendationResponse = {
+  merchantId: string;
+  templateId: string;
+  strategyId: string;
+  generatedAt: string;
+  baselineConfig: RevenueStrategyConfig;
+  recommendedConfig: RevenueStrategyConfig;
+  salesSnapshot: {
+    ordersPaidCount: number;
+    aov: number;
+    netRevenue: number;
+  };
+  rationale: string[];
 };
 
 export type DecisionSummaryResponse = {
@@ -127,6 +165,32 @@ async function postJson<T>(
   }
   const response = await fetch(`${baseUrl}${path}`, {
     method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message =
+      data && typeof data.error === 'string' ? data.error : `request failed (${response.status})`;
+    throw new Error(message);
+  }
+  return data as T;
+}
+
+async function putJson<T>(
+  path: string,
+  body: Record<string, unknown>,
+  options: { token?: string } = {},
+): Promise<T> {
+  const baseUrl = getApiBaseUrl();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (options.token) {
+    headers.Authorization = `Bearer ${options.token}`;
+  }
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: 'PUT',
     headers,
     body: JSON.stringify(body),
   });
@@ -212,6 +276,54 @@ export async function getMerchantDashboard(params: {
   }
   return getJson<MerchantDashboardResponse>(
     `/api/merchant/dashboard?merchantId=${encodeURIComponent(merchantId)}`,
+    { token: params.token },
+  );
+}
+
+export async function getRevenueStrategyConfig(params: {
+  merchantId: string;
+  token: string;
+}): Promise<RevenueStrategyConfigResponse> {
+  const merchantId = String(params.merchantId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  return getJson<RevenueStrategyConfigResponse>(
+    `/api/merchant/strategy-config/revenue?merchantId=${encodeURIComponent(merchantId)}`,
+    { token: params.token },
+  );
+}
+
+export async function setRevenueStrategyConfig(params: {
+  merchantId: string;
+  token: string;
+  config: RevenueStrategyConfig;
+}): Promise<RevenueStrategyConfigResponse> {
+  const merchantId = String(params.merchantId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  return putJson<RevenueStrategyConfigResponse>(
+    '/api/merchant/strategy-config/revenue',
+    {
+      merchantId,
+      config: params.config,
+    },
+    { token: params.token },
+  );
+}
+
+export async function recommendRevenueStrategyConfig(params: {
+  merchantId: string;
+  token: string;
+}): Promise<RevenueStrategyRecommendationResponse> {
+  const merchantId = String(params.merchantId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  return postJson<RevenueStrategyRecommendationResponse>(
+    '/api/merchant/strategy-config/revenue/recommend',
+    { merchantId },
     { token: params.token },
   );
 }
