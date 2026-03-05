@@ -1,11 +1,11 @@
-# MealQuest 商业化落地规范（V13.8）
+# MealQuest 商业化落地规范（V13.9）
 
 > 文档定位：本文件是 MealQuest 的产品与商业规范真源（Source of Truth）。
 > 适用范围：`MealQuestServer`、`MealQuestMerchant`、`meal-quest-customer` 三端协同建设。
 
 ## 0. 版本与治理
 
-- 版本：V13.8（双子线口径对齐：Acquisition + Game Marketing）
+- 版本：V13.9（六策略族首版商用口径）
 - 首发区域：中国大陆
 - 目标客群：单店与小连锁餐饮商户
 - 商业主轴：支付抽佣为主，订阅与增值服务为辅
@@ -83,7 +83,7 @@
 - 商户端：登录、开店、经营驾驶基础视图、老板端 Agent（查账/发票问答 + 策略提案确认）、紧急停机。
 - 顾客端（即小程序端）：扫码入店、Welcome 触达、游戏营销触达/互动、资产展示、支付核销、账本与发票查询。
 - 服务端：认证、支付、发票、隐私、策略治理、执行审计、多租户隔离。
-- 策略范围：首版开放双子线闭环（Acquisition Welcome + Game Marketing 的游戏库/投放解锁/支付后掉落）。
+- 策略范围：首版开放六策略族闭环（Acquisition、Activation、Revenue、Retention、Social Viral、Mini-Game Ops）。
 
 - Merchant entry QR: must support generating fixed store QR and distributing via preview/save/share.
 
@@ -91,9 +91,8 @@
 
 - 点餐流程、后厨 KDS、桌台管理
 - 采购、库存进销存、供应链系统
-- 除双子线（Acquisition Welcome + Game Marketing）外其余策略族的商用实现
-- 顾客侧 Agent 与店长侧 Agent 的商用开放
 - 顾客侧非小程序技术路线作为首版交付形态
+- 顾客侧 Agent 与店长侧 Agent 的商用开放
 
 ---
 
@@ -149,7 +148,7 @@
 
 ---
 
-## 6. 首版商用闭环定义（MVP，双子线）
+## 6. 首版商用闭环定义（MVP，六策略族）
 
 ### 6.1 闭环路径
 
@@ -157,11 +156,12 @@
 
 - Merchant generates and posts store entry QR -> customer scans to enter -> identity binding -> interaction -> payment and asset accrual.
 - QR payload boundary (MVP): plain `merchantId` only, validated by server-side merchant existence check; signed payload and one-time short code are out of scope in this release.
+- 六策略族按场景并行编排，不要求单次顾客链路触发全部策略。
 
 ### 6.2 拉新礼包（Welcome，Acquisition 子场景）规范
 
 - 目标：以可控补贴换取可验证首单与短周期复购
-- 归属：五类策略族中的拉新获客（Acquisition），不作为独立策略族
+- 归属：六类策略族中的拉新获客（Acquisition），不作为独立策略族
 - 触发：门店级“首绑成功”事件
 - 条件：通过同人识别、预算、库存、频控、风险评分校验
 - 执行：默认建议 + 人工确认；紧急场景可人工覆盖并自动过期
@@ -172,6 +172,7 @@
 ### 6.3 游戏营销互动与触达（Game Marketing）规范
 
 - 目标：提升到店互动深度、支付后资产沉淀与短周期复购
+- 归属：六策略族中的 Mini-Game Ops 落地域
 - 定位：与 Acquisition Welcome 并行的独立子线，通过平台游戏库和门店策略编排驱动增长
 - 形态：单人轻量回合制（无排行、无社交对战）
 - 奖励：可发放碎银、碎片、游戏收集资产；红包来源于策略发放或碎片合成
@@ -229,7 +230,7 @@
 
 ### 7.6 与策略引擎的耦合原则
 
-- 首版策略商用以双子线（Acquisition Welcome + Game Marketing）闭环为主；Agent 设计需可扩展至五类策略族。
+- 首版策略商用以六策略族闭环为主；Agent 设计需统一承接六类策略意图。
 - 候选策略建议采用全局最优思想进行排序和推荐。
 - 预算、风险、毛利红线是执行硬门；超线策略可建议但不可执行。
 
@@ -302,29 +303,39 @@
 
 ---
 
-## 11. 策略扩展方向（产品层）
+## 11. 六策略族框架与先行验证（产品层）
 
-> 首版以双子线（Acquisition Welcome + Game Marketing）闭环商用为目标。以下为 Agent-策略耦合的扩展框架，用于后续分步落地，不代表当前版本必须一次性实现。
+> 首版采用六策略族并行商用。每一策略族需至少落地一条“可执行闭环策略”，用于提前验证框架可行性。
 
-### 11.1 五类策略族框架
+### 11.1 六策略族框架
 
-- 拉新获客（Acquisition）：以首单转化与新客有效率为核心，首版落地子域为 Welcome。
+- 拉新获客（Acquisition）：以首单转化与新客有效率为核心，首版子域为 Welcome。
 - 促活提频（Activation）：以到店频次恢复与互动活跃为核心。
 - 提客单/去库存（Revenue）：以客单提升与库存效率为核心。
 - 召回留存（Retention）：以沉默人群回流与周期复购为核心。
 - 社交裂变（Social Viral）：以有效邀请与低作弊扩散为核心。
+- 小游戏运营（Mini-Game Ops）：以小游戏触达、互动结算、资产掉落和后续复购资格为核心。
 
-### 11.2 Agent-策略耦合原则
+### 11.2 策略合同与治理统一要求
 
-- Agent 统一承接五类策略意图输入，输出业务可读提案。
-- 不同策略族复用同一治理红线：预算、风险、审批、可追溯、熔断。
-- 不同策略族可使用不同评估窗口，但必须保持可解释与可复盘。
+- 六策略族统一策略合同字段：`strategyId`、`family`、`triggerEvent`、`eligibility`、`action`、`governanceGates`、`customerVisibility`、`merchantVisibility`、`auditTrace`。
+- 六策略族复用同一治理红线：预算、风险、毛利、审批、可追溯、熔断。
+- 不同策略族可使用不同评估窗口，但必须保持可解释、可回放、可审计。
 
-### 11.3 扩展硬约束
+### 11.3 每族一策先行验证清单（首版必须）
 
-- 每新增策略都必须证明对毛利与复购有正向增益。
-- 每新增策略都不得破坏支付、核销、账务、发票主链路稳定性。
-- 任何超越治理红线的动作不允许执行，只允许给出建议说明。
+- `ACQ_WELCOME_FIRST_BIND_V1`（Acquisition）：新客首绑欢迎权益。
+- `ACT_CHECKIN_STREAK_RECOVERY_V1`（Activation）：低活跃顾客回店连签激活。
+- `REV_ADDON_UPSELL_SLOW_ITEM_V1`（Revenue）：慢销品加购激励与客单提升。
+- `RET_DORMANT_WINBACK_14D_V1`（Retention）：14 天沉默顾客召回。
+- `SOC_REFER_DUAL_REWARD_FIRST_PAY_V1`（Social Viral）：有效邀请首单双向奖励。
+- `GMO_NEW_GAME_UNLOCK_DROP_V1`（Mini-Game Ops）：新游解锁与收集物掉落。
+
+### 11.4 先行验证硬约束
+
+- 每族样例都必须形成三端可执行闭环：触发 -> 判定 -> 执行 -> 可见 -> 审计。
+- 每族样例都必须证明不破坏支付、核销、账务、发票主链路稳定性。
+- 任何超越治理红线的动作不允许执行，只允许输出建议说明。
 
 ---
 
