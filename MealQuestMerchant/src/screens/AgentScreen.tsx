@@ -65,7 +65,7 @@ export default function AgentScreen() {
           <View style={styles.heroTopRow}>
             <View style={styles.heroTitleWrap}>
               <Text style={styles.heroTitle}>AI 经营协作中心</Text>
-              <Text style={styles.heroSubtitle}>看板看结果，Agent 负责下一步建议。</Text>
+              <Text style={styles.heroSubtitle}>围绕长期价值最大化，按商户收益与 Uplift 给出下一步建议。</Text>
             </View>
             <ActionButton
               testID="ai-proactive-scan"
@@ -112,7 +112,7 @@ export default function AgentScreen() {
           {agentMessages.length === 0 ? (
             <SurfaceCard style={styles.emptyState}>
               <MaterialIcons name="lightbulb-outline" size={30} color="#89a0bd" />
-              <Text style={styles.emptyText}>输入经营目标，开始一次可回放的策略协作。</Text>
+              <Text style={styles.emptyText}>输入经营目标，启动一次以长期价值为目标、可回放的策略协作。</Text>
             </SurfaceCard>
           ) : (
             agentMessages.map((item: any) => (

@@ -108,8 +108,8 @@
 
 | StepID | Outcome（宏观结果） | Dependency | Status |
 | --- | --- | --- | --- |
-| S010 | 长期价值最大化目标口径冻结 | 无 | doing |
-| S020 | 老板端基础闭环（登录、开店、看板） | S010 done | todo |
+| S010 | 长期价值最大化目标口径冻结 | 无 | done |
+| S020 | 老板端基础闭环（登录、开店、看板） | S010 done | doing |
 | S030 | 顾客端基础闭环（扫码、资产、支付、账票） | S020 done | todo |
 | S040 | 数据与模型基础口径建立 | S030 done | todo |
 | S050 | 决策与执行治理闭环建立 | S040 done | todo |
@@ -131,9 +131,9 @@
 
 | PackageID | Lane | CapabilityID | Macro Requirement | Deliverable | DependsOn | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| PKG-S010-SRV-01 | server | SRV-C05 | 冻结长期价值北极星与商户收益/Uplift 代理口径 | 统一目标口径文档 | none | doing |
-| PKG-S010-MER-01 | merchant | MER-C04 | 冻结老板端策略文案口径 | 老板端口径映射清单 | PKG-S010-SRV-01 | doing |
-| PKG-S010-CUS-01 | customer | CUS-C03 | 冻结顾客触达与权益口径 | 顾客端口径映射清单 | PKG-S010-SRV-01 | doing |
+| PKG-S010-SRV-01 | server | SRV-C05 | 冻结长期价值北极星与商户收益/Uplift 代理口径 | 统一目标口径文档 | none | done |
+| PKG-S010-MER-01 | merchant | MER-C04 | 冻结老板端策略文案口径 | 老板端口径映射清单 | PKG-S010-SRV-01 | done |
+| PKG-S010-CUS-01 | customer | CUS-C03 | 冻结顾客触达与权益口径 | 顾客端口径映射清单 | PKG-S010-SRV-01 | done |
 
 ### S020 - 老板端基础闭环
 
@@ -296,3 +296,4 @@
 3. 2026-03-05：S010-S110 全量改造成可独立领取的宏观任务包。
 4. 2026-03-05：补充入店码管理、消息提醒中心、顾客反馈闭环三类缺失能力。
 5. 2026-03-05：S010 目标口径明确为“长期价值最大化”，商户收益/Uplift 作为执行代理指标。
+6. 2026-03-05：完成 S010 三端口径收口，关闭 PKG-S010-SRV-01/PKG-S010-MER-01/PKG-S010-CUS-01 并切换到 S020 doing。

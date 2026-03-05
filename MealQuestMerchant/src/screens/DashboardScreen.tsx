@@ -26,7 +26,7 @@ export default function DashboardScreen() {
     <AppShell>
       <View style={styles.header}>
         <Text style={styles.title}>经营看板（基线）</Text>
-        <Text style={styles.subtitle}>先冻结布局骨架，后续在 S210 完整填充经营指标与趋势。</Text>
+        <Text style={styles.subtitle}>围绕长期价值最大化，持续追踪商户收益与 Uplift 变化。</Text>
       </View>
 
       <SurfaceCard>

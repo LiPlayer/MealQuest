@@ -44,7 +44,7 @@ export default function ActivityArea({ activities = [] }: ActivityAreaProps) {
     <View className='activity-area'>
       <View className='activity-area__header'>
         <Text className='activity-area__header-title'>今日活动</Text>
-        <Text className='activity-area__header-more'>策略驱动 · 实时更新</Text>
+        <Text className='activity-area__header-more'>长期价值导向 · 策略驱动实时更新</Text>
       </View>
 
       <View className='activity-area__list'>
@@ -56,7 +56,7 @@ export default function ActivityArea({ activities = [] }: ActivityAreaProps) {
               </View>
               <View className='activity-area__content'>
                 <Text className='activity-area__title'>暂无活动</Text>
-                <Text className='activity-area__desc'>商家发布活动后将自动显示在这里。</Text>
+                <Text className='activity-area__desc'>系统会按长期价值策略展示与您相关的权益触达。</Text>
               </View>
             </View>
           </View>
