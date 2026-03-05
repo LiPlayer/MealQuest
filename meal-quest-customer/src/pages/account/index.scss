@@ -153,3 +153,61 @@
   color: #7e91aa;
   font-size: 24rpx;
 }
+
+.account-touchpoint-objective {
+  display: block;
+  color: #4b5f79;
+  font-size: 22rpx;
+  line-height: 1.5;
+}
+
+.account-touchpoint-signals {
+  margin-top: 14rpx;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx;
+}
+
+.account-touchpoint-signal {
+  padding: 6rpx 14rpx;
+  border-radius: 999rpx;
+  background: #edf3ff;
+  color: #244f97;
+  font-size: 20rpx;
+  font-weight: 600;
+}
+
+.account-touchpoint-list {
+  margin-top: 12rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+}
+
+.account-touchpoint-item {
+  padding: 12rpx;
+  border-radius: 16rpx;
+  background: var(--mq-surface-alt);
+  border: 1rpx solid var(--mq-border);
+}
+
+.account-touchpoint-item__title {
+  display: block;
+  font-size: 22rpx;
+  color: var(--mq-text);
+  font-weight: 700;
+}
+
+.account-touchpoint-item__desc {
+  display: block;
+  margin-top: 4rpx;
+  font-size: 21rpx;
+  color: #58708e;
+}
+
+.account-touchpoint-item__reason {
+  display: block;
+  margin-top: 2rpx;
+  font-size: 19rpx;
+  color: #7b90ac;
+}

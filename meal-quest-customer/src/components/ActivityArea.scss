@@ -115,6 +115,14 @@
     text-overflow: ellipsis;
   }
 
+  &__reason {
+    font-size: 19rpx;
+    color: #7a8ea8;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   &__arrow-wrap {
     width: 42rpx;
     height: 42rpx;

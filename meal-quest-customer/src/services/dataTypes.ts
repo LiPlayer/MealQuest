@@ -30,10 +30,28 @@ export interface ActivityItem {
   id: string;
   title: string;
   desc: string;
+  explanation?: string;
+  reasonCode?: string;
+  stage?: string;
+  outcome?: 'HIT' | 'BLOCKED' | 'INFO';
   icon: string;
   color: string;
   textColor: string;
   tag: string;
+}
+
+export interface TouchpointItem {
+  activityId: string;
+  stage: string;
+  outcome: 'HIT' | 'BLOCKED' | 'INFO';
+  explanation: string;
+  reasonCode?: string;
+}
+
+export interface TouchpointContract {
+  objectiveLabel: string;
+  behaviorSignals: string[];
+  recentTouchpoints: TouchpointItem[];
 }
 
 export interface HomeSnapshot {
@@ -45,6 +63,7 @@ export interface HomeSnapshot {
   };
   vouchers: Voucher[];
   activities: ActivityItem[];
+  touchpointContract?: TouchpointContract;
   lastPaymentId?: string;
 }
 

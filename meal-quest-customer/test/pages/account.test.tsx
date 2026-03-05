@@ -48,6 +48,19 @@ describe('Account page', () => {
       fragments: { common: 1, rare: 1 },
       vouchers: [],
       activities: [],
+      touchpointContract: {
+        objectiveLabel: '触达以长期价值为导向，系统会根据行为与规则反馈是否命中权益。',
+        behaviorSignals: ['扫码入店', '活动触达', '支付核销', '账票查询'],
+        recentTouchpoints: [
+          {
+            activityId: 'welcome_block_1',
+            stage: '获客',
+            outcome: 'BLOCKED',
+            explanation: '当前条件未满足',
+            reasonCode: 'segment_mismatch',
+          },
+        ],
+      },
     } as any);
     dataServiceMock.getPaymentLedger.mockResolvedValue([
       {
@@ -84,6 +97,8 @@ describe('Account page', () => {
     });
     expect(document.getElementById('account-ledger-title')).toBeInTheDocument();
     expect(document.getElementById('account-invoice-title')).toBeInTheDocument();
+    expect(document.getElementById('account-touchpoint-title')).toBeInTheDocument();
+    expect(document.body.textContent).toContain('当前条件未满足');
   });
 
   it('requires second click to cancel account and then relaunches', async () => {

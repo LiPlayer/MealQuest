@@ -6,6 +6,8 @@ export interface ActivityItem {
   id: string | number;
   title: string;
   desc: string;
+  explanation?: string;
+  reasonCode?: string;
   icon: string;
   color: string;
   textColor: string;
@@ -63,6 +65,7 @@ export default function ActivityArea({ activities = [] }: ActivityAreaProps) {
         ) : (
           list.map((activity, index) => {
             const tone = TONES[index % TONES.length];
+            const explanation = activity.explanation || activity.desc;
             return (
               <View key={activity.id} className='activity-area__item'>
                 <View className='activity-area__decor' style={{ backgroundColor: tone.dot }} />
@@ -80,7 +83,10 @@ export default function ActivityArea({ activities = [] }: ActivityAreaProps) {
                         <Text style={{ color: tone.tagText }}>{activity.tag}</Text>
                       </View>
                     </View>
-                    <Text className='activity-area__desc'>{activity.desc}</Text>
+                    <Text className='activity-area__desc'>{explanation}</Text>
+                    {activity.reasonCode ? (
+                      <Text className='activity-area__reason'>原因码：{activity.reasonCode}</Text>
+                    ) : null}
                   </View>
                 </View>
                 <View className='activity-area__arrow-wrap'>

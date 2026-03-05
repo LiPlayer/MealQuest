@@ -22,6 +22,7 @@ export default function AccountPage() {
   const [cancelArmed, setCancelArmed] = useState(false);
   const [canceling, setCanceling] = useState(false);
   const [customerUserId, setCustomerUserId] = useState('');
+  const touchpointContract = snapshot?.touchpointContract || null;
 
   const storeId = useMemo(() => {
     return String(storage.getLastStoreId() || DEFAULT_STORE_ID || '').trim();
@@ -119,6 +120,43 @@ export default function AccountPage() {
             </Text>
           </View>
         </View>
+      </View>
+
+      <View className='account-card'>
+        <Text id='account-touchpoint-title' className='account-card__title'>
+          触达口径摘要
+        </Text>
+        <Text className='account-touchpoint-objective'>
+          {touchpointContract?.objectiveLabel || '口径暂不可用，请稍后刷新重试。'}
+        </Text>
+        {touchpointContract ? (
+          <>
+            <View className='account-touchpoint-signals'>
+              {touchpointContract.behaviorSignals.map((signal) => (
+                <View key={signal} className='account-touchpoint-signal'>
+                  {signal}
+                </View>
+              ))}
+            </View>
+            <View className='account-touchpoint-list'>
+              {touchpointContract.recentTouchpoints.length === 0 ? (
+                <Text className='account-empty'>暂无触达记录</Text>
+              ) : (
+                touchpointContract.recentTouchpoints.slice(0, 3).map((item) => (
+                  <View key={item.activityId} className='account-touchpoint-item'>
+                    <Text className='account-touchpoint-item__title'>
+                      {item.stage} · {item.outcome === 'HIT' ? '已命中' : item.outcome === 'BLOCKED' ? '未命中' : '进行中'}
+                    </Text>
+                    <Text className='account-touchpoint-item__desc'>{item.explanation}</Text>
+                    {item.reasonCode ? (
+                      <Text className='account-touchpoint-item__reason'>原因码：{item.reasonCode}</Text>
+                    ) : null}
+                  </View>
+                ))
+              )}
+            </View>
+          </>
+        ) : null}
       </View>
 
       <View className='account-actions'>

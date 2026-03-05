@@ -129,4 +129,42 @@ describe('ApiDataService activities mapping', () => {
             })
         );
     });
+
+    it('maps blocked touchpoint reason to friendly explanation and keeps reason code', async () => {
+        requestMock.mockResolvedValueOnce({
+            statusCode: 200,
+            data: { token: 'token_fixture', profile: { userId: 'u_fixture_001', phone: '+8613900000001' } }
+        });
+        requestMock.mockResolvedValueOnce({
+            statusCode: 200,
+            data: {
+                merchant: { merchantId: 'm_store_001', name: 'Fixture Merchant' },
+                user: {
+                    wallet: { principal: 120, bonus: 30, silver: 66 },
+                    fragments: { noodle: 3, spicy: 1 },
+                    vouchers: []
+                },
+                activities: [
+                    {
+                        id: 'welcome_block_1',
+                        title: '欢迎权益未发放',
+                        desc: '原因：segment_mismatch',
+                        icon: '!',
+                        color: 'bg-amber-50',
+                        textColor: 'text-amber-700',
+                        tag: 'WELCOME'
+                    }
+                ]
+            }
+        });
+
+        const { ApiDataService } = require('@/services/ApiDataService');
+        const snapshot = await ApiDataService.getHomeSnapshot('m_store_001', 'u_fixture_001');
+
+        expect(snapshot.activities.length).toBe(1);
+        expect(snapshot.activities[0].reasonCode).toBe('segment_mismatch');
+        expect(snapshot.activities[0].explanation).toBe('当前条件未满足');
+        expect(snapshot.touchpointContract.recentTouchpoints[0].stage).toBe('获客');
+        expect(snapshot.touchpointContract.recentTouchpoints[0].outcome).toBe('BLOCKED');
+    });
 });

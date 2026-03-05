@@ -214,4 +214,40 @@ describe('Index page welcome activity visibility', () => {
       expect(document.body.textContent).toContain('原因：constraint:frequency_exceeded');
     });
   });
+
+  it('renders friendly explanation and optional reason code', async () => {
+    dataServiceMock.getHomeSnapshot.mockResolvedValue(
+      {
+        ...createSnapshot([
+          {
+            id: 'welcome_block_2',
+            title: '欢迎权益未发放',
+            desc: '原因：segment_mismatch',
+            tag: 'WELCOME',
+          },
+        ]),
+        activities: [
+          {
+            id: 'welcome_block_2',
+            title: '欢迎权益未发放',
+            desc: '原因：segment_mismatch',
+            explanation: '当前条件未满足',
+            reasonCode: 'segment_mismatch',
+            icon: '!',
+            color: 'bg-amber-50',
+            textColor: 'text-amber-700',
+            tag: 'WELCOME',
+          },
+        ],
+      } as any,
+    );
+
+    render(<IndexPage />);
+
+    await waitFor(() => {
+      expect(document.body.textContent).toContain('欢迎权益未发放');
+      expect(document.body.textContent).toContain('当前条件未满足');
+      expect(document.body.textContent).toContain('原因码：segment_mismatch');
+    });
+  });
 });
