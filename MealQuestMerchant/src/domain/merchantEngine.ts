@@ -22,6 +22,28 @@ export interface MerchantState {
   killSwitchEnabled: boolean;
   budgetCap: number;
   budgetUsed: number;
+  contractVisibility: {
+    loading: boolean;
+    errorMessage: string;
+    lastRefreshedAt: string | null;
+    dataContract: {
+      version: string;
+      objective: string;
+      proxyMetrics: string[];
+      domainCount: number;
+      eventCount: number;
+      missingDomains: string[];
+    } | null;
+    modelContract: {
+      version: string;
+      targetMetric: string;
+      windowDays: number;
+      signalFields: string[];
+      effectiveProbabilityFormula: string;
+      expectedValueProxyFormula: string;
+      missingSignalPolicies: string[];
+    } | null;
+  };
   activePolicies: ActivePolicy[];
   customerEntry: {
     totalCustomers: number;
@@ -157,6 +179,13 @@ export const createInitialMerchantState = (): MerchantState => ({
   killSwitchEnabled: false,
   budgetCap: 0,
   budgetUsed: 0,
+  contractVisibility: {
+    loading: false,
+    errorMessage: '',
+    lastRefreshedAt: null,
+    dataContract: null,
+    modelContract: null,
+  },
   activePolicies: [],
   customerEntry: {
     totalCustomers: 0,

@@ -3,12 +3,18 @@ import { createInitialMerchantState, MerchantState } from '../domain/merchantEng
 import {
   completeMerchantOnboard,
   getMerchantDashboard,
+  getStateContract,
+  getStateModelContract,
   getMerchantStores,
   getApiBaseUrl,
   loginMerchantByPhone,
   requestMerchantPhoneCode,
 } from '../services/apiClient';
-import type { DecisionSummaryResponse } from '../services/apiClient';
+import type {
+  DecisionSummaryResponse,
+  StateContractResponse,
+  StateModelContractResponse,
+} from '../services/apiClient';
 import {
   clearMerchantAuthSession,
   loadMerchantAuthSession,
@@ -83,6 +89,7 @@ interface MerchantContextType {
   activeAgentProgress: AgentProgressEvent | null;
 
   onTriggerProactiveScan: () => Promise<void>;
+  refreshContractVisibility: () => Promise<void>;
   onSendAgentMessage: () => Promise<void>;
   onRetryMessage: (messageId: string) => Promise<void>;
 }
@@ -219,6 +226,76 @@ function normalizeTraceSummary(raw: unknown): MerchantState['traceSummary'] {
         hasAudit: Boolean(row.hasAudit),
       };
     }),
+  };
+}
+
+function toErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return 'contract refresh failed';
+}
+
+function normalizeDataContract(raw: StateContractResponse): NonNullable<MerchantState['contractVisibility']['dataContract']> {
+  const domains = raw && raw.dataDomains && typeof raw.dataDomains === 'object' ? raw.dataDomains : {};
+  const eventsRaw = raw && Array.isArray(raw.events) ? raw.events : [];
+  const coverage =
+    raw && raw.merchantCoverage && typeof raw.merchantCoverage === 'object'
+      ? raw.merchantCoverage
+      : null;
+  const missingDomainsRaw = coverage && Array.isArray(coverage.missingDomains)
+    ? coverage.missingDomains
+    : [];
+  const missingDomains = missingDomainsRaw
+        .map((item) => String(item || '').trim())
+        .filter(Boolean);
+  const proxyMetricsRaw = raw && Array.isArray(raw.proxyMetrics) ? raw.proxyMetrics : [];
+  const proxyMetrics = proxyMetricsRaw.map((item) => String(item || '').trim()).filter(Boolean);
+  return {
+    version: String(raw && raw.version ? raw.version : ''),
+    objective: String(raw && raw.objective ? raw.objective : ''),
+    proxyMetrics,
+    domainCount: Object.keys(domains).length,
+    eventCount: eventsRaw.length,
+    missingDomains,
+  };
+}
+
+function normalizeModelContract(raw: StateModelContractResponse): NonNullable<MerchantState['contractVisibility']['modelContract']> {
+  const objective =
+    raw && raw.objectiveContract && typeof raw.objectiveContract === 'object'
+      ? raw.objectiveContract
+      : {};
+  const modelSignals = raw && Array.isArray(raw.modelSignals) ? raw.modelSignals : [];
+  const formula =
+    raw && raw.decisionFormula && typeof raw.decisionFormula === 'object'
+      ? raw.decisionFormula
+      : {};
+  const coverage =
+    raw && raw.merchantCoverage && typeof raw.merchantCoverage === 'object'
+      ? raw.merchantCoverage
+      : null;
+  const signalFields = modelSignals
+    .map((item) => String(item && item.field ? item.field : '').trim())
+    .filter(Boolean);
+  const missingSignalPoliciesRaw = coverage && Array.isArray(coverage.missingSignalPolicies)
+    ? coverage.missingSignalPolicies
+    : [];
+  const missingSignalPolicies = missingSignalPoliciesRaw
+        .map((item) => String(item || '').trim())
+        .filter(Boolean);
+  return {
+    version: String(raw && raw.version ? raw.version : ''),
+    targetMetric: String(objective && objective.targetMetric ? objective.targetMetric : ''),
+    windowDays: Number(objective && objective.windowDays) || 0,
+    signalFields,
+    effectiveProbabilityFormula: String(
+      formula && formula.effectiveProbability ? formula.effectiveProbability : '',
+    ),
+    expectedValueProxyFormula: String(
+      formula && formula.expectedValueProxy ? formula.expectedValueProxy : '',
+    ),
+    missingSignalPolicies,
   };
 }
 
@@ -383,6 +460,67 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  const refreshContractVisibilityBySession = useCallback(
+    async (session: MerchantAuthSession) => {
+      setMerchantState(prev => ({
+        ...prev,
+        contractVisibility: {
+          ...prev.contractVisibility,
+          loading: true,
+          errorMessage: '',
+        },
+      }));
+
+      const [dataContractResult, modelContractResult] = await Promise.allSettled([
+        getStateContract({
+          merchantId: session.merchantId,
+          token: session.token,
+        }),
+        getStateModelContract({
+          merchantId: session.merchantId,
+          token: session.token,
+        }),
+      ]);
+
+      const nextErrorMessages: string[] = [];
+      const dataContract =
+        dataContractResult.status === 'fulfilled'
+          ? normalizeDataContract(dataContractResult.value)
+          : null;
+      const modelContract =
+        modelContractResult.status === 'fulfilled'
+          ? normalizeModelContract(modelContractResult.value)
+          : null;
+
+      if (dataContractResult.status === 'rejected') {
+        nextErrorMessages.push(toErrorMessage(dataContractResult.reason));
+      }
+      if (modelContractResult.status === 'rejected') {
+        nextErrorMessages.push(toErrorMessage(modelContractResult.reason));
+      }
+
+      setMerchantState(prev => ({
+        ...prev,
+        contractVisibility: {
+          ...prev.contractVisibility,
+          loading: false,
+          errorMessage: nextErrorMessages[0] || '',
+          lastRefreshedAt: new Date().toISOString(),
+          dataContract: dataContract || prev.contractVisibility.dataContract,
+          modelContract: modelContract || prev.contractVisibility.modelContract,
+        },
+      }));
+    },
+    [],
+  );
+
+  const refreshContractVisibility = useCallback(async () => {
+    if (!authSession) {
+      return;
+    }
+    await refreshContractVisibilityBySession(authSession);
+  }, [authSession, refreshContractVisibilityBySession]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -440,7 +578,8 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     void refreshMerchantDashboard(authSession);
-  }, [authSession, refreshMerchantDashboard]);
+    void refreshContractVisibilityBySession(authSession);
+  }, [authSession, refreshContractVisibilityBySession, refreshMerchantDashboard]);
 
   const requestLoginCode = async (phone: string) => {
     const normalized = String(phone || '').trim();
@@ -740,6 +879,7 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
     activeAgentProgress,
 
     onTriggerProactiveScan,
+    refreshContractVisibility,
     onSendAgentMessage,
     onRetryMessage,
   };

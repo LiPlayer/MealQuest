@@ -10,7 +10,7 @@ import { mqTheme } from '../theme/tokens';
 
 export default function DashboardScreen() {
   const router = useRouter();
-  const { merchantState } = useMerchant();
+  const { merchantState, refreshContractVisibility } = useMerchant();
   const welcomeTopReason = merchantState.acquisitionWelcomeSummary.topBlockedReasons[0];
   const welcomeLatest = merchantState.acquisitionWelcomeSummary.latestResults[0];
   const activationTopReason = merchantState.activationRecoverySummary.topBlockedReasons[0];
@@ -21,6 +21,12 @@ export default function DashboardScreen() {
   const retentionLatest = merchantState.retentionWinbackSummary.latestResults[0];
   const retentionRateText = `${(Math.max(0, Number(merchantState.retentionWinbackSummary.reactivationRate24h) || 0) * 100).toFixed(1)}%`;
   const latestTrace = merchantState.traceSummary.latestTrace[0];
+  const contractVisibility = merchantState.contractVisibility;
+  const dataContract = contractVisibility.dataContract;
+  const modelContract = contractVisibility.modelContract;
+  const signalFieldText = modelContract && modelContract.signalFields.length > 0
+    ? modelContract.signalFields.slice(0, 5).join(' / ')
+    : '暂无信号字段';
 
   return (
     <AppShell>
@@ -132,6 +138,51 @@ export default function DashboardScreen() {
       </SurfaceCard>
 
       <SurfaceCard>
+        <View style={styles.contractHeaderRow}>
+          <Text style={styles.sectionTitle}>数据与模型口径</Text>
+          <Pressable
+            style={styles.contractRefreshBtn}
+            onPress={() => {
+              void refreshContractVisibility();
+            }}
+          >
+            <Text style={styles.contractRefreshBtnText}>刷新口径</Text>
+          </Pressable>
+        </View>
+        <Text style={styles.hintText}>
+          目标指标：{modelContract?.targetMetric || 'MERCHANT_LONG_TERM_VALUE_30D'} · 窗口 {modelContract?.windowDays || 30} 天
+        </Text>
+        <View style={styles.grid}>
+          <StatTile label="数据口径版本" value={dataContract?.version || '-'} />
+          <StatTile label="模型口径版本" value={modelContract?.version || '-'} />
+        </View>
+        <Text style={styles.hintText}>
+          核心公式：{modelContract?.effectiveProbabilityFormula || 'upliftProbability * responseProbability * (1 - churnProbability)'}
+        </Text>
+        <Text style={styles.hintText}>
+          数据域数：{dataContract?.domainCount || 0} · 事件数：{dataContract?.eventCount || 0}
+        </Text>
+        <Text style={styles.hintText}>模型信号：{signalFieldText}</Text>
+        {dataContract && dataContract.missingDomains.length > 0 ? (
+          <Text style={styles.contractWarnText}>缺失数据域：{dataContract.missingDomains.join(' / ')}</Text>
+        ) : null}
+        {modelContract && modelContract.missingSignalPolicies.length > 0 ? (
+          <Text style={styles.contractWarnText}>
+            缺失模型信号策略：{modelContract.missingSignalPolicies.slice(0, 3).join(' / ')}
+          </Text>
+        ) : null}
+        {contractVisibility.errorMessage ? (
+          <Text style={styles.contractErrorText}>口径数据暂不可用：{contractVisibility.errorMessage}</Text>
+        ) : null}
+        {contractVisibility.loading ? (
+          <Text style={styles.hintText}>口径刷新中...</Text>
+        ) : null}
+        <Text style={styles.hintText}>
+          最近刷新：{contractVisibility.lastRefreshedAt ? new Date(contractVisibility.lastRefreshedAt).toLocaleString() : '暂无'}
+        </Text>
+      </SurfaceCard>
+
+      <SurfaceCard>
         <Text style={styles.sectionTitle}>导航预留</Text>
         <Text style={styles.subtitle}>审批、回放、风控页已提前建好入口，减少后续频繁改版。</Text>
         <View style={styles.row}>
@@ -194,5 +245,33 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#203553',
     textAlign: 'center',
+  },
+  contractHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: mqTheme.spacing.sm,
+  },
+  contractRefreshBtn: {
+    borderWidth: 1,
+    borderColor: '#c7d8f3',
+    borderRadius: mqTheme.radius.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#edf4ff',
+  },
+  contractRefreshBtnText: {
+    fontSize: 12,
+    color: '#264d88',
+    fontWeight: '700',
+  },
+  contractWarnText: {
+    ...mqTheme.typography.body,
+    color: '#855e1d',
+  },
+  contractErrorText: {
+    ...mqTheme.typography.body,
+    color: mqTheme.colors.danger,
+    fontWeight: '700',
   },
 });

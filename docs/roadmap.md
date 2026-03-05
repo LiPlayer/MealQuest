@@ -111,8 +111,8 @@
 | S010 | 长期价值最大化目标口径冻结 | 无 | done |
 | S020 | 老板端基础闭环（登录、开店、看板） | S010 done | done |
 | S030 | 顾客端基础闭环（扫码、资产、支付、账票） | S020 done | done |
-| S040 | 数据与模型基础口径建立 | S030 done | doing |
-| S050 | 决策与执行治理闭环建立 | S040 done | todo |
+| S040 | 数据与模型基础口径建立 | S030 done | done |
+| S050 | 决策与执行治理闭环建立 | S040 done | doing |
 | S060 | 生命周期五阶段策略闭环建立 | S050 done | todo |
 | S070 | 老板端 AI 提案与决策闭环 | S060 done | todo |
 | S080 | 顾客端体验完整性强化 | S070 done | todo |
@@ -168,7 +168,7 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | PKG-S040-SRV-01 | server | SRV-C02, SRV-C05 | 建立用户/订单/营销/行为数据口径 | 数据口径基线 | none | done |
 | PKG-S040-SRV-02 | server | SRV-C05 | 建立 Uplift/流失/响应模型口径 | 模型口径基线 | PKG-S040-SRV-01 | done |
-| PKG-S040-MER-01 | merchant | MER-C03, MER-C04 | 建立老板端数据与模型可见口径 | 老板端口径清单 | PKG-S040-SRV-02 | todo |
+| PKG-S040-MER-01 | merchant | MER-C03, MER-C04 | 建立老板端数据与模型可见口径 | 老板端口径清单 | PKG-S040-SRV-02 | done |
 | PKG-S040-CUS-01 | customer | CUS-C03 | 建立顾客端行为与触达口径 | 顾客端口径清单 | PKG-S040-SRV-01 | done |
 
 ### S050 - 决策与执行治理
@@ -304,3 +304,4 @@
 11. 2026-03-05：完成 PKG-S040-SRV-01，新增 `/api/state/contract` 数据口径基线接口并沉淀验收记录。
 12. 2026-03-05：完成 PKG-S040-SRV-02，新增 `/api/state/model-contract` 模型口径基线接口，并将决策概率统一为 `uplift × response × (1 - churn)`。
 13. 2026-03-05：完成 PKG-S040-CUS-01，顾客端首页活动区与账户页新增触达口径可见化，支持用户友好解释与可选原因码展示。
+14. 2026-03-05：完成 PKG-S040-MER-01，老板端 Dashboard 与 Agent 接入口径可见化；S040 关闭并切换 S050 doing。

@@ -39,11 +39,14 @@ export default function AgentScreen() {
     chatSendPhase,
     chatSendError,
     onTriggerProactiveScan,
+    refreshContractVisibility,
     onSendAgentMessage,
     onRetryMessage,
     agentMessages,
     activeAgentProgress,
   } = useMerchant();
+  const contractVisibility = merchantState.contractVisibility;
+  const modelContract = contractVisibility.modelContract;
 
   const scrollViewRef = useRef<ScrollView>(null);
 
@@ -83,6 +86,29 @@ export default function AgentScreen() {
               <StatTile label="今日新增" value={merchantState.customerEntry.newCustomersToday} />
               <StatTile label="今日入店" value={merchantState.customerEntry.checkinsToday} />
             </View>
+          </View>
+
+          <View style={styles.contractStrip}>
+            <View style={styles.contractStripHeader}>
+              <Text style={styles.contractStripTitle}>口径快照</Text>
+              <Pressable
+                onPress={() => {
+                  void refreshContractVisibility();
+                }}
+                style={styles.contractStripBtn}
+              >
+                <Text style={styles.contractStripBtnText}>刷新</Text>
+              </Pressable>
+            </View>
+            <Text style={styles.contractStripText}>
+              数据版本 {contractVisibility.dataContract?.version || '-'} · 模型版本 {modelContract?.version || '-'}
+            </Text>
+            <Text style={styles.contractStripText}>
+              目标 {modelContract?.targetMetric || 'MERCHANT_LONG_TERM_VALUE_30D'} / {modelContract?.windowDays || 30}d
+            </Text>
+            {contractVisibility.errorMessage ? (
+              <Text style={styles.contractStripError}>口径暂不可用：{contractVisibility.errorMessage}</Text>
+            ) : null}
           </View>
         </SurfaceCard>
 
@@ -200,6 +226,46 @@ const styles = StyleSheet.create({
   customerEntryGrid: {
     flexDirection: 'row',
     gap: mqTheme.spacing.sm,
+  },
+  contractStrip: {
+    borderWidth: 1,
+    borderColor: '#c8daf7',
+    borderRadius: mqTheme.radius.md,
+    backgroundColor: '#edf4ff',
+    padding: mqTheme.spacing.sm,
+    gap: 4,
+  },
+  contractStripHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  contractStripTitle: {
+    fontSize: 12,
+    color: '#1f4fbf',
+    fontWeight: '700',
+  },
+  contractStripBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: mqTheme.radius.pill,
+    borderWidth: 1,
+    borderColor: '#b0c8ee',
+    backgroundColor: '#ffffff',
+  },
+  contractStripBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#325e95',
+  },
+  contractStripText: {
+    fontSize: 12,
+    color: '#325e95',
+  },
+  contractStripError: {
+    fontSize: 12,
+    color: mqTheme.colors.danger,
+    fontWeight: '700',
   },
   chatScroll: {
     flex: 1,

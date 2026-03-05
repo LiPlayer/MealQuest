@@ -197,6 +197,20 @@
   - `expectedValueProxy = effectiveProbability * expectedMerchantProfitLift30d - marketingCost - riskPenalty - fatiguePenalty`
 - `merchantCoverage`（可选）：已发布策略数量、模型信号就绪数量、缺失模型信号的策略列表
 
+#### 4.2.2 老板端口径可见（S040-MER-01）
+
+- 展示入口：
+  - 经营看板（Dashboard）：展示数据口径与模型口径摘要
+  - AI 协作页（Agent）：展示口径快照，确保提案解释口径一致
+- 展示要点：
+  - 数据口径版本、模型口径版本
+  - 目标指标（`MERCHANT_LONG_TERM_VALUE_30D`）与窗口（30 天）
+  - 核心公式：`uplift × response × (1 - churn)`
+  - 关键覆盖摘要（数据域、事件、模型信号）
+- 降级要求：
+  - 口径接口异常时显示“口径数据暂不可用”并支持重试
+  - 异常不得阻断老板端看板与 Agent 主流程
+
 ### 4.3 决策层（Decision Layer）
 
 决策问题：

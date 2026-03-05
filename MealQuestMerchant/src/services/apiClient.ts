@@ -140,6 +140,66 @@ export type DecisionSummaryResponse = {
   }[];
 };
 
+export type StateContractDomainResponse = {
+  sources?: string[];
+  primaryKey?: string[];
+  requiredFields?: string[];
+};
+
+export type StateContractCoverageDomainResponse = {
+  records?: number;
+  lastUpdatedAt?: string | null;
+};
+
+export type StateContractCoverageResponse = {
+  merchantId?: string;
+  domains?: Record<string, StateContractCoverageDomainResponse>;
+  missingDomains?: string[];
+  eventCoverage?: string[];
+};
+
+export type StateContractResponse = {
+  version?: string;
+  generatedAt?: string;
+  objective?: string;
+  proxyMetrics?: string[];
+  dataDomains?: Record<string, StateContractDomainResponse>;
+  events?: {
+    event?: string;
+    source?: string;
+    domain?: string;
+  }[];
+  merchantCoverage?: StateContractCoverageResponse | null;
+};
+
+export type StateModelContractResponse = {
+  version?: string;
+  generatedAt?: string;
+  objectiveContract?: {
+    targetMetric?: string;
+    windowDays?: number;
+  };
+  modelSignals?: {
+    field?: string;
+    type?: string;
+    range?: number[];
+    defaultValue?: number;
+    required?: boolean;
+    description?: string;
+  }[];
+  decisionFormula?: {
+    effectiveProbability?: string;
+    expectedValueProxy?: string;
+  };
+  merchantCoverage?: {
+    merchantId?: string;
+    publishedPolicyCount?: number;
+    modelSignalReadyPolicyCount?: number;
+    missingSignalPolicies?: string[];
+    lastUpdatedAt?: string | null;
+  } | null;
+};
+
 const DEFAULT_BASE_URL = Platform.select({
   android: 'http://10.0.2.2:3030',
   default: 'http://127.0.0.1:3030',
@@ -326,6 +386,34 @@ export async function recommendRevenueStrategyConfig(params: {
   return postJson<RevenueStrategyRecommendationResponse>(
     '/api/merchant/strategy-config/revenue/recommend',
     { merchantId },
+    { token: params.token },
+  );
+}
+
+export async function getStateContract(params: {
+  merchantId: string;
+  token: string;
+}): Promise<StateContractResponse> {
+  const merchantId = String(params.merchantId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  return getJson<StateContractResponse>(
+    `/api/state/contract?merchantId=${encodeURIComponent(merchantId)}`,
+    { token: params.token },
+  );
+}
+
+export async function getStateModelContract(params: {
+  merchantId: string;
+  token: string;
+}): Promise<StateModelContractResponse> {
+  const merchantId = String(params.merchantId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  return getJson<StateModelContractResponse>(
+    `/api/state/model-contract?merchantId=${encodeURIComponent(merchantId)}`,
     { token: params.token },
   );
 }
