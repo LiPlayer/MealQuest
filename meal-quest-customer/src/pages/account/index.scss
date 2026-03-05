@@ -103,6 +103,10 @@
   color: #a22637;
 }
 
+.account-btn--notification {
+  margin: 10rpx 0 14rpx;
+}
+
 .account-loading,
 .account-error {
   display: block;
@@ -155,6 +159,13 @@
 }
 
 .account-touchpoint-objective {
+  display: block;
+  color: #4b5f79;
+  font-size: 22rpx;
+  line-height: 1.5;
+}
+
+.account-notification-summary {
   display: block;
   color: #4b5f79;
   font-size: 22rpx;

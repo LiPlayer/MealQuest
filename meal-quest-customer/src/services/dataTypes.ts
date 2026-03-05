@@ -87,3 +87,26 @@ export interface InvoiceItem {
   issuedAt: string;
   title: string;
 }
+
+export type CustomerNotificationStatus = 'UNREAD' | 'READ';
+
+export interface CustomerNotificationItem {
+  notificationId: string;
+  merchantId: string;
+  recipientType: 'CUSTOMER_USER' | 'MERCHANT_STAFF';
+  recipientId: string;
+  category: string;
+  title: string;
+  body: string;
+  status: CustomerNotificationStatus;
+  createdAt: string;
+  readAt: string | null;
+}
+
+export interface CustomerNotificationSummary {
+  totalUnread: number;
+  byCategory: {
+    category: string;
+    unreadCount: number;
+  }[];
+}

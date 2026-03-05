@@ -10,6 +10,9 @@ jest.mock('@/services/DataService', () => ({
     getHomeSnapshot: jest.fn(),
     getPaymentLedger: jest.fn(),
     getInvoices: jest.fn(),
+    getNotificationInbox: jest.fn(),
+    getNotificationUnreadSummary: jest.fn(),
+    markNotificationsRead: jest.fn(),
     cancelAccount: jest.fn(),
   },
 }));
@@ -25,9 +28,11 @@ jest.mock('@/utils/storage', () => ({
 describe('Account page', () => {
   const dataServiceMock = DataService as jest.Mocked<typeof DataService>;
   const storageMock = storage as jest.Mocked<typeof storage>;
+  let consoleErrorSpy: jest.SpyInstance;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     storageMock.getLastStoreId.mockReturnValue('m_store_001');
     storageMock.getCustomerUserId.mockReturnValue('u_fixture_001');
     dataServiceMock.getHomeSnapshot.mockResolvedValue({
@@ -84,6 +89,38 @@ describe('Account page', () => {
         title: 'invoice',
       },
     ] as any);
+    dataServiceMock.getNotificationUnreadSummary.mockResolvedValue({
+      totalUnread: 1,
+      byCategory: [
+        { category: 'APPROVAL_TODO', unreadCount: 1 },
+        { category: 'EXECUTION_RESULT', unreadCount: 0 },
+      ],
+    } as any);
+    dataServiceMock.getNotificationInbox.mockResolvedValue({
+      items: [
+        {
+          notificationId: 'notification_001',
+          merchantId: 'm_store_001',
+          recipientType: 'CUSTOMER_USER',
+          recipientId: 'u_fixture_001',
+          category: 'EXECUTION_RESULT',
+          title: '权益触达结果',
+          body: '事件 PAYMENT_VERIFY 已命中策略',
+          status: 'UNREAD',
+          createdAt: '2026-02-21T00:00:00.000Z',
+          readAt: null,
+        },
+      ],
+      hasMore: false,
+      nextCursor: null,
+    } as any);
+    dataServiceMock.markNotificationsRead.mockResolvedValue({
+      updatedCount: 1,
+    } as any);
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
   });
 
   it('renders wallet, ledger and invoices', async () => {
@@ -98,7 +135,14 @@ describe('Account page', () => {
     expect(document.getElementById('account-ledger-title')).toBeInTheDocument();
     expect(document.getElementById('account-invoice-title')).toBeInTheDocument();
     expect(document.getElementById('account-touchpoint-title')).toBeInTheDocument();
+    expect(document.getElementById('account-notification-title')).toBeInTheDocument();
+    expect(document.body.textContent).toContain('权益触达结果');
     expect(document.body.textContent).toContain('当前条件未满足');
+    expect(dataServiceMock.markNotificationsRead).toHaveBeenCalledWith(
+      'm_store_001',
+      'u_fixture_001',
+      { markAll: true },
+    );
   });
 
   it('requires second click to cancel account and then relaunches', async () => {
@@ -125,5 +169,21 @@ describe('Account page', () => {
     });
     expect(storageMock.clearCustomerSession).toHaveBeenCalledWith('m_store_001', 'u_fixture_001');
     expect(Taro.reLaunch).toHaveBeenCalledWith({ url: '/pages/startup/index' });
+  });
+
+  it('degrades notification section when notification api fails', async () => {
+    dataServiceMock.getNotificationUnreadSummary.mockRejectedValue(new Error('notification service down'));
+    dataServiceMock.getNotificationInbox.mockRejectedValue(new Error('notification service down'));
+
+    render(<AccountPage />);
+
+    await waitFor(() => {
+      expect(document.getElementById('account-page-title')).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(document.body.textContent).toContain('提醒暂不可用，可稍后刷新');
+    });
+    expect(document.getElementById('account-ledger-title')).toBeInTheDocument();
+    expect(document.getElementById('account-invoice-title')).toBeInTheDocument();
   });
 });

@@ -1,9 +1,20 @@
 import { CheckoutQuote } from '@/domain/smartCheckout';
-import { HomeSnapshot, InvoiceItem, PaymentLedgerItem } from '@/services/dataTypes';
+import {
+  CustomerNotificationItem,
+  CustomerNotificationSummary,
+  HomeSnapshot,
+  InvoiceItem,
+  PaymentLedgerItem,
+} from '@/services/dataTypes';
 import { getServerBaseUrl } from '@/services/apiDataService/env';
 
 import { cancelAccount, getInvoices, getPaymentLedger } from '@/services/customerApp/billingService';
 import { executeCheckout, getCheckoutQuote } from '@/services/customerApp/checkoutService';
+import {
+  getNotificationInbox,
+  getNotificationUnreadSummary,
+  markNotificationsRead,
+} from '@/services/customerApp/notificationService';
 import { getHomeSnapshot, isMerchantAvailable } from '@/services/customerApp/stateService';
 
 export const ApiDataService = {
@@ -42,5 +53,43 @@ export const ApiDataService = {
     _userId = '',
   ): Promise<{ deleted: boolean; deletedAt: string; anonymizedUserId: string }> => {
     return cancelAccount(storeId);
+  },
+
+  getNotificationInbox: async (
+    storeId: string,
+    _userId = '',
+    params: {
+      status?: 'ALL' | 'UNREAD' | 'READ';
+      category?: 'ALL' | 'APPROVAL_TODO' | 'EXECUTION_RESULT' | 'GENERAL';
+      limit?: number;
+      cursor?: string;
+    } = {},
+  ): Promise<{ items: CustomerNotificationItem[]; hasMore: boolean; nextCursor: string | null }> => {
+    return getNotificationInbox({
+      merchantId: storeId,
+      status: params.status,
+      category: params.category,
+      limit: params.limit,
+      cursor: params.cursor,
+    });
+  },
+
+  getNotificationUnreadSummary: async (
+    storeId: string,
+    _userId = '',
+  ): Promise<CustomerNotificationSummary> => {
+    return getNotificationUnreadSummary(storeId);
+  },
+
+  markNotificationsRead: async (
+    storeId: string,
+    _userId = '',
+    params: { markAll?: boolean; notificationIds?: string[] } = {},
+  ): Promise<{ updatedCount: number }> => {
+    return markNotificationsRead({
+      merchantId: storeId,
+      markAll: params.markAll,
+      notificationIds: params.notificationIds,
+    });
   },
 };

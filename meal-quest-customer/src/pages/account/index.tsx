@@ -3,7 +3,13 @@ import { Text, View } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 
 import { DataService } from '@/services/DataService';
-import { HomeSnapshot, InvoiceItem, PaymentLedgerItem } from '@/services/dataTypes';
+import {
+  CustomerNotificationItem,
+  CustomerNotificationSummary,
+  HomeSnapshot,
+  InvoiceItem,
+  PaymentLedgerItem,
+} from '@/services/dataTypes';
 import { storage } from '@/utils/storage';
 
 import './index.scss';
@@ -13,12 +19,37 @@ const DEFAULT_STORE_ID =
 
 const toMoney = (value: number) => `¥${Number(value || 0).toFixed(2)}`;
 
+const EMPTY_NOTIFICATION_SUMMARY: CustomerNotificationSummary = {
+  totalUnread: 0,
+  byCategory: [],
+};
+
+function resolveNotificationCategoryLabel(category: string): string {
+  const normalized = String(category || '').trim().toUpperCase();
+  if (normalized === 'APPROVAL_TODO') {
+    return '审批待办';
+  }
+  if (normalized === 'EXECUTION_RESULT') {
+    return '执行结果';
+  }
+  if (normalized === 'GENERAL') {
+    return '系统提醒';
+  }
+  return normalized || '提醒';
+}
+
 export default function AccountPage() {
   const [snapshot, setSnapshot] = useState<HomeSnapshot | null>(null);
   const [ledger, setLedger] = useState<PaymentLedgerItem[]>([]);
   const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
+  const [notifications, setNotifications] = useState<CustomerNotificationItem[]>([]);
+  const [notificationSummary, setNotificationSummary] = useState<CustomerNotificationSummary>(
+    EMPTY_NOTIFICATION_SUMMARY,
+  );
   const [loading, setLoading] = useState(true);
+  const [notificationLoading, setNotificationLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [notificationErrorMessage, setNotificationErrorMessage] = useState('');
   const [cancelArmed, setCancelArmed] = useState(false);
   const [canceling, setCanceling] = useState(false);
   const [customerUserId, setCustomerUserId] = useState('');
@@ -31,6 +62,68 @@ export default function AccountPage() {
   const resolveUserId = useCallback(() => {
     return String(storage.getCustomerUserId() || '').trim();
   }, []);
+
+  const getUnreadCountByCategory = useCallback(
+    (category: string): number => {
+      const normalized = String(category || '').trim().toUpperCase();
+      const byCategory = Array.isArray(notificationSummary.byCategory) ? notificationSummary.byCategory : [];
+      const row = byCategory.find((item) => String(item.category || '').trim().toUpperCase() === normalized);
+      return Number(row?.unreadCount || 0);
+    },
+    [notificationSummary.byCategory],
+  );
+
+  const loadNotifications = useCallback(
+    async ({ autoMarkRead = false }: { autoMarkRead?: boolean } = {}) => {
+      if (!storeId) {
+        return;
+      }
+      setNotificationLoading(true);
+      setNotificationErrorMessage('');
+      const resolvedUserId = resolveUserId();
+      try {
+        const [summaryResult, inboxResult] = await Promise.all([
+          DataService.getNotificationUnreadSummary(storeId, resolvedUserId),
+          DataService.getNotificationInbox(storeId, resolvedUserId, {
+            status: 'ALL',
+            category: 'ALL',
+            limit: 20,
+          }),
+        ]);
+
+        let nextSummary = summaryResult;
+        let nextNotifications = inboxResult.items;
+        const hasUnread =
+          Number(summaryResult.totalUnread || 0) > 0 ||
+          nextNotifications.some((item) => String(item.status || '').toUpperCase() === 'UNREAD');
+
+        if (autoMarkRead && hasUnread) {
+          await DataService.markNotificationsRead(storeId, resolvedUserId, {
+            markAll: true,
+          });
+          const [summaryAfterRead, inboxAfterRead] = await Promise.all([
+            DataService.getNotificationUnreadSummary(storeId, resolvedUserId),
+            DataService.getNotificationInbox(storeId, resolvedUserId, {
+              status: 'ALL',
+              category: 'ALL',
+              limit: 20,
+            }),
+          ]);
+          nextSummary = summaryAfterRead;
+          nextNotifications = inboxAfterRead.items;
+        }
+
+        setNotificationSummary(nextSummary);
+        setNotifications(nextNotifications);
+      } catch (error) {
+        console.error('[Account] load notifications failed', error);
+        setNotificationErrorMessage('提醒暂不可用，可稍后刷新');
+      } finally {
+        setNotificationLoading(false);
+      }
+    },
+    [resolveUserId, storeId],
+  );
 
   const loadData = useCallback(async () => {
     if (!storeId) {
@@ -52,6 +145,7 @@ export default function AccountPage() {
       setLedger(nextLedger);
       setInvoices(nextInvoices);
       setCustomerUserId(resolveUserId());
+      await loadNotifications({ autoMarkRead: true });
     } catch (error) {
       console.error('[Account] load data failed', error);
       setErrorMessage('加载失败，请重试');
@@ -59,7 +153,7 @@ export default function AccountPage() {
     } finally {
       setLoading(false);
     }
-  }, [resolveUserId, storeId]);
+  }, [loadNotifications, resolveUserId, storeId]);
 
   useEffect(() => {
     void loadData();
@@ -157,6 +251,44 @@ export default function AccountPage() {
             </View>
           </>
         ) : null}
+      </View>
+
+      <View className='account-card'>
+        <Text id='account-notification-title' className='account-card__title'>
+          消息提醒
+        </Text>
+        <Text className='account-notification-summary'>
+          未读总数：{Number(notificationSummary.totalUnread || 0)} · 审批待办：
+          {getUnreadCountByCategory('APPROVAL_TODO')} · 执行结果：
+          {getUnreadCountByCategory('EXECUTION_RESULT')}
+        </Text>
+        <View
+          id='account-notification-refresh-button'
+          className='account-btn account-btn--ghost account-btn--notification'
+          onClick={() => {
+            void loadNotifications();
+          }}
+        >
+          刷新提醒
+        </View>
+        {notificationLoading ? <Text className='account-loading'>提醒刷新中...</Text> : null}
+        {notificationErrorMessage ? <Text className='account-error'>{notificationErrorMessage}</Text> : null}
+        {!notificationLoading && notifications.length === 0 ? (
+          <Text className='account-empty'>暂无提醒</Text>
+        ) : null}
+        {notifications.slice(0, 6).map((item) => (
+          <View className='account-touchpoint-item' key={item.notificationId}>
+            <Text className='account-touchpoint-item__title'>
+              {resolveNotificationCategoryLabel(item.category)} ·{' '}
+              {String(item.status || '').toUpperCase() === 'UNREAD' ? '未读' : '已读'}
+            </Text>
+            <Text className='account-touchpoint-item__desc'>{item.title}</Text>
+            <Text className='account-touchpoint-item__desc'>{item.body || '系统提醒'}</Text>
+            <Text className='account-touchpoint-item__reason'>
+              时间：{new Date(item.createdAt).toLocaleString()}
+            </Text>
+          </View>
+        ))}
       </View>
 
       <View className='account-actions'>

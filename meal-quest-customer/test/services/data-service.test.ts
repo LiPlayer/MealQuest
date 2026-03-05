@@ -10,7 +10,10 @@ jest.mock('@/services/ApiDataService', () => ({
         executeCheckout: jest.fn(),
         getPaymentLedger: jest.fn(),
         getInvoices: jest.fn(),
-        cancelAccount: jest.fn()
+        cancelAccount: jest.fn(),
+        getNotificationInbox: jest.fn(),
+        getNotificationUnreadSummary: jest.fn(),
+        markNotificationsRead: jest.fn(),
     }
 }));
 
@@ -88,5 +91,17 @@ describe('DataService remote only', () => {
 
         expect(result).toHaveLength(1);
         expect(api.getPaymentLedger).toHaveBeenCalledWith('store_a', 'u_fixture_001', 10);
+    });
+
+    it('does not clear session when notification query fails', async () => {
+        api.getNotificationUnreadSummary.mockRejectedValue(new Error('notification failed'));
+
+        await expect(DataService.getNotificationUnreadSummary('store_a', 'u_fixture_001')).rejects.toThrow(
+            'notification failed',
+        );
+
+        expect(storageMock.setApiToken).not.toHaveBeenCalled();
+        expect(storageMock.setApiTokenMerchantId).not.toHaveBeenCalled();
+        expect(storageMock.setCustomerUserId).not.toHaveBeenCalled();
     });
 });

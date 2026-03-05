@@ -2,7 +2,13 @@ import { CheckoutQuote } from '@/domain/smartCheckout';
 import { storage } from '@/utils/storage';
 
 import { ApiDataService } from './ApiDataService';
-import { HomeSnapshot, InvoiceItem, PaymentLedgerItem } from './dataTypes';
+import {
+    CustomerNotificationItem,
+    CustomerNotificationSummary,
+    HomeSnapshot,
+    InvoiceItem,
+    PaymentLedgerItem,
+} from './dataTypes';
 
 const ensureApiConfigured = () => {
     if (!ApiDataService.isConfigured()) {
@@ -10,14 +16,21 @@ const ensureApiConfigured = () => {
     }
 };
 
-const runRemote = async <T>(actionName: string, action: () => Promise<T>): Promise<T> => {
+const runRemote = async <T>(
+    actionName: string,
+    action: () => Promise<T>,
+    options: { clearSessionOnError?: boolean } = {},
+): Promise<T> => {
+    const clearSessionOnError = options.clearSessionOnError !== false;
     ensureApiConfigured();
     try {
         return await action();
     } catch (error) {
-        storage.setApiToken('');
-        storage.setApiTokenMerchantId('');
-        storage.setCustomerUserId('');
+        if (clearSessionOnError) {
+            storage.setApiToken('');
+            storage.setApiTokenMerchantId('');
+            storage.setCustomerUserId('');
+        }
         console.warn(`[DataService] ${actionName} failed on remote.`, error);
         throw error;
     }
@@ -76,5 +89,45 @@ export const DataService = {
             'cancelAccount',
             () => ApiDataService.cancelAccount(storeId, userId),
         );
-    }
+    },
+
+    getNotificationInbox: async (
+        storeId: string,
+        userId = '',
+        params: {
+            status?: 'ALL' | 'UNREAD' | 'READ';
+            category?: 'ALL' | 'APPROVAL_TODO' | 'EXECUTION_RESULT' | 'GENERAL';
+            limit?: number;
+            cursor?: string;
+        } = {}
+    ): Promise<{ items: CustomerNotificationItem[]; hasMore: boolean; nextCursor: string | null }> => {
+        return runRemote(
+            'getNotificationInbox',
+            () => ApiDataService.getNotificationInbox(storeId, userId, params),
+            { clearSessionOnError: false },
+        );
+    },
+
+    getNotificationUnreadSummary: async (
+        storeId: string,
+        userId = '',
+    ): Promise<CustomerNotificationSummary> => {
+        return runRemote(
+            'getNotificationUnreadSummary',
+            () => ApiDataService.getNotificationUnreadSummary(storeId, userId),
+            { clearSessionOnError: false },
+        );
+    },
+
+    markNotificationsRead: async (
+        storeId: string,
+        userId = '',
+        params: { markAll?: boolean; notificationIds?: string[] } = {},
+    ): Promise<{ updatedCount: number }> => {
+        return runRemote(
+            'markNotificationsRead',
+            () => ApiDataService.markNotificationsRead(storeId, userId, params),
+            { clearSessionOnError: false },
+        );
+    },
 };

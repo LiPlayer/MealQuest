@@ -149,4 +149,72 @@ describe('ApiDataService customer center', () => {
             })
         );
     });
+
+    it('loads notification inbox rows', async () => {
+        requestMock.mockResolvedValueOnce({
+            statusCode: 200,
+            data: {
+                items: [
+                    {
+                        notificationId: 'notification_001',
+                        merchantId: 'm_store_001',
+                        recipientType: 'CUSTOMER_USER',
+                        recipientId: 'u_fixture_001',
+                        category: 'EXECUTION_RESULT',
+                        title: '权益触达结果',
+                        body: '事件 PAYMENT_VERIFY 已命中策略',
+                        status: 'UNREAD',
+                        createdAt: '2026-02-21T00:00:00.000Z',
+                        readAt: null
+                    }
+                ],
+                pageInfo: {
+                    hasMore: false,
+                    nextCursor: null
+                }
+            }
+        });
+
+        const { ApiDataService } = require('@/services/ApiDataService');
+        const result = await ApiDataService.getNotificationInbox('m_store_001', 'u_fixture_001', {
+            status: 'ALL',
+            category: 'ALL',
+            limit: 20
+        });
+
+        expect(result.items.length).toBe(1);
+        expect(result.items[0].notificationId).toBe('notification_001');
+        expect(requestMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                method: 'GET',
+                url: expect.stringContaining('/api/notifications/inbox?merchantId=m_store_001')
+            })
+        );
+    });
+
+    it('marks notifications as read', async () => {
+        requestMock.mockResolvedValueOnce({
+            statusCode: 200,
+            data: {
+                updatedCount: 2
+            }
+        });
+
+        const { ApiDataService } = require('@/services/ApiDataService');
+        const result = await ApiDataService.markNotificationsRead('m_store_001', 'u_fixture_001', {
+            markAll: true
+        });
+
+        expect(result.updatedCount).toBe(2);
+        expect(requestMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                method: 'POST',
+                url: 'http://127.0.0.1:3030/api/notifications/read',
+                data: expect.objectContaining({
+                    merchantId: 'm_store_001',
+                    markAll: true
+                })
+            })
+        );
+    });
 });
