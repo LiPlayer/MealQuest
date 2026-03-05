@@ -48,13 +48,19 @@ function createDecisionService({
         ? policy.decisionSignals
         : {};
     const upliftProbability = toNumber(signals.upliftProbability, 0.5);
+    const churnProbability = Math.min(1, Math.max(0, toNumber(signals.churnProbability, 0.15)));
+    const responseProbability = Math.min(1, Math.max(0, toNumber(signals.responseProbability, 0.5)));
+    const effectiveProbability = Math.min(
+      1,
+      Math.max(0, upliftProbability * responseProbability * (1 - churnProbability))
+    );
     const expectedMerchantProfitLift30d = toNumber(signals.expectedMerchantProfitLift30d, 1);
     const expectedMerchantRevenueLift30d = toNumber(
       signals.expectedMerchantRevenueLift30d,
       Math.max(0, expectedMerchantProfitLift30d)
     );
     return {
-      p: upliftProbability,
+      p: effectiveProbability,
       v: expectedMerchantProfitLift30d,
       c: toNumber(estimate && estimate.cost, 0),
       riskPenalty:
@@ -65,6 +71,9 @@ function createDecisionService({
         toNumber(ctxBase && ctxBase.fatigueScore, 0),
       uncertainty: toNumber(signals.uncertainty, 0.15),
       upliftProbability,
+      churnProbability,
+      responseProbability,
+      effectiveProbability,
       expectedMerchantProfitLift30d,
       expectedMerchantRevenueLift30d,
       objectiveMetric:

@@ -45,6 +45,8 @@ const policyObjectiveContractSchema = z
 
 const decisionSignalsSchema = z.object({
   upliftProbability: z.number().min(0).max(1).optional(),
+  churnProbability: z.number().min(0).max(1).optional(),
+  responseProbability: z.number().min(0).max(1).optional(),
   expectedMerchantProfitLift30d: z.number().optional(),
   expectedMerchantRevenueLift30d: z.number().optional(),
   intentScore: z.number().min(0).max(1).optional(),
@@ -60,6 +62,8 @@ const decisionSignalsSchema = z.object({
 const decisionSignalsContractSchema = z
   .object({
     upliftProbability: z.number().min(0).max(1).default(0.5),
+    churnProbability: z.number().min(0).max(1).default(0.15),
+    responseProbability: z.number().min(0).max(1).default(0.5),
     expectedMerchantProfitLift30d: z.number().default(1),
     expectedMerchantRevenueLift30d: z.number().default(1),
     fatigueScore: z.number().nonnegative().default(0),
@@ -189,6 +193,8 @@ function toFiniteNumber(...values) {
 function normalizeDecisionSignalsContract(decisionSignals) {
   const safe = decisionSignals && typeof decisionSignals === "object" ? decisionSignals : {};
   const upliftProbability = toFiniteNumber(safe.upliftProbability, safe.intentScore, 0.5);
+  const churnProbability = toFiniteNumber(safe.churnProbability, 0.15);
+  const responseProbability = toFiniteNumber(safe.responseProbability, 0.5);
   const expectedMerchantProfitLift30d = toFiniteNumber(
     safe.expectedMerchantProfitLift30d,
     safe.merchantValue,
@@ -203,6 +209,8 @@ function normalizeDecisionSignalsContract(decisionSignals) {
   );
   return decisionSignalsContractSchema.parse({
     upliftProbability,
+    churnProbability,
+    responseProbability,
     expectedMerchantProfitLift30d,
     expectedMerchantRevenueLift30d,
     fatigueScore: toFiniteNumber(safe.fatigueScore, 0),

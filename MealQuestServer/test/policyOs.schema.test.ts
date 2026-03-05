@@ -24,6 +24,8 @@ function createValidSpec() {
     },
     decisionSignals: {
       upliftProbability: 0.5,
+      churnProbability: 0.2,
+      responseProbability: 0.6,
       fatigueScore: 0.1,
       riskScore: 0.1,
       expectedMerchantProfitLift30d: 8,
@@ -93,6 +95,8 @@ test("policy schema validation accepts valid spec", () => {
   assert.equal(result.objective.targetMetric, OBJECTIVE_TARGET_METRIC);
   assert.equal(result.objective.windowDays, OBJECTIVE_WINDOW_DAYS);
   assert.equal(result.decisionSignals.expectedMerchantProfitLift30d, 8);
+  assert.equal(result.decisionSignals.churnProbability, 0.2);
+  assert.equal(result.decisionSignals.responseProbability, 0.6);
 });
 
 test("policy schema validation rejects invalid spec", () => {
@@ -145,6 +149,8 @@ test("policy schema validation normalizes legacy objective and decision signals"
   assert.equal(result.objective.windowDays, OBJECTIVE_WINDOW_DAYS);
   assert.equal(result.decisionSignals.upliftProbability, 0.65);
   assert.equal(result.decisionSignals.expectedMerchantProfitLift30d, 15);
+  assert.equal(result.decisionSignals.churnProbability, 0.15);
+  assert.equal(result.decisionSignals.responseProbability, 0.5);
 });
 
 test("policy schema validation rejects non-standard objective target metric", () => {

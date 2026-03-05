@@ -167,6 +167,25 @@
 - 随机森林（Random Forest）
 - 深度学习（Deep Learning）
 
+#### 4.2.1 模型口径基线接口（S040-SRV-02）
+
+- 接口：`GET /api/state/model-contract`
+- 角色：`OWNER / MANAGER / CLERK`
+- 作用域：默认返回全局模型口径；可选 `merchantId` 返回该商户模型覆盖摘要
+- 鉴权规则：
+  - 若携带 `merchantId` 且与登录态 `auth.merchantId` 不一致，返回 `403 merchant scope denied`
+  - `merchantId` 不存在时返回 `404 merchant not found`
+- 缓存：支持 `ETag` 与 `If-None-Match`，命中返回 `304`
+
+响应口径（核心字段）：
+- `version`：当前模型口径版本（`S040-SRV-02.v1`）
+- `objectiveContract`：`targetMetric = MERCHANT_LONG_TERM_VALUE_30D`，`windowDays = 30`
+- `modelSignals`：`upliftProbability`、`churnProbability`、`responseProbability`、`expectedMerchantProfitLift30d` 等字段合同
+- `decisionFormula`：
+  - `effectiveProbability = upliftProbability * responseProbability * (1 - churnProbability)`
+  - `expectedValueProxy = effectiveProbability * expectedMerchantProfitLift30d - marketingCost - riskPenalty - fatiguePenalty`
+- `merchantCoverage`（可选）：已发布策略数量、模型信号就绪数量、缺失模型信号的策略列表
+
 ### 4.3 决策层（Decision Layer）
 
 决策问题：
@@ -177,7 +196,8 @@
 基础决策公式：
 
 ```text
-期望长期收益代理值（Expected Long-term Proxy） = Uplift 概率 × 期望商户净收益提升
+有效概率（Effective Probability） = Uplift 概率 × 响应概率 × (1 - 流失概率)
+期望长期收益代理值（Expected Long-term Proxy） = 有效概率 × 期望商户净收益提升
 ```
 
 当前治理要求：

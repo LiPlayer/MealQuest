@@ -550,19 +550,25 @@ function registerDefaultPlugins({ pluginRegistry, db, ledgerService, now = () =>
       const estimate = (ctx.modelEstimate && typeof ctx.modelEstimate === "object")
         ? ctx.modelEstimate
         : {};
-      const p = toNumber(estimate.p, 0.5);
+      const effectiveProbability = Math.min(
+        1,
+        Math.max(0, toNumber(estimate.effectiveProbability, estimate.p))
+      );
       const v = toNumber(estimate.v, 1);
       const c = toNumber(estimate.c, 0);
       const riskPenalty = toNumber(estimate.riskPenalty, 0);
       const fatiguePenalty = toNumber(estimate.fatiguePenalty, 0);
-      const utility = p * v - c - riskPenalty - fatiguePenalty;
+      const utility = effectiveProbability * v - c - riskPenalty - fatiguePenalty;
       const spread = Math.max(0.05, Math.abs(utility) * 0.25);
       return {
         utility,
         uncertainty: Math.min(1, Math.max(0, toNumber(estimate.uncertainty, 0.15))),
         estimateCost: c,
         model: {
-          upliftProbability: toNumber(estimate.upliftProbability, p),
+          upliftProbability: toNumber(estimate.upliftProbability, 0.5),
+          churnProbability: toNumber(estimate.churnProbability, 0.15),
+          responseProbability: toNumber(estimate.responseProbability, 0.5),
+          effectiveProbability,
           expectedMerchantProfitLift30d: toNumber(estimate.expectedMerchantProfitLift30d, v),
           expectedMerchantRevenueLift30d: toNumber(estimate.expectedMerchantRevenueLift30d, v),
           objectiveMetric: String(estimate.objectiveMetric || "MERCHANT_LONG_TERM_VALUE_30D")

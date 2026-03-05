@@ -2036,7 +2036,7 @@ test("state and audit endpoints support ETag conditional requests", async () => 
   }
 });
 
-test("state contract endpoint returns baseline and merchant coverage with scope control", async () => {
+test("state contract and model contract endpoints return baseline with scope control", async () => {
   const app = createAppServer({ persist: false });
   const port = await app.start(0);
   const baseUrl = `http://127.0.0.1:${port}`;
@@ -2100,6 +2100,67 @@ test("state contract endpoint returns baseline and merchant coverage with scope 
     );
     assert.equal(customerDenied.status, 403);
     assert.equal(customerDenied.data.error, "permission denied");
+
+    const modelContractRes = await fetch(`${baseUrl}/api/state/model-contract`, {
+      headers: ownerHeaders
+    });
+    assert.equal(modelContractRes.status, 200);
+    const modelContract = await modelContractRes.json();
+    assert.equal(modelContract.version, "S040-SRV-02.v1");
+    assert.equal(modelContract.objectiveContract.targetMetric, "MERCHANT_LONG_TERM_VALUE_30D");
+    assert.equal(modelContract.objectiveContract.windowDays, 30);
+    assert.equal(
+      modelContract.decisionFormula.effectiveProbability,
+      "upliftProbability * responseProbability * (1 - churnProbability)"
+    );
+    assert.ok(Array.isArray(modelContract.modelSignals));
+    assert.ok(modelContract.modelSignals.some((item) => item.field === "churnProbability"));
+    assert.ok(modelContract.modelSignals.some((item) => item.field === "responseProbability"));
+    assert.equal(modelContract.merchantCoverage, null);
+
+    const modelContractEtag = modelContractRes.headers.get("etag");
+    assert.ok(modelContractEtag);
+    const modelContract304 = await fetch(`${baseUrl}/api/state/model-contract`, {
+      headers: {
+        ...ownerHeaders,
+        "If-None-Match": modelContractEtag
+      }
+    });
+    assert.equal(modelContract304.status, 304);
+
+    const scopedModelContract = await getJson(
+      baseUrl,
+      "/api/state/model-contract?merchantId=m_store_001",
+      ownerHeaders
+    );
+    assert.equal(scopedModelContract.status, 200);
+    assert.equal(scopedModelContract.data.merchantCoverage.merchantId, "m_store_001");
+    assert.equal(typeof scopedModelContract.data.merchantCoverage.publishedPolicyCount, "number");
+    assert.ok(Array.isArray(scopedModelContract.data.merchantCoverage.missingSignalPolicies));
+
+    const scopedModelCrossDenied = await getJson(
+      baseUrl,
+      "/api/state/model-contract?merchantId=m_bistro",
+      ownerHeaders
+    );
+    assert.equal(scopedModelCrossDenied.status, 403);
+    assert.equal(scopedModelCrossDenied.data.error, "merchant scope denied");
+
+    const missingMerchant = await getJson(
+      baseUrl,
+      "/api/state/model-contract?merchantId=m_missing",
+      ownerHeaders
+    );
+    assert.equal(missingMerchant.status, 403);
+    assert.equal(missingMerchant.data.error, "merchant scope denied");
+
+    const customerModelDenied = await getJson(
+      baseUrl,
+      "/api/state/model-contract",
+      { Authorization: `Bearer ${customerToken}` }
+    );
+    assert.equal(customerModelDenied.status, 403);
+    assert.equal(customerModelDenied.data.error, "permission denied");
   } finally {
     await app.stop();
   }

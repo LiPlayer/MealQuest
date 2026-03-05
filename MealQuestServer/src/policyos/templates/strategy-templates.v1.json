@@ -123,6 +123,8 @@
             },
             "decisionSignals": {
               "upliftProbability": 0.65,
+              "churnProbability": 0.15,
+              "responseProbability": 0.5,
               "expectedMerchantProfitLift30d": 12,
               "expectedMerchantRevenueLift30d": 12,
               "fatigueScore": 0.1,
@@ -243,6 +245,8 @@
             },
             "decisionSignals": {
               "upliftProbability": 0.65,
+              "churnProbability": 0.15,
+              "responseProbability": 0.5,
               "expectedMerchantProfitLift30d": 12,
               "expectedMerchantRevenueLift30d": 12,
               "fatigueScore": 0.1,
@@ -371,6 +375,8 @@
             },
             "decisionSignals": {
               "upliftProbability": 0.55,
+              "churnProbability": 0.15,
+              "responseProbability": 0.5,
               "expectedMerchantProfitLift30d": 8,
               "expectedMerchantRevenueLift30d": 8,
               "fatigueScore": 0.08,
@@ -507,6 +513,8 @@
             },
             "decisionSignals": {
               "upliftProbability": 0.6,
+              "churnProbability": 0.15,
+              "responseProbability": 0.5,
               "expectedMerchantProfitLift30d": 15,
               "expectedMerchantRevenueLift30d": 15,
               "fatigueScore": 0.1,
@@ -640,6 +648,8 @@
             },
             "decisionSignals": {
               "upliftProbability": 0.58,
+              "churnProbability": 0.15,
+              "responseProbability": 0.5,
               "expectedMerchantProfitLift30d": 10,
               "expectedMerchantRevenueLift30d": 10,
               "fatigueScore": 0.06,
