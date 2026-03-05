@@ -7,6 +7,7 @@ const {
   isIfNoneMatchFresh,
 } = require("../serverHelpers");
 const { buildStateSnapshot } = require("./stateSnapshot");
+const { buildStateContractSnapshot } = require("./stateContract");
 
 function createSystemRoutesHandler({
   tenantPolicyManager,
@@ -56,6 +57,38 @@ function createSystemRoutesHandler({
         tenantRepository,
         getServicesForDb,
       });
+      const etag = buildWeakEtag(payload);
+      const cacheHeaders = {
+        ETag: etag,
+        "Cache-Control": "private, max-age=0, must-revalidate",
+      };
+      if (isIfNoneMatchFresh(req, etag)) {
+        sendNotModified(res, cacheHeaders);
+        return true;
+      }
+      sendJson(res, 200, payload, cacheHeaders);
+      return true;
+    }
+
+    if (method === "GET" && url.pathname === "/api/state/contract") {
+      ensureRole(auth, MERCHANT_ROLES);
+      const merchantId = String(url.searchParams.get("merchantId") || "").trim();
+      if (merchantId && auth.merchantId && auth.merchantId !== merchantId) {
+        sendJson(res, 403, { error: "merchant scope denied" });
+        return true;
+      }
+
+      let scopedDb = null;
+      if (merchantId) {
+        const merchant = await tenantRepository.getMerchant(merchantId);
+        if (!merchant) {
+          sendJson(res, 404, { error: "merchant not found" });
+          return true;
+        }
+        scopedDb = tenantRouter.getDbForMerchant(merchantId);
+      }
+
+      const payload = buildStateContractSnapshot({ merchantId, scopedDb });
       const etag = buildWeakEtag(payload);
       const cacheHeaders = {
         ETag: etag,

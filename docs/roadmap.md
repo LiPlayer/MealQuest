@@ -166,7 +166,7 @@
 
 | PackageID | Lane | CapabilityID | Macro Requirement | Deliverable | DependsOn | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| PKG-S040-SRV-01 | server | SRV-C02, SRV-C05 | 建立用户/订单/营销/行为数据口径 | 数据口径基线 | none | todo |
+| PKG-S040-SRV-01 | server | SRV-C02, SRV-C05 | 建立用户/订单/营销/行为数据口径 | 数据口径基线 | none | done |
 | PKG-S040-SRV-02 | server | SRV-C05 | 建立 Uplift/流失/响应模型口径 | 模型口径基线 | PKG-S040-SRV-01 | todo |
 | PKG-S040-MER-01 | merchant | MER-C03, MER-C04 | 建立老板端数据与模型可见口径 | 老板端口径清单 | PKG-S040-SRV-02 | todo |
 | PKG-S040-CUS-01 | customer | CUS-C03 | 建立顾客端行为与触达口径 | 顾客端口径清单 | PKG-S040-SRV-01 | todo |
@@ -301,3 +301,4 @@
 8. 2026-03-05：完成 PKG-S020-MER-01（老板端登录/开店/看板闭环）并补充商家端验收记录。
 9. 2026-03-05：完成 PKG-S020-SRV-02 / PKG-S020-MER-02 / PKG-S020-CUS-01，S020 关闭并切换 S030 doing。
 10. 2026-03-05：完成 PKG-S030-SRV-01 / PKG-S030-CUS-01 / PKG-S030-MER-01，S030 关闭并切换 S040 doing。
+11. 2026-03-05：完成 PKG-S040-SRV-01，新增 `/api/state/contract` 数据口径基线接口并沉淀验收记录。

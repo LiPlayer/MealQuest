@@ -2036,6 +2036,75 @@ test("state and audit endpoints support ETag conditional requests", async () => 
   }
 });
 
+test("state contract endpoint returns baseline and merchant coverage with scope control", async () => {
+  const app = createAppServer({ persist: false });
+  const port = await app.start(0);
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const ownerToken = await mockLogin(baseUrl, "OWNER", {
+      merchantId: "m_store_001"
+    });
+    const customerToken = await mockLogin(baseUrl, "CUSTOMER", {
+      merchantId: "m_store_001",
+      userId: "u_fixture_001"
+    });
+    const ownerHeaders = { Authorization: `Bearer ${ownerToken}` };
+
+    const globalContractRes = await fetch(`${baseUrl}/api/state/contract`, {
+      headers: ownerHeaders
+    });
+    assert.equal(globalContractRes.status, 200);
+    const globalContract = await globalContractRes.json();
+    assert.equal(globalContract.version, "S040-SRV-01.v1");
+    assert.equal(globalContract.objective, "LONG_TERM_VALUE_MAXIMIZATION");
+    assert.deepEqual(globalContract.proxyMetrics, [
+      "MerchantProfitUplift30",
+      "MerchantRevenueUplift30",
+      "UpliftHitRate30",
+    ]);
+    assert.equal(globalContract.merchantCoverage, null);
+
+    const contractEtag = globalContractRes.headers.get("etag");
+    assert.ok(contractEtag);
+    const globalContract304 = await fetch(`${baseUrl}/api/state/contract`, {
+      headers: {
+        ...ownerHeaders,
+        "If-None-Match": contractEtag
+      }
+    });
+    assert.equal(globalContract304.status, 304);
+
+    const scopedContract = await getJson(
+      baseUrl,
+      "/api/state/contract?merchantId=m_store_001",
+      ownerHeaders
+    );
+    assert.equal(scopedContract.status, 200);
+    assert.equal(scopedContract.data.merchantCoverage.merchantId, "m_store_001");
+    assert.equal(typeof scopedContract.data.merchantCoverage.domains.customer.records, "number");
+    assert.ok(Array.isArray(scopedContract.data.merchantCoverage.missingDomains));
+
+    const crossScopeDenied = await getJson(
+      baseUrl,
+      "/api/state/contract?merchantId=m_bistro",
+      ownerHeaders
+    );
+    assert.equal(crossScopeDenied.status, 403);
+    assert.equal(crossScopeDenied.data.error, "merchant scope denied");
+
+    const customerDenied = await getJson(
+      baseUrl,
+      "/api/state/contract",
+      { Authorization: `Bearer ${customerToken}` }
+    );
+    assert.equal(customerDenied.status, 403);
+    assert.equal(customerDenied.data.error, "permission denied");
+  } finally {
+    await app.stop();
+  }
+});
+
 test("tenant policy api: owner can update own merchant policy and scope is enforced", async () => {
   const app = createAppServer({ persist: false });
   const port = await app.start(0);

@@ -135,6 +135,24 @@
 - 数据进入可审计的数据仓体系（如 BigQuery、Snowflake、ClickHouse）
 - 口径要求：可追溯、可回放、可对账
 
+#### 4.1.1 数据口径基线接口（S040-SRV-01）
+
+- 接口：`GET /api/state/contract`
+- 角色：`OWNER / MANAGER / CLERK`
+- 作用域：默认返回全局口径；可选 `merchantId` 返回该商户覆盖摘要
+- 鉴权规则：
+  - 若携带 `merchantId` 且与登录态 `auth.merchantId` 不一致，返回 `403 merchant scope denied`
+  - `merchantId` 不存在时返回 `404 merchant not found`
+- 缓存：支持 `ETag` 与 `If-None-Match`，命中返回 `304`
+
+响应口径（核心字段）：
+- `version`：当前口径版本（`S040-SRV-01.v1`）
+- `objective`：`LONG_TERM_VALUE_MAXIMIZATION`
+- `proxyMetrics`：`MerchantProfitUplift30`、`MerchantRevenueUplift30`、`UpliftHitRate30`
+- `dataDomains`：用户/订单/营销/行为四域的数据源、主键、必需字段
+- `events`：当前系统可观测事件与来源映射
+- `merchantCoverage`（可选）：四域记录数、最近更新时间、缺失域列表、事件覆盖
+
 ### 4.2 模型层（Model Layer）
 
 模型目标：预测长期价值趋势与可执行增量收益。
