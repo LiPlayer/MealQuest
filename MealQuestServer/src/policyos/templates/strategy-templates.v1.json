@@ -222,6 +222,116 @@
           }
         }
       ]
+    },
+    {
+      "templateId": "activation_checkin_streak_recovery",
+      "category": "ACTIVATION",
+      "phase": "P1",
+      "name": "Checkin Streak Recovery",
+      "description": "Recover low-activity customers through streak check-ins.",
+      "triggerEvent": "USER_ENTER_SHOP",
+      "defaultBranchId": "DEFAULT",
+      "branches": [
+        {
+          "branchId": "DEFAULT",
+          "name": "Steady Recovery",
+          "description": "Default profile: inactive >= 7 days and streak >= 3 days.",
+          "policySpec": {
+            "policy_key": "ACT_CHECKIN_STREAK_RECOVERY_V1",
+            "name": "Checkin Streak Recovery - Steady",
+            "lane": "NORMAL",
+            "tie_breaker": "UTILITY_DESC",
+            "goal": {
+              "type": "ACTIVATION",
+              "kpi": "reactivation_rate"
+            },
+            "segment": {
+              "plugin": "condition_segment_v1",
+              "params": {
+                "logic": "AND",
+                "conditions": [
+                  {
+                    "field": "inactiveDays",
+                    "op": "gte",
+                    "value": 7
+                  },
+                  {
+                    "field": "checkinStreakDays",
+                    "op": "gte",
+                    "value": 3
+                  }
+                ]
+              }
+            },
+            "triggers": [
+              {
+                "plugin": "event_trigger_v1",
+                "event": "USER_ENTER_SHOP",
+                "params": {}
+              }
+            ],
+            "program": {
+              "ttl_sec": 604800,
+              "max_instances": 1,
+              "pacing": {
+                "max_cost_per_minute": 12
+              }
+            },
+            "actions": [
+              {
+                "plugin": "fragment_grant_v1",
+                "channel": "default",
+                "params": {
+                  "type": "common",
+                  "amount": 1,
+                  "cost": 1
+                }
+              }
+            ],
+            "constraints": [
+              {
+                "plugin": "kill_switch_v1",
+                "params": {}
+              },
+              {
+                "plugin": "budget_guard_v1",
+                "params": {
+                  "cap": 80,
+                  "cost_per_hit": 1
+                }
+              },
+              {
+                "plugin": "frequency_cap_v1",
+                "params": {
+                  "daily": 1,
+                  "window_sec": 604800
+                }
+              },
+              {
+                "plugin": "anti_fraud_hook_v1",
+                "params": {
+                  "max_risk_score": 0.75
+                }
+              }
+            ],
+            "scoring": {
+              "plugin": "expected_profit_v1",
+              "params": {}
+            },
+            "overlap_policy": {
+              "mode": "SOFT_EXCLUSIVE",
+              "conflict_set": "activation_checkin_streak_recovery",
+              "max_winners": 1,
+              "cooldown_sec": 0
+            },
+            "governance": {
+              "approval_required": true,
+              "approval_level": "OWNER",
+              "approval_token_ttl_sec": 3600
+            }
+          }
+        }
+      ]
     }
   ]
 }

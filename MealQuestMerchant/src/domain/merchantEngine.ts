@@ -44,6 +44,21 @@ export interface MerchantState {
       createdAt: string;
     }[];
   };
+  activationRecoverySummary: {
+    hitCount24h: number;
+    blockedCount24h: number;
+    topBlockedReasons: {
+      reason: string;
+      count: number;
+    }[];
+    latestResults: {
+      decisionId: string;
+      event: string;
+      outcome: string;
+      reasonCode: string;
+      createdAt: string;
+    }[];
+  };
   gameMarketingSummary: {
     hitCount24h: number;
     blockedCount24h: number;
@@ -115,6 +130,12 @@ export const createInitialMerchantState = (): MerchantState => ({
     latestCheckinAt: null,
   },
   acquisitionWelcomeSummary: {
+    hitCount24h: 0,
+    blockedCount24h: 0,
+    topBlockedReasons: [],
+    latestResults: [],
+  },
+  activationRecoverySummary: {
     hitCount24h: 0,
     blockedCount24h: 0,
     topBlockedReasons: [],

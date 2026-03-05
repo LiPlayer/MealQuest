@@ -97,4 +97,43 @@ describe('Index page welcome activity visibility', () => {
       expect(document.body.textContent).toContain('原因：segment_mismatch');
     });
   });
+
+  it('renders activation hit activity card', async () => {
+    dataServiceMock.getHomeSnapshot.mockResolvedValue(
+      createSnapshot([
+        {
+          id: 'activation_hit_1',
+          title: '连签激活奖励已到账',
+          desc: '已命中促活连签规则，可前往资产区查看到账变更。',
+          tag: 'ACTIVATION',
+        },
+      ]) as any,
+    );
+
+    render(<IndexPage />);
+
+    await waitFor(() => {
+      expect(document.body.textContent).toContain('连签激活奖励已到账');
+    });
+  });
+
+  it('renders activation blocked activity card with reason', async () => {
+    dataServiceMock.getHomeSnapshot.mockResolvedValue(
+      createSnapshot([
+        {
+          id: 'activation_block_1',
+          title: '连签激活奖励未发放',
+          desc: '原因：constraint:frequency_exceeded',
+          tag: 'ACTIVATION',
+        },
+      ]) as any,
+    );
+
+    render(<IndexPage />);
+
+    await waitFor(() => {
+      expect(document.body.textContent).toContain('连签激活奖励未发放');
+      expect(document.body.textContent).toContain('原因：constraint:frequency_exceeded');
+    });
+  });
 });

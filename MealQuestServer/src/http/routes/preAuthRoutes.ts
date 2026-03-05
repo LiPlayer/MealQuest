@@ -29,6 +29,8 @@ function createPreAuthRoutesHandler({
   appendAuditLog,
   wsHub,
 }) {
+  const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
   async function runWithRootFreshState(runner) {
     if (typeof actualDb.runWithFreshState === "function") {
       return actualDb.runWithFreshState(async (workingDb) => runner(workingDb));
@@ -86,9 +88,35 @@ function createPreAuthRoutesHandler({
     throw new Error("failed to generate merchant id");
   }
 
-  function toDecisionOutcome(decision) {
-    const executed = Array.isArray(decision && decision.executed) ? decision.executed : [];
-    const rejected = Array.isArray(decision && decision.rejected) ? decision.rejected : [];
+  function normalizePolicyPrefix(value) {
+    return String(value || "").trim().toUpperCase();
+  }
+
+  function matchPolicyPrefix(policyId, policyKeyPrefix) {
+    const normalizedPolicyId = String(policyId || "").trim().toUpperCase();
+    const normalizedPrefix = normalizePolicyPrefix(policyKeyPrefix);
+    if (!normalizedPrefix) {
+      return Boolean(normalizedPolicyId);
+    }
+    if (!normalizedPolicyId) {
+      return false;
+    }
+    return (
+      normalizedPolicyId.startsWith(`${normalizedPrefix}@`) ||
+      normalizedPolicyId.startsWith(normalizedPrefix)
+    );
+  }
+
+  function toDecisionOutcome(decision, policyKeyPrefix = "") {
+    const executedRaw = Array.isArray(decision && decision.executed) ? decision.executed : [];
+    const rejectedRaw = Array.isArray(decision && decision.rejected) ? decision.rejected : [];
+    const normalizedPrefix = normalizePolicyPrefix(policyKeyPrefix);
+    const executed = normalizedPrefix
+      ? executedRaw.filter((item) => matchPolicyPrefix(item, normalizedPrefix))
+      : executedRaw;
+    const rejected = normalizedPrefix
+      ? rejectedRaw.filter((item) => matchPolicyPrefix(item && item.policyId, normalizedPrefix))
+      : rejectedRaw;
     if (executed.length > 0) {
       return "HIT";
     }
@@ -98,13 +126,98 @@ function createPreAuthRoutesHandler({
     return "NO_POLICY";
   }
 
-  function toDecisionReason(decision) {
-    const rejected = Array.isArray(decision && decision.rejected) ? decision.rejected : [];
+  function toDecisionReason(decision, policyKeyPrefix = "") {
+    const rejectedRaw = Array.isArray(decision && decision.rejected) ? decision.rejected : [];
+    const normalizedPrefix = normalizePolicyPrefix(policyKeyPrefix);
+    const rejected = normalizedPrefix
+      ? rejectedRaw.filter((item) => matchPolicyPrefix(item && item.policyId, normalizedPrefix))
+      : rejectedRaw;
     const first = rejected[0] || {};
     return String(first.reason || "").trim();
   }
 
-  async function executeWelcomeDecision({
+  function toDayKeyFromMs(timestampMs) {
+    return new Date(timestampMs).toISOString().slice(0, 10);
+  }
+
+  function toDayStartMsFromDayKey(dayKey) {
+    const parsed = Date.parse(`${String(dayKey || "").trim()}T00:00:00.000Z`);
+    return Number.isFinite(parsed) ? parsed : Number.NaN;
+  }
+
+  function buildActivationContext({ policyOsService, merchantId, userId, nowMs = Date.now() }) {
+    if (!policyOsService || typeof policyOsService.listDecisions !== "function") {
+      return {
+        inactiveDays: 9999,
+        checkinStreakDays: 1
+      };
+    }
+    const nowDayKey = toDayKeyFromMs(nowMs);
+    const decisions = policyOsService.listDecisions({
+      merchantId,
+      userId,
+      event: "USER_ENTER_SHOP",
+      mode: "EXECUTE",
+      limit: 90
+    });
+    const uniqueDays = new Set();
+    for (const row of decisions) {
+      const createdAtMs = Date.parse(String(row && row.created_at ? row.created_at : ""));
+      if (!Number.isFinite(createdAtMs)) {
+        continue;
+      }
+      uniqueDays.add(toDayKeyFromMs(createdAtMs));
+    }
+    const historicalDayKeys = [...uniqueDays]
+      .filter((dayKey) => String(dayKey || "").trim())
+      .sort((left, right) => String(right).localeCompare(String(left)));
+
+    const combinedDays = new Set([...historicalDayKeys, nowDayKey]);
+    let checkinStreakDays = 0;
+    let cursorMs = toDayStartMsFromDayKey(nowDayKey);
+    while (Number.isFinite(cursorMs)) {
+      const cursorKey = toDayKeyFromMs(cursorMs);
+      if (!combinedDays.has(cursorKey)) {
+        break;
+      }
+      checkinStreakDays += 1;
+      cursorMs -= MS_PER_DAY;
+    }
+
+    const nowDayStartMs = toDayStartMsFromDayKey(nowDayKey);
+    const streakStartMs = Number.isFinite(nowDayStartMs)
+      ? nowDayStartMs - (Math.max(1, checkinStreakDays) - 1) * MS_PER_DAY
+      : Number.NaN;
+    const previousBeforeStreakMs = historicalDayKeys
+      .map((dayKey) => toDayStartMsFromDayKey(dayKey))
+      .filter((timestamp) => Number.isFinite(timestamp) && timestamp < streakStartMs)
+      .sort((left, right) => right - left)[0];
+    const inactiveDays =
+      Number.isFinite(previousBeforeStreakMs) && Number.isFinite(streakStartMs)
+        ? Math.max(0, Math.floor((streakStartMs - previousBeforeStreakMs) / MS_PER_DAY) - 1)
+        : 9999;
+
+    return {
+      inactiveDays,
+      checkinStreakDays: Math.max(1, checkinStreakDays)
+    };
+  }
+
+  function toScopedDecisionView(rawDecision, policyKeyPrefix) {
+    if (!rawDecision || typeof rawDecision !== "object") {
+      return null;
+    }
+    return {
+      event: "USER_ENTER_SHOP",
+      decisionId: rawDecision.decision_id || "",
+      traceId: rawDecision.trace_id || "",
+      outcome: toDecisionOutcome(rawDecision, policyKeyPrefix),
+      reasonCode: toDecisionReason(rawDecision, policyKeyPrefix),
+      grants: Array.isArray(rawDecision.grants) ? rawDecision.grants : [],
+    };
+  }
+
+  async function executeEntryDecision({
     merchantId,
     userId,
     isNewUser,
@@ -116,7 +229,12 @@ function createPreAuthRoutesHandler({
       if (!policyOsService || typeof policyOsService.executeDecision !== "function") {
         return null;
       }
-      const decision = await policyOsService.executeDecision({
+      const activationContext = buildActivationContext({
+        policyOsService,
+        merchantId,
+        userId
+      });
+      return await policyOsService.executeDecision({
         merchantId,
         userId,
         event: "USER_ENTER_SHOP",
@@ -125,25 +243,14 @@ function createPreAuthRoutesHandler({
           isNewUser: Boolean(isNewUser),
           hasReferral: false,
           riskScore: 0,
+          inactiveDays: activationContext.inactiveDays,
+          checkinStreakDays: activationContext.checkinStreakDays,
           source: String(source || "customer_login").trim() || "customer_login",
         },
       });
-      return {
-        event: "USER_ENTER_SHOP",
-        decisionId: decision.decision_id || "",
-        traceId: decision.trace_id || "",
-        outcome: toDecisionOutcome(decision),
-        reasonCode: toDecisionReason(decision),
-        grants: Array.isArray(decision.grants) ? decision.grants : [],
-      };
     } catch (error) {
       return {
-        event: "USER_ENTER_SHOP",
-        decisionId: "",
-        traceId: "",
-        outcome: "ERROR",
-        reasonCode: error instanceof Error ? error.message : "welcome_decision_failed",
-        grants: [],
+        error: error instanceof Error ? error.message : "entry_decision_failed"
       };
     }
   }
@@ -405,13 +512,35 @@ function createPreAuthRoutesHandler({
         },
         jwtSecret
       );
-      const welcomeDecision = await executeWelcomeDecision({
+      const entryDecision = await executeEntryDecision({
         merchantId,
         userId: binding.userId,
         isNewUser: binding.created,
         sourceCode: body.code,
         source: "wechat_login",
       });
+      const welcomeDecision =
+        entryDecision && entryDecision.error
+          ? {
+              event: "USER_ENTER_SHOP",
+              decisionId: "",
+              traceId: "",
+              outcome: "ERROR",
+              reasonCode: entryDecision.error,
+              grants: [],
+            }
+          : toScopedDecisionView(entryDecision, "ACQ_WELCOME_FIRST_BIND_V1");
+      const activationDecision =
+        entryDecision && entryDecision.error
+          ? {
+              event: "USER_ENTER_SHOP",
+              decisionId: "",
+              traceId: "",
+              outcome: "ERROR",
+              reasonCode: entryDecision.error,
+              grants: [],
+            }
+          : toScopedDecisionView(entryDecision, "ACT_CHECKIN_STREAK_RECOVERY_V1");
       sendJson(res, 200, {
         token,
         profile: {
@@ -422,6 +551,7 @@ function createPreAuthRoutesHandler({
         },
         isNewUser: binding.created,
         welcomeDecision,
+        activationDecision,
       });
       return true;
     }
@@ -468,13 +598,35 @@ function createPreAuthRoutesHandler({
         },
         jwtSecret
       );
-      const welcomeDecision = await executeWelcomeDecision({
+      const entryDecision = await executeEntryDecision({
         merchantId,
         userId: binding.userId,
         isNewUser: binding.created,
         sourceCode: body.code,
         source: "alipay_login",
       });
+      const welcomeDecision =
+        entryDecision && entryDecision.error
+          ? {
+              event: "USER_ENTER_SHOP",
+              decisionId: "",
+              traceId: "",
+              outcome: "ERROR",
+              reasonCode: entryDecision.error,
+              grants: [],
+            }
+          : toScopedDecisionView(entryDecision, "ACQ_WELCOME_FIRST_BIND_V1");
+      const activationDecision =
+        entryDecision && entryDecision.error
+          ? {
+              event: "USER_ENTER_SHOP",
+              decisionId: "",
+              traceId: "",
+              outcome: "ERROR",
+              reasonCode: entryDecision.error,
+              grants: [],
+            }
+          : toScopedDecisionView(entryDecision, "ACT_CHECKIN_STREAK_RECOVERY_V1");
       sendJson(res, 200, {
         token,
         profile: {
@@ -485,6 +637,7 @@ function createPreAuthRoutesHandler({
         },
         isNewUser: binding.created,
         welcomeDecision,
+        activationDecision,
       });
       return true;
     }

@@ -59,6 +59,7 @@ export type MerchantDashboardResponse = {
     latestCheckinAt?: string | null;
   };
   acquisitionWelcomeSummary?: DecisionSummaryResponse;
+  activationRecoverySummary?: DecisionSummaryResponse;
   gameMarketingSummary?: DecisionSummaryResponse;
   traceSummary?: {
     last24h?: {

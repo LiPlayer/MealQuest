@@ -59,9 +59,32 @@ function toPolicyView(policy) {
   };
 }
 
-function toDecisionOutcome(decision) {
-  const executed = Array.isArray(decision && decision.executed) ? decision.executed : [];
-  const rejected = Array.isArray(decision && decision.rejected) ? decision.rejected : [];
+function normalizePolicyPrefix(value) {
+  return String(value || "").trim().toUpperCase();
+}
+
+function matchPolicyPrefix(policyId, policyKeyPrefix) {
+  const normalizedPolicyId = String(policyId || "").trim().toUpperCase();
+  const normalizedPrefix = normalizePolicyPrefix(policyKeyPrefix);
+  if (!normalizedPrefix) {
+    return Boolean(normalizedPolicyId);
+  }
+  if (!normalizedPolicyId) {
+    return false;
+  }
+  return (
+    normalizedPolicyId.startsWith(`${normalizedPrefix}@`) ||
+    normalizedPolicyId.startsWith(normalizedPrefix)
+  );
+}
+
+function toScopedDecisionOutcome(decision, policyKeyPrefix) {
+  const executed = Array.isArray(decision && decision.executed)
+    ? decision.executed.filter((item) => matchPolicyPrefix(item, policyKeyPrefix))
+    : [];
+  const rejected = Array.isArray(decision && decision.rejected)
+    ? decision.rejected.filter((item) => matchPolicyPrefix(item && item.policyId, policyKeyPrefix))
+    : [];
   if (executed.length > 0) {
     return "HIT";
   }
@@ -71,35 +94,48 @@ function toDecisionOutcome(decision) {
   return "NO_POLICY";
 }
 
-function buildWelcomeDecisionActivity(decision) {
+function toScopedDecisionReason(decision, policyKeyPrefix) {
+  const rejected = Array.isArray(decision && decision.rejected)
+    ? decision.rejected.filter((item) => matchPolicyPrefix(item && item.policyId, policyKeyPrefix))
+    : [];
+  const first = rejected[0] || {};
+  return String(first.reason || "").trim();
+}
+
+function buildDecisionActivity({
+  decision,
+  policyKeyPrefix,
+  tag,
+  hitTitle,
+  hitDesc,
+  blockedTitle,
+  blockedDescFallback
+}) {
   if (!decision || typeof decision !== "object") {
     return null;
   }
-  const outcome = toDecisionOutcome(decision);
-  const reason =
-    Array.isArray(decision.rejected) && decision.rejected[0] && decision.rejected[0].reason
-      ? String(decision.rejected[0].reason)
-      : "";
+  const outcome = toScopedDecisionOutcome(decision, policyKeyPrefix);
+  const reason = toScopedDecisionReason(decision, policyKeyPrefix);
   if (outcome === "HIT") {
     return {
-      id: `welcome_decision_${String(decision.decision_id || "latest")}`,
-      title: "欢迎权益已发放",
-      desc: "已命中 Welcome 规则，可前往资产区查看到账变更。",
+      id: `${String(tag || "decision").toLowerCase()}_decision_${String(decision.decision_id || "latest")}`,
+      title: String(hitTitle || "策略已命中"),
+      desc: String(hitDesc || "策略已执行，请查看资产变化。"),
       icon: "*",
       color: "bg-emerald-50",
       textColor: "text-emerald-600",
-      tag: "WELCOME",
+      tag: String(tag || "AI").toUpperCase(),
     };
   }
   if (outcome === "BLOCKED") {
     return {
-      id: `welcome_decision_${String(decision.decision_id || "latest")}`,
-      title: "欢迎权益未发放",
-      desc: reason ? `原因：${reason}` : "本次未通过 Welcome 判定条件。",
+      id: `${String(tag || "decision").toLowerCase()}_decision_${String(decision.decision_id || "latest")}`,
+      title: String(blockedTitle || "策略未命中"),
+      desc: reason ? `原因：${reason}` : String(blockedDescFallback || "本次未通过判定条件。"),
       icon: "!",
       color: "bg-amber-50",
       textColor: "text-amber-700",
-      tag: "WELCOME",
+      tag: String(tag || "AI").toUpperCase(),
     };
   }
   return null;
@@ -147,13 +183,45 @@ async function buildStateSnapshot({
         userId: user.uid,
         event: "USER_ENTER_SHOP",
         mode: "EXECUTE",
+        policyKeyPrefix: "ACQ_WELCOME_FIRST_BIND_V1",
         limit: 1,
       })[0] || null
       : null;
-  const welcomeActivity = buildWelcomeDecisionActivity(welcomeDecision);
+  const activationDecision =
+    user && policyOsService && typeof policyOsService.listDecisions === "function"
+      ? policyOsService.listDecisions({
+        merchantId,
+        userId: user.uid,
+        event: "USER_ENTER_SHOP",
+        mode: "EXECUTE",
+        policyKeyPrefix: "ACT_CHECKIN_STREAK_RECOVERY_V1",
+        limit: 1,
+      })[0] || null
+      : null;
+  const welcomeActivity = buildDecisionActivity({
+    decision: welcomeDecision,
+    policyKeyPrefix: "ACQ_WELCOME_FIRST_BIND_V1",
+    tag: "WELCOME",
+    hitTitle: "欢迎权益已发放",
+    hitDesc: "已命中 Welcome 规则，可前往资产区查看到账变更。",
+    blockedTitle: "欢迎权益未发放",
+    blockedDescFallback: "本次未通过 Welcome 判定条件。",
+  });
+  const activationActivity = buildDecisionActivity({
+    decision: activationDecision,
+    policyKeyPrefix: "ACT_CHECKIN_STREAK_RECOVERY_V1",
+    tag: "ACTIVATION",
+    hitTitle: "连签激活奖励已到账",
+    hitDesc: "已命中促活连签规则，可前往资产区查看到账变更。",
+    blockedTitle: "连签激活奖励未发放",
+    blockedDescFallback: "本次未通过促活连签判定条件。",
+  });
   const activities = buildCustomerActivities(activePolicyViews);
   if (welcomeActivity) {
     activities.unshift(welcomeActivity);
+  }
+  if (activationActivity) {
+    activities.unshift(activationActivity);
   }
 
   return {

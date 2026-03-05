@@ -5,6 +5,81 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function normalizePolicyPrefix(value) {
+  return String(value || "").trim().toUpperCase();
+}
+
+function hasPolicyPrefix(decision, policyKeyPrefix) {
+  const normalizedPrefix = normalizePolicyPrefix(policyKeyPrefix);
+  if (!normalizedPrefix) {
+    return true;
+  }
+  const executed = Array.isArray(decision && decision.executed) ? decision.executed : [];
+  const selected = Array.isArray(decision && decision.selected) ? decision.selected : [];
+  const rejected = Array.isArray(decision && decision.rejected) ? decision.rejected : [];
+  const candidates = [
+    ...executed,
+    ...selected,
+    ...rejected.map((item) => (item && item.policyId ? item.policyId : ""))
+  ];
+  return candidates.some((value) => {
+    const normalized = String(value || "").trim().toUpperCase();
+    if (!normalized) {
+      return false;
+    }
+    return normalized.startsWith(`${normalizedPrefix}@`) || normalized.startsWith(normalizedPrefix);
+  });
+}
+
+function assertActionParamCompleteness(policySpec) {
+  const policyKey = String(policySpec && policySpec.policy_key ? policySpec.policy_key : "").trim();
+  const actions = Array.isArray(policySpec && policySpec.actions) ? policySpec.actions : [];
+  if (actions.length === 0) {
+    throw new Error("policy action is required");
+  }
+  for (const action of actions) {
+    const plugin = String(action && action.plugin ? action.plugin : "").trim();
+    const params = action && action.params && typeof action.params === "object" ? action.params : {};
+    if (!plugin) {
+      throw new Error("policy action plugin is required");
+    }
+    if (plugin === "fragment_grant_v1") {
+      const type = String(params.type || "").trim();
+      const amount = Number(params.amount);
+      if (!type || !Number.isFinite(amount) || amount <= 0) {
+        throw new Error(`policy action params incomplete: ${plugin}`);
+      }
+      continue;
+    }
+    if (plugin === "wallet_grant_v1") {
+      const account = String(params.account || "").trim();
+      const amount = Number(params.amount);
+      if (!account || !Number.isFinite(amount) || amount <= 0) {
+        throw new Error(`policy action params incomplete: ${plugin}`);
+      }
+      continue;
+    }
+    if (plugin === "voucher_grant_v1") {
+      const voucher = params.voucher && typeof params.voucher === "object" ? params.voucher : {};
+      const voucherType = String(voucher.type || "").trim();
+      const voucherName = String(voucher.name || "").trim();
+      const voucherValue = Number(voucher.value);
+      if (!voucherType || !voucherName || !Number.isFinite(voucherValue) || voucherValue <= 0) {
+        throw new Error(`policy action params incomplete: ${plugin}`);
+      }
+      continue;
+    }
+  }
+  if (policyKey === "ACT_CHECKIN_STREAK_RECOVERY_V1") {
+    const hasFragmentGrant = actions.some(
+      (item) => String(item && item.plugin ? item.plugin : "").trim() === "fragment_grant_v1"
+    );
+    if (!hasFragmentGrant) {
+      throw new Error("policy action params incomplete: ACT_CHECKIN_STREAK_RECOVERY_V1");
+    }
+  }
+}
+
 function createPolicyRegistry({
   db,
   schemaRegistry,
@@ -91,6 +166,7 @@ function createPolicyRegistry({
   function createDraft({ merchantId, operatorId, spec, templateId = "" }) {
     const state = ensureState();
     const validated = schemaRegistry.validatePolicySpec(spec);
+    assertActionParamCompleteness(validated);
     if (validated.resource_scope.merchant_id !== merchantId) {
       throw new Error("policy merchant scope mismatch");
     }
@@ -394,6 +470,7 @@ function createPolicyRegistry({
     userId = "",
     event = "",
     mode = "",
+    policyKeyPrefix = "",
     limit = 20
   }) {
     const state = ensureState();
@@ -414,6 +491,7 @@ function createPolicyRegistry({
       .filter((item) =>
         normalizedMode ? String(item.mode || "").trim().toUpperCase() === normalizedMode : true
       )
+      .filter((item) => hasPolicyPrefix(item, policyKeyPrefix))
       .sort((left, right) => {
         const leftCreatedAt = String(left.created_at || "");
         const rightCreatedAt = String(right.created_at || "");

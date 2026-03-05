@@ -81,9 +81,35 @@ function createMerchantService(db, options = {}) {
     return Math.round(toFiniteNumber(value) * 100) / 100;
   }
 
-  function toDecisionOutcome(decision) {
-    const executed = Array.isArray(decision && decision.executed) ? decision.executed : [];
-    const rejected = Array.isArray(decision && decision.rejected) ? decision.rejected : [];
+  function normalizePolicyPrefix(value) {
+    return String(value || "").trim().toUpperCase();
+  }
+
+  function matchPolicyPrefix(policyId, policyKeyPrefix) {
+    const normalizedPolicyId = String(policyId || "").trim().toUpperCase();
+    const normalizedPrefix = normalizePolicyPrefix(policyKeyPrefix);
+    if (!normalizedPrefix) {
+      return Boolean(normalizedPolicyId);
+    }
+    if (!normalizedPolicyId) {
+      return false;
+    }
+    return (
+      normalizedPolicyId.startsWith(`${normalizedPrefix}@`) ||
+      normalizedPolicyId.startsWith(normalizedPrefix)
+    );
+  }
+
+  function toDecisionOutcome(decision, policyKeyPrefix = "") {
+    const executedRaw = Array.isArray(decision && decision.executed) ? decision.executed : [];
+    const rejectedRaw = Array.isArray(decision && decision.rejected) ? decision.rejected : [];
+    const normalizedPrefix = normalizePolicyPrefix(policyKeyPrefix);
+    const executed = normalizedPrefix
+      ? executedRaw.filter((item) => matchPolicyPrefix(item, normalizedPrefix))
+      : executedRaw;
+    const rejected = normalizedPrefix
+      ? rejectedRaw.filter((item) => matchPolicyPrefix(item && item.policyId, normalizedPrefix))
+      : rejectedRaw;
     if (executed.length > 0) {
       return "HIT";
     }
@@ -93,8 +119,12 @@ function createMerchantService(db, options = {}) {
     return "NO_POLICY";
   }
 
-  function toDecisionReason(decision) {
-    const rejected = Array.isArray(decision && decision.rejected) ? decision.rejected : [];
+  function toDecisionReason(decision, policyKeyPrefix = "") {
+    const rejectedRaw = Array.isArray(decision && decision.rejected) ? decision.rejected : [];
+    const normalizedPrefix = normalizePolicyPrefix(policyKeyPrefix);
+    const rejected = normalizedPrefix
+      ? rejectedRaw.filter((item) => matchPolicyPrefix(item && item.policyId, normalizedPrefix))
+      : rejectedRaw;
     const first = rejected[0] || {};
     return String(first.reason || "").trim();
   }
@@ -183,7 +213,13 @@ function createMerchantService(db, options = {}) {
     };
   }
 
-  function buildDecisionSummary({ merchantId, event, mode = "EXECUTE", limit = 80 }) {
+  function buildDecisionSummary({
+    merchantId,
+    event,
+    mode = "EXECUTE",
+    policyKeyPrefix = "",
+    limit = 80
+  }) {
     if (!policyOsService || typeof policyOsService.listDecisions !== "function") {
       return createEmptyDecisionSummary();
     }
@@ -192,6 +228,7 @@ function createMerchantService(db, options = {}) {
       merchantId,
       event,
       mode: normalizedMode || "",
+      policyKeyPrefix,
       limit: Math.max(1, Math.min(200, Math.floor(Number(limit) || 80))),
     });
     const nowMs = Date.now();
@@ -203,12 +240,12 @@ function createMerchantService(db, options = {}) {
     let blockedCount24h = 0;
     const reasonCounter = {};
     for (const decision of in24h) {
-      const outcome = toDecisionOutcome(decision);
+      const outcome = toDecisionOutcome(decision, policyKeyPrefix);
       if (outcome === "HIT") {
         hitCount24h += 1;
       } else if (outcome === "BLOCKED") {
         blockedCount24h += 1;
-        const reason = toDecisionReason(decision) || "blocked:unknown";
+        const reason = toDecisionReason(decision, policyKeyPrefix) || "blocked:unknown";
         reasonCounter[reason] = Number(reasonCounter[reason] || 0) + 1;
       }
     }
@@ -226,8 +263,8 @@ function createMerchantService(db, options = {}) {
       latestResults: in24h.slice(0, 5).map((item) => ({
         decisionId: item.decision_id,
         event: item.event,
-        outcome: toDecisionOutcome(item),
-        reasonCode: toDecisionReason(item),
+        outcome: toDecisionOutcome(item, policyKeyPrefix),
+        reasonCode: toDecisionReason(item, policyKeyPrefix),
         createdAt: item.created_at,
       })),
     };
@@ -1518,6 +1555,12 @@ function createMerchantService(db, options = {}) {
       acquisitionWelcomeSummary: buildDecisionSummary({
         merchantId,
         event: "USER_ENTER_SHOP",
+        policyKeyPrefix: "ACQ_WELCOME_FIRST_BIND_V1"
+      }),
+      activationRecoverySummary: buildDecisionSummary({
+        merchantId,
+        event: "USER_ENTER_SHOP",
+        policyKeyPrefix: "ACT_CHECKIN_STREAK_RECOVERY_V1"
       }),
       gameMarketingSummary:
         gameMarketingService && typeof gameMarketingService.buildGameMarketingSummary === "function"

@@ -63,8 +63,8 @@
 | S050 | P1 | 六策略族执行治理基座（审批/TTL/Kill Switch/风险红线）可回归 | S040 done | done |
 | S060 | P1 | 六策略族账务审计基座（payment->ledger->invoice->audit）可回归 | S050 done | done |
 | S110 | P1 | Acquisition 样例策略闭环（`ACQ_WELCOME_FIRST_BIND_V1`）可回归 | S060 done | done |
-| S120 | P1 | Activation 样例策略闭环（`ACT_CHECKIN_STREAK_RECOVERY_V1`）可回归 | S110 done | doing |
-| S130 | P1 | Revenue 样例策略闭环（`REV_ADDON_UPSELL_SLOW_ITEM_V1`）可回归 | S120 done | todo |
+| S120 | P1 | Activation 样例策略闭环（`ACT_CHECKIN_STREAK_RECOVERY_V1`）可回归 | S110 done | done |
+| S130 | P1 | Revenue 样例策略闭环（`REV_ADDON_UPSELL_SLOW_ITEM_V1`）可回归 | S120 done | doing |
 | S140 | P1 | Retention 样例策略闭环（`RET_DORMANT_WINBACK_14D_V1`）可回归 | S130 done | todo |
 | S150 | P1 | Social Viral 样例策略闭环（`SOC_REFER_DUAL_REWARD_FIRST_PAY_V1`）可回归 | S140 done | todo |
 | S160 | P1 | Mini-Game Ops 样例策略闭环（`GMO_NEW_GAME_UNLOCK_DROP_V1`）可回归 | S150 done | todo |
@@ -435,9 +435,9 @@
 
 | task_id | lane | task | status | output |
 | --- | --- | --- | --- | --- |
-| S120-SRV-01 | server | 完成 `ACT_CHECKIN_STREAK_RECOVERY_V1` 连续签到触发、频控与执行链路 | todo | 样例闭环可回归 |
-| S120-MER-01 | merchant | 展示激活策略命中率、拦截率与原因 | todo | 商户可解释视图 |
-| S120-CUS-01 | customer | 展示签到激活反馈、奖励到账与失败原因 | todo | 顾客反馈闭环 |
+| S120-SRV-01 | server | 完成 `ACT_CHECKIN_STREAK_RECOVERY_V1` 连续签到触发、频控与执行链路 | done | 样例闭环可回归 |
+| S120-MER-01 | merchant | 展示激活策略命中率、拦截率与原因 | done | 商户可解释视图 |
+| S120-CUS-01 | customer | 展示签到激活反馈、奖励到账与失败原因 | done | 顾客反馈闭环 |
 
 - Deliverables：
 1. 连签激活触发与频控证据。
@@ -450,7 +450,7 @@
 3. 支付主链路不受影响。
 
 - Acceptance Commands：
-1. `cd MealQuestServer && npm run test:step:s110`
+1. `cd MealQuestServer && npm run test:step:s120`
 2. `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.constraints.test.ts`
 3. `cd MealQuestMerchant && npm run lint && npm run typecheck`
 4. `cd meal-quest-customer && npm run test:regression:ui`
@@ -461,6 +461,13 @@
 3. 顾客端反馈与商户端统计不一致。
 
 - Triage Key：`RB-ACT-120`
+
+- Decision Notes（已确认）：
+1. `ACT_CHECKIN_STREAK_RECOVERY_V1` 默认口径冻结为：`inactiveDays >= 7`、`checkinStreakDays >= 3`、7 天内最多命中 1 次。
+2. S120 触发复用 `USER_ENTER_SHOP` 统一执行入口，不新增按策略族分叉的独立事件链路。
+3. 连签判定基于入店执行决策日志，按自然日去重并连续计数。
+4. 任一策略参数不完整（含奖励参数缺失）时必须中止，禁止进入后续发布与执行流程。
+5. Agent 仅负责基于全局价值最优生成参数提案，发布执行仍需老板确认（无确认不执行）。
 
 ### S130 - Revenue 样例策略闭环（`REV_ADDON_UPSELL_SLOW_ITEM_V1`）
 
@@ -956,7 +963,7 @@
 ## 04. 证据账本（按 Step 回填）
 
 - Reindex Note（2026-03-05）：主路线已按六策略族重排并新增 `S050/S060`。旧路线下的 `S110` 完成证据保留在 `docs/qa/s110-acquisition-welcome-closure.md` 作为历史记录，不作为新路线当前指针状态。
-- Test Layering Note（2026-03-05）：默认 `npm test` 继续绑定 `test:step:s050` 作为治理基线；`S110` 已恢复独立 step suite（`test:step:s110`）用于当前阶段回归门。
+- Test Layering Note（2026-03-05）：默认 `npm test` 继续绑定 `test:step:s050` 作为治理基线；`S110` 与 `S120` 均提供独立 step suite（`test:step:s110` / `test:step:s120`）用于阶段回归门。
 
 | StepID | Test Ref | Runtime Ref | Review Ref | Result | Verified By | Verified At |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -967,7 +974,7 @@
 | S050 | `cd MealQuestServer && npm run test:step:s050`; `cd MealQuestMerchant && npm run lint && npm run typecheck`; `cd meal-quest-customer && npm run test:regression:ui`; `npm run check:encoding` | `docs/qa/s050-governance-baseline-closure.md` | `MealQuestServer/src/policyos/policyRegistry.ts`; `MealQuestServer/src/policyos/approvalTokenService.ts`; `MealQuestServer/src/policyos/plugins/defaultPlugins.ts`; `MealQuestServer/test/policyOs.http.integration.test.ts`; `MealQuestServer/package.json` | pass | AI/Agent | 2026-03-05 |
 | S060 | `cd MealQuestServer && npm run test:step:s060`（非沙箱通过，12/12）；`cd MealQuestMerchant && npm run lint && npm run typecheck`；`cd meal-quest-customer && npm test -- --runInBand test/services/api-data-service-customer-center.test.ts test/pages/account.test.tsx` | `docs/qa/s060-ledger-audit-baseline-closure.md` | `MealQuestServer/src/policyos/policyRegistry.ts`; `MealQuestServer/src/policyos/policyOsService.ts`; `MealQuestServer/src/http/routes/paymentRoutes.ts`; `MealQuestServer/src/services/merchantService.ts`; `MealQuestServer/test/policyOs.constraints.test.ts`; `MealQuestMerchant/src/services/apiClient.ts`; `MealQuestMerchant/src/context/MerchantContext.tsx`; `MealQuestMerchant/src/domain/merchantEngine.ts`; `MealQuestMerchant/src/screens/DashboardScreen.tsx`; `meal-quest-customer/src/services/customerApp/mappers.ts`; `meal-quest-customer/test/services/api-data-service-customer-center.test.ts` | pass | AI/Agent | 2026-03-05 |
 | S110 | `cd MealQuestServer && npm run test:step:s110`（非沙箱通过，19/19）；`cd MealQuestMerchant && npm run lint && npm run typecheck`；`cd meal-quest-customer && npm run test:regression:ui` | `docs/qa/s110-acquisition-first-bind-closure.md` | `MealQuestServer/src/policyos/templates/strategy-templates.v1.json`; `MealQuestServer/src/services/merchantService.ts`; `MealQuestServer/src/http/routes/stateSnapshot.ts`; `MealQuestServer/test/policyOs.s110.acquisition.test.ts`; `MealQuestServer/test/policyOs.s110.visibility.http.test.ts`; `MealQuestServer/package.json`; `meal-quest-customer/test/pages/index.test.tsx`; `meal-quest-customer/package.json` | pass | AI/Agent | 2026-03-05 |
-| S120 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
+| S120 | `cd MealQuestServer && npm run test:step:s120`（非沙箱通过，27/27）；`cd MealQuestMerchant && npm run lint && npm run typecheck`；`cd meal-quest-customer && npm run test:regression:ui` | `docs/qa/s120-activation-streak-closure.md` | `MealQuestServer/src/policyos/templates/strategy-templates.v1.json`; `MealQuestServer/src/policyos/policyRegistry.ts`; `MealQuestServer/src/http/routes/preAuthRoutes.ts`; `MealQuestServer/src/http/routes/stateSnapshot.ts`; `MealQuestServer/src/services/merchantService.ts`; `MealQuestServer/test/policyOs.s120.activation.test.ts`; `MealQuestServer/test/policyOs.s120.visibility.http.test.ts`; `MealQuestServer/package.json`; `MealQuestMerchant/src/services/apiClient.ts`; `MealQuestMerchant/src/domain/merchantEngine.ts`; `MealQuestMerchant/src/context/MerchantContext.tsx`; `MealQuestMerchant/src/screens/DashboardScreen.tsx`; `meal-quest-customer/test/pages/index.test.tsx`; `docs/specs/mealquest-spec.md`; `docs/roadmap.md` | pass | AI/Agent | 2026-03-05 |
 | S130 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S140 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S150 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
@@ -998,7 +1005,7 @@
 | RB-GOV-050 | 治理硬门（审批/TTL/Kill Switch/红线）异常 | `cd MealQuestServer && npm run test:step:s050` | server + merchant |
 | RB-LEDGER-060 | 账务审计链路（payment->ledger->invoice->audit）不一致 | `cd MealQuestServer && npm run test:step:s060` | server + customer |
 | RB-ACQ-110 | Acquisition 样例策略误发放/误拦截 | `cd MealQuestServer && npm run test:step:s110` | server + merchant + customer |
-| RB-ACT-120 | Activation 样例策略触发/频控异常 | `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.constraints.test.ts` | server + customer |
+| RB-ACT-120 | Activation 样例策略触发/频控异常 | `cd MealQuestServer && npm run test:step:s120` | server + customer |
 | RB-REV-130 | Revenue 样例策略收益/库存约束异常 | `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.ledger.test.ts` | server + merchant |
 | RB-RET-140 | Retention 样例策略召回异常 | `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.constraints.test.ts` | server + customer |
 | RB-SOC-150 | Social Viral 样例策略归因或防作弊异常 | `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.constraints.test.ts` | server + merchant + customer |
@@ -1091,7 +1098,8 @@
 1. 2026-03-04：Init version（roadmap baseline established）。
 2. 2026-03-05：完成六策略族首版商用重排，新增治理/账务基座 Step（S050/S060）并固化每族一策验证路线（S110-S160）。
 3. 2026-03-05：完成 Server 测试分层，默认 `npm test` 与当前指针 `S050` 对齐，`S110` 用例独立为 step suite。
-4. 2026-03-05：按当前指针策略移除 `S110` 独立测试套件入口，待 `S110` 阶段恢复专用自动化。
+4. 2026-03-05：`S110` 独立测试套件曾临时移除，后于同日恢复为 `test:step:s110` 作为阶段回归门。
 5. 2026-03-05：完成 `S050` 收口与证据回填，主路线指针推进至 `S060 doing`。
 6. 2026-03-05：完成 `S060` 账务审计基座收口与证据回填，主路线指针推进至 `S110 doing`。
 7. 2026-03-05：完成 `S110` Acquisition 样例闭环（`ACQ_WELCOME_FIRST_BIND_V1`）并恢复 `test:step:s110`，主路线指针推进至 `S120 doing`。
+8. 2026-03-05：完成 `S120` Activation 样例闭环（`ACT_CHECKIN_STREAK_RECOVERY_V1`）并新增 `test:step:s120`，主路线指针推进至 `S130 doing`。

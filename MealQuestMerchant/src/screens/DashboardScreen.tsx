@@ -13,6 +13,8 @@ export default function DashboardScreen() {
   const { merchantState } = useMerchant();
   const welcomeTopReason = merchantState.acquisitionWelcomeSummary.topBlockedReasons[0];
   const welcomeLatest = merchantState.acquisitionWelcomeSummary.latestResults[0];
+  const activationTopReason = merchantState.activationRecoverySummary.topBlockedReasons[0];
+  const activationLatest = merchantState.activationRecoverySummary.latestResults[0];
   const latestTrace = merchantState.traceSummary.latestTrace[0];
 
   return (
@@ -46,6 +48,24 @@ export default function DashboardScreen() {
         <Text style={styles.hintText}>
           {welcomeLatest && welcomeLatest.outcome
             ? `最近结果：${welcomeLatest.outcome}${welcomeLatest.reasonCode ? ` · ${welcomeLatest.reasonCode}` : ''}`
+            : '最近结果：暂无'}
+        </Text>
+      </SurfaceCard>
+
+      <SurfaceCard>
+        <Text style={styles.sectionTitle}>Activation 连签激活摘要（24h）</Text>
+        <View style={styles.grid}>
+          <StatTile label="命中" value={merchantState.activationRecoverySummary.hitCount24h} />
+          <StatTile label="拦截" value={merchantState.activationRecoverySummary.blockedCount24h} />
+        </View>
+        <Text style={styles.hintText}>
+          {activationTopReason && activationTopReason.reason
+            ? `Top 拦截原因：${activationTopReason.reason}（${activationTopReason.count}）`
+            : '当前无拦截记录。'}
+        </Text>
+        <Text style={styles.hintText}>
+          {activationLatest && activationLatest.outcome
+            ? `最近结果：${activationLatest.outcome}${activationLatest.reasonCode ? ` · ${activationLatest.reasonCode}` : ''}`
             : '最近结果：暂无'}
         </Text>
       </SurfaceCard>

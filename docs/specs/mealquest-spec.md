@@ -327,11 +327,18 @@
 ### 11.3 每族一策先行验证清单（首版必须）
 
 - `ACQ_WELCOME_FIRST_BIND_V1`（Acquisition）：新客首绑欢迎权益（实现映射：`acquisition_welcome_gift` 模板默认分支）。
-- `ACT_CHECKIN_STREAK_RECOVERY_V1`（Activation）：低活跃顾客回店连签激活。
+- `ACT_CHECKIN_STREAK_RECOVERY_V1`（Activation）：低活跃顾客回店连签激活（实现映射：`activation_checkin_streak_recovery` 模板默认分支）。
 - `REV_ADDON_UPSELL_SLOW_ITEM_V1`（Revenue）：慢销品加购激励与客单提升。
 - `RET_DORMANT_WINBACK_14D_V1`（Retention）：14 天沉默顾客召回。
 - `SOC_REFER_DUAL_REWARD_FIRST_PAY_V1`（Social Viral）：有效邀请首单双向奖励。
 - `GMO_NEW_GAME_UNLOCK_DROP_V1`（Mini-Game Ops）：新游解锁与收集物掉落。
+
+Activation 样例默认口径（首版冻结）：
+- 触发：复用 `USER_ENTER_SHOP` 事件执行入口，不新增独立策略事件链路。
+- 判定窗口：低活跃阈值 `inactiveDays >= 7`，连签阈值 `checkinStreakDays >= 3`（按自然日去重并连续计数）。
+- 激励与频控：奖励参数由老板确认后生效，默认频控窗口为 7 天最多命中 1 次。
+- 治理硬门：任一策略参数不完整（含奖励参数缺失）时，不得进入发布与执行流程。
+- Agent 边界：Agent 可基于全局价值最优给出参数提案，但必须经老板确认后才可执行。
 
 ### 11.4 先行验证硬约束
 
