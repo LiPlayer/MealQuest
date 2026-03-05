@@ -8,6 +8,7 @@ import {
   loginMerchantByPhone,
   requestMerchantPhoneCode,
 } from '../services/apiClient';
+import type { DecisionSummaryResponse } from '../services/apiClient';
 import {
   clearMerchantAuthSession,
   loadMerchantAuthSession,
@@ -160,6 +161,33 @@ function normalizeCustomerEntry(raw: unknown): MerchantState['customerEntry'] {
   };
 }
 
+function normalizeDecisionSummary(raw: DecisionSummaryResponse | unknown): MerchantState['acquisitionWelcomeSummary'] {
+  const safe = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const rawBlockedReasons = Array.isArray(safe.topBlockedReasons) ? safe.topBlockedReasons : [];
+  const rawLatestResults = Array.isArray(safe.latestResults) ? safe.latestResults : [];
+  return {
+    hitCount24h: Number(safe.hitCount24h) || 0,
+    blockedCount24h: Number(safe.blockedCount24h) || 0,
+    topBlockedReasons: rawBlockedReasons.map((item) => {
+      const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+      return {
+        reason: typeof row.reason === 'string' ? row.reason : '',
+        count: Number(row.count) || 0,
+      };
+    }),
+    latestResults: rawLatestResults.map((item) => {
+      const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+      return {
+        decisionId: typeof row.decisionId === 'string' ? row.decisionId : '',
+        event: typeof row.event === 'string' ? row.event : '',
+        outcome: typeof row.outcome === 'string' ? row.outcome : '',
+        reasonCode: typeof row.reasonCode === 'string' ? row.reasonCode : '',
+        createdAt: typeof row.createdAt === 'string' ? row.createdAt : '',
+      };
+    }),
+  };
+}
+
 async function runAgentTask(params: {
   merchantId: string;
   token: string;
@@ -307,6 +335,8 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
           budgetCap: Number(dashboard.budgetCap) || 0,
           budgetUsed: Number(dashboard.budgetUsed) || 0,
           customerEntry: normalizeCustomerEntry(dashboard.customerEntry),
+          acquisitionWelcomeSummary: normalizeDecisionSummary(dashboard.acquisitionWelcomeSummary),
+          gameMarketingSummary: normalizeDecisionSummary(dashboard.gameMarketingSummary),
         }));
       } catch (error) {
         console.warn('[MerchantContext] refresh dashboard failed', error);

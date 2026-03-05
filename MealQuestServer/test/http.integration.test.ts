@@ -325,6 +325,56 @@ async function mockLogin(_baseUrl, role, options = {}) {
   );
 }
 
+async function publishPolicyDraft({ baseUrl, merchantId, ownerToken, spec }) {
+  const createDraft = await postJson(
+    baseUrl,
+    "/api/policyos/drafts",
+    {
+      merchantId,
+      spec,
+    },
+    { Authorization: `Bearer ${ownerToken}` }
+  );
+  assert.equal(createDraft.status, 200);
+  assert.ok(createDraft.data.draft_id);
+
+  const draftId = String(createDraft.data.draft_id);
+  const submit = await postJson(
+    baseUrl,
+    `/api/policyos/drafts/${encodeURIComponent(draftId)}/submit`,
+    { merchantId },
+    { Authorization: `Bearer ${ownerToken}` }
+  );
+  assert.equal(submit.status, 200);
+  assert.equal(submit.data.status, "SUBMITTED");
+
+  const approve = await postJson(
+    baseUrl,
+    `/api/policyos/drafts/${encodeURIComponent(draftId)}/approve`,
+    { merchantId },
+    { Authorization: `Bearer ${ownerToken}` }
+  );
+  assert.equal(approve.status, 200);
+  assert.ok(approve.data.approvalId);
+
+  const publish = await postJson(
+    baseUrl,
+    `/api/policyos/drafts/${encodeURIComponent(draftId)}/publish`,
+    {
+      merchantId,
+      approvalId: approve.data.approvalId,
+    },
+    { Authorization: `Bearer ${ownerToken}` }
+  );
+  assert.equal(publish.status, 200);
+  assert.equal(publish.data.policy.status, "PUBLISHED");
+  return {
+    draftId,
+    approvalId: approve.data.approvalId,
+    policyId: publish.data.policy.policy_id,
+  };
+}
+
 function createFakeSocialAuthService() {
   return {
     verifyWeChatMiniAppCode: async (code) => ({
@@ -840,6 +890,155 @@ test("customer alipay login merges to same account when phone is the same", asyn
     assert.equal(alipayLogin.data.profile.phone, "+8613900000001");
     assert.equal(alipayLogin.data.profile.userId, wechatLogin.data.profile.userId);
     assert.equal(alipayLogin.data.isNewUser, false);
+  } finally {
+    await app.stop();
+  }
+});
+
+test("customer login auto executes welcome decision and surfaces consistent merchant/customer view", async () => {
+  const app = createAppServer({
+    persist: false,
+    socialAuthService: createFakeSocialAuthService()
+  });
+  const port = await app.start(0);
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const ownerToken = await mockLogin(baseUrl, "OWNER", { merchantId: "m_store_001" });
+    const { spec } = createPolicySpecFromTemplate({
+      merchantId: "m_store_001",
+      templateId: "acquisition_welcome_gift",
+      branchId: "DEFAULT",
+      policyPatch: {
+        policy_key: "acquisition_welcome_auto_login_hit",
+      },
+    });
+    await publishPolicyDraft({
+      baseUrl,
+      merchantId: "m_store_001",
+      ownerToken,
+      spec,
+    });
+
+    const customerLogin = await postJson(baseUrl, "/api/auth/customer/wechat-login", {
+      merchantId: "m_store_001",
+      code: "mini_code_welcome_hit",
+    });
+    assert.equal(customerLogin.status, 200);
+    assert.equal(customerLogin.data.isNewUser, true);
+    assert.equal(customerLogin.data.welcomeDecision.event, "USER_ENTER_SHOP");
+    assert.equal(customerLogin.data.welcomeDecision.outcome, "HIT");
+    assert.ok(String(customerLogin.data.welcomeDecision.decisionId || "").length > 0);
+    assert.ok(String(customerLogin.data.welcomeDecision.traceId || "").length > 0);
+
+    const dashboard = await getJson(
+      baseUrl,
+      "/api/merchant/dashboard?merchantId=m_store_001",
+      { Authorization: `Bearer ${ownerToken}` }
+    );
+    assert.equal(dashboard.status, 200);
+    assert.equal(dashboard.data.acquisitionWelcomeSummary.hitCount24h, 1);
+    assert.equal(dashboard.data.acquisitionWelcomeSummary.blockedCount24h, 0);
+    assert.equal(dashboard.data.acquisitionWelcomeSummary.latestResults[0].event, "USER_ENTER_SHOP");
+    assert.equal(dashboard.data.acquisitionWelcomeSummary.latestResults[0].outcome, "HIT");
+
+    const state = await getJson(
+      baseUrl,
+      `/api/state?merchantId=m_store_001&userId=${encodeURIComponent(customerLogin.data.profile.userId)}`,
+      { Authorization: `Bearer ${customerLogin.data.token}` }
+    );
+    assert.equal(state.status, 200);
+    assert.equal(Array.isArray(state.data.activities), true);
+    assert.equal(state.data.activities[0].tag, "WELCOME");
+    assert.ok(String(state.data.activities[0].title).includes("已发放"));
+  } finally {
+    await app.stop();
+  }
+});
+
+test("customer login blocked welcome decision is visible with reason in merchant/customer views", async () => {
+  const app = createAppServer({
+    persist: false,
+    socialAuthService: createFakeSocialAuthService()
+  });
+  const port = await app.start(0);
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const ownerToken = await mockLogin(baseUrl, "OWNER", { merchantId: "m_store_001" });
+    const { spec } = createPolicySpecFromTemplate({
+      merchantId: "m_store_001",
+      templateId: "acquisition_welcome_gift",
+      branchId: "DEFAULT",
+      policyPatch: {
+        policy_key: "acquisition_welcome_auto_login_blocked",
+        constraints: [
+          {
+            plugin: "kill_switch_v1",
+            params: {}
+          },
+          {
+            plugin: "budget_guard_v1",
+            params: {
+              cap: 120,
+              cost_per_hit: 6
+            }
+          },
+          {
+            plugin: "frequency_cap_v1",
+            params: {
+              daily: 1,
+              window_sec: 86400
+            }
+          },
+          {
+            plugin: "anti_fraud_hook_v1",
+            params: {
+              max_risk_score: -1
+            }
+          }
+        ],
+      },
+    });
+    await publishPolicyDraft({
+      baseUrl,
+      merchantId: "m_store_001",
+      ownerToken,
+      spec,
+    });
+
+    const customerLogin = await postJson(baseUrl, "/api/auth/customer/wechat-login", {
+      merchantId: "m_store_001",
+      code: "mini_code_welcome_blocked",
+    });
+    assert.equal(customerLogin.status, 200);
+    assert.equal(customerLogin.data.welcomeDecision.event, "USER_ENTER_SHOP");
+    assert.equal(customerLogin.data.welcomeDecision.outcome, "BLOCKED");
+    assert.ok(String(customerLogin.data.welcomeDecision.reasonCode || "").length > 0);
+
+    const dashboard = await getJson(
+      baseUrl,
+      "/api/merchant/dashboard?merchantId=m_store_001",
+      { Authorization: `Bearer ${ownerToken}` }
+    );
+    assert.equal(dashboard.status, 200);
+    assert.equal(dashboard.data.acquisitionWelcomeSummary.hitCount24h, 0);
+    assert.equal(dashboard.data.acquisitionWelcomeSummary.blockedCount24h, 1);
+    assert.equal(dashboard.data.acquisitionWelcomeSummary.latestResults[0].event, "USER_ENTER_SHOP");
+    assert.equal(dashboard.data.acquisitionWelcomeSummary.latestResults[0].outcome, "BLOCKED");
+    assert.ok(
+      String(dashboard.data.acquisitionWelcomeSummary.latestResults[0].reasonCode || "").length > 0
+    );
+
+    const state = await getJson(
+      baseUrl,
+      `/api/state?merchantId=m_store_001&userId=${encodeURIComponent(customerLogin.data.profile.userId)}`,
+      { Authorization: `Bearer ${customerLogin.data.token}` }
+    );
+    assert.equal(state.status, 200);
+    assert.equal(Array.isArray(state.data.activities), true);
+    assert.equal(state.data.activities[0].tag, "WELCOME");
+    assert.ok(String(state.data.activities[0].title).includes("未发放"));
   } finally {
     await app.stop();
   }

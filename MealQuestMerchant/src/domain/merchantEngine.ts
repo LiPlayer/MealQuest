@@ -29,6 +29,36 @@ export interface MerchantState {
     checkinsToday: number;
     latestCheckinAt: string | null;
   };
+  acquisitionWelcomeSummary: {
+    hitCount24h: number;
+    blockedCount24h: number;
+    topBlockedReasons: {
+      reason: string;
+      count: number;
+    }[];
+    latestResults: {
+      decisionId: string;
+      event: string;
+      outcome: string;
+      reasonCode: string;
+      createdAt: string;
+    }[];
+  };
+  gameMarketingSummary: {
+    hitCount24h: number;
+    blockedCount24h: number;
+    topBlockedReasons: {
+      reason: string;
+      count: number;
+    }[];
+    latestResults: {
+      decisionId: string;
+      event: string;
+      outcome: string;
+      reasonCode: string;
+      createdAt: string;
+    }[];
+  };
 }
 
 export interface CashierInput {
@@ -62,6 +92,18 @@ export const createInitialMerchantState = (): MerchantState => ({
     newCustomersToday: 0,
     checkinsToday: 0,
     latestCheckinAt: null,
+  },
+  acquisitionWelcomeSummary: {
+    hitCount24h: 0,
+    blockedCount24h: 0,
+    topBlockedReasons: [],
+    latestResults: [],
+  },
+  gameMarketingSummary: {
+    hitCount24h: 0,
+    blockedCount24h: 0,
+    topBlockedReasons: [],
+    latestResults: [],
   },
 });
 

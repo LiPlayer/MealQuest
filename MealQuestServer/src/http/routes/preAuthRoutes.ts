@@ -86,6 +86,68 @@ function createPreAuthRoutesHandler({
     throw new Error("failed to generate merchant id");
   }
 
+  function toDecisionOutcome(decision) {
+    const executed = Array.isArray(decision && decision.executed) ? decision.executed : [];
+    const rejected = Array.isArray(decision && decision.rejected) ? decision.rejected : [];
+    if (executed.length > 0) {
+      return "HIT";
+    }
+    if (rejected.length > 0) {
+      return "BLOCKED";
+    }
+    return "NO_POLICY";
+  }
+
+  function toDecisionReason(decision) {
+    const rejected = Array.isArray(decision && decision.rejected) ? decision.rejected : [];
+    const first = rejected[0] || {};
+    return String(first.reason || "").trim();
+  }
+
+  async function executeWelcomeDecision({
+    merchantId,
+    userId,
+    isNewUser,
+    sourceCode = "",
+    source = "",
+  }) {
+    try {
+      const { policyOsService } = getServicesForMerchant(merchantId);
+      if (!policyOsService || typeof policyOsService.executeDecision !== "function") {
+        return null;
+      }
+      const decision = await policyOsService.executeDecision({
+        merchantId,
+        userId,
+        event: "USER_ENTER_SHOP",
+        eventId: `user_enter_shop:${merchantId}:${userId}:${String(sourceCode || "no_code")}`,
+        context: {
+          isNewUser: Boolean(isNewUser),
+          hasReferral: false,
+          riskScore: 0,
+          source: String(source || "customer_login").trim() || "customer_login",
+        },
+      });
+      return {
+        event: "USER_ENTER_SHOP",
+        decisionId: decision.decision_id || "",
+        traceId: decision.trace_id || "",
+        outcome: toDecisionOutcome(decision),
+        reasonCode: toDecisionReason(decision),
+        grants: Array.isArray(decision.grants) ? decision.grants : [],
+      };
+    } catch (error) {
+      return {
+        event: "USER_ENTER_SHOP",
+        decisionId: "",
+        traceId: "",
+        outcome: "ERROR",
+        reasonCode: error instanceof Error ? error.message : "welcome_decision_failed",
+        grants: [],
+      };
+    }
+  }
+
   return async function handlePreAuthRoutes({ method, url, req, res }) {
     if (method === "GET" && url.pathname === "/health") {
       sendJson(res, 200, { ok: true, now: new Date().toISOString() });
@@ -343,6 +405,13 @@ function createPreAuthRoutesHandler({
         },
         jwtSecret
       );
+      const welcomeDecision = await executeWelcomeDecision({
+        merchantId,
+        userId: binding.userId,
+        isNewUser: binding.created,
+        sourceCode: body.code,
+        source: "wechat_login",
+      });
       sendJson(res, 200, {
         token,
         profile: {
@@ -352,6 +421,7 @@ function createPreAuthRoutesHandler({
           phone: binding.phone,
         },
         isNewUser: binding.created,
+        welcomeDecision,
       });
       return true;
     }
@@ -398,6 +468,13 @@ function createPreAuthRoutesHandler({
         },
         jwtSecret
       );
+      const welcomeDecision = await executeWelcomeDecision({
+        merchantId,
+        userId: binding.userId,
+        isNewUser: binding.created,
+        sourceCode: body.code,
+        source: "alipay_login",
+      });
       sendJson(res, 200, {
         token,
         profile: {
@@ -407,6 +484,7 @@ function createPreAuthRoutesHandler({
           phone: binding.phone,
         },
         isNewUser: binding.created,
+        welcomeDecision,
       });
       return true;
     }

@@ -11,6 +11,8 @@ import { mqTheme } from '../theme/tokens';
 export default function DashboardScreen() {
   const router = useRouter();
   const { merchantState } = useMerchant();
+  const welcomeTopReason = merchantState.acquisitionWelcomeSummary.topBlockedReasons[0];
+  const welcomeLatest = merchantState.acquisitionWelcomeSummary.latestResults[0];
 
   return (
     <AppShell>
@@ -27,6 +29,24 @@ export default function DashboardScreen() {
           <StatTile label="今日新增" value={merchantState.customerEntry.newCustomersToday} />
           <StatTile label="今日入店" value={merchantState.customerEntry.checkinsToday} />
         </View>
+      </SurfaceCard>
+
+      <SurfaceCard>
+        <Text style={styles.sectionTitle}>Welcome 判定摘要（24h）</Text>
+        <View style={styles.grid}>
+          <StatTile label="命中" value={merchantState.acquisitionWelcomeSummary.hitCount24h} />
+          <StatTile label="拦截" value={merchantState.acquisitionWelcomeSummary.blockedCount24h} />
+        </View>
+        <Text style={styles.hintText}>
+          {welcomeTopReason && welcomeTopReason.reason
+            ? `Top 拦截原因：${welcomeTopReason.reason}（${welcomeTopReason.count}）`
+            : '当前无拦截记录。'}
+        </Text>
+        <Text style={styles.hintText}>
+          {welcomeLatest && welcomeLatest.outcome
+            ? `最近结果：${welcomeLatest.outcome}${welcomeLatest.reasonCode ? ` · ${welcomeLatest.reasonCode}` : ''}`
+            : '最近结果：暂无'}
+        </Text>
       </SurfaceCard>
 
       <SurfaceCard>
@@ -73,6 +93,10 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     gap: mqTheme.spacing.sm,
+  },
+  hintText: {
+    ...mqTheme.typography.body,
+    color: '#435571',
   },
   linkBtn: {
     flex: 1,

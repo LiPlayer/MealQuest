@@ -58,6 +58,24 @@ export type MerchantDashboardResponse = {
     checkinsToday?: number;
     latestCheckinAt?: string | null;
   };
+  acquisitionWelcomeSummary?: DecisionSummaryResponse;
+  gameMarketingSummary?: DecisionSummaryResponse;
+};
+
+export type DecisionSummaryResponse = {
+  hitCount24h?: number;
+  blockedCount24h?: number;
+  topBlockedReasons?: {
+    reason?: string;
+    count?: number;
+  }[];
+  latestResults?: {
+    decisionId?: string;
+    event?: string;
+    outcome?: string;
+    reasonCode?: string;
+    createdAt?: string;
+  }[];
 };
 
 const DEFAULT_BASE_URL = Platform.select({

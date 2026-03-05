@@ -60,8 +60,8 @@
 | S020 | P0 | 契约回归基线可重复执行且可定位 | S010 done | done |
 | S030 | P0 | 商户入口闭环（登录/开店/会话恢复）可回归 | S020 done | done |
 | S040 | P0 | 顾客入口闭环（扫码入店/资产首屏）可回归 | S030 done | done |
-| S110 | P1 | Acquisition（Welcome）触发与资格判定闭环可回归 | S040 done | doing |
-| S120 | P1 | Acquisition 执行治理闭环（审批/TTL/Kill Switch） | S110 done | todo |
+| S110 | P1 | Acquisition（Welcome）触发与资格判定闭环可回归 | S040 done | done |
+| S120 | P1 | Acquisition 执行治理闭环（审批/TTL/Kill Switch） | S110 done | doing |
 | S130 | P1 | Acquisition 发放核销账务一致性闭环 | S120 done | todo |
 | S140 | P1 | 游戏营销资产与游戏库基座可回归 | S130 done | todo |
 | S150 | P1 | 游戏营销精准投放与解锁编排可回归 | S140 done | todo |
@@ -274,9 +274,9 @@
 
 | task_id | lane | task | status | output |
 | --- | --- | --- | --- | --- |
-| S110-SRV-01 | server | 完成 Acquisition Welcome 判定链与风控门（频控/同人/风险评分） | todo | 判定闭环可回归 |
-| S110-MER-01 | merchant | 提供商户可读的命中/拦截结果与原因展示 | todo | 商户可见结果 |
-| S110-CUS-01 | customer | 打通顾客端 Welcome 命中反馈与状态可见性 | todo | 顾客可见结果 |
+| S110-SRV-01 | server | 完成 Acquisition Welcome 判定链与风控门（频控/同人/风险评分） | done | 判定闭环可回归 |
+| S110-MER-01 | merchant | 提供商户可读的命中/拦截结果与原因展示 | done | 商户可见结果 |
+| S110-CUS-01 | customer | 打通顾客端 Welcome 命中反馈与状态可见性 | done | 顾客可见结果 |
 
 - Deliverables：
 1. 四场景判定回归结果。
@@ -290,8 +290,8 @@
 
 - Acceptance Commands：
 1. `cd MealQuestServer && npm test`
-2. `cd MealQuestServer && node --test test/policyOs.constraints.test.ts`
-3. `cd MealQuestServer && node --test test/http.integration.test.ts`
+2. `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.constraints.test.ts`
+3. `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/http.integration.test.ts`
 4. `cd MealQuestMerchant && npm run lint && npm run typecheck`
 5. `cd meal-quest-customer && npm run test:regression:ui`
 
@@ -325,7 +325,7 @@
 
 - Acceptance Commands：
 1. `cd MealQuestServer && npm test`
-2. `cd MealQuestServer && node --test test/policyOs.http.integration.test.ts`
+2. `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.http.integration.test.ts`
 3. `cd MealQuestMerchant && npm run lint && npm run typecheck`
 4. `cd meal-quest-customer && npm run test:regression:ui`
 
@@ -359,7 +359,7 @@
 
 - Acceptance Commands：
 1. `cd MealQuestServer && npm test`
-2. `cd MealQuestServer && node --test test/policyOs.ledger.test.ts`
+2. `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.ledger.test.ts`
 3. `cd MealQuestMerchant && npm run lint && npm run typecheck`
 4. `cd meal-quest-customer && npm test -- --runInBand test/pages/account.test.tsx`
 
@@ -426,8 +426,8 @@
 
 - Acceptance Commands：
 1. `cd MealQuestServer && npm test`
-2. `cd MealQuestServer && node --test test/policyOs.constraints.test.ts`
-3. `cd MealQuestServer && node --test test/policyOs.http.integration.test.ts`
+2. `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.constraints.test.ts`
+3. `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.http.integration.test.ts`
 4. `cd MealQuestMerchant && npm run lint && npm run typecheck`
 5. `cd meal-quest-customer && npm run test:regression:ui`
 
@@ -461,8 +461,8 @@
 
 - Acceptance Commands：
 1. `cd MealQuestServer && npm test`
-2. `cd MealQuestServer && node --test test/http.integration.test.ts`
-3. `cd MealQuestServer && node --test test/policyOs.ledger.test.ts`
+2. `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/http.integration.test.ts`
+3. `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.ledger.test.ts`
 4. `cd MealQuestMerchant && npm run lint && npm run typecheck`
 5. `cd meal-quest-customer && npm run test:regression:ui`
 
@@ -604,8 +604,8 @@
 3. 至少一条“Agent 建议 -> 人工确认 -> 执行 -> 回放”链路可追溯。
 
 - Acceptance Commands：
-1. `cd MealQuestServer && node --test test/policyOs.http.integration.test.ts`
-2. `cd MealQuestServer && node --test test/agentOs.stream.integration.test.ts`
+1. `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.http.integration.test.ts`
+2. `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/agentOs.stream.integration.test.ts`
 3. `cd MealQuestMerchant && npm run lint && npm run typecheck`
 4. `cd meal-quest-customer && npm run typecheck && npm test`
 
@@ -639,7 +639,7 @@
 
 - Acceptance Commands：
 1. `cd MealQuestServer && npm test`
-2. `cd MealQuestServer && node --test test/policyOs.constraints.test.ts`
+2. `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.constraints.test.ts`
 3. `cd MealQuestMerchant && npm run lint && npm run typecheck`
 4. `cd meal-quest-customer && npm run typecheck && npm test`
 
@@ -835,7 +835,7 @@
 | S020 | `npm run test:contract:baseline`; `cd MealQuestServer && npm run test:contract:baseline`; `cd MealQuestMerchant && npm run test:contract:baseline`; `cd meal-quest-customer && npm run test:contract:baseline` | `docs/qa/s020-contract-regression-baseline.md` | `MealQuestMerchant/src/context/MerchantContext.tsx`（lint warning 修复） | pass | AI/Agent | 2026-03-04 |
 | S030 | `cd MealQuestServer && npm test`（非沙箱重跑通过，65/65）；`cd MealQuestMerchant && npm run lint && npm run typecheck`；`cd meal-quest-customer && npm run typecheck && npm test -- --runInBand` | `docs/qa/s030-merchant-entry-closure.md` | `MealQuestServer/test/http.integration.test.ts`；`MealQuestMerchant/src/context/MerchantContext.tsx`；`MealQuestMerchant/src/services/apiClient.ts`；`MealQuestMerchant/src/services/authSessionStorage.ts`；`meal-quest-customer/test/pages/startup.test.tsx` | pass | AI/Agent | 2026-03-04 |
 | S040 | historical baseline: `cd MealQuestServer && npm test`（66/66）；latest reopen checks: `cd MealQuestMerchant && npm run lint && npm run typecheck`（pass）；`cd meal-quest-customer && npm run typecheck`（pass）；`cd meal-quest-customer && npm test -- --runInBand test/pages/startup.test.tsx test/pages/account.test.tsx`（8/8）；`npm run check:encoding`（pass）；`cd meal-quest-customer && npm run test:e2e:core`（skipped on Ubuntu: windows-only policy）；merchant QR save/share manual smoke（pass） | `docs/qa/s040-customer-entry-closure.md` | `MealQuestServer/test/http.integration.test.ts`；`MealQuestMerchant/app/_layout.tsx`；`MealQuestMerchant/app/(tabs)/_layout.tsx`；`MealQuestMerchant/app/(tabs)/dashboard.tsx`；`MealQuestMerchant/app/(tabs)/approvals.tsx`；`MealQuestMerchant/app/(tabs)/replay.tsx`；`MealQuestMerchant/app/(tabs)/risk.tsx`；`MealQuestMerchant/src/screens/AgentScreen.tsx`；`MealQuestMerchant/src/screens/EntryQrScreen.tsx`；`MealQuestMerchant/src/services/entryQrService.ts`；`meal-quest-customer/src/pages/startup/index.tsx`；`meal-quest-customer/src/pages/index/index.tsx`；`meal-quest-customer/src/pages/account/index.tsx`；`meal-quest-customer/test/pages/startup.test.tsx`；`meal-quest-customer/test/pages/account.test.tsx`；`meal-quest-customer/test/e2e/customer-core-flow.spec.js`；`meal-quest-customer/test/e2e/utils/mini-program-session.js` | pass | AI/Agent | 2026-03-04 |
-| S110 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
+| S110 | `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/http.integration.test.ts`；`cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.constraints.test.ts`；`cd MealQuestMerchant && npm run lint && npm run typecheck`；`cd meal-quest-customer && npm run test:regression:ui` | `docs/qa/s110-acquisition-welcome-closure.md` | `MealQuestServer/src/http/routes/preAuthRoutes.ts`；`MealQuestServer/src/http/routes/stateSnapshot.ts`；`MealQuestServer/src/services/merchantService.ts`；`MealQuestServer/test/http.integration.test.ts`；`MealQuestMerchant/src/context/MerchantContext.tsx`；`MealQuestMerchant/src/screens/DashboardScreen.tsx`；`MealQuestMerchant/src/domain/merchantEngine.ts`；`MealQuestMerchant/src/services/apiClient.ts` | pass | AI/Agent | 2026-03-05 |
 | S120 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S130 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S140 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
@@ -864,17 +864,17 @@
 | RB-CUSTOMER-040 | 扫码入店/会话建立失败 | Windows: `cd meal-quest-customer && Remove-Item Env:WECHAT_WS_ENDPOINT -ErrorAction SilentlyContinue; Remove-Item Env:WECHAT_SERVICE_PORT -ErrorAction SilentlyContinue; $env:WECHAT_CLI_PATH='D:\Program Files (x86)\Tencent\微信web开发者工具\cli.bat'; npm run test:e2e:core`；非 Windows: `cd meal-quest-customer && npm run typecheck && npm test -- --runInBand test/pages/startup.test.tsx test/pages/account.test.tsx` | customer + server |
 | RB-MERCHANT-QR-040 | Merchant app cannot generate/save/share entry QR | `cd MealQuestMerchant && npm run lint && npm run typecheck` | merchant |
 | RB-MERCHANT-NAV-040 | Merchant app crashes when returning from entry QR page | `cd MealQuestMerchant && npm run lint && npm run typecheck` | merchant |
-| RB-ACQ-110 | Acquisition 子域误发放/误拦截 | `cd MealQuestServer && node --test test/policyOs.constraints.test.ts` | server |
-| RB-ACQ-120 | Acquisition 子域审批或 TTL 治理异常 | `cd MealQuestServer && node --test test/policyOs.http.integration.test.ts` | server + merchant |
-| RB-ACQ-130 | Acquisition 子域支付到账务链路不一致 | `cd MealQuestServer && node --test test/policyOs.ledger.test.ts` | server |
+| RB-ACQ-110 | Acquisition 子域误发放/误拦截 | `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.constraints.test.ts` | server |
+| RB-ACQ-120 | Acquisition 子域审批或 TTL 治理异常 | `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.http.integration.test.ts` | server + merchant |
+| RB-ACQ-130 | Acquisition 子域支付到账务链路不一致 | `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.ledger.test.ts` | server |
 | RB-GAMEASSET-140 | 游戏资产或游戏库查询异常 | `cd MealQuestServer && npm test` | server + customer |
-| RB-GAMEMKT-150 | 游戏营销命中/拦截异常或原因不一致 | `cd MealQuestServer && node --test test/policyOs.constraints.test.ts && node --test test/policyOs.http.integration.test.ts` | server + merchant + customer |
-| RB-GAMEDROP-160 | 支付后掉落路由与账务审计不一致 | `cd MealQuestServer && node --test test/http.integration.test.ts && node --test test/policyOs.ledger.test.ts` | server + customer |
+| RB-GAMEMKT-150 | 游戏营销命中/拦截异常或原因不一致 | `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.constraints.test.ts && node -r ts-node/register/transpile-only --test test/policyOs.http.integration.test.ts` | server + merchant + customer |
+| RB-GAMEDROP-160 | 支付后掉落路由与账务审计不一致 | `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/http.integration.test.ts && node -r ts-node/register/transpile-only --test test/policyOs.ledger.test.ts` | server + customer |
 | RB-COCKPIT-210 | 看板字段缺失/口径冲突 | `cd MealQuestMerchant && npm run typecheck` | merchant + server |
 | RB-AGENT-220 | Agent 查询越权或数据口径异常 | `cd MealQuestServer && npm test` | server + merchant |
 | RB-AGENT-230 | 提案卡状态错乱或同意/驳回异常 | `cd MealQuestMerchant && npm run typecheck` | merchant + server |
-| RB-APPROVAL-240 | 审批中心状态错乱 | `cd MealQuestServer && node --test test/policyOs.http.integration.test.ts` | merchant + server |
-| RB-AGENT-250 | 全局最优建议或红线执行门异常 | `cd MealQuestServer && node --test test/policyOs.constraints.test.ts` | server |
+| RB-APPROVAL-240 | 审批中心状态错乱 | `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.http.integration.test.ts` | merchant + server |
+| RB-AGENT-250 | 全局最优建议或红线执行门异常 | `cd MealQuestServer && node -r ts-node/register/transpile-only --test test/policyOs.constraints.test.ts` | server |
 | RB-AGENT-260 | 会话三态或关键提醒机制异常 | `cd MealQuestMerchant && npm run lint && npm run typecheck` | merchant + server |
 | RB-KPI-320 | KPI 口径漂移/发布门无法判定 | `cd MealQuestServer && npm test` | merchant + server + customer |
 | RB-CUSTOMER-310 | 顾客关键路径中断 | `cd meal-quest-customer && npm test` | customer |

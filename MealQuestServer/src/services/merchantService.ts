@@ -1,6 +1,7 @@
 function createMerchantService(db, options = {}) {
   const agentService = options.omniAgentService;
   const policyOsService = options.policyOsService;
+  const gameMarketingService = options.gameMarketingService;
   const wsHub = options.wsHub;
   const fromFreshState = Boolean(options.__fromFreshState);
   const FRESH_NOT_USED = Symbol("FRESH_NOT_USED");
@@ -47,6 +48,7 @@ function createMerchantService(db, options = {}) {
       const scopedService = createMerchantService(workingDb, {
         omniAgentService: agentService,
         policyOsService,
+        gameMarketingService,
         wsHub,
         __fromFreshState: true
       });
@@ -62,6 +64,7 @@ function createMerchantService(db, options = {}) {
       const scopedService = createMerchantService(workingDb, {
         omniAgentService: agentService,
         policyOsService,
+        gameMarketingService,
         wsHub,
         __fromFreshState: true
       });
@@ -76,6 +79,81 @@ function createMerchantService(db, options = {}) {
 
   function roundMoney(value) {
     return Math.round(toFiniteNumber(value) * 100) / 100;
+  }
+
+  function toDecisionOutcome(decision) {
+    const executed = Array.isArray(decision && decision.executed) ? decision.executed : [];
+    const rejected = Array.isArray(decision && decision.rejected) ? decision.rejected : [];
+    if (executed.length > 0) {
+      return "HIT";
+    }
+    if (rejected.length > 0) {
+      return "BLOCKED";
+    }
+    return "NO_POLICY";
+  }
+
+  function toDecisionReason(decision) {
+    const rejected = Array.isArray(decision && decision.rejected) ? decision.rejected : [];
+    const first = rejected[0] || {};
+    return String(first.reason || "").trim();
+  }
+
+  function createEmptyDecisionSummary() {
+    return {
+      hitCount24h: 0,
+      blockedCount24h: 0,
+      topBlockedReasons: [],
+      latestResults: [],
+    };
+  }
+
+  function buildDecisionSummary({ merchantId, event, limit = 80 }) {
+    if (!policyOsService || typeof policyOsService.listDecisions !== "function") {
+      return createEmptyDecisionSummary();
+    }
+    const decisions = policyOsService.listDecisions({
+      merchantId,
+      event,
+      limit: Math.max(1, Math.min(200, Math.floor(Number(limit) || 80))),
+    });
+    const nowMs = Date.now();
+    const in24h = decisions.filter((item) => {
+      const createdAtMs = Date.parse(String(item.created_at || ""));
+      return Number.isFinite(createdAtMs) && nowMs - createdAtMs <= 24 * 60 * 60 * 1000;
+    });
+    let hitCount24h = 0;
+    let blockedCount24h = 0;
+    const reasonCounter = {};
+    for (const decision of in24h) {
+      const outcome = toDecisionOutcome(decision);
+      if (outcome === "HIT") {
+        hitCount24h += 1;
+      } else if (outcome === "BLOCKED") {
+        blockedCount24h += 1;
+        const reason = toDecisionReason(decision) || "blocked:unknown";
+        reasonCounter[reason] = Number(reasonCounter[reason] || 0) + 1;
+      }
+    }
+    const topBlockedReasons = Object.entries(reasonCounter)
+      .sort((left, right) => Number(right[1]) - Number(left[1]))
+      .slice(0, 3)
+      .map(([reason, count]) => ({
+        reason,
+        count: Number(count) || 0,
+      }));
+    return {
+      hitCount24h,
+      blockedCount24h,
+      topBlockedReasons,
+      latestResults: in24h.slice(0, 5).map((item) => ({
+        decisionId: item.decision_id,
+        event: item.event,
+        outcome: toDecisionOutcome(item),
+        reasonCode: toDecisionReason(item),
+        createdAt: item.created_at,
+      })),
+    };
   }
 
   function laneToPriority(lane) {
@@ -1360,6 +1438,14 @@ function createMerchantService(db, options = {}) {
         checkinsToday,
         latestCheckinAt: latestCheckinMs > 0 ? new Date(latestCheckinMs).toISOString() : null,
       },
+      acquisitionWelcomeSummary: buildDecisionSummary({
+        merchantId,
+        event: "USER_ENTER_SHOP",
+      }),
+      gameMarketingSummary:
+        gameMarketingService && typeof gameMarketingService.buildGameMarketingSummary === "function"
+          ? gameMarketingService.buildGameMarketingSummary({ merchantId })
+          : createEmptyDecisionSummary(),
     };
   }
 
