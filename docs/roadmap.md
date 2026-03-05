@@ -60,10 +60,13 @@
 | S020 | P0 | 契约回归基线可重复执行且可定位 | S010 done | done |
 | S030 | P0 | 商户入口闭环（登录/开店/会话恢复）可回归 | S020 done | done |
 | S040 | P0 | 顾客入口闭环（扫码入店/资产首屏）可回归 | S030 done | done |
-| S110 | P1 | Acquisition（Welcome + 候餐小游戏）触发与资格判定闭环可回归 | S040 done | doing |
+| S110 | P1 | Acquisition（Welcome）触发与资格判定闭环可回归 | S040 done | doing |
 | S120 | P1 | Acquisition 执行治理闭环（审批/TTL/Kill Switch） | S110 done | todo |
 | S130 | P1 | Acquisition 发放核销账务一致性闭环 | S120 done | todo |
-| S210 | P2 | 商户经营看板最小可用 | S130 done | todo |
+| S140 | P1 | 游戏营销资产与游戏库基座可回归 | S130 done | todo |
+| S150 | P1 | 游戏营销精准投放与解锁编排可回归 | S140 done | todo |
+| S160 | P1 | 支付后掉落路由与账务审计一致性可回归 | S150 done | todo |
+| S210 | P2 | 商户经营看板最小可用 | S160 done | todo |
 | S220 | P2 | 老板端 Agent 查询协作基线（账务/发票）可回归 | S210 done | todo |
 | S230 | P2 | 策略提案卡闭环（同意/驳回）可回归 | S220 done | todo |
 | S240 | P2 | 商户审批中心与执行回放可用 | S230 done | todo |
@@ -86,12 +89,12 @@
 | 3.1-3.3 | 商业约束（预算/风险/毛利红线）与单元经济可控 | S120, S320, S250, S420 | covered |
 | 4.1 商户端 | 登录、开店、经营视图、老板端 Agent、紧急停机 | S030, S210, S220, S230, S240, S120 | covered |
 | 4.1 Merchant QR | Merchant can generate and distribute customer entry QR code (preview/save/share) | S040 | covered |
-| 4.1 顾客端 | 扫码入店、Acquisition 子域小游戏、资产展示、支付核销、账本发票查询 | S040, S110, S130, S310 | covered |
+| 4.1 顾客端 | 扫码入店、Welcome 触达、游戏营销触达/互动、资产展示、支付核销、账本发票查询 | S040, S110, S130, S140, S150, S160, S310 | covered |
 | 4.1 服务端 | 认证、支付、发票、隐私、策略治理、审计、多租户隔离 | S030, S040, S120, S130, S240, S420 | covered |
-| 4.1 策略范围 | 首版仅开放 Acquisition 子域（Welcome + 候餐小游戏）闭环商用 | S110, S120, S130 | covered |
-| 4.2 | 点餐/后厨/进销存、除 Acquisition 子域外其余策略族商用、顾客/店长 Agent 不做 | S320（发布门范围审计）, S410（上线清单） | guarded-out |
-| 5.1-5.5 | 三类资产系统与顾客/老板核心形态、体验红线 | S040, S110, S130, S210, S220, S310 | covered |
-| 6.1-6.5 | MVP 闭环与顾客/老板旅程对齐 | S030, S040, S110, S120, S130, S310 | covered |
+| 4.1 策略范围 | 首版开放双子线（Acquisition Welcome + Game Marketing）闭环商用 | S110, S120, S130, S140, S150, S160 | covered |
+| 4.2 | 点餐/后厨/进销存、除双子线外其余策略族商用、顾客/店长 Agent 不做 | S320（发布门范围审计）, S410（上线清单） | guarded-out |
+| 5.1-5.5 | 五类资产系统与顾客/老板核心形态、体验红线 | S040, S110, S130, S140, S150, S160, S210, S220, S310 | covered |
+| 6.1-6.5 | MVP 闭环与顾客/老板旅程对齐 | S030, S040, S110, S120, S130, S140, S150, S160, S310 | covered |
 | 7.1-7.8 | Agent 核心定位、查询协作、提案协作、治理耦合、提醒与降级 | S220, S230, S240, S250, S260 | covered |
 | 8.1-8.2 | KPI 指标与 Go/No-Go 发布门 | S320, S410 | covered |
 | 9.1-9.3 | 资金安全、隐私合规、发票与审计合规 | S120, S130, S410, S420 | covered |
@@ -264,25 +267,25 @@
 14. 2026-03-04 已确认商户端二维码保存/分享手工冒烟通过，`S040-MER-02` 收口为 `done`，S040 解锁至下一指针。
 15. Entry QR 入口统一收敛到 dashboard；Agent 页面不再保留重复入口，仅展示入店只读数据。
 
-### S110 - Acquisition（Welcome + 候餐小游戏）触发与资格判定闭环
+### S110 - Acquisition（Welcome）触发与资格判定闭环
 
-- Objective：打通 Acquisition 子域触发、预算、库存、反套利与小游戏奖励资格判定。
+- Objective：打通 Acquisition Welcome 子域触发、预算、库存、反套利与资格判定。
 - Dependency: S040 done.
 
 | task_id | lane | task | status | output |
 | --- | --- | --- | --- | --- |
-| S110-SRV-01 | server | 完成 Acquisition 判定链和小游戏奖励风控（频控/同人/异常分） | todo | 判定闭环可回归 |
+| S110-SRV-01 | server | 完成 Acquisition Welcome 判定链与风控门（频控/同人/风险评分） | todo | 判定闭环可回归 |
 | S110-MER-01 | merchant | 提供商户可读的命中/拦截结果与原因展示 | todo | 商户可见结果 |
-| S110-CUS-01 | customer | 打通顾客端命中反馈与奖励到账可见性 | todo | 顾客可见结果 |
+| S110-CUS-01 | customer | 打通顾客端 Welcome 命中反馈与状态可见性 | todo | 顾客可见结果 |
 
 - Deliverables：
 1. 四场景判定回归结果。
-2. 奖励风控拦截证据。
+2. 风控拦截证据。
 3. 三端状态一致性证据。
 
 - Done Definition：
 1. 触发成功、预算耗尽、库存不足、套利拦截四场景通过。
-2. 奖励重复结算与异常分数请求被拦截。
+2. 重复触发与异常风险请求被拦截。
 3. 顾客端与商户端可查看一致的判定结果。
 
 - Acceptance Commands：
@@ -294,10 +297,10 @@
 
 - Failure Signals：
 1. 误发放、误拦截、reason 缺失。
-2. 奖励异常放量或重复到账。
+2. 风控门漏拦截或误拦截。
 3. 商户端与顾客端显示结果冲突。
 
-- Triage Key：`RB-ACQ-110`, `RB-GAME-110`
+- Triage Key：`RB-ACQ-110`
 
 ### S120 - Acquisition 执行治理闭环（审批/TTL/Kill Switch）
 
@@ -351,7 +354,7 @@
 
 - Done Definition：
 1. 支付成功订单可完整追溯到账务与发票。
-2. 小游戏奖励到账与账本一致，无悬挂流水。
+2. Acquisition Welcome 奖励到账与账本一致，无悬挂流水。
 3. 商户端与顾客端可见追溯链完整。
 
 - Acceptance Commands：
@@ -367,10 +370,113 @@
 
 - Triage Key：`RB-ACQ-130`
 
+### S140 - 游戏营销资产与游戏库基座
+
+- Objective：建立平台游戏库与顾客游戏收集资产基座，保证三端只读可见与可追溯。
+- Dependency：S130 done。
+
+| task_id | lane | task | status | output |
+| --- | --- | --- | --- | --- |
+| S140-SRV-01 | server | 建立游戏库、游戏收集资产存储与查询接口（state/dashboard 对齐） | todo | 游戏资产基座 |
+| S140-MER-01 | merchant | 商户端提供游戏营销只读摘要（命中/拦截/最近结果） | todo | 商户只读摘要 |
+| S140-CUS-01 | customer | 顾客端提供“我的收集资产”只读展示与空态降级 | todo | 顾客只读展示 |
+
+- Deliverables：
+1. 游戏库接口与资产查询合同。
+2. 商户端与顾客端只读可见性记录。
+3. 游戏资产字段映射与降级策略。
+
+- Done Definition：
+1. 顾客可查询可见游戏与已解锁状态。
+2. 顾客可查询个人游戏收集资产。
+3. 商户可见游戏营销基础摘要且与服务端一致。
+
+- Acceptance Commands：
+1. `cd MealQuestServer && npm test`
+2. `cd MealQuestMerchant && npm run lint && npm run typecheck`
+3. `cd meal-quest-customer && npm run test:regression:ui`
+
+- Failure Signals：
+1. 游戏资产查询缺字段或语义冲突。
+2. 商户端与顾客端显示不一致。
+3. 空门店或空资产时页面崩溃。
+
+- Triage Key：`RB-GAMEASSET-140`
+
+### S150 - 游戏营销精准投放与解锁编排
+
+- Objective：建立“平台游戏库 + 门店策略投放”与解锁编排闭环，支持人群精准触达。
+- Dependency：S140 done。
+
+| task_id | lane | task | status | output |
+| --- | --- | --- | --- | --- |
+| S150-SRV-01 | server | 新增游戏营销策略插件（兴趣分群/收集物发放/解锁/上限约束） | todo | 插件与模板基线 |
+| S150-MER-01 | merchant | 商户端展示命中/拦截与原因解释（站内投放回执） | todo | 可解释投放 |
+| S150-CUS-01 | customer | 顾客端承接站内触达、解锁反馈与结果一致性 | todo | 触达与反馈闭环 |
+
+- Deliverables：
+1. 游戏营销策略模板与约束说明。
+2. 命中、拦截、拦截原因可回归证据。
+3. 三端结果一致性记录。
+
+- Done Definition：
+1. 新游投放可按人群命中并可解释。
+2. 超限或风控不通过时被拦截并有明确原因。
+3. 顾客端可见触达与解锁反馈，商户端可见执行摘要。
+
+- Acceptance Commands：
+1. `cd MealQuestServer && npm test`
+2. `cd MealQuestServer && node --test test/policyOs.constraints.test.ts`
+3. `cd MealQuestServer && node --test test/policyOs.http.integration.test.ts`
+4. `cd MealQuestMerchant && npm run lint && npm run typecheck`
+5. `cd meal-quest-customer && npm run test:regression:ui`
+
+- Failure Signals：
+1. 命中人群不稳定或误投放。
+2. 拦截原因缺失或跨端不一致。
+3. 触达异常影响支付主路径可用性。
+
+- Triage Key：`RB-GAMEMKT-150`
+
+### S160 - 支付后掉落路由与账务审计一致性
+
+- Objective：实现支付后奖励路由（碎银与游戏收集资产可策略化替代）且保持账务审计一致。
+- Dependency：S150 done。
+
+| task_id | lane | task | status | output |
+| --- | --- | --- | --- | --- |
+| S160-SRV-01 | server | PAYMENT_SUCCESS 事件接入策略执行与掉落路由（全局价值最优 + 硬门） | todo | 掉落路由基线 |
+| S160-MER-01 | merchant | 商户端展示掉落路由结果与效果摘要（命中率/拦截率/原因） | todo | 掉落运营视图 |
+| S160-CUS-01 | customer | 顾客端展示支付后掉落反馈与收集资产变更可见性 | todo | 支付后反馈一致 |
+
+- Deliverables：
+1. 掉落路由策略与执行证据。
+2. 账务、审计、状态三端一致性证据。
+3. 支付主链路稳定性证据（异常不阻断）。
+
+- Done Definition：
+1. 支付后默认奖励可按策略切换为游戏收集资产。
+2. 路由执行满足预算、风险、频控、幂等约束。
+3. ledger/audit/state 三域可追溯且一致。
+
+- Acceptance Commands：
+1. `cd MealQuestServer && npm test`
+2. `cd MealQuestServer && node --test test/http.integration.test.ts`
+3. `cd MealQuestServer && node --test test/policyOs.ledger.test.ts`
+4. `cd MealQuestMerchant && npm run lint && npm run typecheck`
+5. `cd meal-quest-customer && npm run test:regression:ui`
+
+- Failure Signals：
+1. 支付成功后奖励掉落不一致或重复到账。
+2. 掉落策略越过红线执行。
+3. 路由异常影响支付确认。
+
+- Triage Key：`RB-GAMEDROP-160`
+
 ### S210 - 商户经营看板最小可用
 
 - Objective：交付老板可用的经营看板与 Agent 建议协同最小版本。
-- Dependency：S130 done。
+- Dependency：S160 done。
 
 | task_id | lane | task | status | output |
 | --- | --- | --- | --- | --- |
@@ -732,6 +838,9 @@
 | S110 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S120 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S130 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
+| S140 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
+| S150 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
+| S160 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S210 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S220 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
 | S230 | 未提交（按命令回填） | 未提交（按日志回填） | 未提交（commit/PR） | pending | AI/Agent | - |
@@ -752,12 +861,15 @@
 | RB-CONTRACT-001 | 字段不一致/接口解析失败 | `cd MealQuestServer && npm test` | server + customer |
 | RB-CONTRACT-002 | 契约回归不稳定 | `npm run test:contract:baseline` | server + merchant + customer |
 | RB-MERCHANT-030 | 商户登录/开店链路中断 | `cd MealQuestMerchant && npm run lint && npm run typecheck` | merchant + server |
-| RB-CUSTOMER-040 | 扫码入店/会话建立失败 | `cd meal-quest-customer && Remove-Item Env:WECHAT_WS_ENDPOINT -ErrorAction SilentlyContinue; Remove-Item Env:WECHAT_SERVICE_PORT -ErrorAction SilentlyContinue; $env:WECHAT_CLI_PATH='D:\Program Files (x86)\Tencent\微信web开发者工具\cli.bat'; npm run test:e2e:core` | customer + server |
+| RB-CUSTOMER-040 | 扫码入店/会话建立失败 | Windows: `cd meal-quest-customer && Remove-Item Env:WECHAT_WS_ENDPOINT -ErrorAction SilentlyContinue; Remove-Item Env:WECHAT_SERVICE_PORT -ErrorAction SilentlyContinue; $env:WECHAT_CLI_PATH='D:\Program Files (x86)\Tencent\微信web开发者工具\cli.bat'; npm run test:e2e:core`；非 Windows: `cd meal-quest-customer && npm run typecheck && npm test -- --runInBand test/pages/startup.test.tsx test/pages/account.test.tsx` | customer + server |
 | RB-MERCHANT-QR-040 | Merchant app cannot generate/save/share entry QR | `cd MealQuestMerchant && npm run lint && npm run typecheck` | merchant |
 | RB-MERCHANT-NAV-040 | Merchant app crashes when returning from entry QR page | `cd MealQuestMerchant && npm run lint && npm run typecheck` | merchant |
 | RB-ACQ-110 | Acquisition 子域误发放/误拦截 | `cd MealQuestServer && node --test test/policyOs.constraints.test.ts` | server |
 | RB-ACQ-120 | Acquisition 子域审批或 TTL 治理异常 | `cd MealQuestServer && node --test test/policyOs.http.integration.test.ts` | server + merchant |
 | RB-ACQ-130 | Acquisition 子域支付到账务链路不一致 | `cd MealQuestServer && node --test test/policyOs.ledger.test.ts` | server |
+| RB-GAMEASSET-140 | 游戏资产或游戏库查询异常 | `cd MealQuestServer && npm test` | server + customer |
+| RB-GAMEMKT-150 | 游戏营销命中/拦截异常或原因不一致 | `cd MealQuestServer && node --test test/policyOs.constraints.test.ts && node --test test/policyOs.http.integration.test.ts` | server + merchant + customer |
+| RB-GAMEDROP-160 | 支付后掉落路由与账务审计不一致 | `cd MealQuestServer && node --test test/http.integration.test.ts && node --test test/policyOs.ledger.test.ts` | server + customer |
 | RB-COCKPIT-210 | 看板字段缺失/口径冲突 | `cd MealQuestMerchant && npm run typecheck` | merchant + server |
 | RB-AGENT-220 | Agent 查询越权或数据口径异常 | `cd MealQuestServer && npm test` | server + merchant |
 | RB-AGENT-230 | 提案卡状态错乱或同意/驳回异常 | `cd MealQuestMerchant && npm run typecheck` | merchant + server |
@@ -766,7 +878,6 @@
 | RB-AGENT-260 | 会话三态或关键提醒机制异常 | `cd MealQuestMerchant && npm run lint && npm run typecheck` | merchant + server |
 | RB-KPI-320 | KPI 口径漂移/发布门无法判定 | `cd MealQuestServer && npm test` | merchant + server + customer |
 | RB-CUSTOMER-310 | 顾客关键路径中断 | `cd meal-quest-customer && npm test` | customer |
-| RB-GAME-110 | 奖励异常放量/重复到账 | `cd MealQuestServer && node --test test/http.integration.test.ts` | server |
 | RB-GAME-310 | 小游戏开局/结算/回写异常 | `cd meal-quest-customer && npm run test:regression:ui` | customer + server |
 | RB-OPS-410 | 发布/回滚流程异常 | `cd MealQuestServer && npm run test:smoke` | server + release |
 | RB-SCALE-420 | 多租户隔离或成本异常 | `npm run verify:ci` | server |
@@ -782,7 +893,8 @@
 | Auth & Entry | Customer/merchant identity, merchant entry-QR generation/distribution, and in-store entry chain | server + merchant + customer |
 | Customer Core | 资产展示、支付核销、账本与发票查询 | server + customer |
 | Merchant Ops | 开店、经营看板、紧急停机 | server + merchant |
-| Acquisition Strategy | Welcome + 候餐小游戏子域触发、判定、治理、发放一致性 | server + merchant + customer |
+| Acquisition Strategy | Welcome 子域触发、判定、治理、发放一致性 | server + merchant + customer |
+| Game Marketing | 游戏库、游戏收集资产、精准投放、支付后掉落路由与审计一致性 | server + merchant + customer |
 | Agent Collaboration | 查询协作、提案协作、审批回放、会话提醒 | server + merchant |
 | Compliance & Audit | 隐私、审计、发票合规 | server + merchant + customer |
 | Multi-tenant Governance | 多租户隔离、规模化与成本治理 | server + merchant + customer |
@@ -840,3 +952,4 @@
 ## 10. 更新日志
 
 1. 2026-03-04：Init version（roadmap baseline established）。
+2. 2026-03-05：新增游戏营销子线（S140/S150/S160）与五类资产对齐执行基线。
