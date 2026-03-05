@@ -113,6 +113,36 @@
 
 ## 03. Step 任务卡（主Step + 三端任务）
 
+### 03.0 六策略族通用引擎任务分配（基于现有 Policy OS）
+
+> 目标：先“做实通用引擎粗核”，再挂载六策略族样例，避免按策略族重复开发。
+
+#### 03.0.1 Server 任务分配（引擎层优先）
+
+| Engine Layer | Existing Policy OS Module | Core Responsibility | Primary Step |
+| --- | --- | --- | --- |
+| 策略合同与草案发布层 | `schemaRegistry.ts`, `policyRegistry.ts`, `approvalTokenService.ts` | 统一策略合同校验、Draft/Approve/Publish 生命周期、审批令牌与 TTL | S050 |
+| 决策编排层 | `decisionService.ts`, `policyOsService.ts` | 触发匹配、分群判定、约束校验、执行计划生成、决策持久化 | S050 |
+| 插件能力层 | `plugins/defaultPlugins.ts`, `pluginRegistry.ts`, `adapters/policyRuntimeExecutor.ts` | trigger/segment/constraint/action 插件可插拔化，复用在六策略族样例 | S050, S110-S160 |
+| 账务审计层 | `ledgerService.ts`, `policyRegistry.ts(listDecisions)`, `wsDispatcher.ts` | payment->ledger->invoice->audit 串联、decision trace 回放、事件分发 | S060 |
+| 状态与资源层 | `state.ts` | 预算/频控/库存/收集物等资源状态桶统一管理 | S050, S060 |
+
+#### 03.0.2 六策略族任务分配原则（样例层）
+
+1. S110-S160 每个 Step 只实现“族特有插件参数与样例模板”，不重写通用治理与账务能力。
+2. 每族样例必须复用统一事件执行入口：`policyOsService.evaluateDecision/executeDecision`。
+3. 每族样例必须复用统一决策可见性出口：商户 dashboard 摘要 + 顾客 state activities + 审计 trace。
+4. 约束插件优先复用现有能力：`budget_guard_v1`、`frequency_cap_v1`、`anti_fraud_hook_v1`、`inventory_lock_v1`、`game_collectible_cap_v1`。
+5. 仅在“无法通过参数化复用”时新增插件，新增插件必须先登记到 `defaultPlugins.ts` 并补契约测试。
+
+#### 03.0.3 Lane Ownership（防止职责漂移）
+
+| Lane | Responsibility | Must Not Do |
+| --- | --- | --- |
+| server | 引擎合同、插件执行、治理硬门、账务审计与回放链路 | 在 S110-S160 为单个策略族临时改写通用引擎分支逻辑 |
+| merchant | 汇总可见性、命中/拦截解释、运营视图 | 绕开服务端判定做本地策略计算 |
+| customer | 触达反馈、奖励可见、降级体验 | 直接推断策略结果替代服务端决策 |
+
 ### S010 - 冻结 Acquisition（Welcome 子场景）最小契约
 
 - Objective：冻结 Acquisition（Welcome 子场景）最小合同，消除三端字段漂移。
@@ -276,7 +306,7 @@
 
 | task_id | lane | task | status | output |
 | --- | --- | --- | --- | --- |
-| S050-SRV-01 | server | 固化审批令牌校验、TTL 失效、Kill Switch、预算/风险/毛利硬门 | todo | 治理执行基座 |
+| S050-SRV-01 | server | 基于 `policyRegistry/decisionService/defaultPlugins` 固化审批令牌校验、TTL 失效、Kill Switch、预算/风险/毛利硬门 | todo | 治理执行基座 |
 | S050-MER-01 | merchant | 提供治理结果可见性（审批反馈、失败原因、熔断状态） | todo | 商户治理可见 |
 | S050-CUS-01 | customer | 承接治理结果只读反馈，保证与服务端状态一致 | todo | 顾客状态一致 |
 
@@ -310,7 +340,7 @@
 
 | task_id | lane | task | status | output |
 | --- | --- | --- | --- | --- |
-| S060-SRV-01 | server | 固化 payment->ledger->invoice->audit 一致性与 trace 串联 | todo | 一致性链路 |
+| S060-SRV-01 | server | 基于 `ledgerService/policyRegistry/wsDispatcher` 固化 payment->ledger->invoice->audit 一致性与 trace 串联 | todo | 一致性链路 |
 | S060-MER-01 | merchant | 提供商户侧交易/执行结果追溯视图 | todo | 商户追溯能力 |
 | S060-CUS-01 | customer | 提供顾客账本与发票查询一致性展示 | todo | 顾客追溯能力 |
 

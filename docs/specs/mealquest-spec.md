@@ -321,6 +321,7 @@
 - 六策略族统一策略合同字段：`strategyId`、`family`、`triggerEvent`、`eligibility`、`action`、`governanceGates`、`customerVisibility`、`merchantVisibility`、`auditTrace`。
 - 六策略族复用同一治理红线：预算、风险、毛利、审批、可追溯、熔断。
 - 不同策略族可使用不同评估窗口，但必须保持可解释、可回放、可审计。
+- 六策略族必须运行在同一通用策略引擎内核上，禁止按策略族复制分叉执行链路。
 
 ### 11.3 每族一策先行验证清单（首版必须）
 
