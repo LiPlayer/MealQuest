@@ -317,6 +317,57 @@ export type KillSwitchResponse = {
   killSwitchEnabled: boolean;
 };
 
+export type NotificationStatus = 'ALL' | 'UNREAD' | 'READ';
+export type NotificationCategory = 'ALL' | 'APPROVAL_TODO' | 'EXECUTION_RESULT' | 'GENERAL';
+
+export type NotificationInboxItem = {
+  notificationId: string;
+  merchantId: string;
+  recipientType: 'MERCHANT_STAFF' | 'CUSTOMER_USER';
+  recipientId: string;
+  category: string;
+  title: string;
+  body: string;
+  related: Record<string, unknown>;
+  status: 'UNREAD' | 'READ';
+  createdAt: string;
+  readAt: string | null;
+  expiresAt: string | null;
+};
+
+export type NotificationInboxResponse = {
+  merchantId: string;
+  recipientType: 'MERCHANT_STAFF' | 'CUSTOMER_USER';
+  recipientId: string;
+  status: NotificationStatus;
+  category: NotificationCategory;
+  items: NotificationInboxItem[];
+  pageInfo: {
+    limit: number;
+    hasMore: boolean;
+    nextCursor: string | null;
+  };
+};
+
+export type NotificationUnreadSummaryResponse = {
+  merchantId: string;
+  recipientType: 'MERCHANT_STAFF' | 'CUSTOMER_USER';
+  recipientId: string;
+  totalUnread: number;
+  byCategory: {
+    category: string;
+    unreadCount: number;
+  }[];
+};
+
+export type NotificationReadAckResponse = {
+  merchantId: string;
+  recipientType: 'MERCHANT_STAFF' | 'CUSTOMER_USER';
+  recipientId: string;
+  updatedCount: number;
+  notificationIds: string[];
+};
+
 const DEFAULT_BASE_URL = Platform.select({
   android: 'http://10.0.2.2:3030',
   default: 'http://127.0.0.1:3030',
@@ -717,6 +768,78 @@ export async function setMerchantKillSwitch(params: {
     {
       merchantId,
       enabled: Boolean(params.enabled),
+    },
+    { token: params.token },
+  );
+}
+
+export async function getNotificationInbox(params: {
+  merchantId: string;
+  token: string;
+  status?: NotificationStatus;
+  category?: NotificationCategory;
+  limit?: number;
+  cursor?: string;
+}): Promise<NotificationInboxResponse> {
+  const merchantId = String(params.merchantId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  const status = String(params.status || 'ALL').trim().toUpperCase();
+  const category = String(params.category || 'ALL').trim().toUpperCase();
+  const limit = Math.min(Math.max(Math.floor(Number(params.limit) || 20), 1), 100);
+  const cursor = String(params.cursor || '').trim();
+  const query = [
+    `merchantId=${encodeURIComponent(merchantId)}`,
+    `status=${encodeURIComponent(status)}`,
+    `category=${encodeURIComponent(category)}`,
+    `limit=${limit}`,
+    cursor ? `cursor=${encodeURIComponent(cursor)}` : '',
+  ]
+    .filter(Boolean)
+    .join('&');
+  return getJson<NotificationInboxResponse>(`/api/notifications/inbox?${query}`, {
+    token: params.token,
+  });
+}
+
+export async function getNotificationUnreadSummary(params: {
+  merchantId: string;
+  token: string;
+}): Promise<NotificationUnreadSummaryResponse> {
+  const merchantId = String(params.merchantId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  return getJson<NotificationUnreadSummaryResponse>(
+    `/api/notifications/unread-summary?merchantId=${encodeURIComponent(merchantId)}`,
+    { token: params.token },
+  );
+}
+
+export async function markNotificationsRead(params: {
+  merchantId: string;
+  token: string;
+  notificationIds?: string[];
+  markAll?: boolean;
+}): Promise<NotificationReadAckResponse> {
+  const merchantId = String(params.merchantId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  const notificationIds = Array.isArray(params.notificationIds)
+    ? params.notificationIds.map((item) => String(item || '').trim()).filter(Boolean)
+    : [];
+  const markAll = Boolean(params.markAll);
+  if (!markAll && notificationIds.length === 0) {
+    throw new Error('notificationIds is required when markAll is false');
+  }
+  return postJson<NotificationReadAckResponse>(
+    '/api/notifications/read',
+    {
+      merchantId,
+      notificationIds,
+      markAll,
     },
     { token: params.token },
   );
