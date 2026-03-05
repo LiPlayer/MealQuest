@@ -541,6 +541,17 @@ function createPreAuthRoutesHandler({
               grants: [],
             }
           : toScopedDecisionView(entryDecision, "ACT_CHECKIN_STREAK_RECOVERY_V1");
+      const retentionDecision =
+        entryDecision && entryDecision.error
+          ? {
+              event: "USER_ENTER_SHOP",
+              decisionId: "",
+              traceId: "",
+              outcome: "ERROR",
+              reasonCode: entryDecision.error,
+              grants: [],
+            }
+          : toScopedDecisionView(entryDecision, "RET_DORMANT_WINBACK_14D_V1");
       sendJson(res, 200, {
         token,
         profile: {
@@ -552,6 +563,7 @@ function createPreAuthRoutesHandler({
         isNewUser: binding.created,
         welcomeDecision,
         activationDecision,
+        retentionDecision,
       });
       return true;
     }
@@ -627,6 +639,17 @@ function createPreAuthRoutesHandler({
               grants: [],
             }
           : toScopedDecisionView(entryDecision, "ACT_CHECKIN_STREAK_RECOVERY_V1");
+      const retentionDecision =
+        entryDecision && entryDecision.error
+          ? {
+              event: "USER_ENTER_SHOP",
+              decisionId: "",
+              traceId: "",
+              outcome: "ERROR",
+              reasonCode: entryDecision.error,
+              grants: [],
+            }
+          : toScopedDecisionView(entryDecision, "RET_DORMANT_WINBACK_14D_V1");
       sendJson(res, 200, {
         token,
         profile: {
@@ -638,6 +661,7 @@ function createPreAuthRoutesHandler({
         isNewUser: binding.created,
         welcomeDecision,
         activationDecision,
+        retentionDecision,
       });
       return true;
     }

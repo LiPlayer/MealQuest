@@ -175,4 +175,43 @@ describe('Index page welcome activity visibility', () => {
       expect(document.body.textContent).toContain('原因：constraint:frequency_exceeded');
     });
   });
+
+  it('renders retention hit activity card', async () => {
+    dataServiceMock.getHomeSnapshot.mockResolvedValue(
+      createSnapshot([
+        {
+          id: 'retention_hit_1',
+          title: '沉默召回奖励已发放',
+          desc: '已命中 14 天沉默召回规则，可前往资产区查看到账券。',
+          tag: 'RETENTION',
+        },
+      ]) as any,
+    );
+
+    render(<IndexPage />);
+
+    await waitFor(() => {
+      expect(document.body.textContent).toContain('沉默召回奖励已发放');
+    });
+  });
+
+  it('renders retention blocked activity card with reason', async () => {
+    dataServiceMock.getHomeSnapshot.mockResolvedValue(
+      createSnapshot([
+        {
+          id: 'retention_block_1',
+          title: '沉默召回奖励未发放',
+          desc: '原因：constraint:frequency_exceeded',
+          tag: 'RETENTION',
+        },
+      ]) as any,
+    );
+
+    render(<IndexPage />);
+
+    await waitFor(() => {
+      expect(document.body.textContent).toContain('沉默召回奖励未发放');
+      expect(document.body.textContent).toContain('原因：constraint:frequency_exceeded');
+    });
+  });
 });

@@ -61,6 +61,7 @@ export type MerchantDashboardResponse = {
   acquisitionWelcomeSummary?: DecisionSummaryResponse;
   activationRecoverySummary?: DecisionSummaryResponse;
   revenueUpsellSummary?: DecisionSummaryResponse;
+  retentionWinbackSummary?: DecisionSummaryResponse;
   gameMarketingSummary?: DecisionSummaryResponse;
   traceSummary?: {
     last24h?: {
@@ -125,6 +126,7 @@ export type RevenueStrategyRecommendationResponse = {
 export type DecisionSummaryResponse = {
   hitCount24h?: number;
   blockedCount24h?: number;
+  reactivationRate24h?: number;
   topBlockedReasons?: {
     reason?: string;
     count?: number;

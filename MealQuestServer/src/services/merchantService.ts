@@ -26,6 +26,7 @@ function createMerchantService(db, options = {}) {
   const SALES_WINDOWS_DAYS = [7, 30];
   const REVENUE_TEMPLATE_ID = "revenue_addon_upsell_slow_item";
   const REVENUE_POLICY_KEY = "REV_ADDON_UPSELL_SLOW_ITEM_V1";
+  const RETENTION_POLICY_KEY = "RET_DORMANT_WINBACK_14D_V1";
   const REVENUE_DEFAULT_CONFIG = {
     minOrderAmount: 30,
     voucherValue: 6,
@@ -1807,6 +1808,19 @@ function createMerchantService(db, options = {}) {
       }
     }
 
+    const retentionWinbackSummaryBase = buildDecisionSummary({
+      merchantId,
+      event: "USER_ENTER_SHOP",
+      policyKeyPrefix: RETENTION_POLICY_KEY
+    });
+    const retentionDecisionCount =
+      Number(retentionWinbackSummaryBase.hitCount24h || 0) +
+      Number(retentionWinbackSummaryBase.blockedCount24h || 0);
+    const reactivationRate24h =
+      retentionDecisionCount > 0
+        ? roundMoney(Number(retentionWinbackSummaryBase.hitCount24h || 0) / retentionDecisionCount)
+        : 0;
+
     return {
       merchantId,
       merchantName: merchant.name,
@@ -1835,6 +1849,10 @@ function createMerchantService(db, options = {}) {
         event: "PAYMENT_VERIFY",
         policyKeyPrefix: REVENUE_POLICY_KEY
       }),
+      retentionWinbackSummary: {
+        ...retentionWinbackSummaryBase,
+        reactivationRate24h
+      },
       gameMarketingSummary:
         gameMarketingService && typeof gameMarketingService.buildGameMarketingSummary === "function"
           ? gameMarketingService.buildGameMarketingSummary({ merchantId })

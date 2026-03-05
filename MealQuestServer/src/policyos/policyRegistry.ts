@@ -97,6 +97,33 @@ function assertActionParamCompleteness(policySpec) {
       throw new Error("policy action params incomplete: REV_ADDON_UPSELL_SLOW_ITEM_V1");
     }
   }
+  if (policyKey === "RET_DORMANT_WINBACK_14D_V1") {
+    const hasVoucherGrant = actions.some(
+      (item) => String(item && item.plugin ? item.plugin : "").trim() === "voucher_grant_v1"
+    );
+    const segmentConditions =
+      policySpec &&
+      policySpec.segment &&
+      policySpec.segment.params &&
+      Array.isArray(policySpec.segment.params.conditions)
+        ? policySpec.segment.params.conditions
+        : [];
+    const hasDormantCondition = segmentConditions.some((item) => {
+      const field = String(item && item.field ? item.field : "").trim();
+      const op = String(item && item.op ? item.op : "").trim().toLowerCase();
+      const value = Number(item && item.value);
+      if (field !== "inactiveDays") {
+        return false;
+      }
+      if (!Number.isFinite(value) || value < 14) {
+        return false;
+      }
+      return op === "gte" || op === "gt" || op === "eq";
+    });
+    if (!hasVoucherGrant || !hasDormantCondition) {
+      throw new Error("policy action params incomplete: RET_DORMANT_WINBACK_14D_V1");
+    }
+  }
 }
 
 function createPolicyRegistry({

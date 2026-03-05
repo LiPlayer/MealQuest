@@ -17,6 +17,9 @@ export default function DashboardScreen() {
   const activationLatest = merchantState.activationRecoverySummary.latestResults[0];
   const revenueTopReason = merchantState.revenueUpsellSummary.topBlockedReasons[0];
   const revenueLatest = merchantState.revenueUpsellSummary.latestResults[0];
+  const retentionTopReason = merchantState.retentionWinbackSummary.topBlockedReasons[0];
+  const retentionLatest = merchantState.retentionWinbackSummary.latestResults[0];
+  const retentionRateText = `${(Math.max(0, Number(merchantState.retentionWinbackSummary.reactivationRate24h) || 0) * 100).toFixed(1)}%`;
   const latestTrace = merchantState.traceSummary.latestTrace[0];
 
   return (
@@ -86,6 +89,25 @@ export default function DashboardScreen() {
         <Text style={styles.hintText}>
           {revenueLatest && revenueLatest.outcome
             ? `最近结果：${revenueLatest.outcome}${revenueLatest.reasonCode ? ` · ${revenueLatest.reasonCode}` : ''}`
+            : '最近结果：暂无'}
+        </Text>
+      </SurfaceCard>
+
+      <SurfaceCard>
+        <Text style={styles.sectionTitle}>Retention 沉默召回摘要（24h）</Text>
+        <View style={styles.grid}>
+          <StatTile label="命中" value={merchantState.retentionWinbackSummary.hitCount24h} />
+          <StatTile label="拦截" value={merchantState.retentionWinbackSummary.blockedCount24h} />
+          <StatTile label="回流率" value={retentionRateText} />
+        </View>
+        <Text style={styles.hintText}>
+          {retentionTopReason && retentionTopReason.reason
+            ? `Top 拦截原因：${retentionTopReason.reason}（${retentionTopReason.count}）`
+            : '当前无拦截记录。'}
+        </Text>
+        <Text style={styles.hintText}>
+          {retentionLatest && retentionLatest.outcome
+            ? `最近结果：${retentionLatest.outcome}${retentionLatest.reasonCode ? ` · ${retentionLatest.reasonCode}` : ''}`
             : '最近结果：暂无'}
         </Text>
       </SurfaceCard>

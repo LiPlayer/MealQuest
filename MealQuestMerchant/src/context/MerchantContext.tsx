@@ -168,6 +168,7 @@ function normalizeDecisionSummary(raw: DecisionSummaryResponse | unknown): Merch
   return {
     hitCount24h: Number(safe.hitCount24h) || 0,
     blockedCount24h: Number(safe.blockedCount24h) || 0,
+    reactivationRate24h: Math.max(0, Number(safe.reactivationRate24h) || 0),
     topBlockedReasons: rawBlockedReasons.map((item) => {
       const row = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
       return {
@@ -371,6 +372,7 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
           acquisitionWelcomeSummary: normalizeDecisionSummary(dashboard.acquisitionWelcomeSummary),
           activationRecoverySummary: normalizeDecisionSummary(dashboard.activationRecoverySummary),
           revenueUpsellSummary: normalizeDecisionSummary(dashboard.revenueUpsellSummary),
+          retentionWinbackSummary: normalizeDecisionSummary(dashboard.retentionWinbackSummary),
           gameMarketingSummary: normalizeDecisionSummary(dashboard.gameMarketingSummary),
           traceSummary: normalizeTraceSummary(dashboard.traceSummary),
         }));

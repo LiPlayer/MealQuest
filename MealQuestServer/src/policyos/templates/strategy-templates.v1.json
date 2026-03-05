@@ -450,6 +450,121 @@
           }
         }
       ]
+    },
+    {
+      "templateId": "retention_dormant_winback_14d",
+      "category": "RETENTION",
+      "phase": "P1",
+      "name": "Dormant Winback 14D",
+      "description": "Win back dormant customers after 14 inactive days with balanced voucher incentive.",
+      "triggerEvent": "USER_ENTER_SHOP",
+      "defaultBranchId": "DEFAULT",
+      "branches": [
+        {
+          "branchId": "DEFAULT",
+          "name": "Balanced Winback",
+          "description": "Default profile: inactive >= 14 days and existing customer receives balanced voucher.",
+          "policySpec": {
+            "policy_key": "RET_DORMANT_WINBACK_14D_V1",
+            "name": "Dormant Winback 14D - Balanced",
+            "lane": "NORMAL",
+            "tie_breaker": "UTILITY_DESC",
+            "goal": {
+              "type": "RETENTION",
+              "kpi": "winback_rate"
+            },
+            "segment": {
+              "plugin": "condition_segment_v1",
+              "params": {
+                "logic": "AND",
+                "conditions": [
+                  {
+                    "field": "isNewUser",
+                    "op": "eq",
+                    "value": false
+                  },
+                  {
+                    "field": "inactiveDays",
+                    "op": "gte",
+                    "value": 14
+                  }
+                ]
+              }
+            },
+            "triggers": [
+              {
+                "plugin": "event_trigger_v1",
+                "event": "USER_ENTER_SHOP",
+                "params": {}
+              }
+            ],
+            "program": {
+              "ttl_sec": 1209600,
+              "max_instances": 1,
+              "pacing": {
+                "max_cost_per_minute": 10
+              }
+            },
+            "actions": [
+              {
+                "plugin": "voucher_grant_v1",
+                "channel": "default",
+                "params": {
+                  "cost": 3,
+                  "expires_in_sec": 1209600,
+                  "voucher": {
+                    "type": "ITEM_WARRANT",
+                    "name": "Dormant Winback Gift",
+                    "value": 10,
+                    "minSpend": 25
+                  }
+                }
+              }
+            ],
+            "constraints": [
+              {
+                "plugin": "kill_switch_v1",
+                "params": {}
+              },
+              {
+                "plugin": "budget_guard_v1",
+                "params": {
+                  "cap": 100,
+                  "cost_per_hit": 3
+                }
+              },
+              {
+                "plugin": "frequency_cap_v1",
+                "params": {
+                  "daily": 1,
+                  "window_sec": 1209600
+                }
+              },
+              {
+                "plugin": "anti_fraud_hook_v1",
+                "params": {
+                  "max_risk_score": 0.75
+                }
+              }
+            ],
+            "scoring": {
+              "plugin": "expected_profit_v1",
+              "params": {}
+            },
+            "overlap_policy": {
+              "mode": "SOFT_EXCLUSIVE",
+              "conflict_set": "retention_dormant_winback_14d",
+              "max_winners": 1,
+              "cooldown_sec": 0
+            },
+            "governance": {
+              "approval_required": true,
+              "approval_level": "OWNER",
+              "approval_token_ttl_sec": 3600
+            }
+          }
+        }
+      ]
     }
   ]
 }

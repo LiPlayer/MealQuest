@@ -209,6 +209,17 @@ async function buildStateSnapshot({
         limit: 1,
       })[0] || null
       : null;
+  const retentionDecision =
+    user && policyOsService && typeof policyOsService.listDecisions === "function"
+      ? policyOsService.listDecisions({
+        merchantId,
+        userId: user.uid,
+        event: "USER_ENTER_SHOP",
+        mode: "EXECUTE",
+        policyKeyPrefix: "RET_DORMANT_WINBACK_14D_V1",
+        limit: 1,
+      })[0] || null
+      : null;
   const welcomeActivity = buildDecisionActivity({
     decision: welcomeDecision,
     policyKeyPrefix: "ACQ_WELCOME_FIRST_BIND_V1",
@@ -236,6 +247,15 @@ async function buildStateSnapshot({
     blockedTitle: "加购激励未发放",
     blockedDescFallback: "本次未通过提客单判定条件。",
   });
+  const retentionActivity = buildDecisionActivity({
+    decision: retentionDecision,
+    policyKeyPrefix: "RET_DORMANT_WINBACK_14D_V1",
+    tag: "RETENTION",
+    hitTitle: "沉默召回奖励已发放",
+    hitDesc: "已命中 14 天沉默召回规则，可前往资产区查看到账券。",
+    blockedTitle: "沉默召回奖励未发放",
+    blockedDescFallback: "本次未通过沉默召回判定条件。",
+  });
   const activities = buildCustomerActivities(activePolicyViews);
   if (welcomeActivity) {
     activities.unshift(welcomeActivity);
@@ -245,6 +265,9 @@ async function buildStateSnapshot({
   }
   if (revenueActivity) {
     activities.unshift(revenueActivity);
+  }
+  if (retentionActivity) {
+    activities.unshift(retentionActivity);
   }
 
   return {
