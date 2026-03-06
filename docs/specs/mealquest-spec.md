@@ -1,11 +1,11 @@
-# MealQuest 商业化落地规范（V15.7）
+# MealQuest 商业化落地规范（V15.9）
 
 > 文档定位：MealQuest 产品与商业规范真源（唯一真源）。
 > 适用范围：`MealQuestServer`、`MealQuestMerchant`、`meal-quest-customer` 三端协同建设。
 
 ## 0. 版本与治理
 
-- 版本：V15.7（新项目基线：长期价值最大化 + 生命周期五阶段）
+- 版本：V15.9（新项目基线：长期价值最大化 + 生命周期五阶段）
 - 首发区域：中国大陆
 - 目标客群：单店与小连锁餐饮商户
 - 商业主轴：支付抽佣为主，订阅与增值服务为辅
@@ -459,6 +459,61 @@
 - 降级要求
   - 触达或小游戏数据异常时，仅对应模块降级并提示“暂不可用/稍后刷新”。
   - 支付核销、账票查询、账户注销等主链路不得受影响。
+
+#### 4.4.8 AI 提案可解释与决策支持（S070-SRV-01）
+
+服务端在 S070 阶段需建立“提案生成 + 可解释评估 + 同意/驳回决策”能力，作为老板端 AI 提案闭环的后端基线。
+
+- 提案生命周期（当前生效）
+  - `PENDING`：提案已生成，待老板决策
+  - `APPROVED`：提案已审批，待发布
+  - `PUBLISHED`：提案已发布为策略
+  - `REJECTED`：提案已驳回
+
+- 提案接口（当前生效）
+  - 生成提案：`POST /api/agent-os/proposals/generate`
+  - 提案列表：`GET /api/agent-os/proposals`
+  - 提案详情：`GET /api/agent-os/proposals/{proposalId}`
+  - 提案评估：`POST /api/agent-os/proposals/{proposalId}/evaluate`
+  - 提案决策：`POST /api/agent-os/proposals/{proposalId}/decide`
+
+- 决策语义（当前生效）
+  - `decision=APPROVE`：默认执行“同意即发布”（审批+发布）
+  - `decision=REJECT`：提案进入驳回状态并记录原因
+  - 同意前自动执行评估，写入可解释结果（命中、拦截、原因码、风险标记、预算相关信息）
+
+- 权限与作用域（当前生效）
+  - `OWNER / MANAGER`：可读提案、可发起评估
+  - `OWNER`：可执行最终决策（同意/驳回）
+  - 若 `merchantId` 与登录态不一致，返回 `403 merchant scope denied`
+
+- 审计要求（当前生效）
+  - 提案生成、评估、决策需写入审计日志并可回放追踪
+  - 审计动作包含：`AGENT_PROPOSAL_GENERATE`、`AGENT_PROPOSAL_EVALUATE`、`AGENT_PROPOSAL_DECIDE`
+
+#### 4.4.9 老板端 AI 提案决策闭环（S070-MER-01）
+
+老板端 App 在 S070 阶段需建立“AI 对话 + 提案决策”一体化流程，确保提案从意图输入到最终同意/驳回可闭环。
+
+- 入口与流程（当前生效）
+  - 入口：`Agent` 页新增“提案决策区”。
+  - 老板可基于当前输入意图或最近一次对话内容生成提案。
+  - 提案区需支持列表、筛选、详情查看与手动刷新。
+
+- 决策动作（当前生效）
+  - 提案列表状态：`ALL`、`PENDING`、`APPROVED`、`PUBLISHED`、`REJECTED`。
+  - 评估动作：接入 `POST /api/agent-os/proposals/{proposalId}/evaluate`，回填可解释结果（原因码、风险标记、评估时间等）。
+  - 同意动作：接入 `POST /api/agent-os/proposals/{proposalId}/decide` 且 `decision=APPROVE`，语义为“同意即发布”。
+  - 驳回动作：接入 `POST /api/agent-os/proposals/{proposalId}/decide` 且 `decision=REJECT`，驳回原因需可填写并回显。
+
+- 角色与权限（当前生效）
+  - `OWNER`：可生成、评估、同意、驳回。
+  - `MANAGER`：可生成、评估、查看，不可同意/驳回。
+  - 角色权限不足时需明确文案提示，不可静默失败。
+
+- 降级与可用性（当前生效）
+  - 提案接口异常时，仅提案区降级并提示重试。
+  - AI 对话流式能力与提案区相互隔离，单侧异常不得阻断另一侧主流程。
 
 ---
 

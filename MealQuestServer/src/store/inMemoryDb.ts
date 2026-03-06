@@ -42,6 +42,7 @@ function createDefaultState() {
         sequenceByMerchant: {},
         dedupe: {}
       },
+      proposalsByMerchant: {},
       notifications: {
         byId: {},
         sequenceByMerchant: {}

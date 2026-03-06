@@ -322,6 +322,97 @@ export type GovernanceReplaysResponse = {
   };
 };
 
+export type AgentProposalStatus = 'ALL' | 'PENDING' | 'APPROVED' | 'PUBLISHED' | 'REJECTED';
+export type AgentProposalDecision = 'APPROVE' | 'REJECT';
+
+export type AgentProposalEvaluationSummary = {
+  decisionId: string | null;
+  selected: number;
+  rejected: number;
+  evaluatedAt: string | null;
+  cacheKey: string | null;
+};
+
+export type AgentProposalExplainSummary = {
+  decisionId: string | null;
+  selectedCount: number;
+  rejectedCount: number;
+  evaluatedAt: string | null;
+  reasonCodes: string[];
+  riskFlags: string[];
+  expectedRange: Record<string, unknown> | null;
+};
+
+export type AgentProposalReviewItem = {
+  proposalId: string;
+  status: AgentProposalStatus;
+  title: string;
+  templateId: string | null;
+  branchId: string | null;
+  policyDraftId: string | null;
+  policyId: string | null;
+  policyKey: string | null;
+  triggerEvent: string | null;
+  budget: Record<string, unknown> | null;
+  createdAt: string | null;
+  rejectedAt: string | null;
+  rejectedBy: string | null;
+  rejectedReason: string | null;
+  evaluation: AgentProposalEvaluationSummary | null;
+  explain: AgentProposalExplainSummary | null;
+  suggestedPolicySpec?: Record<string, unknown> | null;
+};
+
+export type AgentProposalGenerateResponse = {
+  merchantId: string;
+  proposal: AgentProposalReviewItem | null;
+  created: {
+    proposalId?: string;
+    title?: string;
+    templateId?: string;
+    branchId?: string;
+    draftId?: string;
+    policyKey?: string | null;
+  } | null;
+};
+
+export type AgentProposalListResponse = {
+  merchantId: string;
+  status: AgentProposalStatus;
+  items: AgentProposalReviewItem[];
+  pageInfo: {
+    limit: number;
+    returned: number;
+    total: number;
+  };
+};
+
+export type AgentProposalDetailResponse = {
+  merchantId: string;
+  proposal: AgentProposalReviewItem | null;
+};
+
+export type AgentProposalEvaluateResponse = {
+  proposalId: string;
+  draftId: string | null;
+  evaluation: Record<string, unknown> | null;
+  reused: boolean;
+};
+
+export type AgentProposalDecideResponse = {
+  decision: AgentProposalDecision;
+  proposalId: string;
+  status: AgentProposalStatus;
+  draftId?: string | null;
+  approvalId?: string | null;
+  policyId?: string | null;
+  rejectedAt?: string | null;
+  rejectedBy?: string | null;
+  rejectedReason?: string | null;
+  evaluation?: Record<string, unknown> | null;
+  proposal?: AgentProposalReviewItem | null;
+};
+
 export type PolicyLifecycleResult = {
   merchantId?: string;
   draft?: {
@@ -728,6 +819,128 @@ export async function getPolicyGovernanceReplays(params: {
   return getJson<GovernanceReplaysResponse>(`/api/policyos/governance/replays?${query}`, {
     token: params.token,
   });
+}
+
+export async function generateAgentProposal(params: {
+  merchantId: string;
+  token: string;
+  intent: string;
+  templateId?: string;
+  branchId?: string;
+  sessionId?: string;
+}): Promise<AgentProposalGenerateResponse> {
+  const merchantId = String(params.merchantId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  return postJson<AgentProposalGenerateResponse>(
+    '/api/agent-os/proposals/generate',
+    {
+      merchantId,
+      intent: String(params.intent || '').trim(),
+      templateId: String(params.templateId || '').trim() || undefined,
+      branchId: String(params.branchId || '').trim() || undefined,
+      sessionId: String(params.sessionId || '').trim() || undefined,
+    },
+    { token: params.token },
+  );
+}
+
+export async function getAgentProposalReviews(params: {
+  merchantId: string;
+  token: string;
+  status?: AgentProposalStatus;
+  limit?: number;
+}): Promise<AgentProposalListResponse> {
+  const merchantId = String(params.merchantId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  const status = String(params.status || 'ALL').trim().toUpperCase();
+  const limit = Math.min(Math.max(Math.floor(Number(params.limit) || 20), 1), 100);
+  return getJson<AgentProposalListResponse>(
+    `/api/agent-os/proposals?merchantId=${encodeURIComponent(merchantId)}&status=${encodeURIComponent(status)}&limit=${limit}`,
+    { token: params.token },
+  );
+}
+
+export async function getAgentProposalDetail(params: {
+  merchantId: string;
+  proposalId: string;
+  token: string;
+}): Promise<AgentProposalDetailResponse> {
+  const merchantId = String(params.merchantId || '').trim();
+  const proposalId = String(params.proposalId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  if (!proposalId) {
+    throw new Error('proposalId is required');
+  }
+  return getJson<AgentProposalDetailResponse>(
+    `/api/agent-os/proposals/${encodeURIComponent(proposalId)}?merchantId=${encodeURIComponent(merchantId)}`,
+    { token: params.token },
+  );
+}
+
+export async function evaluateAgentProposal(params: {
+  merchantId: string;
+  proposalId: string;
+  token: string;
+  userId?: string;
+  event?: string;
+  forceRefresh?: boolean;
+}): Promise<AgentProposalEvaluateResponse> {
+  const merchantId = String(params.merchantId || '').trim();
+  const proposalId = String(params.proposalId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  if (!proposalId) {
+    throw new Error('proposalId is required');
+  }
+  return postJson<AgentProposalEvaluateResponse>(
+    `/api/agent-os/proposals/${encodeURIComponent(proposalId)}/evaluate`,
+    {
+      merchantId,
+      userId: String(params.userId || '').trim() || undefined,
+      event: String(params.event || '').trim() || undefined,
+      forceRefresh: Boolean(params.forceRefresh),
+    },
+    { token: params.token },
+  );
+}
+
+export async function decideAgentProposal(params: {
+  merchantId: string;
+  proposalId: string;
+  decision: AgentProposalDecision;
+  token: string;
+  reason?: string;
+  userId?: string;
+  event?: string;
+  forceRefresh?: boolean;
+}): Promise<AgentProposalDecideResponse> {
+  const merchantId = String(params.merchantId || '').trim();
+  const proposalId = String(params.proposalId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  if (!proposalId) {
+    throw new Error('proposalId is required');
+  }
+  return postJson<AgentProposalDecideResponse>(
+    `/api/agent-os/proposals/${encodeURIComponent(proposalId)}/decide`,
+    {
+      merchantId,
+      decision: String(params.decision || '').trim().toUpperCase(),
+      reason: String(params.reason || '').trim() || undefined,
+      userId: String(params.userId || '').trim() || undefined,
+      event: String(params.event || '').trim() || undefined,
+      forceRefresh: Boolean(params.forceRefresh),
+    },
+    { token: params.token },
+  );
 }
 
 export async function approvePolicyDraft(params: {

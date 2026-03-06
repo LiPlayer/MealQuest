@@ -1,4 +1,5 @@
 const templateCatalog = require("../policyos/templates/strategy-templates.v1.json");
+const { ensurePolicyOsState } = require("../policyos/state");
 
 function createMerchantService(db, options = {}) {
   const agentService = options.omniAgentService;
@@ -93,6 +94,8 @@ function createMerchantService(db, options = {}) {
     timing: "Timing",
     decisions: "Decisions"
   };
+  const PROPOSAL_STATUS_ALL = "ALL";
+  const PROPOSAL_STATUSES = new Set(["PENDING", "APPROVED", "PUBLISHED", "REJECTED"]);
 
   async function runWithFreshState(methodName, payload) {
     if (fromFreshState || typeof db.runWithFreshState !== "function") {
@@ -133,6 +136,52 @@ function createMerchantService(db, options = {}) {
 
   function roundMoney(value) {
     return Math.round(toFiniteNumber(value) * 100) / 100;
+  }
+
+  function ensureProposalBucket(merchantId) {
+    const safeMerchantId = String(merchantId || "").trim();
+    if (!safeMerchantId) {
+      throw new Error("merchantId is required");
+    }
+    const policyState = ensurePolicyOsState(db);
+    if (!policyState.proposalsByMerchant || typeof policyState.proposalsByMerchant !== "object") {
+      policyState.proposalsByMerchant = {};
+    }
+    if (!Array.isArray(policyState.proposalsByMerchant[safeMerchantId])) {
+      policyState.proposalsByMerchant[safeMerchantId] = [];
+    }
+    return policyState.proposalsByMerchant[safeMerchantId];
+  }
+
+  function listProposalRows(merchantId) {
+    return ensureProposalBucket(merchantId);
+  }
+
+  function getProposalById({ merchantId, proposalId }) {
+    const safeProposalId = String(proposalId || "").trim();
+    if (!safeProposalId) {
+      return null;
+    }
+    return (
+      listProposalRows(merchantId).find((item) => item && String(item.id || "").trim() === safeProposalId) || null
+    );
+  }
+
+  function normalizeProposalStatus(status) {
+    const normalized = String(status || PROPOSAL_STATUS_ALL).trim().toUpperCase();
+    if (normalized === PROPOSAL_STATUS_ALL) {
+      return PROPOSAL_STATUS_ALL;
+    }
+    if (!PROPOSAL_STATUSES.has(normalized)) {
+      return PROPOSAL_STATUS_ALL;
+    }
+    return normalized;
+  }
+
+  function createHttpError(message, statusCode = 400) {
+    const error = new Error(message);
+    error.statusCode = statusCode;
+    return error;
   }
 
   function normalizePolicyPrefix(value) {
@@ -1603,7 +1652,7 @@ function createMerchantService(db, options = {}) {
     const pending = normalizedIds
       .map(
         (proposalId) =>
-          db.proposals.find(
+          listProposalRows(merchantId).find(
             (item) =>
               item.merchantId === merchantId &&
               item.id === proposalId &&
@@ -1883,7 +1932,7 @@ function createMerchantService(db, options = {}) {
       }
     };
 
-    db.proposals.push(proposal);
+    listProposalRows(merchantId).push(proposal);
     setStrategyConfig(merchantId, template.templateId, {
       branchId: branch.branchId,
       status: "PENDING_APPROVAL",
@@ -1901,6 +1950,461 @@ function createMerchantService(db, options = {}) {
         draftId: draft.draft_id,
         policyKey: policySpec.policy_key || null
       }
+    };
+  }
+
+  function inferTemplateIdFromIntent(intent = "") {
+    const text = String(intent || "").trim().toLowerCase();
+    if (!text) {
+      return REVENUE_TEMPLATE_ID;
+    }
+    if (
+      text.includes("获客") ||
+      text.includes("拉新") ||
+      text.includes("新客") ||
+      text.includes("acquisition") ||
+      text.includes("welcome")
+    ) {
+      return ACQUISITION_TEMPLATE_ID;
+    }
+    if (
+      text.includes("激活") ||
+      text.includes("首单") ||
+      text.includes("activation") ||
+      text.includes("checkin")
+    ) {
+      return ACTIVATION_TEMPLATE_ID;
+    }
+    if (
+      text.includes("活跃") ||
+      text.includes("互动") ||
+      text.includes("engagement") ||
+      text.includes("daily")
+    ) {
+      return ENGAGEMENT_TEMPLATE_ID;
+    }
+    if (
+      text.includes("留存") ||
+      text.includes("召回") ||
+      text.includes("流失") ||
+      text.includes("retention") ||
+      text.includes("winback")
+    ) {
+      return RETENTION_TEMPLATE_ID;
+    }
+    if (
+      text.includes("扩收") ||
+      text.includes("客单") ||
+      text.includes("加购") ||
+      text.includes("收入") ||
+      text.includes("revenue") ||
+      text.includes("upsell")
+    ) {
+      return REVENUE_TEMPLATE_ID;
+    }
+    return REVENUE_TEMPLATE_ID;
+  }
+
+  function buildProposalExplainSummary(proposal) {
+    const workflow =
+      proposal && proposal.policyWorkflow && typeof proposal.policyWorkflow === "object"
+        ? proposal.policyWorkflow
+        : {};
+    const evaluationResult =
+      workflow.lastEvaluationResult && typeof workflow.lastEvaluationResult === "object"
+        ? workflow.lastEvaluationResult
+        : null;
+    if (!evaluationResult) {
+      return null;
+    }
+    const explains = Array.isArray(evaluationResult.explains) ? evaluationResult.explains : [];
+    const first = explains[0] && typeof explains[0] === "object" ? explains[0] : null;
+    return {
+      decisionId: String(evaluationResult.decision_id || "").trim() || null,
+      selectedCount: Array.isArray(evaluationResult.selected) ? evaluationResult.selected.length : 0,
+      rejectedCount: Array.isArray(evaluationResult.rejected) ? evaluationResult.rejected.length : 0,
+      evaluatedAt: String(evaluationResult.created_at || "").trim() || null,
+      reasonCodes: Array.isArray(first && first.reason_codes) ? first.reason_codes : [],
+      riskFlags: Array.isArray(first && first.risk_flags) ? first.risk_flags : [],
+      expectedRange: first && first.expected_range && typeof first.expected_range === "object"
+        ? first.expected_range
+        : null
+    };
+  }
+
+  function buildProposalReviewPayload(proposal, { includeSpec = false } = {}) {
+    if (!proposal || typeof proposal !== "object") {
+      return null;
+    }
+    const summary = summarizeProposalForReview(proposal) || {};
+    const workflow =
+      proposal.policyWorkflow && typeof proposal.policyWorkflow === "object"
+        ? proposal.policyWorkflow
+        : {};
+    const lastEvaluation =
+      workflow.lastEvaluation && typeof workflow.lastEvaluation === "object"
+        ? workflow.lastEvaluation
+        : null;
+    const payload = {
+      proposalId: String(summary.proposalId || proposal.id || "").trim(),
+      status: String(summary.status || proposal.status || "").trim().toUpperCase(),
+      title: String(summary.title || proposal.title || "").trim(),
+      templateId: summary.templateId || null,
+      branchId: summary.branchId || null,
+      policyDraftId: summary.policyDraftId || null,
+      policyId: summary.policyId || null,
+      policyKey: summary.policyKey || null,
+      triggerEvent: summary.triggerEvent || null,
+      budget: summary.budget || null,
+      createdAt: summary.createdAt || proposal.createdAt || null,
+      rejectedAt: proposal.rejectedAt || null,
+      rejectedBy: proposal.rejectedBy || null,
+      rejectedReason: proposal.rejectedReason || null,
+      evaluation: lastEvaluation
+        ? {
+            decisionId: String(lastEvaluation.decisionId || "").trim() || null,
+            selected: Number(lastEvaluation.selected) || 0,
+            rejected: Number(lastEvaluation.rejected) || 0,
+            evaluatedAt: lastEvaluation.evaluatedAt || null,
+            cacheKey: lastEvaluation.cacheKey || null
+          }
+        : null,
+      explain: buildProposalExplainSummary(proposal)
+    };
+    if (includeSpec) {
+      payload.suggestedPolicySpec =
+        proposal.suggestedPolicySpec && typeof proposal.suggestedPolicySpec === "object"
+          ? cloneJson(proposal.suggestedPolicySpec)
+          : null;
+    }
+    return payload;
+  }
+
+  async function generateProposalFromIntent({
+    merchantId,
+    operatorId = "system",
+    intent = "",
+    templateId = "",
+    branchId = "",
+    sourceSessionId = null
+  }) {
+    const freshResult = await runWithFreshState("generateProposalFromIntent", {
+      merchantId,
+      operatorId,
+      intent,
+      templateId,
+      branchId,
+      sourceSessionId
+    });
+    if (freshResult !== FRESH_NOT_USED) {
+      return freshResult;
+    }
+    const merchant = db.merchants[merchantId];
+    if (!merchant) {
+      throw createHttpError("merchant not found", 404);
+    }
+    if (!policyOsService || typeof policyOsService.createDraft !== "function") {
+      throw createHttpError("policy os service is not configured", 400);
+    }
+    const safeIntent = String(intent || "").trim();
+    const resolvedTemplateId = String(templateId || "").trim() || inferTemplateIdFromIntent(safeIntent);
+    const { template, branch, policySpec } = buildPolicySpecFromTemplate({
+      merchantId,
+      templateId: resolvedTemplateId,
+      branchId
+    });
+    const aiResult = {
+      title: `策略提案：${String(template && template.name ? template.name : resolvedTemplateId)}（${String(
+        branch && branch.name ? branch.name : branchId || "DEFAULT"
+      )}）`,
+      spec: policySpec,
+      template,
+      branch,
+      strategyMeta: {
+        source: "AGENT_INTENT",
+        provider: "RULE_BASED",
+        model: "S070_SERVER_BASELINE",
+        rationale: safeIntent ? `老板意图：${truncateText(safeIntent, 120)}` : "基于默认收益增长场景生成",
+        confidence: 0.68
+      }
+    };
+    const createdResult = createProposalFromAiCandidate({
+      merchantId,
+      aiResult,
+      operatorId,
+      intent: safeIntent,
+      source: "AGENT_OS",
+      sourceSessionId
+    });
+    if (!createdResult || createdResult.status !== "PENDING" || !createdResult.proposal) {
+      const reasons = Array.isArray(createdResult && createdResult.reasons)
+        ? createdResult.reasons
+        : ["failed to generate proposal"];
+      throw createHttpError(String(reasons[0] || "failed to generate proposal"), 400);
+    }
+    db.save();
+    return {
+      merchantId,
+      proposal: buildProposalReviewPayload(createdResult.proposal, { includeSpec: true }),
+      created: cloneJson(createdResult.created || {})
+    };
+  }
+
+  async function listProposalReviews({
+    merchantId,
+    status = PROPOSAL_STATUS_ALL,
+    limit = 20
+  }) {
+    const freshResult = await runWithFreshRead("listProposalReviews", {
+      merchantId,
+      status,
+      limit
+    });
+    if (freshResult !== FRESH_NOT_USED) {
+      return freshResult;
+    }
+    if (!db.merchants || !db.merchants[merchantId]) {
+      throw createHttpError("merchant not found", 404);
+    }
+    const safeStatus = normalizeProposalStatus(status);
+    const safeLimit = Math.max(1, Math.min(100, Math.floor(Number(limit) || 20)));
+    const rows = listProposalRows(merchantId);
+    const filtered = rows
+      .filter((item) =>
+        safeStatus === PROPOSAL_STATUS_ALL
+          ? true
+          : String(item && item.status ? item.status : "").trim().toUpperCase() === safeStatus
+      )
+      .sort(
+        (left, right) =>
+          String(right && right.createdAt ? right.createdAt : "").localeCompare(
+            String(left && left.createdAt ? left.createdAt : "")
+          )
+      );
+    const items = filtered.slice(0, safeLimit).map((item) => buildProposalReviewPayload(item));
+    return {
+      merchantId,
+      status: safeStatus,
+      items,
+      pageInfo: {
+        limit: safeLimit,
+        returned: items.length,
+        total: filtered.length
+      }
+    };
+  }
+
+  async function getProposalReviewDetail({ merchantId, proposalId }) {
+    const freshResult = await runWithFreshRead("getProposalReviewDetail", {
+      merchantId,
+      proposalId
+    });
+    if (freshResult !== FRESH_NOT_USED) {
+      return freshResult;
+    }
+    if (!db.merchants || !db.merchants[merchantId]) {
+      throw createHttpError("merchant not found", 404);
+    }
+    const proposal = getProposalById({ merchantId, proposalId });
+    if (!proposal) {
+      throw createHttpError("proposal not found", 404);
+    }
+    return {
+      merchantId,
+      proposal: buildProposalReviewPayload(proposal, { includeSpec: true })
+    };
+  }
+
+  async function rejectProposalPolicy({
+    merchantId,
+    proposalId,
+    operatorId = "system",
+    reason = ""
+  }) {
+    const freshResult = await runWithFreshState("rejectProposalPolicy", {
+      merchantId,
+      proposalId,
+      operatorId,
+      reason
+    });
+    if (freshResult !== FRESH_NOT_USED) {
+      return freshResult;
+    }
+    const proposal = getProposalById({ merchantId, proposalId });
+    if (!proposal) {
+      throw createHttpError("proposal not found", 404);
+    }
+    const currentStatus = String(proposal.status || "").trim().toUpperCase();
+    if (currentStatus === "PUBLISHED") {
+      throw createHttpError("published proposal cannot be rejected", 409);
+    }
+    if (!["PENDING", "APPROVED", "REJECTED"].includes(currentStatus)) {
+      throw createHttpError("proposal status does not allow reject", 409);
+    }
+    if (currentStatus === "REJECTED") {
+      return {
+        proposalId: proposal.id,
+        status: "REJECTED",
+        rejectedAt: proposal.rejectedAt || null,
+        rejectedBy: proposal.rejectedBy || null,
+        rejectedReason: proposal.rejectedReason || null
+      };
+    }
+    proposal.status = "REJECTED";
+    proposal.rejectedAt = new Date().toISOString();
+    proposal.rejectedBy = operatorId || "system";
+    proposal.rejectedReason = String(reason || "").trim() || "owner_rejected";
+    proposal.policyWorkflow = {
+      ...(proposal.policyWorkflow || {}),
+      status: "REJECTED"
+    };
+    if (proposal.strategyMeta && proposal.strategyMeta.templateId) {
+      setStrategyConfig(merchantId, proposal.strategyMeta.templateId, {
+        branchId: proposal.strategyMeta.branchId,
+        status: "REJECTED",
+        lastProposalId: proposal.id
+      });
+    }
+    db.save();
+    return {
+      proposalId: proposal.id,
+      status: "REJECTED",
+      rejectedAt: proposal.rejectedAt,
+      rejectedBy: proposal.rejectedBy,
+      rejectedReason: proposal.rejectedReason
+    };
+  }
+
+  async function decideProposalReview({
+    merchantId,
+    proposalId,
+    operatorId = "system",
+    decision = "APPROVE",
+    reason = "",
+    userId = "",
+    event = "",
+    forceRefresh = false
+  }) {
+    const freshResult = await runWithFreshState("decideProposalReview", {
+      merchantId,
+      proposalId,
+      operatorId,
+      decision,
+      reason,
+      userId,
+      event,
+      forceRefresh
+    });
+    if (freshResult !== FRESH_NOT_USED) {
+      return freshResult;
+    }
+    const safeDecision = String(decision || "").trim().toUpperCase();
+    if (!["APPROVE", "REJECT"].includes(safeDecision)) {
+      throw createHttpError("decision must be APPROVE or REJECT", 400);
+    }
+    const proposal = getProposalById({ merchantId, proposalId });
+    if (!proposal) {
+      throw createHttpError("proposal not found", 404);
+    }
+    if (safeDecision === "REJECT") {
+      const rejected = await rejectProposalPolicy({
+        merchantId,
+        proposalId,
+        operatorId,
+        reason
+      });
+      const latestProposal = getProposalById({ merchantId, proposalId });
+      return {
+        decision: safeDecision,
+        ...rejected,
+        proposal: buildProposalReviewPayload(latestProposal, { includeSpec: true })
+      };
+    }
+
+    const currentStatus = String(proposal.status || "").trim().toUpperCase();
+    if (currentStatus === "REJECTED") {
+      throw createHttpError("rejected proposal cannot be approved", 409);
+    }
+    if (currentStatus === "PUBLISHED") {
+      return {
+        decision: safeDecision,
+        proposalId: proposal.id,
+        status: "PUBLISHED",
+        draftId: proposal.policyWorkflow && proposal.policyWorkflow.draftId
+          ? proposal.policyWorkflow.draftId
+          : null,
+        approvalId: proposal.policyWorkflow && proposal.policyWorkflow.approvalId
+          ? proposal.policyWorkflow.approvalId
+          : null,
+        policyId: proposal.policyWorkflow && proposal.policyWorkflow.policyId
+          ? proposal.policyWorkflow.policyId
+          : null,
+        evaluation: buildProposalExplainSummary(proposal),
+        proposal: buildProposalReviewPayload(proposal, { includeSpec: true })
+      };
+    }
+
+    const evaluationResult = await evaluateProposalPolicy({
+      merchantId,
+      proposalId,
+      operatorId,
+      userId,
+      event,
+      eventId: `evt_s070_decide_${Date.now()}`,
+      context: {
+        source: "MERCHANT_PROPOSAL_DECIDE_APPROVE",
+        decision: "APPROVE"
+      },
+      forceRefresh
+    });
+    if (currentStatus === "PENDING") {
+      await approveProposalPolicy({
+        merchantId,
+        proposalId,
+        operatorId
+      });
+    }
+    const published = await publishApprovedProposalPolicy({
+      merchantId,
+      proposalId,
+      operatorId
+    });
+    const latestProposal = getProposalById({ merchantId, proposalId });
+    return {
+      decision: safeDecision,
+      proposalId,
+      status: "PUBLISHED",
+      draftId: published.draftId || null,
+      approvalId: published.approvalId || null,
+      policyId: published.policyId || null,
+      evaluation: {
+        reused: Boolean(evaluationResult && evaluationResult.reused),
+        decisionId:
+          evaluationResult &&
+          evaluationResult.evaluation &&
+          evaluationResult.evaluation.decision_id
+            ? evaluationResult.evaluation.decision_id
+            : null,
+        selected:
+          evaluationResult &&
+          evaluationResult.evaluation &&
+          Array.isArray(evaluationResult.evaluation.selected)
+            ? evaluationResult.evaluation.selected.length
+            : 0,
+        rejected:
+          evaluationResult &&
+          evaluationResult.evaluation &&
+          Array.isArray(evaluationResult.evaluation.rejected)
+            ? evaluationResult.evaluation.rejected.length
+            : 0,
+        evaluatedAt:
+          evaluationResult &&
+          evaluationResult.evaluation &&
+          evaluationResult.evaluation.created_at
+            ? evaluationResult.evaluation.created_at
+            : null
+      },
+      proposal: buildProposalReviewPayload(latestProposal, { includeSpec: true })
     };
   }
 
@@ -2522,9 +3026,7 @@ function createMerchantService(db, options = {}) {
     if (freshResult !== FRESH_NOT_USED) {
       return freshResult;
     }
-    const proposal = db.proposals.find(
-      (item) => item.id === proposalId && item.merchantId === merchantId
-    );
+    const proposal = getProposalById({ merchantId, proposalId });
     if (!proposal) {
       throw new Error("proposal not found");
     }
@@ -2616,9 +3118,7 @@ function createMerchantService(db, options = {}) {
     if (freshResult !== FRESH_NOT_USED) {
       return freshResult;
     }
-    const proposal = db.proposals.find(
-      (item) => item.id === proposalId && item.merchantId === merchantId
-    );
+    const proposal = getProposalById({ merchantId, proposalId });
     if (!proposal) {
       throw new Error("proposal not found");
     }
@@ -2702,9 +3202,7 @@ function createMerchantService(db, options = {}) {
     if (freshResult !== FRESH_NOT_USED) {
       return freshResult;
     }
-    const proposal = db.proposals.find(
-      (item) => item.id === proposalId && item.merchantId === merchantId
-    );
+    const proposal = getProposalById({ merchantId, proposalId });
     if (!proposal) {
       throw new Error("proposal not found");
     }
@@ -2734,6 +3232,7 @@ function createMerchantService(db, options = {}) {
       operatorId,
       approvalId
     });
+    proposal.status = "PUBLISHED";
     proposal.policyWorkflow = {
       ...(proposal.policyWorkflow || {}),
       draftId,
@@ -3225,6 +3724,11 @@ function createMerchantService(db, options = {}) {
     listLifecycleStrategyLibrary,
     enableLifecycleStrategy,
     setKillSwitch,
+    generateProposalFromIntent,
+    listProposalReviews,
+    getProposalReviewDetail,
+    decideProposalReview,
+    evaluateProposalPolicy,
     createAgentSession,
     getAgentSession,
     listAgentMessages,

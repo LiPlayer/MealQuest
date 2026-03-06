@@ -24,6 +24,7 @@ function ensurePolicyOsState(db) {
   db.policyOs.dispatcher = ensureObject(db.policyOs.dispatcher);
   db.policyOs.dispatcher.sequenceByMerchant = ensureObject(db.policyOs.dispatcher.sequenceByMerchant);
   db.policyOs.dispatcher.dedupe = ensureObject(db.policyOs.dispatcher.dedupe);
+  db.policyOs.proposalsByMerchant = ensureObject(db.policyOs.proposalsByMerchant);
   db.policyOs.notifications = ensureObject(db.policyOs.notifications);
   db.policyOs.notifications.byId = ensureObject(db.policyOs.notifications.byId);
   db.policyOs.notifications.sequenceByMerchant = ensureObject(

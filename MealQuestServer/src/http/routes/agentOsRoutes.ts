@@ -3,6 +3,7 @@ const {
   sendJson,
   ensureRole,
   enforceTenantPolicyForHttp,
+  toListLimit,
 } = require("../serverHelpers");
 
 const AGENT_OS_PREFIX = "/api/agent-os";
@@ -27,7 +28,13 @@ function createAgentOsRoutesHandler({
           (body.metadata && body.metadata.merchantId) ||
           body.merchantId)) ||
       "";
-    const scopedMerchantId = String(auth.merchantId || bodyMerchantId || "").trim();
+    const safeBodyMerchantId = String(bodyMerchantId || "").trim();
+    if (auth.merchantId && safeBodyMerchantId && safeBodyMerchantId !== auth.merchantId) {
+      const err = new Error("merchant scope denied");
+      err.statusCode = 403;
+      throw err;
+    }
+    const scopedMerchantId = String(auth.merchantId || safeBodyMerchantId || "").trim();
     if (!scopedMerchantId) {
       const err = new Error("merchantId is required");
       err.statusCode = 400;
@@ -176,6 +183,188 @@ function createAgentOsRoutesHandler({
         return true;
       }
       sendJson(res, 200, [agentRuntimeService.getSessionState(session)]);
+      return true;
+    }
+
+    if (method === "POST" && url.pathname === `${AGENT_OS_PREFIX}/proposals/generate`) {
+      ensureRole(auth, ["MANAGER", "OWNER"]);
+      const body = await readJsonBody(req);
+      const merchantId = resolveScopedMerchantId(auth, body);
+      const operatorId = resolveScopedOperatorId(auth);
+      if (
+        !enforceTenantPolicyForHttp({
+          tenantPolicyManager,
+          merchantId,
+          operation: "AGENT_PROPOSAL_GENERATE",
+          res,
+          auth,
+          appendAuditLog,
+        })
+      ) {
+        return true;
+      }
+      const { merchantService } = getServicesForMerchant(merchantId);
+      const result = await merchantService.generateProposalFromIntent({
+        merchantId,
+        operatorId,
+        intent: body.intent || body.content || "",
+        templateId: body.templateId || "",
+        branchId: body.branchId || "",
+        sourceSessionId:
+          body.sessionId ||
+          body.session_id ||
+          (body.metadata && body.metadata.sessionId) ||
+          null,
+      });
+      appendAuditLog({
+        merchantId,
+        action: "AGENT_PROPOSAL_GENERATE",
+        status: "SUCCESS",
+        auth,
+        details: {
+          proposalId: result && result.proposal ? result.proposal.proposalId : null,
+          templateId: result && result.proposal ? result.proposal.templateId : null,
+          status: result && result.proposal ? result.proposal.status : null,
+        },
+      });
+      sendJson(res, 200, result);
+      return true;
+    }
+
+    if (method === "GET" && url.pathname === `${AGENT_OS_PREFIX}/proposals`) {
+      ensureRole(auth, ["MANAGER", "OWNER"]);
+      const merchantId = resolveScopedMerchantId(auth, {
+        merchantId: url.searchParams.get("merchantId") || "",
+      });
+      const { merchantService } = getServicesForMerchant(merchantId);
+      const payload = await merchantService.listProposalReviews({
+        merchantId,
+        status: url.searchParams.get("status") || "ALL",
+        limit: toListLimit(url.searchParams.get("limit"), 20, 100),
+      });
+      sendJson(res, 200, payload);
+      return true;
+    }
+
+    const proposalMatch = matchPath(
+      url.pathname,
+      new RegExp(`^${AGENT_OS_PREFIX}/proposals/([^/]+)$`),
+    );
+    if (method === "GET" && proposalMatch) {
+      ensureRole(auth, ["MANAGER", "OWNER"]);
+      const merchantId = resolveScopedMerchantId(auth, {
+        merchantId: url.searchParams.get("merchantId") || "",
+      });
+      const proposalId = decodeURIComponent(proposalMatch[0]);
+      const { merchantService } = getServicesForMerchant(merchantId);
+      const payload = await merchantService.getProposalReviewDetail({
+        merchantId,
+        proposalId,
+      });
+      sendJson(res, 200, payload);
+      return true;
+    }
+
+    const proposalEvaluateMatch = matchPath(
+      url.pathname,
+      new RegExp(`^${AGENT_OS_PREFIX}/proposals/([^/]+)/evaluate$`),
+    );
+    if (method === "POST" && proposalEvaluateMatch) {
+      ensureRole(auth, ["MANAGER", "OWNER"]);
+      const body = await readJsonBody(req);
+      const merchantId = resolveScopedMerchantId(auth, body);
+      const operatorId = resolveScopedOperatorId(auth);
+      if (
+        !enforceTenantPolicyForHttp({
+          tenantPolicyManager,
+          merchantId,
+          operation: "AGENT_PROPOSAL_EVALUATE",
+          res,
+          auth,
+          appendAuditLog,
+        })
+      ) {
+        return true;
+      }
+      const proposalId = decodeURIComponent(proposalEvaluateMatch[0]);
+      const { merchantService } = getServicesForMerchant(merchantId);
+      const result = await merchantService.evaluateProposalPolicy({
+        merchantId,
+        proposalId,
+        operatorId,
+        userId: body.userId || body.user_id || "",
+        event: body.event || "",
+        eventId: body.eventId || body.event_id || "",
+        context: body.context && typeof body.context === "object" ? body.context : {},
+        forceRefresh: body.forceRefresh === true || body.force_refresh === true,
+      });
+      appendAuditLog({
+        merchantId,
+        action: "AGENT_PROPOSAL_EVALUATE",
+        status: "SUCCESS",
+        auth,
+        details: {
+          proposalId,
+          draftId: result && result.draftId ? result.draftId : null,
+          reused: Boolean(result && result.reused),
+          decisionId:
+            result && result.evaluation && result.evaluation.decision_id
+              ? result.evaluation.decision_id
+              : null,
+        },
+      });
+      sendJson(res, 200, result);
+      return true;
+    }
+
+    const proposalDecideMatch = matchPath(
+      url.pathname,
+      new RegExp(`^${AGENT_OS_PREFIX}/proposals/([^/]+)/decide$`),
+    );
+    if (method === "POST" && proposalDecideMatch) {
+      ensureRole(auth, ["OWNER"]);
+      const body = await readJsonBody(req);
+      const merchantId = resolveScopedMerchantId(auth, body);
+      const operatorId = resolveScopedOperatorId(auth);
+      if (
+        !enforceTenantPolicyForHttp({
+          tenantPolicyManager,
+          merchantId,
+          operation: "AGENT_PROPOSAL_DECIDE",
+          res,
+          auth,
+          appendAuditLog,
+        })
+      ) {
+        return true;
+      }
+      const proposalId = decodeURIComponent(proposalDecideMatch[0]);
+      const { merchantService } = getServicesForMerchant(merchantId);
+      const decision = body.decision || body.action || "APPROVE";
+      const result = await merchantService.decideProposalReview({
+        merchantId,
+        proposalId,
+        operatorId,
+        decision,
+        reason: body.reason || "",
+        userId: body.userId || body.user_id || "",
+        event: body.event || "",
+        forceRefresh: body.forceRefresh === true || body.force_refresh === true,
+      });
+      appendAuditLog({
+        merchantId,
+        action: "AGENT_PROPOSAL_DECIDE",
+        status: "SUCCESS",
+        auth,
+        details: {
+          proposalId,
+          decision: String(decision || "").trim().toUpperCase(),
+          status: result && result.status ? result.status : null,
+          draftId: result && result.draftId ? result.draftId : null,
+          policyId: result && result.policyId ? result.policyId : null,
+        },
+      });
+      sendJson(res, 200, result);
       return true;
     }
 

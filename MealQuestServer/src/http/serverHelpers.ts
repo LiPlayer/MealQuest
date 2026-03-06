@@ -13,6 +13,9 @@ const TENANT_LIMIT_OPERATIONS = [
   "KILL_SWITCH_SET",
   "PRIVACY_CANCEL",
   "AGENT_WRITE",
+  "AGENT_PROPOSAL_GENERATE",
+  "AGENT_PROPOSAL_EVALUATE",
+  "AGENT_PROPOSAL_DECIDE",
   "SUPPLIER_VERIFY",
   "ALLIANCE_CONFIG_SET",
   "ALLIANCE_SYNC_USER",
@@ -146,6 +149,15 @@ function resolveAuditAction(method, pathname) {
       /^\/api\/agent-os\/sessions\/[^/]+\/tasks\/stream$/.test(pathname))
   ) {
     return "AGENT_TASK_RUN";
+  }
+  if (method === "POST" && pathname === "/api/agent-os/proposals/generate") {
+    return "AGENT_PROPOSAL_GENERATE";
+  }
+  if (method === "POST" && /^\/api\/agent-os\/proposals\/[^/]+\/evaluate$/.test(pathname)) {
+    return "AGENT_PROPOSAL_EVALUATE";
+  }
+  if (method === "POST" && /^\/api\/agent-os\/proposals\/[^/]+\/decide$/.test(pathname)) {
+    return "AGENT_PROPOSAL_DECIDE";
   }
   if (method === "POST" && pathname === "/api/supplier/verify-order") {
     return "SUPPLIER_VERIFY";
