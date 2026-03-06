@@ -540,6 +540,62 @@ export type ExperienceGuardResponse = {
   }[];
 };
 
+export type ReleaseGateFinalStatus = 'GO' | 'NO_GO' | 'NEEDS_REVIEW';
+export type ReleaseGateStatus = 'PASS' | 'FAIL' | 'REVIEW';
+
+export type ReleaseGateItem = {
+  status: ReleaseGateStatus;
+  reasons: string[];
+};
+
+export type ReleaseGateResponse = {
+  version: string;
+  merchantId: string;
+  objective: string;
+  evaluatedAt: string;
+  windowDays: number;
+  trendWindowDays: number;
+  kpis: {
+    MerchantNetProfit30: number;
+    LongTermValueIndex: number;
+    MerchantProfitUplift30: number;
+    MerchantRevenueUplift30: number;
+    UpliftHitRate30: number;
+    Retention30: number;
+    SubsidyWasteProxy: number;
+    PlatformCost30: number;
+    PlatformCost30Observed: boolean;
+    paymentSuccessRate30: number;
+    riskLossProxy30: number;
+  };
+  gates: {
+    businessGate: ReleaseGateItem;
+    technicalGate: ReleaseGateItem;
+    riskGate: ReleaseGateItem;
+    complianceGate: ReleaseGateItem;
+  };
+  dataSufficiency: {
+    ready: boolean;
+    requirements: Record<string, number>;
+    observed: Record<string, number>;
+    reasons: string[];
+  };
+  supportingMetrics: {
+    invoiceCoverage30: number;
+    privacySuccessRate30: number;
+    marketingCost30: number;
+    profitTrendDelta7: number;
+  };
+  config: {
+    thresholds: Record<string, unknown>;
+    weights: Record<string, number>;
+  };
+  finalDecision: {
+    status: ReleaseGateFinalStatus;
+    reasons: string[];
+  };
+};
+
 export type FeedbackSummaryTicketStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
 export type FeedbackSummaryTicketCategory = 'PAYMENT' | 'BENEFIT' | 'PRIVACY' | 'ACCOUNT' | 'OTHER';
 
@@ -1159,6 +1215,29 @@ export async function getCustomerExperienceGuard(params: {
     .filter(Boolean)
     .join('&');
   return getJson<ExperienceGuardResponse>(`/api/state/experience-guard?${query}`, {
+    token: params.token,
+  });
+}
+
+export async function getReleaseGateSnapshot(params: {
+  merchantId: string;
+  token: string;
+  windowDays?: number;
+}): Promise<ReleaseGateResponse> {
+  const merchantId = String(params.merchantId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  const windowDays = Number(params.windowDays);
+  const query = [
+    `merchantId=${encodeURIComponent(merchantId)}`,
+    Number.isFinite(windowDays) && windowDays > 0
+      ? `windowDays=${encodeURIComponent(String(Math.floor(windowDays)))}`
+      : '',
+  ]
+    .filter(Boolean)
+    .join('&');
+  return getJson<ReleaseGateResponse>(`/api/state/release-gate?${query}`, {
     token: params.token,
   });
 }

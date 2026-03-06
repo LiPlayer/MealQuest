@@ -226,7 +226,7 @@
 | PackageID | Lane | CapabilityID | Macro Requirement | Deliverable | DependsOn | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | PKG-S090-SRV-01 | server | SRV-C09 | 建立长期 KPI 与发布门判定能力 | KPI 与发布门基线 | none | done |
-| PKG-S090-MER-01 | merchant | MER-C10 | 建立老板端 KPI 与 Go/No-Go 面板 | 发布决策面板能力 | PKG-S090-SRV-01 | todo |
+| PKG-S090-MER-01 | merchant | MER-C10 | 建立老板端 KPI 与 Go/No-Go 面板 | 发布决策面板能力 | PKG-S090-SRV-01 | done |
 | PKG-S090-CUS-01 | customer | CUS-C07 | 建立顾客稳定性指标接入发布门规则 | 顾客稳定性口径清单 | PKG-S090-SRV-01 | todo |
 
 ### S100 - 营销自动化

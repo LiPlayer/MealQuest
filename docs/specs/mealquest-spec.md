@@ -796,6 +796,26 @@
 - 惩罚项：`SubsidyWasteProxy`
 - 权重支持按租户配置覆盖，默认权重偏向商户收益与 Uplift
 
+### 8.4 老板端发布门面板（S090-MER-01）
+
+老板端在 S090 阶段需在看板内落地“长期 KPI 与发布门”可视化模块，支撑 Go/No-Go 决策。
+
+- 接入接口：`GET /api/state/release-gate`
+- 入口位置：老板端 `Dashboard`（不新增独立 Tab）
+- 展示最小集（当前生效）：
+  - 最终发布建议：`GO | NO_GO | NEEDS_REVIEW`
+  - 核心 KPI：`LongTermValueIndex`、`MerchantNetProfit30`、`MerchantProfitUplift30`、`UpliftHitRate30`、`paymentSuccessRate30`、`riskLossProxy30`
+  - 四门状态：业务门、技术门、风控门、合规门（含原因码）
+  - 数据充分性：`ready` 与不足原因码
+
+角色策略（当前生效）：
+- `OWNER / MANAGER`：可查看完整发布门明细并手动刷新
+- `CLERK`：模块可见但仅显示权限提示，不请求受限接口
+
+降级要求（当前生效）：
+- 发布门接口异常时，仅发布门模块降级并提示“发布门数据暂不可用”
+- 降级不得阻断看板内其他模块（体验健康度、口径可见、经营摘要等）
+
 ---
 
 ## 9. 安全、隐私与合规

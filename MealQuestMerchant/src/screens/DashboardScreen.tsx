@@ -6,7 +6,13 @@ import AppShell from '../components/ui/AppShell';
 import SurfaceCard from '../components/ui/SurfaceCard';
 import StatTile from '../components/ui/StatTile';
 import { useMerchant } from '../context/MerchantContext';
-import { ExperienceGuardPath, ExperienceGuardResponse, getCustomerExperienceGuard } from '../services/apiClient';
+import {
+  ExperienceGuardPath,
+  ExperienceGuardResponse,
+  ReleaseGateResponse,
+  getCustomerExperienceGuard,
+  getReleaseGateSnapshot,
+} from '../services/apiClient';
 import { mqTheme } from '../theme/tokens';
 
 function formatGuardStatus(value: string): string {
@@ -43,12 +49,59 @@ function formatGuardPathMetrics(path: ExperienceGuardPath): string {
   return '';
 }
 
+function formatReleaseDecisionStatus(value: string): string {
+  const normalized = String(value || '').trim().toUpperCase();
+  if (normalized === 'GO') {
+    return '可发布';
+  }
+  if (normalized === 'NO_GO') {
+    return '不可发布';
+  }
+  if (normalized === 'NEEDS_REVIEW') {
+    return '需复核';
+  }
+  return normalized || '-';
+}
+
+function formatReleaseGateStatus(value: string): string {
+  const normalized = String(value || '').trim().toUpperCase();
+  if (normalized === 'PASS') {
+    return '通过';
+  }
+  if (normalized === 'FAIL') {
+    return '未通过';
+  }
+  if (normalized === 'REVIEW') {
+    return '待复核';
+  }
+  return normalized || '-';
+}
+
+function formatPercent(value: number, digits = 1): string {
+  const safe = Number(value);
+  if (!Number.isFinite(safe)) {
+    return '-';
+  }
+  return `${(safe * 100).toFixed(digits)}%`;
+}
+
+function formatMoney(value: number): string {
+  const safe = Number(value);
+  if (!Number.isFinite(safe)) {
+    return '-';
+  }
+  return `¥${safe.toFixed(2)}`;
+}
+
 export default function DashboardScreen() {
   const router = useRouter();
   const { authSession, merchantState, refreshContractVisibility } = useMerchant();
   const [experienceGuard, setExperienceGuard] = useState<ExperienceGuardResponse | null>(null);
   const [experienceLoading, setExperienceLoading] = useState(false);
   const [experienceError, setExperienceError] = useState('');
+  const [releaseGate, setReleaseGate] = useState<ReleaseGateResponse | null>(null);
+  const [releaseGateLoading, setReleaseGateLoading] = useState(false);
+  const [releaseGateError, setReleaseGateError] = useState('');
   const welcomeTopReason = merchantState.acquisitionWelcomeSummary.topBlockedReasons[0];
   const welcomeLatest = merchantState.acquisitionWelcomeSummary.latestResults[0];
   const activationTopReason = merchantState.activationRecoverySummary.topBlockedReasons[0];
@@ -68,7 +121,7 @@ export default function DashboardScreen() {
     ? modelContract.signalFields.slice(0, 5).join(' / ')
     : '暂无信号字段';
   const role = String(authSession?.role || '').trim().toUpperCase();
-  const canViewExperience = role === 'OWNER' || role === 'MANAGER';
+  const canViewGovernanceView = role === 'OWNER' || role === 'MANAGER';
   const experienceAlerts = useMemo(
     () => (Array.isArray(experienceGuard?.alerts) ? experienceGuard.alerts.slice(0, 3) : []),
     [experienceGuard?.alerts],
@@ -77,9 +130,26 @@ export default function DashboardScreen() {
     () => (Array.isArray(experienceGuard?.paths) ? experienceGuard.paths.slice(0, 4) : []),
     [experienceGuard?.paths],
   );
+  const releaseGateReasons = useMemo(
+    () => (Array.isArray(releaseGate?.finalDecision?.reasons) ? releaseGate.finalDecision.reasons.slice(0, 6) : []),
+    [releaseGate?.finalDecision?.reasons],
+  );
+  const releaseGateItemRows = useMemo(
+    () => (
+      releaseGate
+        ? [
+            { label: '业务门', gate: releaseGate.gates.businessGate },
+            { label: '技术门', gate: releaseGate.gates.technicalGate },
+            { label: '风控门', gate: releaseGate.gates.riskGate },
+            { label: '合规门', gate: releaseGate.gates.complianceGate },
+          ]
+        : []
+    ),
+    [releaseGate],
+  );
 
   const loadExperienceGuard = useCallback(async () => {
-    if (!authSession || !authSession.merchantId || !authSession.token || !canViewExperience) {
+    if (!authSession || !authSession.merchantId || !authSession.token || !canViewGovernanceView) {
       return;
     }
     setExperienceLoading(true);
@@ -97,11 +167,36 @@ export default function DashboardScreen() {
     } finally {
       setExperienceLoading(false);
     }
-  }, [authSession, canViewExperience]);
+  }, [authSession, canViewGovernanceView]);
+
+  const loadReleaseGate = useCallback(async () => {
+    if (!authSession || !authSession.merchantId || !authSession.token || !canViewGovernanceView) {
+      return;
+    }
+    setReleaseGateLoading(true);
+    setReleaseGateError('');
+    try {
+      const result = await getReleaseGateSnapshot({
+        merchantId: authSession.merchantId,
+        token: authSession.token,
+      });
+      setReleaseGate(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '发布门数据加载失败';
+      setReleaseGateError(message);
+      setReleaseGate(null);
+    } finally {
+      setReleaseGateLoading(false);
+    }
+  }, [authSession, canViewGovernanceView]);
 
   useEffect(() => {
     void loadExperienceGuard();
   }, [loadExperienceGuard]);
+
+  useEffect(() => {
+    void loadReleaseGate();
+  }, [loadReleaseGate]);
 
   return (
     <AppShell>
@@ -132,14 +227,14 @@ export default function DashboardScreen() {
             <Text style={styles.contractRefreshBtnText}>刷新体验</Text>
           </Pressable>
         </View>
-        {!canViewExperience ? (
+        {!canViewGovernanceView ? (
           <Text style={styles.hintText}>当前角色仅可查看概要，顾客体验健康度明细对 OWNER/MANAGER 开放。</Text>
         ) : null}
-        {canViewExperience && experienceLoading ? <Text style={styles.hintText}>体验数据加载中...</Text> : null}
-        {canViewExperience && experienceError ? (
+        {canViewGovernanceView && experienceLoading ? <Text style={styles.hintText}>体验数据加载中...</Text> : null}
+        {canViewGovernanceView && experienceError ? (
           <Text style={styles.contractErrorText}>体验数据暂不可用：{experienceError}</Text>
         ) : null}
-        {canViewExperience && experienceGuard ? (
+        {canViewGovernanceView && experienceGuard ? (
           <>
             <View style={styles.grid}>
               <StatTile label="总体状态" value={formatGuardStatus(experienceGuard.status)} />
@@ -163,6 +258,78 @@ export default function DashboardScreen() {
             ))}
             <Text style={styles.hintText}>
               最近评估：{experienceGuard.evaluatedAt ? new Date(experienceGuard.evaluatedAt).toLocaleString() : '暂无'}
+            </Text>
+          </>
+        ) : null}
+      </SurfaceCard>
+
+      <SurfaceCard>
+        <View style={styles.contractHeaderRow}>
+          <Text style={styles.sectionTitle}>长期 KPI 与发布门</Text>
+          <Pressable
+            style={styles.contractRefreshBtn}
+            onPress={() => {
+              void loadReleaseGate();
+            }}
+          >
+            <Text style={styles.contractRefreshBtnText}>刷新发布门</Text>
+          </Pressable>
+        </View>
+        {!canViewGovernanceView ? (
+          <Text style={styles.hintText}>当前角色仅可查看概要，发布门明细对 OWNER/MANAGER 开放。</Text>
+        ) : null}
+        {canViewGovernanceView && releaseGateLoading ? <Text style={styles.hintText}>发布门数据加载中...</Text> : null}
+        {canViewGovernanceView && releaseGateError ? (
+          <Text style={styles.contractErrorText}>发布门数据暂不可用：{releaseGateError}</Text>
+        ) : null}
+        {canViewGovernanceView && releaseGate ? (
+          <>
+            <View style={styles.grid}>
+              <StatTile label="发布建议" value={formatReleaseDecisionStatus(releaseGate.finalDecision.status)} />
+              <StatTile label="长期价值指数" value={Number(releaseGate.kpis.LongTermValueIndex).toFixed(3)} />
+              <StatTile label="30天净收益" value={formatMoney(releaseGate.kpis.MerchantNetProfit30)} />
+            </View>
+            <View style={styles.grid}>
+              <StatTile label="收益提升" value={formatPercent(releaseGate.kpis.MerchantProfitUplift30)} />
+              <StatTile label="Uplift命中率" value={formatPercent(releaseGate.kpis.UpliftHitRate30)} />
+              <StatTile label="支付成功率" value={formatPercent(releaseGate.kpis.paymentSuccessRate30, 2)} />
+            </View>
+            <View style={styles.grid}>
+              <StatTile label="风险损失代理" value={formatPercent(releaseGate.kpis.riskLossProxy30, 2)} />
+              <StatTile label="补贴浪费代理" value={formatPercent(releaseGate.kpis.SubsidyWasteProxy)} />
+              <StatTile label="留存率" value={formatPercent(releaseGate.kpis.Retention30)} />
+            </View>
+            {releaseGateItemRows.map((row) => {
+              const safeGate = row && row.gate && typeof row.gate === 'object'
+                ? row.gate as { status?: string; reasons?: string[] }
+                : {};
+              const reasons = Array.isArray(safeGate.reasons) ? safeGate.reasons : [];
+              return (
+                <View key={row.label} style={styles.releaseGateRow}>
+                  <Text style={styles.pathTitle}>{row.label}：{formatReleaseGateStatus(String(safeGate.status || ''))}</Text>
+                  {reasons.length > 0 ? (
+                    <Text style={styles.hintText}>原因：{reasons.slice(0, 3).join(' / ')}</Text>
+                  ) : (
+                    <Text style={styles.hintText}>原因：-</Text>
+                  )}
+                </View>
+              );
+            })}
+            <Text style={styles.hintText}>
+              数据充分性：{releaseGate.dataSufficiency.ready ? '已满足' : '不足（需复核）'}
+            </Text>
+            {!releaseGate.dataSufficiency.ready && releaseGate.dataSufficiency.reasons.length > 0 ? (
+              <Text style={styles.contractWarnText}>
+                样本不足原因：{releaseGate.dataSufficiency.reasons.slice(0, 4).join(' / ')}
+              </Text>
+            ) : null}
+            {releaseGateReasons.length > 0 ? (
+              <Text style={styles.contractWarnText}>
+                发布建议原因：{releaseGateReasons.join(' / ')}
+              </Text>
+            ) : null}
+            <Text style={styles.hintText}>
+              最近评估：{releaseGate.evaluatedAt ? new Date(releaseGate.evaluatedAt).toLocaleString() : '暂无'}
             </Text>
           </>
         ) : null}
@@ -421,6 +588,15 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   experiencePathRow: {
+    borderWidth: 1,
+    borderColor: mqTheme.colors.border,
+    borderRadius: mqTheme.radius.md,
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 2,
+  },
+  releaseGateRow: {
     borderWidth: 1,
     borderColor: mqTheme.colors.border,
     borderRadius: mqTheme.radius.md,
