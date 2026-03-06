@@ -56,6 +56,10 @@ function createDefaultState() {
       automation: {
         configByMerchant: {}
       },
+      experiments: {
+        configByMerchant: {},
+        rollbackHistoryByMerchant: {}
+      },
       feedback: {
         ticketsById: {},
         sequenceByMerchant: {}

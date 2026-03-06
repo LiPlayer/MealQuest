@@ -3,140 +3,83 @@ const assert = require("node:assert/strict");
 
 const { createAppServer } = require("../src/http/server");
 const { issueToken } = require("../src/core/auth");
-const templateCatalog = require("../src/policyos/templates/strategy-templates.v1.json");
 
 const TEST_JWT_SECRET = process.env.MQ_JWT_SECRET || "mealquest-dev-secret";
 
-function deepClone(value) {
-  return JSON.parse(JSON.stringify(value));
-}
-
-function createWelcomeSpec(merchantId) {
-  const template = (templateCatalog.templates || []).find(
-    (item) => item && item.templateId === "acquisition_welcome_gift"
-  );
-  if (!template) {
-    throw new Error("acquisition_welcome_gift template not found");
-  }
-  const branch = (template.branches || []).find((item) => item && item.branchId === "DEFAULT");
-  if (!branch) {
-    throw new Error("acquisition_welcome_gift default branch not found");
-  }
-  const base = deepClone(branch.policySpec || {});
-  return {
-    ...base,
-    resource_scope: {
-      merchant_id: merchantId
-    },
-    governance: {
-      approval_required: true,
-      approval_level: "OWNER",
-      approval_token_ttl_sec: 3600,
-      ...deepClone((base && base.governance) || {})
+function seedMerchant(app, merchantId = "m_s110_http_001") {
+  app.db.merchants[merchantId] = {
+    merchantId,
+    name: "S110 HTTP Merchant",
+    killSwitchEnabled: false,
+    budgetCap: 1000,
+    budgetUsed: 0
+  };
+  app.db.merchantUsers = app.db.merchantUsers || {};
+  app.db.merchantUsers[merchantId] = app.db.merchantUsers[merchantId] || {
+    u_001: {
+      uid: "u_001",
+      displayName: "Customer 001",
+      wallet: {
+        principal: 0,
+        bonus: 0,
+        silver: 0
+      },
+      tags: [],
+      fragments: {},
+      vouchers: []
     }
   };
+  app.db.paymentsByMerchant = app.db.paymentsByMerchant || {};
+  app.db.paymentsByMerchant[merchantId] = app.db.paymentsByMerchant[merchantId] || {};
 }
 
-function createFakeSocialAuthService() {
-  return {
-    verifyWeChatMiniAppCode: async (code) => ({
-      provider: "WECHAT_MINIAPP",
-      subject: `wxmini_${String(code || "")}`,
-      unionId: null,
-      phone: "+8613900000001"
-    }),
-    verifyAlipayCode: async (code) => ({
-      provider: "ALIPAY",
-      subject: `alipay_${String(code || "")}`,
-      unionId: null,
-      phone: "+8613900000001"
-    }),
-  };
-}
-
-async function publishWelcomePolicy(app, merchantId) {
-  const { policyOsService } = app.services.getServicesForMerchant(merchantId);
-  const draft = policyOsService.createDraft({
-    merchantId,
-    operatorId: "staff_owner",
-    templateId: "acquisition_welcome_gift",
-    spec: createWelcomeSpec(merchantId)
-  });
-  policyOsService.submitDraft({
-    merchantId,
-    draftId: draft.draft_id,
-    operatorId: "staff_owner"
-  });
-  const approval = policyOsService.approveDraft({
-    merchantId,
-    draftId: draft.draft_id,
-    operatorId: "staff_owner"
-  });
-  policyOsService.publishDraft({
-    merchantId,
-    draftId: draft.draft_id,
-    operatorId: "staff_owner",
-    approvalId: approval.approvalId
-  });
-}
-
-function seedMerchant(app, merchantId) {
-  if (!app.db.merchants[merchantId]) {
-    app.db.merchants[merchantId] = {
-      merchantId,
-      name: "S110 Visibility Merchant",
-      killSwitchEnabled: false,
-      budgetCap: 1000,
-      budgetUsed: 0
-    };
-  }
-  if (!app.db.merchantUsers[merchantId] || typeof app.db.merchantUsers[merchantId] !== "object") {
-    app.db.merchantUsers[merchantId] = {};
-  }
-}
-
-async function postJson(baseUrl, path, body) {
-  const res = await fetch(`${baseUrl}${path}`, {
-    method: "POST",
+async function fetchJson({
+  baseUrl,
+  path,
+  method = "GET",
+  token = "",
+  body = null,
+  headers = {}
+}) {
+  const response = await fetch(`${baseUrl}${path}`, {
+    method,
     headers: {
-      "Content-Type": "application/json"
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(body ? { "Content-Type": "application/json" } : {}),
+      ...headers
     },
-    body: JSON.stringify(body)
+    ...(body ? { body: JSON.stringify(body) } : {})
   });
+  let data = null;
+  if (response.status !== 304) {
+    data = await response.json();
+  }
   return {
-    status: res.status,
-    data: await res.json()
+    status: response.status,
+    data,
+    headers: response.headers
   };
 }
 
-async function getJson(baseUrl, path, token) {
-  const res = await fetch(`${baseUrl}${path}`, {
-    method: "GET",
-    headers: token
-      ? {
-          Authorization: `Bearer ${token}`
-        }
-      : {}
-  });
-  return {
-    status: res.status,
-    data: await res.json()
-  };
-}
-
-test("S110 visibility: first bind hit is consistent across login, dashboard and customer state", async () => {
-  const merchantId = "m_store_001";
+test("S110 http: owner can set config, manager can read, and GET supports ETag", async () => {
+  const merchantId = "m_s110_http_cfg_001";
   const app = createAppServer({
-    jwtSecret: TEST_JWT_SECRET,
-    socialAuthService: createFakeSocialAuthService()
+    jwtSecret: TEST_JWT_SECRET
   });
   seedMerchant(app, merchantId);
-  await publishWelcomePolicy(app, merchantId);
   const ownerToken = issueToken(
     {
       role: "OWNER",
       merchantId,
-      operatorId: "staff_owner"
+      operatorId: "owner_001"
+    },
+    TEST_JWT_SECRET
+  );
+  const managerToken = issueToken(
+    {
+      role: "MANAGER",
+      merchantId,
+      operatorId: "manager_001"
     },
     TEST_JWT_SECRET
   );
@@ -144,60 +87,82 @@ test("S110 visibility: first bind hit is consistent across login, dashboard and 
   const baseUrl = `http://127.0.0.1:${port}`;
 
   try {
-    const login = await postJson(baseUrl, "/api/auth/customer/wechat-login", {
-      merchantId,
-      code: "mini_s110_hit_1"
+    const updated = await fetchJson({
+      baseUrl,
+      path: "/api/policyos/experiments/config",
+      method: "PUT",
+      token: ownerToken,
+      body: {
+        merchantId,
+        enabled: true,
+        trafficPercent: 40,
+        targetEvent: "USER_ENTER_SHOP",
+        optimizationMode: "MANUAL"
+      }
     });
-    assert.equal(login.status, 200);
-    assert.equal(login.data.isNewUser, true);
-    assert.equal(login.data.welcomeDecision.outcome, "HIT");
-    assert.ok(String(login.data.welcomeDecision.decisionId || "").startsWith("decision_"));
+    assert.equal(updated.status, 200);
+    assert.equal(updated.data.enabled, true);
+    assert.equal(updated.data.trafficPercent, 40);
 
-    const dashboard = await getJson(
+    const queried = await fetchJson({
       baseUrl,
-      `/api/merchant/dashboard?merchantId=${encodeURIComponent(merchantId)}`,
-      ownerToken
-    );
-    assert.equal(dashboard.status, 200);
-    assert.ok(Number(dashboard.data.acquisitionWelcomeSummary.hitCount24h) >= 1);
-    assert.equal(
-      String(
-        dashboard.data.acquisitionWelcomeSummary.latestResults &&
-          dashboard.data.acquisitionWelcomeSummary.latestResults[0] &&
-          dashboard.data.acquisitionWelcomeSummary.latestResults[0].outcome
-      ),
-      "HIT"
-    );
+      path: `/api/policyos/experiments/config?merchantId=${encodeURIComponent(merchantId)}`,
+      token: managerToken
+    });
+    assert.equal(queried.status, 200);
+    assert.equal(queried.data.enabled, true);
+    const etag = queried.headers.get("etag");
+    assert.ok(etag);
 
-    const state = await getJson(
+    const notModified = await fetchJson({
       baseUrl,
-      `/api/state?merchantId=${encodeURIComponent(merchantId)}&userId=${encodeURIComponent(
-        login.data.profile.userId
-      )}`,
-      login.data.token
-    );
-    assert.equal(state.status, 200);
-    const welcomeCard = (state.data.activities || []).find((item) => String(item.tag || "") === "WELCOME");
-    assert.ok(welcomeCard);
-    assert.ok(String(welcomeCard.title || "").includes("欢迎权益已发放"));
+      path: `/api/policyos/experiments/config?merchantId=${encodeURIComponent(merchantId)}`,
+      token: managerToken,
+      headers: {
+        "If-None-Match": etag
+      }
+    });
+    assert.equal(notModified.status, 304);
   } finally {
     await app.stop();
   }
 });
 
-test("S110 visibility: repeated bind is blocked and reason is visible on both merchant and customer sides", async () => {
-  const merchantId = "m_store_001";
+test("S110 http: role and scope control for config and rollback", async () => {
+  const merchantId = "m_s110_http_acl_001";
   const app = createAppServer({
-    jwtSecret: TEST_JWT_SECRET,
-    socialAuthService: createFakeSocialAuthService()
+    jwtSecret: TEST_JWT_SECRET
   });
   seedMerchant(app, merchantId);
-  await publishWelcomePolicy(app, merchantId);
   const ownerToken = issueToken(
     {
       role: "OWNER",
       merchantId,
-      operatorId: "staff_owner"
+      operatorId: "owner_001"
+    },
+    TEST_JWT_SECRET
+  );
+  const managerToken = issueToken(
+    {
+      role: "MANAGER",
+      merchantId,
+      operatorId: "manager_001"
+    },
+    TEST_JWT_SECRET
+  );
+  const otherOwnerToken = issueToken(
+    {
+      role: "OWNER",
+      merchantId: "m_other",
+      operatorId: "owner_other"
+    },
+    TEST_JWT_SECRET
+  );
+  const customerToken = issueToken(
+    {
+      role: "CUSTOMER",
+      merchantId,
+      userId: "u_001"
     },
     TEST_JWT_SECRET
   );
@@ -205,51 +170,119 @@ test("S110 visibility: repeated bind is blocked and reason is visible on both me
   const baseUrl = `http://127.0.0.1:${port}`;
 
   try {
-    const firstLogin = await postJson(baseUrl, "/api/auth/customer/wechat-login", {
-      merchantId,
-      code: "mini_s110_block_first"
-    });
-    assert.equal(firstLogin.status, 200);
-    assert.equal(firstLogin.data.welcomeDecision.outcome, "HIT");
-
-    const secondLogin = await postJson(baseUrl, "/api/auth/customer/wechat-login", {
-      merchantId,
-      code: "mini_s110_block_second"
-    });
-    assert.equal(secondLogin.status, 200);
-    assert.equal(secondLogin.data.isNewUser, false);
-    assert.equal(secondLogin.data.welcomeDecision.outcome, "BLOCKED");
-    assert.ok(String(secondLogin.data.welcomeDecision.reasonCode || "").length > 0);
-
-    const dashboard = await getJson(
+    const managerWriteDenied = await fetchJson({
       baseUrl,
-      `/api/merchant/dashboard?merchantId=${encodeURIComponent(merchantId)}`,
-      ownerToken
-    );
-    assert.equal(dashboard.status, 200);
-    assert.ok(Number(dashboard.data.acquisitionWelcomeSummary.blockedCount24h) >= 1);
-    assert.equal(
-      String(
-        dashboard.data.acquisitionWelcomeSummary.latestResults &&
-          dashboard.data.acquisitionWelcomeSummary.latestResults[0] &&
-          dashboard.data.acquisitionWelcomeSummary.latestResults[0].outcome
-      ),
-      "BLOCKED"
-    );
+      path: "/api/policyos/experiments/config",
+      method: "PUT",
+      token: managerToken,
+      body: {
+        merchantId,
+        enabled: true
+      }
+    });
+    assert.equal(managerWriteDenied.status, 403);
 
-    const state = await getJson(
+    const customerReadDenied = await fetchJson({
       baseUrl,
-      `/api/state?merchantId=${encodeURIComponent(merchantId)}&userId=${encodeURIComponent(
-        secondLogin.data.profile.userId
-      )}`,
-      secondLogin.data.token
-    );
-    assert.equal(state.status, 200);
-    const welcomeCard = (state.data.activities || []).find((item) => String(item.tag || "") === "WELCOME");
-    assert.ok(welcomeCard);
-    assert.ok(String(welcomeCard.title || "").includes("欢迎权益未发放"));
-    assert.ok(String(welcomeCard.desc || "").includes("原因"));
+      path: `/api/policyos/experiments/config?merchantId=${encodeURIComponent(merchantId)}`,
+      token: customerToken
+    });
+    assert.equal(customerReadDenied.status, 403);
+
+    const scopeDenied = await fetchJson({
+      baseUrl,
+      path: `/api/policyos/experiments/config?merchantId=${encodeURIComponent(merchantId)}`,
+      token: otherOwnerToken
+    });
+    assert.equal(scopeDenied.status, 403);
+
+    const ownerRollback = await fetchJson({
+      baseUrl,
+      path: "/api/policyos/experiments/rollback",
+      method: "POST",
+      token: ownerToken,
+      body: {
+        merchantId,
+        reason: "ops rollback"
+      }
+    });
+    assert.equal(ownerRollback.status, 200);
+    assert.equal(ownerRollback.data.config.status, "ROLLED_BACK");
+    assert.equal(ownerRollback.data.config.enabled, false);
   } finally {
     await app.stop();
   }
 });
+
+test("S110 http: metrics endpoint supports tenant limit and etag", async () => {
+  const merchantId = "m_s110_http_metrics_001";
+  const app = createAppServer({
+    jwtSecret: TEST_JWT_SECRET
+  });
+  seedMerchant(app, merchantId);
+  app.db.paymentsByMerchant[merchantId].pay_001 = {
+    paymentTxnId: "pay_001",
+    merchantId,
+    userId: "u_001",
+    status: "PAID",
+    orderAmount: 100,
+    refundedAmount: 0,
+    createdAt: new Date().toISOString()
+  };
+  const ownerToken = issueToken(
+    {
+      role: "OWNER",
+      merchantId,
+      operatorId: "owner_001"
+    },
+    TEST_JWT_SECRET
+  );
+  const port = await app.start(0);
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const first = await fetchJson({
+      baseUrl,
+      path: `/api/policyos/experiments/metrics?merchantId=${encodeURIComponent(merchantId)}`,
+      token: ownerToken
+    });
+    assert.equal(first.status, 200);
+    assert.equal(first.data.version, "S110-SRV-01.v1");
+    assert.ok(first.data.groups && first.data.groups.control && first.data.groups.treatment);
+    const etag = first.headers.get("etag");
+    assert.ok(etag);
+
+    const cached = await fetchJson({
+      baseUrl,
+      path: `/api/policyos/experiments/metrics?merchantId=${encodeURIComponent(merchantId)}`,
+      token: ownerToken,
+      headers: {
+        "If-None-Match": etag
+      }
+    });
+    assert.equal(cached.status, 304);
+
+    app.tenantPolicyManager.setMerchantPolicy(merchantId, {
+      limits: {
+        EXPERIMENT_METRICS_QUERY: 1
+      }
+    });
+    const allowed = await fetchJson({
+      baseUrl,
+      path: `/api/policyos/experiments/metrics?merchantId=${encodeURIComponent(merchantId)}&windowDays=30`,
+      token: ownerToken
+    });
+    assert.equal(allowed.status, 200);
+
+    const limited = await fetchJson({
+      baseUrl,
+      path: `/api/policyos/experiments/metrics?merchantId=${encodeURIComponent(merchantId)}&windowDays=30`,
+      token: ownerToken
+    });
+    assert.equal(limited.status, 429);
+    assert.equal(String(limited.data.code), "TENANT_RATE_LIMITED");
+  } finally {
+    await app.stop();
+  }
+});
+

@@ -118,7 +118,7 @@
 | S080 | 顾客端体验完整性强化 | S070 done | done |
 | S090 | 长期 KPI 与发布门建立 | S080 done | done |
 | S100 | 营销自动化能力建立 | S090 done | done |
-| S110 | 实验与动态优化能力建立 | S100 done | todo |
+| S110 | 实验与动态优化能力建立 | S100 done | doing |
 
 ---
 
@@ -248,7 +248,7 @@
 
 | PackageID | Lane | CapabilityID | Macro Requirement | Deliverable | DependsOn | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| PKG-S110-SRV-01 | server | SRV-C07, SRV-C10 | 建立 A/B、Uplift、动态优化灰度能力 | 优化能力基线 | none | todo |
+| PKG-S110-SRV-01 | server | SRV-C07, SRV-C10 | 建立 A/B、Uplift、动态优化灰度能力 | 优化能力基线 | none | done |
 | PKG-S110-MER-01 | merchant | MER-C10 | 建立老板端实验与灰度监控能力 | 灰度监控流程 | PKG-S110-SRV-01 | todo |
 | PKG-S110-CUS-01 | customer | CUS-C07 | 建立顾客端灰度体验守护规则 | 灰度体验守护清单 | PKG-S110-SRV-01 | todo |
 

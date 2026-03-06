@@ -783,8 +783,80 @@ S100 阶段服务端需建立“事件驱动自动化基线”，在不新增生
 
 - 交互与降级要求（当前生效）：
   - 偏好读取或保存失败时，仅偏好模块降级并提示“可稍后重试”
-  - 偏好模块异常不得阻断账户页账票、反馈、稳定性、提醒列表等既有能力
-  - 当顾客关闭执行结果提醒且提醒列表为空时，需给出“已关闭提醒”的可解释提示文案
+- 偏好模块异常不得阻断账户页账票、反馈、稳定性、提醒列表等既有能力
+- 当顾客关闭执行结果提醒且提醒列表为空时，需给出“已关闭提醒”的可解释提示文案
+
+### 6.6 实验与动态优化服务基线（S110-SRV-01）
+
+S110 阶段服务端需建立“实验配置 + 灰度评估 + 风险护栏 + 回滚”基线能力，先满足老板轻量控制，不引入自动化 RL 调参。
+
+- 老板轻量控制（当前生效）：
+  - 开关实验
+  - 调整实验流量（`trafficPercent`）
+  - 查看实验收益与风险快照
+  - 执行一键回滚
+- 当前目标口径：
+  - 北极星不变：长期价值最大化
+  - S110 执行观察指标：`MerchantRevenueUplift30`、`MerchantProfitUplift30`、`UpliftHitRate30`
+
+接口合同（当前生效）：
+
+1. 实验配置
+- `GET /api/policyos/experiments/config`
+  - 角色：`OWNER / MANAGER`
+  - 输出核心字段：`experimentId`、`enabled`、`trafficPercent`、`targetEvent`、`optimizationMode`、`objective`、`primaryMetrics`、`guardrails`、`status`、`updatedAt`、`updatedBy`
+- `PUT /api/policyos/experiments/config`
+  - 角色：`OWNER`
+  - 输入核心字段：`enabled`、`trafficPercent`、`targetEvent`、`optimizationMode`、`guardrails`
+  - 约束：
+    - `trafficPercent` 范围 `0-100`
+    - `targetEvent` 当前仅支持 `USER_ENTER_SHOP`、`PAYMENT_VERIFY`
+    - `optimizationMode` 当前仅支持 `MANUAL`
+
+2. 实验指标快照
+- `GET /api/policyos/experiments/metrics`
+  - 角色：`OWNER / MANAGER`
+  - 查询参数：`merchantId`、`windowDays`、`event`
+  - 输出核心字段：
+    - `groups.control` / `groups.treatment`（命中率、营销成本、净收入、净收益代理、支付成功率）
+    - `uplift`（收入提升、净收益提升、命中率差值、支付成功率差值）
+    - `risk`（`PASS|FAIL|UNKNOWN` + 原因码 + 护栏 KPI）
+    - `rollback`（最近回滚记录）
+
+3. 实验回滚
+- `POST /api/policyos/experiments/rollback`
+  - 角色：`OWNER`
+  - 输入核心字段：`merchantId`、`reason`
+  - 效果：
+    - 实验置为关闭（`enabled=false`）
+    - 状态切换为 `ROLLED_BACK`
+    - 记录回滚历史（`rollbackId`、执行人、原因、时间）
+
+风险护栏（当前生效）：
+- 默认护栏阈值：
+  - `paymentSuccessRate30 >= 99.5%`
+  - `riskLossProxy30 <= 0.3%`
+  - `SubsidyWasteProxy <= 0.6`
+- 护栏数据来源：
+  - 复用 `S090` 发布门快照
+- 护栏失败时：
+  - `risk.status = FAIL`
+  - 返回明确原因码，供老板端展示与回滚决策
+
+治理要求（当前生效）：
+- 多租户与作用域：
+  - 跨商户访问返回 `403 merchant scope denied`
+  - 商户不存在返回 `404 merchant not found`
+- 租户策略操作标识：
+  - `EXPERIMENT_CONFIG_QUERY`
+  - `EXPERIMENT_CONFIG_SET`
+  - `EXPERIMENT_METRICS_QUERY`
+  - `EXPERIMENT_ROLLBACK`
+- 审计动作：
+  - `EXPERIMENT_CONFIG_SET`
+  - `EXPERIMENT_ROLLBACK`
+- 缓存协商：
+  - `GET` 接口支持 `ETag` 与 `If-None-Match`，命中返回 `304`
 
 ---
 

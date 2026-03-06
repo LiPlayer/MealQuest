@@ -40,6 +40,11 @@ function ensurePolicyOsState(db) {
   );
   db.policyOs.automation = ensureObject(db.policyOs.automation);
   db.policyOs.automation.configByMerchant = ensureObject(db.policyOs.automation.configByMerchant);
+  db.policyOs.experiments = ensureObject(db.policyOs.experiments);
+  db.policyOs.experiments.configByMerchant = ensureObject(db.policyOs.experiments.configByMerchant);
+  db.policyOs.experiments.rollbackHistoryByMerchant = ensureObject(
+    db.policyOs.experiments.rollbackHistoryByMerchant
+  );
   db.policyOs.feedback = ensureObject(db.policyOs.feedback);
   db.policyOs.feedback.ticketsById = ensureObject(db.policyOs.feedback.ticketsById);
   db.policyOs.feedback.sequenceByMerchant = ensureObject(db.policyOs.feedback.sequenceByMerchant);

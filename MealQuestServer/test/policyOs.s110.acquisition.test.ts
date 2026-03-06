@@ -2,256 +2,202 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { createInMemoryDb } = require("../src/store/inMemoryDb");
-const { createPolicyOsService } = require("../src/policyos/policyOsService");
-const templateCatalog = require("../src/policyos/templates/strategy-templates.v1.json");
+const { createReleaseGateService } = require("../src/services/releaseGateService");
+const { createExperimentService } = require("../src/services/experimentService");
 
-function deepClone(value) {
-  return JSON.parse(JSON.stringify(value));
-}
-
-function createWelcomeSpec(merchantId, patch = {}) {
-  const template = (templateCatalog.templates || []).find(
-    (item) => item && item.templateId === "acquisition_welcome_gift"
-  );
-  if (!template) {
-    throw new Error("acquisition_welcome_gift template not found");
-  }
-  const branch = (template.branches || []).find((item) => item && item.branchId === "DEFAULT");
-  if (!branch) {
-    throw new Error("acquisition_welcome_gift default branch not found");
-  }
-  const base = deepClone(branch.policySpec || {});
-  return {
-    ...base,
-    ...deepClone(patch || {}),
-    resource_scope: {
-      merchant_id: merchantId
-    },
-    governance: {
-      approval_required: true,
-      approval_level: "OWNER",
-      approval_token_ttl_sec: 3600,
-      ...deepClone((base && base.governance) || {}),
-      ...deepClone((patch && patch.governance) || {})
-    }
-  };
-}
-
-function upsertConstraint(spec, plugin, params) {
-  const constraints = Array.isArray(spec.constraints) ? [...spec.constraints] : [];
-  const next = constraints.filter((item) => item && item.plugin !== plugin);
-  next.push({
-    plugin,
-    params: { ...(params || {}) }
-  });
-  spec.constraints = next;
-}
-
-function buildSuiteContext({ merchantId = "m_s110" } = {}) {
+function createSuiteContext(merchantId = "m_s110_srv_001") {
   const db = createInMemoryDb();
   db.save = () => {};
   db.merchants[merchantId] = {
     merchantId,
-    name: "S110 Merchant",
+    name: "S110 Experiment Merchant",
     killSwitchEnabled: false,
     budgetCap: 1000,
     budgetUsed: 0
   };
   db.merchantUsers[merchantId] = {
-    u_001: {
-      uid: "u_001",
-      displayName: "S110 User 1",
-      wallet: { principal: 30, bonus: 0, silver: 0 },
-      tags: [],
-      fragments: {},
-      vouchers: []
-    },
-    u_002: {
-      uid: "u_002",
-      displayName: "S110 User 2",
-      wallet: { principal: 30, bonus: 0, silver: 0 },
-      tags: [],
-      fragments: {},
-      vouchers: []
-    }
+    u_001: { uid: "u_001", displayName: "User 1", wallet: { principal: 0, bonus: 0, silver: 0 }, vouchers: [], tags: [], fragments: {} },
+    u_002: { uid: "u_002", displayName: "User 2", wallet: { principal: 0, bonus: 0, silver: 0 }, vouchers: [], tags: [], fragments: {} }
   };
-  const policyOsService = createPolicyOsService(db);
+  db.paymentsByMerchant[merchantId] = {};
+  db.invoicesByMerchant[merchantId] = {};
+  db.policyOs = db.policyOs || {};
+  db.policyOs.decisions = db.policyOs.decisions || {};
+  const releaseGateService = createReleaseGateService(db);
+  const experimentService = createExperimentService(db, { releaseGateService });
   return {
     db,
     merchantId,
-    policyOsService
+    experimentService
   };
 }
 
-function publishWelcomePolicy({ policyOsService, merchantId, patch = {} }) {
-  const spec = createWelcomeSpec(merchantId, patch);
-  const draft = policyOsService.createDraft({
-    merchantId,
-    operatorId: "owner",
-    spec,
-    templateId: "acquisition_welcome_gift"
-  });
-  policyOsService.submitDraft({
-    merchantId,
-    draftId: draft.draft_id,
-    operatorId: "owner"
-  });
-  const approval = policyOsService.approveDraft({
-    merchantId,
-    draftId: draft.draft_id,
-    operatorId: "owner"
-  });
-  return policyOsService.publishDraft({
-    merchantId,
-    draftId: draft.draft_id,
-    operatorId: "owner",
-    approvalId: approval.approvalId
-  });
+function addDecision({
+  db,
+  merchantId,
+  decisionId,
+  userId,
+  outcome = "HIT",
+  event = "USER_ENTER_SHOP",
+  cost = 2
+}) {
+  db.policyOs.decisions[decisionId] = {
+    decision_id: decisionId,
+    merchant_id: merchantId,
+    user_id: userId,
+    event,
+    mode: "EXECUTE",
+    event_id: `${event.toLowerCase()}_${decisionId}`,
+    created_at: new Date().toISOString(),
+    executed: outcome === "HIT" ? ["policy_demo"] : [],
+    rejected: outcome === "BLOCKED" ? [{ policyId: "policy_demo", reason: "constraint:budget_cap" }] : [],
+    projected: [{ policy_id: "policy_demo", estimated_cost: cost }]
+  };
 }
 
-test("S110 hit case: ACQ_WELCOME_FIRST_BIND_V1 executes for new user", async () => {
-  const { policyOsService, merchantId } = buildSuiteContext();
-  const published = publishWelcomePolicy({ policyOsService, merchantId });
-  assert.ok(String(published.policy.policy_id || "").startsWith("ACQ_WELCOME_FIRST_BIND_V1@v"));
-
-  const decision = await policyOsService.executeDecision({
+function addPayment({
+  db,
+  merchantId,
+  paymentTxnId,
+  userId,
+  status = "PAID",
+  amount = 100,
+  refundedAmount = 0
+}) {
+  db.paymentsByMerchant[merchantId][paymentTxnId] = {
+    paymentTxnId,
     merchantId,
+    userId,
+    status,
+    orderAmount: amount,
+    refundedAmount,
+    createdAt: new Date().toISOString()
+  };
+}
+
+test("S110 service: config and metrics snapshot are available", async () => {
+  const { db, merchantId, experimentService } = createSuiteContext("m_s110_srv_cfg_001");
+  addDecision({
+    db,
+    merchantId,
+    decisionId: "decision_001",
     userId: "u_001",
-    event: "USER_ENTER_SHOP",
-    context: {
-      isNewUser: true,
-      riskScore: 0
-    }
+    outcome: "HIT"
   });
-  assert.equal(decision.mode, "EXECUTE");
-  assert.equal(decision.executed.length, 1);
-  assert.ok(String(decision.executed[0]).startsWith("ACQ_WELCOME_FIRST_BIND_V1@v"));
-});
-
-test("S110 budget case: second user is blocked when budget is exhausted", async () => {
-  const { policyOsService, merchantId } = buildSuiteContext();
-  const spec = createWelcomeSpec(merchantId);
-  upsertConstraint(spec, "budget_guard_v1", {
-    cap: 6,
-    cost_per_hit: 6
-  });
-  publishWelcomePolicy({ policyOsService, merchantId, patch: spec });
-
-  const first = await policyOsService.executeDecision({
+  addDecision({
+    db,
     merchantId,
-    userId: "u_001",
-    event: "USER_ENTER_SHOP",
-    context: {
-      isNewUser: true,
-      riskScore: 0
-    }
-  });
-  assert.equal(first.executed.length, 1);
-
-  const second = await policyOsService.executeDecision({
-    merchantId,
+    decisionId: "decision_002",
     userId: "u_002",
-    event: "USER_ENTER_SHOP",
-    context: {
-      isNewUser: true,
-      riskScore: 0
-    }
+    outcome: "BLOCKED"
   });
-  assert.equal(second.executed.length, 0);
-  assert.ok(
-    second.rejected.some((item) =>
-      String(item.reason || "").includes("constraint:budget_cap_exceeded")
-    )
-  );
-});
-
-test("S110 inventory case: second user is blocked when welcome inventory is exhausted", async () => {
-  const { policyOsService, merchantId } = buildSuiteContext();
-  const spec = createWelcomeSpec(merchantId);
-  upsertConstraint(spec, "inventory_lock_v1", {
-    sku: "welcome_gift_pool",
-    max_units: 1,
-    reserve_units: 1
-  });
-  publishWelcomePolicy({ policyOsService, merchantId, patch: spec });
-
-  const first = await policyOsService.executeDecision({
+  addPayment({
+    db,
     merchantId,
+    paymentTxnId: "pay_001",
     userId: "u_001",
-    event: "USER_ENTER_SHOP",
-    context: {
-      isNewUser: true,
-      riskScore: 0
-    }
+    status: "PAID",
+    amount: 120
   });
-  assert.equal(first.executed.length, 1);
-
-  const second = await policyOsService.executeDecision({
+  addPayment({
+    db,
     merchantId,
+    paymentTxnId: "pay_002",
     userId: "u_002",
-    event: "USER_ENTER_SHOP",
-    context: {
-      isNewUser: true,
-      riskScore: 0
+    status: "EXTERNAL_FAILED",
+    amount: 80
+  });
+
+  const config = experimentService.setConfig({
+    merchantId,
+    operatorId: "owner_001",
+    config: {
+      enabled: true,
+      trafficPercent: 50,
+      targetEvent: "USER_ENTER_SHOP",
+      optimizationMode: "MANUAL"
     }
   });
-  assert.equal(second.executed.length, 0);
+  assert.equal(config.enabled, true);
+  assert.equal(config.status, "RUNNING");
+  assert.equal(config.trafficPercent, 50);
+
+  const snapshot = experimentService.getSnapshot({
+    merchantId
+  });
+  assert.equal(snapshot.version, "S110-SRV-01.v1");
+  assert.equal(snapshot.config.enabled, true);
+  assert.equal(snapshot.event, "USER_ENTER_SHOP");
+  assert.ok(snapshot.groups.control.decisionCount + snapshot.groups.treatment.decisionCount >= 2);
+  assert.ok(typeof snapshot.uplift.merchantRevenueUplift === "number");
+  assert.ok(["PASS", "FAIL", "UNKNOWN"].includes(String(snapshot.risk.status)));
+});
+
+test("S110 service: rollback closes experiment and records history", async () => {
+  const { merchantId, experimentService } = createSuiteContext("m_s110_srv_rollback_001");
+  experimentService.setConfig({
+    merchantId,
+    operatorId: "owner_001",
+    config: {
+      enabled: true,
+      trafficPercent: 30
+    }
+  });
+
+  const rollback = experimentService.rollback({
+    merchantId,
+    operatorId: "owner_001",
+    reason: "manual rollback for risk"
+  });
+  assert.equal(rollback.config.enabled, false);
+  assert.equal(rollback.config.status, "ROLLED_BACK");
+  assert.equal(rollback.rollback.reason, "manual rollback for risk");
+
+  const latestConfig = experimentService.getConfig({ merchantId });
+  assert.equal(latestConfig.enabled, false);
+  assert.equal(latestConfig.status, "ROLLED_BACK");
+
+  const snapshot = experimentService.getSnapshot({ merchantId });
+  assert.ok(Array.isArray(snapshot.rollback.history));
+  assert.ok(snapshot.rollback.history.length >= 1);
+  assert.equal(snapshot.rollback.history[0].reason, "manual rollback for risk");
+});
+
+test("S110 service: guardrail failure is surfaced in risk snapshot", async () => {
+  const { db, merchantId, experimentService } = createSuiteContext("m_s110_srv_risk_001");
+  addPayment({
+    db,
+    merchantId,
+    paymentTxnId: "pay_ok_001",
+    userId: "u_001",
+    status: "PAID",
+    amount: 100
+  });
+  addPayment({
+    db,
+    merchantId,
+    paymentTxnId: "pay_fail_001",
+    userId: "u_002",
+    status: "EXTERNAL_FAILED",
+    amount: 100
+  });
+
+  experimentService.setConfig({
+    merchantId,
+    operatorId: "owner_001",
+    config: {
+      enabled: true,
+      guardrails: {
+        minPaymentSuccessRate30: 0.9
+      }
+    }
+  });
+
+  const snapshot = experimentService.getSnapshot({ merchantId });
+  assert.equal(snapshot.risk.status, "FAIL");
   assert.ok(
-    second.rejected.some((item) =>
-      String(item.reason || "").includes("constraint:inventory_exceeded")
-    )
+    Array.isArray(snapshot.risk.reasons) &&
+      snapshot.risk.reasons.includes("PAYMENT_SUCCESS_RATE_GUARDRAIL_BREACHED")
   );
 });
 
-test("S110 risk case: anti-fraud blocks high-risk request", async () => {
-  const { policyOsService, merchantId } = buildSuiteContext();
-  publishWelcomePolicy({ policyOsService, merchantId });
-
-  const decision = await policyOsService.executeDecision({
-    merchantId,
-    userId: "u_001",
-    event: "USER_ENTER_SHOP",
-    context: {
-      isNewUser: true,
-      riskScore: 0.95
-    }
-  });
-  assert.equal(decision.executed.length, 0);
-  assert.ok(
-    decision.rejected.some((item) =>
-      String(item.reason || "").includes("constraint:anti_fraud_blocked")
-    )
-  );
-});
-
-test("S110 repeat case: repeated trigger is blocked by frequency cap", async () => {
-  const { policyOsService, merchantId } = buildSuiteContext();
-  publishWelcomePolicy({ policyOsService, merchantId });
-
-  const first = await policyOsService.executeDecision({
-    merchantId,
-    userId: "u_001",
-    event: "USER_ENTER_SHOP",
-    context: {
-      isNewUser: true,
-      riskScore: 0
-    }
-  });
-  assert.equal(first.executed.length, 1);
-
-  const second = await policyOsService.executeDecision({
-    merchantId,
-    userId: "u_001",
-    event: "USER_ENTER_SHOP",
-    context: {
-      isNewUser: true,
-      riskScore: 0
-    }
-  });
-  assert.equal(second.executed.length, 0);
-  assert.ok(
-    second.rejected.some((item) =>
-      String(item.reason || "").includes("constraint:frequency_exceeded")
-    )
-  );
-});

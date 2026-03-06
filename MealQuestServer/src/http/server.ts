@@ -22,6 +22,7 @@ const { createPolicyOsService } = require("../policyos/policyOsService");
 const { createPolicyGovernanceService } = require("../services/policyGovernanceService");
 const { createNotificationService } = require("../services/notificationService");
 const { createAutomationService } = require("../services/automationService");
+const { createExperimentService } = require("../services/experimentService");
 const { createCustomerExperienceGuardService } = require("../services/customerExperienceGuardService");
 const { createFeedbackService } = require("../services/feedbackService");
 const { createReleaseGateService } = require("../services/releaseGateService");
@@ -135,6 +136,10 @@ function createAppServer({
       const automationService = createAutomationService(scopedDb, {
         policyOsService
       });
+      const releaseGateService = createReleaseGateService(scopedDb);
+      const experimentService = createExperimentService(scopedDb, {
+        releaseGateService
+      });
       services = {
         paymentService: createPaymentService(scopedDb, {
           paymentProvider,
@@ -155,11 +160,12 @@ function createAppServer({
         supplierService: createSupplierService(scopedDb),
         policyOsService,
         automationService,
+        experimentService,
         policyGovernanceService: createPolicyGovernanceService(scopedDb, { policyOsService }),
         notificationService,
         customerExperienceGuardService: createCustomerExperienceGuardService(scopedDb),
         feedbackService: createFeedbackService(scopedDb),
-        releaseGateService: createReleaseGateService(scopedDb),
+        releaseGateService,
       };
       serviceCache.set(scopedDb, services);
     }

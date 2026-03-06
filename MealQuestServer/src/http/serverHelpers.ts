@@ -36,6 +36,10 @@ const TENANT_LIMIT_OPERATIONS = [
   "AUTOMATION_CONFIG_QUERY",
   "AUTOMATION_CONFIG_SET",
   "AUTOMATION_EXECUTION_QUERY",
+  "EXPERIMENT_CONFIG_QUERY",
+  "EXPERIMENT_CONFIG_SET",
+  "EXPERIMENT_METRICS_QUERY",
+  "EXPERIMENT_ROLLBACK",
   "CUSTOMER_EXPERIENCE_GUARD_QUERY",
   "KPI_RELEASE_GATE_QUERY",
   "FEEDBACK_CREATE",
@@ -239,6 +243,18 @@ function resolveAuditAction(method, pathname) {
   }
   if (method === "GET" && pathname === "/api/policyos/automation/executions") {
     return "AUTOMATION_EXECUTION_QUERY";
+  }
+  if (method === "GET" && pathname === "/api/policyos/experiments/config") {
+    return "EXPERIMENT_CONFIG_QUERY";
+  }
+  if (method === "PUT" && pathname === "/api/policyos/experiments/config") {
+    return "EXPERIMENT_CONFIG_SET";
+  }
+  if (method === "GET" && pathname === "/api/policyos/experiments/metrics") {
+    return "EXPERIMENT_METRICS_QUERY";
+  }
+  if (method === "POST" && pathname === "/api/policyos/experiments/rollback") {
+    return "EXPERIMENT_ROLLBACK";
   }
   if (method === "GET" && pathname === "/api/state/experience-guard") {
     return "CUSTOMER_EXPERIENCE_GUARD_QUERY";
@@ -1152,6 +1168,11 @@ function copyMerchantSlice({ sourceDb, targetDb, merchantId }) {
   targetDb.policyOs.automation = targetDb.policyOs.automation || {};
   targetDb.policyOs.automation.configByMerchant =
     targetDb.policyOs.automation.configByMerchant || {};
+  targetDb.policyOs.experiments = targetDb.policyOs.experiments || {};
+  targetDb.policyOs.experiments.configByMerchant =
+    targetDb.policyOs.experiments.configByMerchant || {};
+  targetDb.policyOs.experiments.rollbackHistoryByMerchant =
+    targetDb.policyOs.experiments.rollbackHistoryByMerchant || {};
   targetDb.policyOs.feedback = targetDb.policyOs.feedback || {};
   targetDb.policyOs.feedback.ticketsById = targetDb.policyOs.feedback.ticketsById || {};
   targetDb.policyOs.feedback.sequenceByMerchant =
@@ -1218,6 +1239,20 @@ function copyMerchantSlice({ sourceDb, targetDb, merchantId }) {
   if (Object.prototype.hasOwnProperty.call(sourceAutomationConfig, merchantId)) {
     targetDb.policyOs.automation.configByMerchant[merchantId] = jsonClone(
       sourceAutomationConfig[merchantId]
+    );
+  }
+  const sourceExperimentConfig =
+    (sourcePolicyOs.experiments && sourcePolicyOs.experiments.configByMerchant) || {};
+  if (Object.prototype.hasOwnProperty.call(sourceExperimentConfig, merchantId)) {
+    targetDb.policyOs.experiments.configByMerchant[merchantId] = jsonClone(
+      sourceExperimentConfig[merchantId]
+    );
+  }
+  const sourceExperimentRollbackHistory =
+    (sourcePolicyOs.experiments && sourcePolicyOs.experiments.rollbackHistoryByMerchant) || {};
+  if (Object.prototype.hasOwnProperty.call(sourceExperimentRollbackHistory, merchantId)) {
+    targetDb.policyOs.experiments.rollbackHistoryByMerchant[merchantId] = jsonClone(
+      sourceExperimentRollbackHistory[merchantId]
     );
   }
   for (const [ticketId, ticket] of Object.entries(

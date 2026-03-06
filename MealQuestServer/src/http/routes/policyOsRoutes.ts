@@ -261,6 +261,178 @@ function createPolicyOsRoutesHandler({
       return true;
     }
 
+    if (method === "GET" && url.pathname === "/api/policyos/experiments/config") {
+      ensureRole(auth, ["MANAGER", "OWNER"]);
+      const merchantId = url.searchParams.get("merchantId") || auth.merchantId;
+      if (!merchantId) {
+        sendJson(res, 400, { error: "merchantId is required" });
+        return true;
+      }
+      if (auth.merchantId && auth.merchantId !== merchantId) {
+        sendJson(res, 403, { error: "merchant scope denied" });
+        return true;
+      }
+      if (
+        !enforceTenantPolicyForHttp({
+          tenantPolicyManager,
+          merchantId,
+          operation: "EXPERIMENT_CONFIG_QUERY",
+          res,
+          auth,
+          appendAuditLog
+        })
+      ) {
+        return true;
+      }
+      const { experimentService } = getServicesForMerchant(merchantId);
+      const payload = experimentService.getConfig({ merchantId });
+      const etag = buildWeakEtag(payload);
+      const cacheHeaders = {
+        ETag: etag,
+        "Cache-Control": "private, max-age=0, must-revalidate"
+      };
+      if (isIfNoneMatchFresh(req, etag)) {
+        sendNotModified(res, cacheHeaders);
+        return true;
+      }
+      sendJson(res, 200, payload, cacheHeaders);
+      return true;
+    }
+
+    if (method === "PUT" && url.pathname === "/api/policyos/experiments/config") {
+      ensureRole(auth, ["OWNER"]);
+      const body = await readJsonBody(req);
+      const merchantId = auth.merchantId || body.merchantId;
+      if (!merchantId) {
+        sendJson(res, 400, { error: "merchantId is required" });
+        return true;
+      }
+      if (auth.merchantId && auth.merchantId !== merchantId) {
+        sendJson(res, 403, { error: "merchant scope denied" });
+        return true;
+      }
+      if (
+        !enforceTenantPolicyForHttp({
+          tenantPolicyManager,
+          merchantId,
+          operation: "EXPERIMENT_CONFIG_SET",
+          res,
+          auth,
+          appendAuditLog
+        })
+      ) {
+        return true;
+      }
+      const { experimentService } = getServicesForMerchant(merchantId);
+      const payload = experimentService.setConfig({
+        merchantId,
+        operatorId: auth.operatorId || auth.userId || "system",
+        config: body && body.config && typeof body.config === "object" ? body.config : body
+      });
+      appendAuditLog({
+        merchantId,
+        action: "EXPERIMENT_CONFIG_SET",
+        status: "SUCCESS",
+        auth,
+        details: {
+          experimentId: payload.experimentId,
+          enabled: Boolean(payload.enabled),
+          trafficPercent: Number(payload.trafficPercent || 0),
+          targetEvent: String(payload.targetEvent || ""),
+          status: String(payload.status || "")
+        }
+      });
+      sendJson(res, 200, payload);
+      return true;
+    }
+
+    if (method === "GET" && url.pathname === "/api/policyos/experiments/metrics") {
+      ensureRole(auth, ["MANAGER", "OWNER"]);
+      const merchantId = url.searchParams.get("merchantId") || auth.merchantId;
+      if (!merchantId) {
+        sendJson(res, 400, { error: "merchantId is required" });
+        return true;
+      }
+      if (auth.merchantId && auth.merchantId !== merchantId) {
+        sendJson(res, 403, { error: "merchant scope denied" });
+        return true;
+      }
+      if (
+        !enforceTenantPolicyForHttp({
+          tenantPolicyManager,
+          merchantId,
+          operation: "EXPERIMENT_METRICS_QUERY",
+          res,
+          auth,
+          appendAuditLog
+        })
+      ) {
+        return true;
+      }
+      const { experimentService } = getServicesForMerchant(merchantId);
+      const payload = experimentService.getSnapshot({
+        merchantId,
+        windowDays: url.searchParams.get("windowDays"),
+        event: url.searchParams.get("event") || ""
+      });
+      const etag = buildWeakEtag(payload);
+      const cacheHeaders = {
+        ETag: etag,
+        "Cache-Control": "private, max-age=0, must-revalidate"
+      };
+      if (isIfNoneMatchFresh(req, etag)) {
+        sendNotModified(res, cacheHeaders);
+        return true;
+      }
+      sendJson(res, 200, payload, cacheHeaders);
+      return true;
+    }
+
+    if (method === "POST" && url.pathname === "/api/policyos/experiments/rollback") {
+      ensureRole(auth, ["OWNER"]);
+      const body = await readJsonBody(req);
+      const merchantId = auth.merchantId || body.merchantId;
+      if (!merchantId) {
+        sendJson(res, 400, { error: "merchantId is required" });
+        return true;
+      }
+      if (auth.merchantId && auth.merchantId !== merchantId) {
+        sendJson(res, 403, { error: "merchant scope denied" });
+        return true;
+      }
+      if (
+        !enforceTenantPolicyForHttp({
+          tenantPolicyManager,
+          merchantId,
+          operation: "EXPERIMENT_ROLLBACK",
+          res,
+          auth,
+          appendAuditLog
+        })
+      ) {
+        return true;
+      }
+      const { experimentService } = getServicesForMerchant(merchantId);
+      const payload = experimentService.rollback({
+        merchantId,
+        operatorId: auth.operatorId || auth.userId || "system",
+        reason: body.reason || ""
+      });
+      appendAuditLog({
+        merchantId,
+        action: "EXPERIMENT_ROLLBACK",
+        status: "SUCCESS",
+        auth,
+        details: {
+          experimentId: payload.experimentId,
+          rollbackId: payload.rollback ? payload.rollback.rollbackId : "",
+          reason: payload.rollback ? payload.rollback.reason : ""
+        }
+      });
+      sendJson(res, 200, payload);
+      return true;
+    }
+
     if (method === "GET" && url.pathname === "/api/policyos/schemas") {
       ensureRole(auth, ["MANAGER", "OWNER"]);
       const merchantId = url.searchParams.get("merchantId") || auth.merchantId;
