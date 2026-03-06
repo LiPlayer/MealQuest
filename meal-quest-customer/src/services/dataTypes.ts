@@ -143,6 +143,30 @@ export interface CustomerNotificationSummary {
   }[];
 }
 
+export interface CustomerStabilityDriver {
+  code: 'TECHNICAL_GATE' | 'COMPLIANCE_GATE' | string;
+  label: string;
+  status: 'PASS' | 'FAIL' | 'REVIEW' | string;
+}
+
+export interface CustomerStabilityReason {
+  code: string;
+  message: string;
+}
+
+export interface CustomerStabilitySnapshot {
+  version: string;
+  merchantId: string;
+  objective: string;
+  evaluatedAt: string;
+  windowDays: number;
+  stabilityLevel: 'STABLE' | 'WATCH' | 'UNSTABLE' | string;
+  stabilityLabel: string;
+  summary: string;
+  drivers: CustomerStabilityDriver[];
+  reasons: CustomerStabilityReason[];
+}
+
 export type FeedbackTicketStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
 export type FeedbackTicketCategory = 'PAYMENT' | 'BENEFIT' | 'PRIVACY' | 'ACCOUNT' | 'OTHER';
 

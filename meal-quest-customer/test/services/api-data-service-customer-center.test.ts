@@ -226,6 +226,48 @@ describe('ApiDataService customer center', () => {
         );
     });
 
+    it('loads customer stability snapshot', async () => {
+        requestMock.mockResolvedValueOnce({
+            statusCode: 200,
+            data: {
+                version: 'S090-SRV-02.v1',
+                merchantId: 'm_store_001',
+                objective: 'LONG_TERM_VALUE_MAXIMIZATION',
+                evaluatedAt: '2026-03-06T10:00:00.000Z',
+                windowDays: 30,
+                stabilityLevel: 'WATCH',
+                stabilityLabel: '需留意',
+                summary: '服务状态需留意，部分能力可能短时波动。',
+                drivers: [
+                    {
+                        code: 'TECHNICAL_GATE',
+                        label: '支付与核心链路',
+                        status: 'REVIEW'
+                    }
+                ],
+                reasons: [
+                    {
+                        code: 'PAYMENT_NO_SAMPLE',
+                        message: '支付样本不足，稳定性持续观察中'
+                    }
+                ]
+            }
+        });
+
+        const { ApiDataService } = require('@/services/ApiDataService');
+        const snapshot = await ApiDataService.getCustomerStabilitySnapshot('m_store_001', 'u_fixture_001');
+
+        expect(snapshot.stabilityLevel).toBe('WATCH');
+        expect(snapshot.stabilityLabel).toBe('需留意');
+        expect(snapshot.reasons[0].code).toBe('PAYMENT_NO_SAMPLE');
+        expect(requestMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                method: 'GET',
+                url: expect.stringContaining('/api/state/customer-stability?merchantId=m_store_001')
+            })
+        );
+    });
+
     it('creates feedback ticket', async () => {
         requestMock.mockResolvedValueOnce({
             statusCode: 200,

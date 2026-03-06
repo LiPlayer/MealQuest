@@ -6,6 +6,7 @@ import {
   FeedbackTicketStatus,
   CustomerNotificationItem,
   CustomerNotificationSummary,
+  CustomerStabilitySnapshot,
   HomeSnapshot,
   InvoiceItem,
   PaymentLedgerItem,
@@ -25,6 +26,7 @@ import {
   markNotificationsRead,
 } from '@/services/customerApp/notificationService';
 import { getHomeSnapshot, isMerchantAvailable } from '@/services/customerApp/stateService';
+import { getCustomerStabilitySnapshot } from '@/services/customerApp/stabilityService';
 
 export const ApiDataService = {
   isConfigured: () => Boolean(getServerBaseUrl()),
@@ -88,6 +90,13 @@ export const ApiDataService = {
     _userId = '',
   ): Promise<CustomerNotificationSummary> => {
     return getNotificationUnreadSummary(storeId);
+  },
+
+  getCustomerStabilitySnapshot: async (
+    storeId: string,
+    _userId = '',
+  ): Promise<CustomerStabilitySnapshot> => {
+    return getCustomerStabilitySnapshot(storeId);
   },
 
   markNotificationsRead: async (

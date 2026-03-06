@@ -226,6 +226,9 @@ function resolveAuditAction(method, pathname) {
   if (method === "GET" && pathname === "/api/state/release-gate") {
     return "KPI_RELEASE_GATE_QUERY";
   }
+  if (method === "GET" && pathname === "/api/state/customer-stability") {
+    return "KPI_RELEASE_GATE_QUERY";
+  }
   if (method === "POST" && pathname === "/api/feedback/tickets") {
     return "FEEDBACK_CREATE";
   }

@@ -9,6 +9,7 @@ import {
     FeedbackTicketStatus,
     CustomerNotificationItem,
     CustomerNotificationSummary,
+    CustomerStabilitySnapshot,
     HomeSnapshot,
     InvoiceItem,
     PaymentLedgerItem,
@@ -119,6 +120,17 @@ export const DataService = {
         return runRemote(
             'getNotificationUnreadSummary',
             () => ApiDataService.getNotificationUnreadSummary(storeId, userId),
+            { clearSessionOnError: false },
+        );
+    },
+
+    getCustomerStabilitySnapshot: async (
+        storeId: string,
+        userId = '',
+    ): Promise<CustomerStabilitySnapshot> => {
+        return runRemote(
+            'getCustomerStabilitySnapshot',
+            () => ApiDataService.getCustomerStabilitySnapshot(storeId, userId),
             { clearSessionOnError: false },
         );
     },

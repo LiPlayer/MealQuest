@@ -26,6 +26,15 @@ function ensureMerchant(app, merchantId) {
       ]
     };
   }
+  app.db.merchantUsers = app.db.merchantUsers || {};
+  app.db.merchantUsers[merchantId] = app.db.merchantUsers[merchantId] || {};
+  if (!app.db.merchantUsers[merchantId].u_test_001) {
+    app.db.merchantUsers[merchantId].u_test_001 = {
+      userId: "u_test_001",
+      merchantId,
+      nickname: "Customer Fixture"
+    };
+  }
   app.db.paymentsByMerchant = app.db.paymentsByMerchant || {};
   app.db.paymentsByMerchant[merchantId] = app.db.paymentsByMerchant[merchantId] || {};
   app.db.invoicesByMerchant = app.db.invoicesByMerchant || {};
@@ -496,6 +505,177 @@ test("S090 release gate: enforces role, scope and tenant limit", async () => {
     );
     assert.equal(second.status, 429);
     assert.equal(String(second.data.code), "TENANT_RATE_LIMITED");
+  } finally {
+    await app.stop();
+  }
+});
+
+test("S090 customer stability: returns STABLE snapshot and supports ETag 304", async () => {
+  const merchantId = "m_s090_customer_stable_001";
+  const app = createAppServer({
+    jwtSecret: TEST_JWT_SECRET
+  });
+  seedGoScenario(app, merchantId);
+
+  const customerToken = issueToken(
+    {
+      role: "CUSTOMER",
+      merchantId,
+      userId: "u_test_001"
+    },
+    TEST_JWT_SECRET
+  );
+  const port = await app.start(0);
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const first = await getJson(
+      baseUrl,
+      `/api/state/customer-stability?merchantId=${encodeURIComponent(merchantId)}`,
+      customerToken
+    );
+    assert.equal(first.status, 200);
+    assert.equal(String(first.data.version), "S090-SRV-02.v1");
+    assert.equal(String(first.data.stabilityLevel), "STABLE");
+    assert.equal(String(first.data.stabilityLabel), "稳定");
+    assert.equal(String(first.data.drivers[0].code), "TECHNICAL_GATE");
+    assert.equal(String(first.data.drivers[1].code), "COMPLIANCE_GATE");
+    const etag = first.headers.get("etag");
+    assert.ok(etag);
+
+    const second = await getJson(
+      baseUrl,
+      `/api/state/customer-stability?merchantId=${encodeURIComponent(merchantId)}`,
+      customerToken,
+      {
+        "If-None-Match": etag
+      }
+    );
+    assert.equal(second.status, 304);
+  } finally {
+    await app.stop();
+  }
+});
+
+test("S090 customer stability: returns WATCH and UNSTABLE by technical/compliance status", async () => {
+  const watchMerchantId = "m_s090_customer_watch_001";
+  const unstableMerchantId = "m_s090_customer_unstable_001";
+  const app = createAppServer({
+    jwtSecret: TEST_JWT_SECRET
+  });
+  ensureMerchant(app, watchMerchantId);
+  seedNoGoScenario(app, unstableMerchantId);
+
+  const watchCustomerToken = issueToken(
+    {
+      role: "CUSTOMER",
+      merchantId: watchMerchantId,
+      userId: "u_test_001"
+    },
+    TEST_JWT_SECRET
+  );
+  const unstableCustomerToken = issueToken(
+    {
+      role: "CUSTOMER",
+      merchantId: unstableMerchantId,
+      userId: "u_test_001"
+    },
+    TEST_JWT_SECRET
+  );
+  const port = await app.start(0);
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const watchResult = await getJson(
+      baseUrl,
+      `/api/state/customer-stability?merchantId=${encodeURIComponent(watchMerchantId)}`,
+      watchCustomerToken
+    );
+    assert.equal(watchResult.status, 200);
+    assert.equal(String(watchResult.data.stabilityLevel), "WATCH");
+    assert.ok(
+      Array.isArray(watchResult.data.reasons) &&
+        watchResult.data.reasons.some((item) => String(item.code) === "PAYMENT_NO_SAMPLE")
+    );
+
+    const unstableResult = await getJson(
+      baseUrl,
+      `/api/state/customer-stability?merchantId=${encodeURIComponent(unstableMerchantId)}`,
+      unstableCustomerToken
+    );
+    assert.equal(unstableResult.status, 200);
+    assert.equal(String(unstableResult.data.stabilityLevel), "UNSTABLE");
+    assert.ok(
+      Array.isArray(unstableResult.data.reasons) &&
+        unstableResult.data.reasons.some(
+          (item) => String(item.code) === "PAYMENT_SUCCESS_RATE_BELOW_THRESHOLD"
+        )
+    );
+  } finally {
+    await app.stop();
+  }
+});
+
+test("S090 customer stability: enforces role and scope", async () => {
+  const merchantId = "m_s090_customer_acl_001";
+  const app = createAppServer({
+    jwtSecret: TEST_JWT_SECRET
+  });
+  seedGoScenario(app, merchantId);
+  const customerToken = issueToken(
+    {
+      role: "CUSTOMER",
+      merchantId,
+      userId: "u_test_001"
+    },
+    TEST_JWT_SECRET
+  );
+  const ownerToken = issueToken(
+    {
+      role: "OWNER",
+      merchantId,
+      operatorId: "owner_001"
+    },
+    TEST_JWT_SECRET
+  );
+  const globalCustomerToken = issueToken(
+    {
+      role: "CUSTOMER",
+      userId: "u_test_001"
+    },
+    TEST_JWT_SECRET
+  );
+  const port = await app.start(0);
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const customerOk = await getJson(
+      baseUrl,
+      `/api/state/customer-stability?merchantId=${encodeURIComponent(merchantId)}`,
+      customerToken
+    );
+    assert.equal(customerOk.status, 200);
+
+    const ownerDenied = await getJson(
+      baseUrl,
+      `/api/state/customer-stability?merchantId=${encodeURIComponent(merchantId)}`,
+      ownerToken
+    );
+    assert.equal(ownerDenied.status, 403);
+
+    const scopeDenied = await getJson(
+      baseUrl,
+      "/api/state/customer-stability?merchantId=m_other_store",
+      customerToken
+    );
+    assert.equal(scopeDenied.status, 403);
+
+    const missingMerchant = await getJson(
+      baseUrl,
+      "/api/state/customer-stability",
+      globalCustomerToken
+    );
+    assert.equal(missingMerchant.status, 400);
   } finally {
     await app.stop();
   }

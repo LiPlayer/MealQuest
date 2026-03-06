@@ -816,6 +816,42 @@
 - 发布门接口异常时，仅发布门模块降级并提示“发布门数据暂不可用”
 - 降级不得阻断看板内其他模块（体验健康度、口径可见、经营摘要等）
 
+### 8.5 顾客稳定性摘要接口（S090-SRV-02 / S090-CUS-01）
+
+顾客端在 S090 阶段需将“发布门中的顾客稳定性信号”落地为可理解提示，目标是让顾客知道当前服务是否稳定且不暴露经营敏感信息。
+
+- 接口：`GET /api/state/customer-stability`
+- 角色：`CUSTOMER`
+- 作用域：默认读取登录态商户；可选 `merchantId` 指定同商户查询
+- 鉴权规则：
+  - 若 `merchantId` 与登录态 `auth.merchantId` 不一致，返回 `403 merchant scope denied`
+  - `merchantId` 不存在时返回 `404 merchant not found`
+  - 登录态 `userId` 不存在时返回 `403 user scope denied`
+- 租户策略操作：`KPI_RELEASE_GATE_QUERY`
+- 缓存：支持 `ETag` 与 `If-None-Match`，命中返回 `304`
+
+响应合同（核心字段）：
+- `version`：当前版本 `S090-SRV-02.v1`
+- `merchantId`
+- `evaluatedAt`
+- `windowDays`
+- `objective`：`LONG_TERM_VALUE_MAXIMIZATION`
+- `stabilityLevel`：`STABLE | WATCH | UNSTABLE`
+- `stabilityLabel`：顾客友好中文文案（`稳定` / `需留意` / `服务波动`）
+- `summary`：顾客可读的一句话状态说明
+- `drivers`：顾客稳定性驱动项（仅包含 `TECHNICAL_GATE`、`COMPLIANCE_GATE`）
+- `reasons`：顾客可读原因列表（包含 `code` 与 `message`）
+
+顾客稳定性映射规则（当前生效）：
+- 仅使用 `technicalGate` 与 `complianceGate` 两门，不将业务门直接映射为顾客稳定性
+- 任一门 `FAIL` -> `UNSTABLE`
+- 任一门 `REVIEW`（且无 `FAIL`）-> `WATCH`
+- 两门均 `PASS` -> `STABLE`
+
+顾客端降级要求（当前生效）：
+- 顾客稳定性接口异常时，仅稳定性模块降级并提示“稳定性暂不可用，可稍后刷新”
+- 降级不得阻断账户页其他模块（账票、提醒、反馈、隐私管理）
+
 ---
 
 ## 9. 安全、隐私与合规

@@ -12,6 +12,7 @@ jest.mock('@/services/DataService', () => ({
     getInvoices: jest.fn(),
     getNotificationInbox: jest.fn(),
     getNotificationUnreadSummary: jest.fn(),
+    getCustomerStabilitySnapshot: jest.fn(),
     markNotificationsRead: jest.fn(),
     createFeedbackTicket: jest.fn(),
     getFeedbackTickets: jest.fn(),
@@ -138,6 +139,34 @@ describe('Account page', () => {
     dataServiceMock.markNotificationsRead.mockResolvedValue({
       updatedCount: 1,
     } as any);
+    dataServiceMock.getCustomerStabilitySnapshot.mockResolvedValue({
+      version: 'S090-SRV-02.v1',
+      merchantId: 'm_store_001',
+      objective: 'LONG_TERM_VALUE_MAXIMIZATION',
+      evaluatedAt: '2026-03-06T10:00:00.000Z',
+      windowDays: 30,
+      stabilityLevel: 'WATCH',
+      stabilityLabel: '需留意',
+      summary: '服务状态需留意，部分能力可能短时波动。',
+      drivers: [
+        {
+          code: 'TECHNICAL_GATE',
+          label: '支付与核心链路',
+          status: 'REVIEW',
+        },
+        {
+          code: 'COMPLIANCE_GATE',
+          label: '隐私与账票合规',
+          status: 'PASS',
+        },
+      ],
+      reasons: [
+        {
+          code: 'PAYMENT_NO_SAMPLE',
+          message: '支付样本不足，稳定性持续观察中',
+        },
+      ],
+    } as any);
     dataServiceMock.getFeedbackTickets.mockResolvedValue({
       items: [
         {
@@ -237,6 +266,7 @@ describe('Account page', () => {
     });
     expect(document.getElementById('account-ledger-title')).toBeInTheDocument();
     expect(document.getElementById('account-invoice-title')).toBeInTheDocument();
+    expect(document.getElementById('account-stability-title')).toBeInTheDocument();
     expect(document.getElementById('account-touchpoint-title')).toBeInTheDocument();
     expect(document.getElementById('account-notification-title')).toBeInTheDocument();
     expect(document.getElementById('account-feedback-title')).toBeInTheDocument();
@@ -248,6 +278,9 @@ describe('Account page', () => {
     expect(document.body.textContent).toContain('权益未到账');
     expect(document.body.textContent).not.toContain('PAYMENT_VERIFY');
     expect(document.body.textContent).toContain('当前条件未满足');
+    expect(document.body.textContent).toContain('服务稳定性');
+    expect(document.body.textContent).toContain('需留意');
+    expect(document.body.textContent).toContain('支付样本不足，稳定性持续观察中');
     expect(document.body.textContent).toContain('生命周期阶段记录');
     expect(document.body.textContent).toContain('小游戏联动反馈');
     expect(document.body.textContent).toContain('签到小游戏');
@@ -255,6 +288,10 @@ describe('Account page', () => {
       'm_store_001',
       'u_fixture_001',
       { markAll: true },
+    );
+    expect(dataServiceMock.getCustomerStabilitySnapshot).toHaveBeenCalledWith(
+      'm_store_001',
+      'u_fixture_001',
     );
   });
 
@@ -324,6 +361,19 @@ describe('Account page', () => {
     });
     expect(document.getElementById('account-ledger-title')).toBeInTheDocument();
     expect(document.getElementById('account-invoice-title')).toBeInTheDocument();
+    expect(document.getElementById('account-stability-title')).toBeInTheDocument();
     expect(document.body.textContent).toContain('小游戏联动反馈');
+  });
+
+  it('degrades stability module when stability api fails', async () => {
+    dataServiceMock.getCustomerStabilitySnapshot.mockRejectedValue(new Error('stability service down'));
+
+    render(<AccountPage />);
+    await waitFor(() => expect(document.getElementById('account-stability-title')).toBeInTheDocument());
+    await waitFor(() => {
+      expect(document.body.textContent).toContain('稳定性暂不可用，可稍后刷新');
+    });
+    expect(document.getElementById('account-ledger-title')).toBeInTheDocument();
+    expect(document.getElementById('account-feedback-title')).toBeInTheDocument();
   });
 });

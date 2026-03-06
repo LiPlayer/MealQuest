@@ -1,5 +1,6 @@
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RELEASE_GATE_VERSION = "S090-SRV-01.v1";
+const CUSTOMER_STABILITY_VERSION = "S090-SRV-02.v1";
 const DEFAULT_WINDOW_DAYS = 30;
 const DEFAULT_TREND_WINDOW_DAYS = 7;
 
@@ -30,6 +31,14 @@ const DEFAULT_WEIGHTS = {
 };
 
 const PRIVACY_AUDIT_ACTIONS = new Set(["PRIVACY_EXPORT", "PRIVACY_DELETE", "PRIVACY_CANCEL"]);
+const CUSTOMER_STABILITY_REASON_MESSAGES = {
+  PAYMENT_SUCCESS_RATE_BELOW_THRESHOLD: "支付成功率波动，可能影响下单体验",
+  PAYMENT_NO_SAMPLE: "支付样本不足，稳定性持续观察中",
+  INVOICE_COVERAGE_BELOW_THRESHOLD: "账票覆盖率波动，请留意开票状态",
+  INVOICE_NO_PAID_SAMPLE: "账票样本不足，稳定性持续观察中",
+  PRIVACY_SUCCESS_RATE_BELOW_THRESHOLD: "隐私流程成功率波动，请稍后重试或联系客服",
+  PRIVACY_NO_SAMPLE: "隐私流程样本不足，稳定性持续观察中"
+};
 
 function toTimestampMs(value) {
   const ts = Date.parse(String(value || ""));
@@ -596,6 +605,96 @@ function buildDataSufficiency({
   };
 }
 
+function resolveCustomerStabilityLevel({ technicalGate = {}, complianceGate = {} } = {}) {
+  const technicalStatus = safeUpper(technicalGate.status);
+  const complianceStatus = safeUpper(complianceGate.status);
+  if (technicalStatus === "FAIL" || complianceStatus === "FAIL") {
+    return {
+      level: "UNSTABLE",
+      label: "服务波动",
+      summary: "服务存在波动，建议稍后重试。"
+    };
+  }
+  if (technicalStatus === "REVIEW" || complianceStatus === "REVIEW") {
+    return {
+      level: "WATCH",
+      label: "需留意",
+      summary: "服务状态需留意，部分能力可能短时波动。"
+    };
+  }
+  return {
+    level: "STABLE",
+    label: "稳定",
+    summary: "当前服务稳定，可放心使用。"
+  };
+}
+
+function toCustomerReason(reasonCode) {
+  const code = safeUpper(reasonCode);
+  if (!code) {
+    return null;
+  }
+  return {
+    code,
+    message:
+      CUSTOMER_STABILITY_REASON_MESSAGES[code] || "服务状态存在波动，请稍后重试。"
+  };
+}
+
+function toCustomerStabilitySnapshot(releaseGateSnapshot = {}) {
+  const gates =
+    releaseGateSnapshot &&
+    releaseGateSnapshot.gates &&
+    typeof releaseGateSnapshot.gates === "object"
+      ? releaseGateSnapshot.gates
+      : {};
+  const technicalGate =
+    gates.technicalGate && typeof gates.technicalGate === "object"
+      ? gates.technicalGate
+      : { status: "REVIEW", reasons: ["PAYMENT_NO_SAMPLE"] };
+  const complianceGate =
+    gates.complianceGate && typeof gates.complianceGate === "object"
+      ? gates.complianceGate
+      : { status: "REVIEW", reasons: ["INVOICE_NO_PAID_SAMPLE", "PRIVACY_NO_SAMPLE"] };
+  const level = resolveCustomerStabilityLevel({
+    technicalGate,
+    complianceGate
+  });
+  const reasons = Array.from(
+    new Set(
+      []
+        .concat(Array.isArray(technicalGate.reasons) ? technicalGate.reasons : [])
+        .concat(Array.isArray(complianceGate.reasons) ? complianceGate.reasons : [])
+    )
+  )
+    .map((reason) => toCustomerReason(reason))
+    .filter(Boolean);
+
+  return {
+    version: CUSTOMER_STABILITY_VERSION,
+    merchantId: String(releaseGateSnapshot.merchantId || "").trim(),
+    objective: "LONG_TERM_VALUE_MAXIMIZATION",
+    evaluatedAt: String(releaseGateSnapshot.evaluatedAt || new Date().toISOString()),
+    windowDays: Number(releaseGateSnapshot.windowDays || DEFAULT_WINDOW_DAYS),
+    stabilityLevel: level.level,
+    stabilityLabel: level.label,
+    summary: level.summary,
+    drivers: [
+      {
+        code: "TECHNICAL_GATE",
+        label: "支付与核心链路",
+        status: safeUpper(technicalGate.status) || "REVIEW"
+      },
+      {
+        code: "COMPLIANCE_GATE",
+        label: "隐私与账票合规",
+        status: safeUpper(complianceGate.status) || "REVIEW"
+      }
+    ],
+    reasons
+  };
+}
+
 function createReleaseGateService(db, options = {}) {
   const now = typeof options.now === "function" ? options.now : () => Date.now();
   const globalThresholds =
@@ -842,8 +941,14 @@ function createReleaseGateService(db, options = {}) {
     };
   }
 
+  function getCustomerStabilitySnapshot({ merchantId, windowDays = DEFAULT_WINDOW_DAYS } = {}) {
+    const releaseGateSnapshot = getReleaseGateSnapshot({ merchantId, windowDays });
+    return toCustomerStabilitySnapshot(releaseGateSnapshot);
+  }
+
   return {
-    getReleaseGateSnapshot
+    getReleaseGateSnapshot,
+    getCustomerStabilitySnapshot
   };
 }
 

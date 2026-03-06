@@ -6,6 +6,7 @@ import { DataService } from '@/services/DataService';
 import {
   CustomerNotificationItem,
   CustomerNotificationSummary,
+  CustomerStabilitySnapshot,
   FeedbackTicket,
   FeedbackTicketCategory,
   HomeSnapshot,
@@ -78,6 +79,20 @@ function resolveFeedbackStatusLabel(status: FeedbackTicket['status']): string {
   return normalized || '处理中';
 }
 
+function resolveStabilityDriverStatusLabel(status: string): string {
+  const normalized = String(status || '').trim().toUpperCase();
+  if (normalized === 'PASS') {
+    return '通过';
+  }
+  if (normalized === 'FAIL') {
+    return '波动';
+  }
+  if (normalized === 'REVIEW') {
+    return '观察中';
+  }
+  return normalized || '观察中';
+}
+
 function toInputValue(event: unknown): string {
   const record = (event || {}) as {
     detail?: { value?: unknown };
@@ -114,6 +129,7 @@ export default function AccountPage() {
   const [notificationSummary, setNotificationSummary] = useState<CustomerNotificationSummary>(
     EMPTY_NOTIFICATION_SUMMARY,
   );
+  const [customerStability, setCustomerStability] = useState<CustomerStabilitySnapshot | null>(null);
   const [feedbackTickets, setFeedbackTickets] = useState<FeedbackTicket[]>([]);
   const [feedbackCategory, setFeedbackCategory] = useState<FeedbackTicketCategory>('OTHER');
   const [feedbackTitle, setFeedbackTitle] = useState('');
@@ -129,6 +145,7 @@ export default function AccountPage() {
   const [notificationLoading, setNotificationLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [notificationErrorMessage, setNotificationErrorMessage] = useState('');
+  const [stabilityErrorMessage, setStabilityErrorMessage] = useState('');
   const [privacyMessage, setPrivacyMessage] = useState('');
   const [cancelArmed, setCancelArmed] = useState(false);
   const [canceling, setCanceling] = useState(false);
@@ -277,6 +294,21 @@ export default function AccountPage() {
     }
   }, [resolveUserId, storeId]);
 
+  const loadCustomerStability = useCallback(async () => {
+    if (!storeId) {
+      return;
+    }
+    setStabilityErrorMessage('');
+    try {
+      const result = await DataService.getCustomerStabilitySnapshot(storeId, resolveUserId());
+      setCustomerStability(result);
+    } catch (error) {
+      console.error('[Account] load customer stability failed', error);
+      setCustomerStability(null);
+      setStabilityErrorMessage('稳定性暂不可用，可稍后刷新');
+    }
+  }, [resolveUserId, storeId]);
+
   const loadData = useCallback(async () => {
     if (!storeId) {
       setLoading(false);
@@ -286,6 +318,7 @@ export default function AccountPage() {
 
     setLoading(true);
     setErrorMessage('');
+    setStabilityErrorMessage('');
     const resolvedUserId = resolveUserId();
     try {
       const [nextSnapshot, nextLedger, nextInvoices] = await Promise.all([
@@ -297,7 +330,11 @@ export default function AccountPage() {
       setLedger(nextLedger);
       setInvoices(nextInvoices);
       setCustomerUserId(resolveUserId());
-      await Promise.all([loadNotifications({ autoMarkRead: true }), loadFeedbackTickets()]);
+      await Promise.all([
+        loadNotifications({ autoMarkRead: true }),
+        loadFeedbackTickets(),
+        loadCustomerStability(),
+      ]);
     } catch (error) {
       console.error('[Account] load data failed', error);
       setErrorMessage('加载失败，请重试');
@@ -305,7 +342,7 @@ export default function AccountPage() {
     } finally {
       setLoading(false);
     }
-  }, [loadFeedbackTickets, loadNotifications, resolveUserId, storeId]);
+  }, [loadCustomerStability, loadFeedbackTickets, loadNotifications, resolveUserId, storeId]);
 
   useEffect(() => {
     void loadData();
@@ -448,6 +485,58 @@ export default function AccountPage() {
             </Text>
           </View>
         </View>
+      </View>
+
+      <View className='account-card'>
+        <Text id='account-stability-title' className='account-card__title'>
+          服务稳定性
+        </Text>
+        <Text className='account-touchpoint-objective'>
+          基于支付与合规信号生成稳定性提示，帮助你判断当前服务状态。
+        </Text>
+        <View
+          id='account-stability-refresh-button'
+          className='account-btn account-btn--ghost account-btn--notification'
+          onClick={() => {
+            void loadCustomerStability();
+          }}
+        >
+          刷新稳定性
+        </View>
+        {stabilityErrorMessage ? <Text className='account-error'>{stabilityErrorMessage}</Text> : null}
+        {!stabilityErrorMessage && !customerStability ? <Text className='account-empty'>稳定性评估中...</Text> : null}
+        {customerStability ? (
+          <>
+            <View className='account-touchpoint-item'>
+              <Text className='account-touchpoint-item__title'>当前状态：{customerStability.stabilityLabel}</Text>
+              <Text className='account-touchpoint-item__desc'>{customerStability.summary}</Text>
+              <Text className='account-touchpoint-item__reason'>
+                评估时间：{new Date(customerStability.evaluatedAt).toLocaleString()}
+              </Text>
+            </View>
+            <View className='account-touchpoint-list'>
+              {customerStability.drivers.map((item) => (
+                <View key={item.code} className='account-touchpoint-item'>
+                  <Text className='account-touchpoint-item__title'>
+                    {item.label} · {resolveStabilityDriverStatusLabel(item.status)}
+                  </Text>
+                </View>
+              ))}
+            </View>
+            {customerStability.reasons.length === 0 ? (
+              <Text className='account-empty'>当前未发现影响服务稳定性的风险信号。</Text>
+            ) : (
+              <View className='account-touchpoint-list'>
+                {customerStability.reasons.map((item) => (
+                  <View key={item.code} className='account-touchpoint-item'>
+                    <Text className='account-touchpoint-item__title'>提示 · {item.code}</Text>
+                    <Text className='account-touchpoint-item__desc'>{item.message}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </>
+        ) : null}
       </View>
 
       <View className='account-card'>

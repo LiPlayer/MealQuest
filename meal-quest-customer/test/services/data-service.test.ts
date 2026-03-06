@@ -13,6 +13,7 @@ jest.mock('@/services/ApiDataService', () => ({
         cancelAccount: jest.fn(),
         getNotificationInbox: jest.fn(),
         getNotificationUnreadSummary: jest.fn(),
+        getCustomerStabilitySnapshot: jest.fn(),
         markNotificationsRead: jest.fn(),
         createFeedbackTicket: jest.fn(),
         getFeedbackTickets: jest.fn(),
@@ -101,6 +102,18 @@ describe('DataService remote only', () => {
 
         await expect(DataService.getNotificationUnreadSummary('store_a', 'u_fixture_001')).rejects.toThrow(
             'notification failed',
+        );
+
+        expect(storageMock.setApiToken).not.toHaveBeenCalled();
+        expect(storageMock.setApiTokenMerchantId).not.toHaveBeenCalled();
+        expect(storageMock.setCustomerUserId).not.toHaveBeenCalled();
+    });
+
+    it('does not clear session when customer stability query fails', async () => {
+        api.getCustomerStabilitySnapshot.mockRejectedValue(new Error('stability failed'));
+
+        await expect(DataService.getCustomerStabilitySnapshot('store_a', 'u_fixture_001')).rejects.toThrow(
+            'stability failed',
         );
 
         expect(storageMock.setApiToken).not.toHaveBeenCalled();
