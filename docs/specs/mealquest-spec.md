@@ -269,7 +269,7 @@
 - 接口：`GET /api/notifications/inbox`
   - 角色：`OWNER / MANAGER / CLERK / CUSTOMER`
   - 作用：查询当前登录主体的消息收件箱
-  - 过滤：`status=ALL|UNREAD|READ`、`category=ALL|APPROVAL_TODO|EXECUTION_RESULT`
+  - 过滤：`status=ALL|UNREAD|READ`、`category=ALL|APPROVAL_TODO|EXECUTION_RESULT|FEEDBACK_TICKET`
   - 分页：`limit` + `cursor`
   - 缓存：支持 `ETag` 与 `If-None-Match`，命中返回 `304`
 
@@ -342,7 +342,7 @@
   - 默认刷新策略：进入页面拉取 + 手动刷新（不强制实时推送）
 
 - 交互与行为要求
-  - 支持按 `status=ALL|UNREAD|READ` 和 `category=ALL|APPROVAL_TODO|EXECUTION_RESULT` 过滤
+  - 支持按 `status=ALL|UNREAD|READ` 和 `category=ALL|APPROVAL_TODO|EXECUTION_RESULT|FEEDBACK_TICKET` 过滤
   - 支持单条“标记已读”和“全部已读”
   - 支持基于 `cursor` 的分页加载（Load More）
   - 已读成功后列表状态与未读统计需同步更新
@@ -632,6 +632,29 @@
   - 账户页需明确展示注销影响说明（非交易数据删除、交易账票按法规保留）。
   - 注销采用二次确认，失败时返回用户可理解提示。
   - 隐私/反馈模块异常仅局部降级，不得阻断支付、账票、资产等主链路。
+
+#### 4.4.14 老板端顾客体验与反馈可见（S080-MER-01）
+
+老板端在 S080 阶段需建立“看板体验健康度 + 提醒中心反馈汇总”可见能力，保证老板可感知顾客主路径风险与反馈处理压力。
+
+- 看板体验健康度（当前生效）
+  - 看板新增“顾客体验健康度”模块。
+  - 接口接入：`GET /api/state/experience-guard`。
+  - 展示要素：总体状态、健康分、路径分布、路径级摘要与风险告警。
+
+- 提醒中心反馈汇总（当前生效）
+  - 提醒中心未读摘要增加 `FEEDBACK_TICKET` 分类统计。
+  - 提醒筛选增加 `FEEDBACK_TICKET` 分类。
+  - 新增反馈汇总只读区，接口接入：`GET /api/feedback/summary`。
+  - 汇总区展示：工单总数、未解决数、已解决数、状态分布、最近工单。
+
+- 角色与权限（当前生效）
+  - `OWNER / MANAGER`：可查询并展示体验健康度与反馈汇总。
+  - `CLERK`：模块可见但仅展示权限受限提示，不发起受限接口请求。
+
+- 降级要求（当前生效）
+  - 体验守卫或反馈汇总接口异常时，仅对应模块降级并支持刷新重试。
+  - 异常不得阻断提醒列表、筛选、已读回执等既有功能。
 
 ---
 

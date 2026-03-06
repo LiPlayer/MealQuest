@@ -7,9 +7,11 @@ import StatTile from '../components/ui/StatTile';
 import SurfaceCard from '../components/ui/SurfaceCard';
 import { useMerchant } from '../context/MerchantContext';
 import {
+  FeedbackSummaryResponse,
   NotificationCategory,
   NotificationInboxItem,
   NotificationStatus,
+  getFeedbackSummary,
   getNotificationInbox,
   getNotificationUnreadSummary,
   markNotificationsRead,
@@ -17,7 +19,7 @@ import {
 import { mqTheme } from '../theme/tokens';
 
 const STATUS_FILTERS: NotificationStatus[] = ['ALL', 'UNREAD', 'READ'];
-const CATEGORY_FILTERS: NotificationCategory[] = ['ALL', 'APPROVAL_TODO', 'EXECUTION_RESULT'];
+const CATEGORY_FILTERS: NotificationCategory[] = ['ALL', 'APPROVAL_TODO', 'EXECUTION_RESULT', 'FEEDBACK_TICKET'];
 
 function formatStatus(value: string): string {
   const normalized = String(value || '').toUpperCase();
@@ -40,6 +42,9 @@ function formatCategory(value: string): string {
   }
   if (normalized === 'GENERAL') {
     return '系统提醒';
+  }
+  if (normalized === 'FEEDBACK_TICKET') {
+    return '反馈进展';
   }
   if (normalized === 'ALL') {
     return '全部';
@@ -65,6 +70,10 @@ export default function NotificationsScreen() {
   const [totalUnread, setTotalUnread] = useState(0);
   const [approvalUnread, setApprovalUnread] = useState(0);
   const [executionUnread, setExecutionUnread] = useState(0);
+  const [feedbackUnread, setFeedbackUnread] = useState(0);
+  const [feedbackSummary, setFeedbackSummary] = useState<FeedbackSummaryResponse | null>(null);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [feedbackError, setFeedbackError] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [actingId, setActingId] = useState('');
@@ -73,13 +82,16 @@ export default function NotificationsScreen() {
 
   const merchantId = String(authSession?.merchantId || '').trim();
   const token = String(authSession?.token || '').trim();
+  const role = String(authSession?.role || '').trim().toUpperCase();
+  const canViewFeedbackSummary = role === 'OWNER' || role === 'MANAGER';
 
   const summaryByCategory = useMemo(() => {
     return {
       approval: approvalUnread,
       execution: executionUnread,
+      feedback: feedbackUnread,
     };
-  }, [approvalUnread, executionUnread]);
+  }, [approvalUnread, executionUnread, feedbackUnread]);
 
   const loadInbox = useCallback(async () => {
     if (!merchantId || !token) {
@@ -106,8 +118,10 @@ export default function NotificationsScreen() {
       const byCategory = Array.isArray(summaryResult.byCategory) ? summaryResult.byCategory : [];
       const approval = byCategory.find((item) => String(item.category || '').toUpperCase() === 'APPROVAL_TODO');
       const execution = byCategory.find((item) => String(item.category || '').toUpperCase() === 'EXECUTION_RESULT');
+      const feedback = byCategory.find((item) => String(item.category || '').toUpperCase() === 'FEEDBACK_TICKET');
       setApprovalUnread(Number(approval?.unreadCount) || 0);
       setExecutionUnread(Number(execution?.unreadCount) || 0);
+      setFeedbackUnread(Number(feedback?.unreadCount) || 0);
       setItems(Array.isArray(inboxResult.items) ? inboxResult.items : []);
       setNextCursor(inboxResult.pageInfo?.nextCursor || null);
       setHasMore(Boolean(inboxResult.pageInfo?.hasMore));
@@ -122,6 +136,38 @@ export default function NotificationsScreen() {
   useEffect(() => {
     void loadInbox();
   }, [loadInbox]);
+
+  const loadFeedback = useCallback(async () => {
+    if (!merchantId || !token) {
+      return;
+    }
+    if (!canViewFeedbackSummary) {
+      setFeedbackSummary(null);
+      setFeedbackError('');
+      setFeedbackLoading(false);
+      return;
+    }
+    setFeedbackLoading(true);
+    setFeedbackError('');
+    try {
+      const result = await getFeedbackSummary({
+        merchantId,
+        token,
+        windowHours: 168,
+      });
+      setFeedbackSummary(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '反馈汇总加载失败';
+      setFeedbackError(message);
+      setFeedbackSummary(null);
+    } finally {
+      setFeedbackLoading(false);
+    }
+  }, [canViewFeedbackSummary, merchantId, token]);
+
+  useEffect(() => {
+    void loadFeedback();
+  }, [loadFeedback]);
 
   const loadMore = useCallback(async () => {
     if (!merchantId || !token || !hasMore || !nextCursor) {
@@ -204,7 +250,7 @@ export default function NotificationsScreen() {
     <AppShell scroll>
       <View style={styles.headerWrap}>
         <Text style={styles.title}>提醒中心</Text>
-        <Text style={styles.subtitle}>查看审批待办与执行结果提醒，支持按状态筛选和批量已读。</Text>
+        <Text style={styles.subtitle}>查看审批待办、执行结果与反馈进展提醒，支持按状态筛选和批量已读。</Text>
       </View>
 
       <SurfaceCard>
@@ -213,6 +259,7 @@ export default function NotificationsScreen() {
           <StatTile label="未读总数" value={totalUnread} />
           <StatTile label="审批待办" value={summaryByCategory.approval} />
           <StatTile label="执行结果" value={summaryByCategory.execution} />
+          <StatTile label="反馈进展" value={summaryByCategory.feedback} />
         </View>
         <View style={styles.actionWrap}>
           <ActionButton
@@ -221,6 +268,7 @@ export default function NotificationsScreen() {
             variant="secondary"
             onPress={() => {
               void loadInbox();
+              void loadFeedback();
             }}
             disabled={loading || loadingMore || Boolean(actingId)}
           />
@@ -235,6 +283,40 @@ export default function NotificationsScreen() {
             busy={actingId === 'mark-all'}
           />
         </View>
+      </SurfaceCard>
+
+      <SurfaceCard>
+        <Text style={styles.sectionTitle}>反馈汇总（7天）</Text>
+        {!canViewFeedbackSummary ? (
+          <Text style={styles.metaText}>当前角色仅可查看提醒列表，反馈汇总仅对 OWNER/MANAGER 开放。</Text>
+        ) : null}
+        {canViewFeedbackSummary && feedbackLoading ? <Text style={styles.metaText}>反馈汇总加载中...</Text> : null}
+        {canViewFeedbackSummary && feedbackError ? <Text style={styles.errorText}>{feedbackError}</Text> : null}
+        {canViewFeedbackSummary && feedbackSummary ? (
+          <>
+            <View style={styles.grid}>
+              <StatTile label="工单总数" value={feedbackSummary.totals.tickets} />
+              <StatTile label="未解决" value={feedbackSummary.totals.unresolvedCount} />
+              <StatTile label="已解决" value={feedbackSummary.totals.resolvedCount} />
+            </View>
+            <View style={styles.feedbackStatusWrap}>
+              {feedbackSummary.byStatus.map((item) => (
+                <Text key={item.status} style={styles.metaText}>
+                  {item.status}：{item.count}
+                </Text>
+              ))}
+            </View>
+            {feedbackSummary.latestTickets.slice(0, 3).map((item) => (
+              <View key={item.ticketId} style={styles.rowCard}>
+                <Text style={styles.rowTitle}>{item.title || '顾客反馈'}</Text>
+                <Text style={styles.metaText}>状态：{item.status}</Text>
+                <Text style={styles.metaText}>
+                  更新时间：{formatTime(item.updatedAt || item.createdAt)}
+                </Text>
+              </View>
+            ))}
+          </>
+        ) : null}
       </SurfaceCard>
 
       <SurfaceCard>
@@ -361,6 +443,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: mqTheme.spacing.xs,
     flexWrap: 'wrap',
+  },
+  feedbackStatusWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
   },
   chip: {
     borderWidth: 1,

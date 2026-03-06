@@ -452,7 +452,12 @@ export type KillSwitchResponse = {
 };
 
 export type NotificationStatus = 'ALL' | 'UNREAD' | 'READ';
-export type NotificationCategory = 'ALL' | 'APPROVAL_TODO' | 'EXECUTION_RESULT' | 'GENERAL';
+export type NotificationCategory =
+  | 'ALL'
+  | 'APPROVAL_TODO'
+  | 'EXECUTION_RESULT'
+  | 'FEEDBACK_TICKET'
+  | 'GENERAL';
 
 export type NotificationInboxItem = {
   notificationId: string;
@@ -500,6 +505,73 @@ export type NotificationReadAckResponse = {
   recipientId: string;
   updatedCount: number;
   notificationIds: string[];
+};
+
+export type ExperienceGuardPathStatus = 'HEALTHY' | 'WARNING' | 'RISK' | 'NO_DATA';
+
+export type ExperienceGuardPath = {
+  pathKey: string;
+  title: string;
+  status: ExperienceGuardPathStatus;
+  score: number;
+  metrics: Record<string, number>;
+  alerts: string[];
+};
+
+export type ExperienceGuardResponse = {
+  version: string;
+  merchantId: string;
+  evaluatedAt: string;
+  windowHours: number;
+  status: ExperienceGuardPathStatus;
+  score: number;
+  summary: {
+    pathCount: number;
+    healthyCount: number;
+    warningCount: number;
+    riskCount: number;
+    noDataCount: number;
+  };
+  paths: ExperienceGuardPath[];
+  alerts: {
+    pathKey: string;
+    status: ExperienceGuardPathStatus;
+    message: string;
+  }[];
+};
+
+export type FeedbackSummaryTicketStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+export type FeedbackSummaryTicketCategory = 'PAYMENT' | 'BENEFIT' | 'PRIVACY' | 'ACCOUNT' | 'OTHER';
+
+export type FeedbackSummaryResponse = {
+  merchantId: string;
+  windowHours: number;
+  generatedAt: string;
+  totals: {
+    tickets: number;
+    unresolvedCount: number;
+    resolvedCount: number;
+  };
+  byStatus: {
+    status: FeedbackSummaryTicketStatus;
+    count: number;
+  }[];
+  byCategory: {
+    category: FeedbackSummaryTicketCategory;
+    count: number;
+  }[];
+  latestTickets: {
+    ticketId: string;
+    merchantId: string;
+    userId: string;
+    category: FeedbackSummaryTicketCategory;
+    title: string;
+    description: string;
+    contact: string;
+    status: FeedbackSummaryTicketStatus;
+    createdAt: string;
+    updatedAt: string;
+  }[];
 };
 
 const DEFAULT_BASE_URL = Platform.select({
@@ -1066,6 +1138,52 @@ export async function setMerchantKillSwitch(params: {
     },
     { token: params.token },
   );
+}
+
+export async function getCustomerExperienceGuard(params: {
+  merchantId: string;
+  token: string;
+  windowHours?: number;
+}): Promise<ExperienceGuardResponse> {
+  const merchantId = String(params.merchantId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  const windowHours = Number(params.windowHours);
+  const query = [
+    `merchantId=${encodeURIComponent(merchantId)}`,
+    Number.isFinite(windowHours) && windowHours > 0
+      ? `windowHours=${encodeURIComponent(String(Math.floor(windowHours)))}`
+      : '',
+  ]
+    .filter(Boolean)
+    .join('&');
+  return getJson<ExperienceGuardResponse>(`/api/state/experience-guard?${query}`, {
+    token: params.token,
+  });
+}
+
+export async function getFeedbackSummary(params: {
+  merchantId: string;
+  token: string;
+  windowHours?: number;
+}): Promise<FeedbackSummaryResponse> {
+  const merchantId = String(params.merchantId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  const windowHours = Number(params.windowHours);
+  const query = [
+    `merchantId=${encodeURIComponent(merchantId)}`,
+    Number.isFinite(windowHours) && windowHours > 0
+      ? `windowHours=${encodeURIComponent(String(Math.floor(windowHours)))}`
+      : '',
+  ]
+    .filter(Boolean)
+    .join('&');
+  return getJson<FeedbackSummaryResponse>(`/api/feedback/summary?${query}`, {
+    token: params.token,
+  });
 }
 
 export async function getNotificationInbox(params: {
