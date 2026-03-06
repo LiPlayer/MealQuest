@@ -120,6 +120,17 @@ function resolveStabilityDriverStatusLabel(status: string): string {
   return normalized || '观察中';
 }
 
+function resolveStabilityGuardDescription(level: string): string {
+  const normalized = String(level || '').trim().toUpperCase();
+  if (normalized === 'UNSTABLE') {
+    return '当前触达能力可能短时波动，系统已进入守护状态，支付、账票与账户主链路不受影响。';
+  }
+  if (normalized === 'WATCH') {
+    return '当前处于灰度观察阶段，系统已启用守护提示，主链路不受影响。';
+  }
+  return '当前灰度影响受控，支付、账票与账户主链路可正常使用。';
+}
+
 function toInputValue(event: unknown): string {
   const record = (event || {}) as {
     detail?: { value?: unknown };
@@ -593,10 +604,10 @@ export default function AccountPage() {
 
       <View className='account-card'>
         <Text id='account-stability-title' className='account-card__title'>
-          服务稳定性
+          服务稳定性与灰度守护
         </Text>
         <Text className='account-touchpoint-objective'>
-          基于支付与合规信号生成稳定性提示，帮助你判断当前服务状态。
+          基于支付与合规信号生成稳定性与灰度守护提示，帮助你判断当前服务状态。
         </Text>
         <View
           id='account-stability-refresh-button'
@@ -614,6 +625,9 @@ export default function AccountPage() {
             <View className='account-touchpoint-item'>
               <Text className='account-touchpoint-item__title'>当前状态：{customerStability.stabilityLabel}</Text>
               <Text className='account-touchpoint-item__desc'>{customerStability.summary}</Text>
+              <Text className='account-touchpoint-item__desc'>
+                {resolveStabilityGuardDescription(customerStability.stabilityLevel)}
+              </Text>
               <Text className='account-touchpoint-item__reason'>
                 评估时间：{new Date(customerStability.evaluatedAt).toLocaleString()}
               </Text>

@@ -323,6 +323,7 @@ describe('Account page', () => {
     expect(document.body.textContent).toContain('当前条件未满足');
     expect(document.body.textContent).toContain('服务稳定性');
     expect(document.body.textContent).toContain('需留意');
+    expect(document.body.textContent).toContain('当前处于灰度观察阶段，系统已启用守护提示，主链路不受影响。');
     expect(document.body.textContent).toContain('支付样本不足，稳定性持续观察中');
     expect(document.body.textContent).toContain('生命周期阶段记录');
     expect(document.body.textContent).toContain('小游戏联动反馈');

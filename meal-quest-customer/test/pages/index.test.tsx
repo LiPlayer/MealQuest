@@ -9,6 +9,7 @@ jest.mock('@/services/DataService', () => ({
     getHomeSnapshot: jest.fn(),
     executeCheckout: jest.fn(),
     getNotificationInbox: jest.fn(),
+    getCustomerStabilitySnapshot: jest.fn(),
   },
 }));
 
@@ -102,6 +103,24 @@ describe('Index page welcome activity visibility', () => {
       ],
       hasMore: false,
       nextCursor: null,
+    } as any);
+    dataServiceMock.getCustomerStabilitySnapshot.mockResolvedValue({
+      version: 'S090-SRV-02.v1',
+      merchantId: 'm_store_001',
+      objective: 'LONG_TERM_VALUE_MAXIMIZATION',
+      evaluatedAt: '2026-03-07T10:00:00.000Z',
+      windowDays: 30,
+      stabilityLevel: 'STABLE',
+      stabilityLabel: '稳定',
+      summary: '当前服务稳定，可放心使用。',
+      drivers: [
+        {
+          code: 'TECHNICAL_GATE',
+          label: '支付与核心链路',
+          status: 'PASS',
+        },
+      ],
+      reasons: [],
     } as any);
   });
 
@@ -316,11 +335,15 @@ describe('Index page welcome activity visibility', () => {
 
     await waitFor(() => {
       expect(document.getElementById('index-lifecycle-title')).toBeInTheDocument();
+      expect(document.getElementById('index-stability-guard-title')).toBeInTheDocument();
       expect(document.getElementById('index-execution-consistency-title')).toBeInTheDocument();
       expect(document.getElementById('index-game-linkage-title')).toBeInTheDocument();
     });
     await waitFor(() => {
       expect(document.body.textContent).toContain('生命周期进度');
+      expect(document.body.textContent).toContain('灰度体验守护');
+      expect(document.body.textContent).toContain('当前状态：稳定');
+      expect(document.body.textContent).toContain('灰度影响受控，支付与账户主链路可正常使用。');
       expect(document.body.textContent).toContain('最新权益变更说明');
       expect(document.body.textContent).toContain('扩收 · 已命中');
       expect(document.body.textContent).toContain('小游戏联动反馈');
@@ -328,5 +351,54 @@ describe('Index page welcome activity visibility', () => {
       expect(document.body.textContent).toContain('签到小游戏');
       expect(document.body.textContent).toContain('激活');
     });
+    expect(dataServiceMock.getCustomerStabilitySnapshot).toHaveBeenCalledWith('m_store_001', '');
+  });
+
+  it('renders guard notice in watch mode', async () => {
+    dataServiceMock.getCustomerStabilitySnapshot.mockResolvedValue({
+      version: 'S090-SRV-02.v1',
+      merchantId: 'm_store_001',
+      objective: 'LONG_TERM_VALUE_MAXIMIZATION',
+      evaluatedAt: '2026-03-07T10:00:00.000Z',
+      windowDays: 30,
+      stabilityLevel: 'WATCH',
+      stabilityLabel: '需留意',
+      summary: '服务状态需留意，部分能力可能短时波动。',
+      drivers: [
+        {
+          code: 'TECHNICAL_GATE',
+          label: '支付与核心链路',
+          status: 'REVIEW',
+        },
+      ],
+      reasons: [
+        {
+          code: 'PAYMENT_NO_SAMPLE',
+          message: '支付样本不足，稳定性持续观察中',
+        },
+      ],
+    } as any);
+    dataServiceMock.getHomeSnapshot.mockResolvedValue(createSnapshot([]) as any);
+
+    render(<IndexPage />);
+
+    await waitFor(() => {
+      expect(document.body.textContent).toContain('当前状态：需留意');
+      expect(document.body.textContent).toContain('灰度观察中，系统已启用保护提示，支付与账户主链路不受影响。');
+      expect(document.body.textContent).toContain('提示 · PAYMENT_NO_SAMPLE');
+    });
+  });
+
+  it('degrades guard module when stability api fails', async () => {
+    dataServiceMock.getCustomerStabilitySnapshot.mockRejectedValue(new Error('stability service down'));
+    dataServiceMock.getHomeSnapshot.mockResolvedValue(createSnapshot([]) as any);
+
+    render(<IndexPage />);
+
+    await waitFor(() => {
+      expect(document.body.textContent).toContain('守护状态暂不可用，可稍后刷新。');
+    });
+    expect(document.getElementById('index-pay-button')).toBeInTheDocument();
+    expect(document.getElementById('index-execution-consistency-title')).toBeInTheDocument();
   });
 });

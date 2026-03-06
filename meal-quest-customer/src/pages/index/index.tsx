@@ -7,7 +7,7 @@ import CustomerBottomDock from '@/components/CustomerBottomDock';
 import CustomerCardStack from '@/components/CustomerCardStack';
 import ShopBrand from '@/components/ShopBrand';
 import { buildSmartCheckoutQuote } from '@/domain/smartCheckout';
-import { CustomerNotificationItem, HomeSnapshot } from '@/services/dataTypes';
+import { CustomerNotificationItem, CustomerStabilitySnapshot, HomeSnapshot } from '@/services/dataTypes';
 import { buildExecutionConsistencyRecords } from '@/services/customerApp/executionConsistency';
 import { DataService } from '@/services/DataService';
 import { storage } from '@/utils/storage';
@@ -70,6 +70,17 @@ function buildLifecycleStages(snapshot: HomeSnapshot | null): LifecycleStageStat
   });
 }
 
+function resolveStabilityGuardDescription(level: string): string {
+  const normalized = String(level || '').trim().toUpperCase();
+  if (normalized === 'UNSTABLE') {
+    return '触达能力可能短时波动，系统已进入保护态，支付、账票与账户主链路不受影响。';
+  }
+  if (normalized === 'WATCH') {
+    return '灰度观察中，系统已启用保护提示，支付与账户主链路不受影响。';
+  }
+  return '灰度影响受控，支付与账户主链路可正常使用。';
+}
+
 export default function IndexPage() {
   const router = useRouter();
   const [snapshot, setSnapshot] = useState<HomeSnapshot | null>(null);
@@ -80,6 +91,9 @@ export default function IndexPage() {
   const [executionNotifications, setExecutionNotifications] = useState<CustomerNotificationItem[]>([]);
   const [executionLoading, setExecutionLoading] = useState(false);
   const [executionErrorMessage, setExecutionErrorMessage] = useState('');
+  const [stabilitySnapshot, setStabilitySnapshot] = useState<CustomerStabilitySnapshot | null>(null);
+  const [stabilityLoading, setStabilityLoading] = useState(false);
+  const [stabilityErrorMessage, setStabilityErrorMessage] = useState('');
   const autoPayHintShownRef = useRef(false);
 
   const storeId = useMemo(() => {
@@ -151,6 +165,24 @@ export default function IndexPage() {
     }
   }, [storeId]);
 
+  const loadStabilityGuard = useCallback(async () => {
+    if (!storeId) {
+      return;
+    }
+    setStabilityLoading(true);
+    setStabilityErrorMessage('');
+    try {
+      const result = await DataService.getCustomerStabilitySnapshot(storeId, '');
+      setStabilitySnapshot(result);
+    } catch (error) {
+      console.error('[Index] load stability guard failed', error);
+      setStabilitySnapshot(null);
+      setStabilityErrorMessage('守护状态暂不可用，可稍后刷新。');
+    } finally {
+      setStabilityLoading(false);
+    }
+  }, [storeId]);
+
   const loadSnapshot = useCallback(async () => {
     if (!storeId) {
       Taro.reLaunch({ url: '/pages/startup/index' });
@@ -163,6 +195,7 @@ export default function IndexPage() {
       const nextSnapshot = await DataService.getHomeSnapshot(storeId);
       setSnapshot(nextSnapshot);
       void loadExecutionConsistency();
+      void loadStabilityGuard();
     } catch (error) {
       console.error('[Index] load snapshot failed', error);
       setErrorMessage('加载失败，请稍后重试');
@@ -170,7 +203,7 @@ export default function IndexPage() {
     } finally {
       setLoading(false);
     }
-  }, [loadExecutionConsistency, storeId]);
+  }, [loadExecutionConsistency, loadStabilityGuard, storeId]);
 
   useEffect(() => {
     void loadSnapshot();
@@ -196,6 +229,7 @@ export default function IndexPage() {
     try {
       const result = await DataService.executeCheckout(storeId, orderAmount);
       setSnapshot(result.snapshot);
+      void loadStabilityGuard();
       setLastReceipt(`支付成功：${result.paymentId}`);
       Taro.showToast({ title: '支付成功', icon: 'none' });
     } catch (error) {
@@ -204,7 +238,7 @@ export default function IndexPage() {
     } finally {
       setPaying(false);
     }
-  }, [orderAmount, paying, snapshot, storeId]);
+  }, [loadStabilityGuard, orderAmount, paying, snapshot, storeId]);
 
   return (
     <View className='index-page'>
@@ -264,6 +298,54 @@ export default function IndexPage() {
                       <Text className='index-lifecycle-item__desc'>{item.explanation}</Text>
                     </View>
                   ))}
+                </View>
+              </View>
+
+              <View className='index-section'>
+                <Text id='index-stability-guard-title' className='index-section__title'>
+                  灰度体验守护
+                </Text>
+                <View className='index-execution-card'>
+                  <Text className='index-execution-item__desc'>
+                    顾客侧仅展示可理解守护状态，不展示实验流量与分组等经营信息。
+                  </Text>
+                  <View
+                    id='index-stability-guard-refresh-button'
+                    className='index-state__btn'
+                    onClick={() => {
+                      void loadStabilityGuard();
+                    }}
+                  >
+                    <Text className='index-state__btn-text'>刷新守护状态</Text>
+                  </View>
+                  {stabilityLoading ? <Text className='index-execution-loading'>守护状态加载中...</Text> : null}
+                  {!stabilityLoading && stabilityErrorMessage ? (
+                    <Text className='index-execution-error'>{stabilityErrorMessage}</Text>
+                  ) : null}
+                  {!stabilityLoading && !stabilityErrorMessage && !stabilitySnapshot ? (
+                    <Text className='index-execution-empty'>守护状态评估中...</Text>
+                  ) : null}
+                  {!stabilityLoading && !stabilityErrorMessage && stabilitySnapshot ? (
+                    <>
+                      <View className='index-execution-item'>
+                        <Text className='index-execution-item__title'>
+                          当前状态：{stabilitySnapshot.stabilityLabel}
+                        </Text>
+                        <Text className='index-execution-item__desc'>
+                          {resolveStabilityGuardDescription(stabilitySnapshot.stabilityLevel)}
+                        </Text>
+                        <Text className='index-execution-item__meta'>
+                          评估时间：{new Date(stabilitySnapshot.evaluatedAt).toLocaleString()}
+                        </Text>
+                      </View>
+                      {stabilitySnapshot.reasons.slice(0, 2).map((item) => (
+                        <View key={item.code} className='index-execution-item'>
+                          <Text className='index-execution-item__title'>提示 · {item.code}</Text>
+                          <Text className='index-execution-item__desc'>{item.message}</Text>
+                        </View>
+                      ))}
+                    </>
+                  ) : null}
                 </View>
               </View>
 
