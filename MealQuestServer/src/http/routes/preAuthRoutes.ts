@@ -225,9 +225,26 @@ function createPreAuthRoutesHandler({
     source = "",
   }) {
     try {
-      const { policyOsService } = getServicesForMerchant(merchantId);
+      const { policyOsService, automationService } = getServicesForMerchant(merchantId);
       if (!policyOsService || typeof policyOsService.executeDecision !== "function") {
         return null;
+      }
+      if (automationService && typeof automationService.isEventEnabled === "function") {
+        const guard = automationService.isEventEnabled({
+          merchantId,
+          event: "USER_ENTER_SHOP"
+        });
+        if (!guard.allowed) {
+          return {
+            decision_id: "",
+            trace_id: "",
+            event: "USER_ENTER_SHOP",
+            event_id: "",
+            executed: [],
+            rejected: [],
+            grants: []
+          };
+        }
       }
       const activationContext = buildActivationContext({
         policyOsService,

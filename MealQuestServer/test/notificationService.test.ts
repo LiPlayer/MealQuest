@@ -84,3 +84,79 @@ test("notification service emits and marks read with recipient isolation", () =>
   });
   assert.equal(ownerUnread.totalUnread, 0);
 });
+
+test("notification service applies preference mute and frequency cap", () => {
+  const db = createInMemoryDb();
+  seedMerchant(db);
+  const service = createNotificationService(db);
+
+  const muted = service.setRecipientPreference({
+    merchantId: "m_store_001",
+    recipientType: "CUSTOMER_USER",
+    recipientId: "u_test_001",
+    categories: {
+      EXECUTION_RESULT: false
+    },
+    operatorId: "u_test_001"
+  });
+  assert.equal(muted.categories.EXECUTION_RESULT, false);
+
+  const suppressed = service.createNotification({
+    merchantId: "m_store_001",
+    recipientType: "CUSTOMER_USER",
+    recipientId: "u_test_001",
+    category: "EXECUTION_RESULT",
+    title: "权益触达结果",
+    body: "事件 USER_ENTER_SHOP 未命中策略"
+  });
+  assert.equal(suppressed.delivered, false);
+  assert.equal(suppressed.reasonCode, "PREFERENCE_DISABLED");
+
+  const reopened = service.setRecipientPreference({
+    merchantId: "m_store_001",
+    recipientType: "CUSTOMER_USER",
+    recipientId: "u_test_001",
+    categories: {
+      EXECUTION_RESULT: true
+    },
+    frequencyCaps: {
+      EXECUTION_RESULT: {
+        windowSec: 86400,
+        maxDeliveries: 1
+      }
+    },
+    operatorId: "u_test_001"
+  });
+  assert.equal(reopened.categories.EXECUTION_RESULT, true);
+  assert.equal(reopened.frequencyCaps.EXECUTION_RESULT.maxDeliveries, 1);
+
+  const first = service.createNotification({
+    merchantId: "m_store_001",
+    recipientType: "CUSTOMER_USER",
+    recipientId: "u_test_001",
+    category: "EXECUTION_RESULT",
+    title: "权益触达结果",
+    body: "事件 USER_ENTER_SHOP 已命中策略"
+  });
+  assert.equal(first.delivered, true);
+
+  const second = service.createNotification({
+    merchantId: "m_store_001",
+    recipientType: "CUSTOMER_USER",
+    recipientId: "u_test_001",
+    category: "EXECUTION_RESULT",
+    title: "权益触达结果",
+    body: "事件 PAYMENT_VERIFY 未命中策略"
+  });
+  assert.equal(second.delivered, false);
+  assert.equal(second.reasonCode, "FREQUENCY_CAP_REACHED");
+
+  const inbox = service.listInbox({
+    merchantId: "m_store_001",
+    recipientType: "CUSTOMER_USER",
+    recipientId: "u_test_001",
+    status: "UNREAD",
+    category: "EXECUTION_RESULT"
+  });
+  assert.equal(inbox.items.length, 1);
+});

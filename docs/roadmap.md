@@ -117,7 +117,7 @@
 | S070 | 老板端 AI 提案与决策闭环 | S060 done | done |
 | S080 | 顾客端体验完整性强化 | S070 done | done |
 | S090 | 长期 KPI 与发布门建立 | S080 done | done |
-| S100 | 营销自动化能力建立 | S090 done | todo |
+| S100 | 营销自动化能力建立 | S090 done | doing |
 | S110 | 实验与动态优化能力建立 | S100 done | todo |
 
 ---
@@ -237,8 +237,8 @@
 
 | PackageID | Lane | CapabilityID | Macro Requirement | Deliverable | DependsOn | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| PKG-S100-SRV-01 | server | SRV-C08, SRV-C11 | 建立自动化触发、编排与触达频控能力 | 自动化能力基线 | none | todo |
-| PKG-S100-MER-01 | merchant | MER-C09 | 建立老板端自动化配置与日志能力 | 自动化运营流程 | PKG-S100-SRV-01 | todo |
+| PKG-S100-SRV-01 | server | SRV-C08, SRV-C11 | 建立自动化触发、编排与触达频控能力 | 自动化能力基线（配置、执行日志、订阅偏好） | none | done |
+| PKG-S100-MER-01 | merchant | MER-C09 | 建立老板端自动化配置与日志能力 | 自动化运营流程 | PKG-S100-SRV-01 | done |
 | PKG-S100-CUS-01 | customer | CUS-C03, CUS-C07, CUS-C10 | 建立顾客自动触达反馈、降打扰与订阅管理规则 | 自动触达体验规则 | PKG-S100-SRV-01 | todo |
 
 ### S110 - 实验与动态优化

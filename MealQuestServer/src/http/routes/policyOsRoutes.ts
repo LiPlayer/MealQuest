@@ -136,6 +136,131 @@ function createPolicyOsRoutesHandler({
       return true;
     }
 
+    if (method === "GET" && url.pathname === "/api/policyos/automation/config") {
+      ensureRole(auth, ["MANAGER", "OWNER"]);
+      const merchantId = url.searchParams.get("merchantId") || auth.merchantId;
+      if (!merchantId) {
+        sendJson(res, 400, { error: "merchantId is required" });
+        return true;
+      }
+      if (auth.merchantId && auth.merchantId !== merchantId) {
+        sendJson(res, 403, { error: "merchant scope denied" });
+        return true;
+      }
+      if (
+        !enforceTenantPolicyForHttp({
+          tenantPolicyManager,
+          merchantId,
+          operation: "AUTOMATION_CONFIG_QUERY",
+          res,
+          auth,
+          appendAuditLog
+        })
+      ) {
+        return true;
+      }
+      const { automationService } = getServicesForMerchant(merchantId);
+      const payload = automationService.getAutomationConfig({ merchantId });
+      const etag = buildWeakEtag(payload);
+      const cacheHeaders = {
+        ETag: etag,
+        "Cache-Control": "private, max-age=0, must-revalidate"
+      };
+      if (isIfNoneMatchFresh(req, etag)) {
+        sendNotModified(res, cacheHeaders);
+        return true;
+      }
+      sendJson(res, 200, payload, cacheHeaders);
+      return true;
+    }
+
+    if (method === "PUT" && url.pathname === "/api/policyos/automation/config") {
+      ensureRole(auth, ["OWNER"]);
+      const body = await readJsonBody(req);
+      const merchantId = auth.merchantId || body.merchantId;
+      if (!merchantId) {
+        sendJson(res, 400, { error: "merchantId is required" });
+        return true;
+      }
+      if (auth.merchantId && auth.merchantId !== merchantId) {
+        sendJson(res, 403, { error: "merchant scope denied" });
+        return true;
+      }
+      if (
+        !enforceTenantPolicyForHttp({
+          tenantPolicyManager,
+          merchantId,
+          operation: "AUTOMATION_CONFIG_SET",
+          res,
+          auth,
+          appendAuditLog
+        })
+      ) {
+        return true;
+      }
+      const { automationService } = getServicesForMerchant(merchantId);
+      const payload = automationService.setAutomationConfig({
+        merchantId,
+        operatorId: auth.operatorId || auth.userId || "system",
+        config: body && body.config && typeof body.config === "object" ? body.config : body
+      });
+      appendAuditLog({
+        merchantId,
+        action: "AUTOMATION_CONFIG_SET",
+        status: "SUCCESS",
+        auth,
+        details: {
+          enabled: payload.enabled,
+          ruleCount: Array.isArray(payload.rules) ? payload.rules.length : 0
+        }
+      });
+      sendJson(res, 200, payload);
+      return true;
+    }
+
+    if (method === "GET" && url.pathname === "/api/policyos/automation/executions") {
+      ensureRole(auth, ["MANAGER", "OWNER"]);
+      const merchantId = url.searchParams.get("merchantId") || auth.merchantId;
+      if (!merchantId) {
+        sendJson(res, 400, { error: "merchantId is required" });
+        return true;
+      }
+      if (auth.merchantId && auth.merchantId !== merchantId) {
+        sendJson(res, 403, { error: "merchant scope denied" });
+        return true;
+      }
+      if (
+        !enforceTenantPolicyForHttp({
+          tenantPolicyManager,
+          merchantId,
+          operation: "AUTOMATION_EXECUTION_QUERY",
+          res,
+          auth,
+          appendAuditLog
+        })
+      ) {
+        return true;
+      }
+      const { automationService } = getServicesForMerchant(merchantId);
+      const payload = automationService.listExecutions({
+        merchantId,
+        event: url.searchParams.get("event") || "",
+        outcome: url.searchParams.get("outcome") || "ALL",
+        limit: toListLimit(url.searchParams.get("limit"), 20, 100)
+      });
+      const etag = buildWeakEtag(payload);
+      const cacheHeaders = {
+        ETag: etag,
+        "Cache-Control": "private, max-age=0, must-revalidate"
+      };
+      if (isIfNoneMatchFresh(req, etag)) {
+        sendNotModified(res, cacheHeaders);
+        return true;
+      }
+      sendJson(res, 200, payload, cacheHeaders);
+      return true;
+    }
+
     if (method === "GET" && url.pathname === "/api/policyos/schemas") {
       ensureRole(auth, ["MANAGER", "OWNER"]);
       const merchantId = url.searchParams.get("merchantId") || auth.merchantId;

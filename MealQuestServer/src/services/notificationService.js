@@ -1,6 +1,20 @@
 const { ensurePolicyOsState } = require("../policyos/state");
 
 const DEFAULT_RETENTION_DAYS = 30;
+const PREFERENCE_VERSION = "S100-SRV-01.v1";
+const NOTIFICATION_CATEGORIES = ["APPROVAL_TODO", "EXECUTION_RESULT", "FEEDBACK_TICKET", "GENERAL"];
+const DEFAULT_CATEGORY_SWITCHES = Object.freeze({
+  APPROVAL_TODO: true,
+  EXECUTION_RESULT: true,
+  FEEDBACK_TICKET: true,
+  GENERAL: true
+});
+const DEFAULT_FREQUENCY_CAPS = Object.freeze({
+  EXECUTION_RESULT: {
+    windowSec: 24 * 60 * 60,
+    maxDeliveries: 3
+  }
+});
 
 function toIso(value) {
   const ts = Date.parse(String(value || ""));
@@ -45,6 +59,28 @@ function compareDesc(left, right) {
   return 0;
 }
 
+function toBoolean(value, fallback = false) {
+  if (value === true || value === false) {
+    return value;
+  }
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+  return fallback;
+}
+
+function toPositiveInt(value, fallback = 0) {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) {
+    return fallback;
+  }
+  return Math.floor(num);
+}
+
 function createNotificationService(db, { wsHub = null, now = () => Date.now() } = {}) {
   if (!db) {
     throw new Error("db is required");
@@ -56,6 +92,34 @@ function createNotificationService(db, { wsHub = null, now = () => Date.now() } 
     policyOs.notifications.byId = policyOs.notifications.byId || {};
     policyOs.notifications.sequenceByMerchant = policyOs.notifications.sequenceByMerchant || {};
     return policyOs.notifications;
+  }
+
+  function ensurePreferenceState() {
+    const policyOs = ensurePolicyOsState(db);
+    policyOs.notificationPreferences =
+      policyOs.notificationPreferences && typeof policyOs.notificationPreferences === "object"
+        ? policyOs.notificationPreferences
+        : {};
+    policyOs.notificationPreferences.byRecipientKey =
+      policyOs.notificationPreferences.byRecipientKey &&
+      typeof policyOs.notificationPreferences.byRecipientKey === "object"
+        ? policyOs.notificationPreferences.byRecipientKey
+        : {};
+    return policyOs.notificationPreferences;
+  }
+
+  function ensureDispatchState() {
+    const policyOs = ensurePolicyOsState(db);
+    policyOs.notificationDispatch =
+      policyOs.notificationDispatch && typeof policyOs.notificationDispatch === "object"
+        ? policyOs.notificationDispatch
+        : {};
+    policyOs.notificationDispatch.byRecipientCategory =
+      policyOs.notificationDispatch.byRecipientCategory &&
+      typeof policyOs.notificationDispatch.byRecipientCategory === "object"
+        ? policyOs.notificationDispatch.byRecipientCategory
+        : {};
+    return policyOs.notificationDispatch;
   }
 
   function assertMerchantExists(merchantId) {
@@ -91,6 +155,183 @@ function createNotificationService(db, { wsHub = null, now = () => Date.now() } 
       throw error;
     }
     return normalized;
+  }
+
+  function normalizeCategory(category) {
+    const safeCategory = String(category || "").trim().toUpperCase();
+    return safeCategory || "GENERAL";
+  }
+
+  function buildRecipientKey({ merchantId, recipientType, recipientId }) {
+    return `${String(merchantId || "").trim()}|${String(recipientType || "").trim()}|${String(
+      recipientId || ""
+    ).trim()}`;
+  }
+
+function normalizeCategorySwitches(input = {}, fallback = DEFAULT_CATEGORY_SWITCHES) {
+  const next = { ...DEFAULT_CATEGORY_SWITCHES, ...(fallback || {}) };
+  if (!input || typeof input !== "object") {
+    return next;
+  }
+  const rawMap = {};
+  for (const [key, value] of Object.entries(input || {})) {
+    rawMap[normalizeCategory(key)] = value;
+  }
+  for (const category of NOTIFICATION_CATEGORIES) {
+    if (Object.prototype.hasOwnProperty.call(rawMap, category)) {
+      next[category] = toBoolean(rawMap[category], next[category]);
+    }
+  }
+  return next;
+}
+
+  function normalizeFrequencyCaps(input = {}, fallback = {}) {
+    const next = {};
+    const base = fallback && typeof fallback === "object" ? fallback : {};
+    for (const [category, cap] of Object.entries(base)) {
+      const safeCategory = normalizeCategory(category);
+      const windowSec = toPositiveInt(cap && cap.windowSec, 0);
+      const maxDeliveries = toPositiveInt(cap && cap.maxDeliveries, 0);
+      if (windowSec > 0 && maxDeliveries > 0) {
+        next[safeCategory] = { windowSec, maxDeliveries };
+      }
+    }
+    for (const [category, cap] of Object.entries(input || {})) {
+      const safeCategory = normalizeCategory(category);
+      if (!cap || typeof cap !== "object") {
+        continue;
+      }
+      const windowSec = toPositiveInt(cap.windowSec, 0);
+      const maxDeliveries = toPositiveInt(cap.maxDeliveries, 0);
+      if (windowSec > 0 && maxDeliveries > 0) {
+        next[safeCategory] = { windowSec, maxDeliveries };
+      } else {
+        delete next[safeCategory];
+      }
+    }
+    return next;
+  }
+
+  function getRecipientPreference({ merchantId, recipientType, recipientId }) {
+    const safeMerchantId = assertMerchantExists(merchantId);
+    const safeRecipientType = sanitizeRecipientType(recipientType);
+    const safeRecipientId = sanitizeRecipientId(recipientId);
+    const state = ensurePreferenceState();
+    const key = buildRecipientKey({
+      merchantId: safeMerchantId,
+      recipientType: safeRecipientType,
+      recipientId: safeRecipientId
+    });
+    const saved = state.byRecipientKey[key];
+    const categories = normalizeCategorySwitches(saved && saved.categories, DEFAULT_CATEGORY_SWITCHES);
+    const frequencyCaps = normalizeFrequencyCaps(
+      saved && saved.frequencyCaps,
+      DEFAULT_FREQUENCY_CAPS
+    );
+    return {
+      version: PREFERENCE_VERSION,
+      merchantId: safeMerchantId,
+      recipientType: safeRecipientType,
+      recipientId: safeRecipientId,
+      categories,
+      frequencyCaps,
+      updatedAt: toIso(saved && saved.updatedAt) || null,
+      updatedBy: String((saved && saved.updatedBy) || "").trim() || null
+    };
+  }
+
+  function setRecipientPreference({
+    merchantId,
+    recipientType,
+    recipientId,
+    categories = null,
+    frequencyCaps = null,
+    operatorId = ""
+  }) {
+    const current = getRecipientPreference({
+      merchantId,
+      recipientType,
+      recipientId
+    });
+    const state = ensurePreferenceState();
+    const key = buildRecipientKey(current);
+    const hasCategoryPatch = categories && typeof categories === "object";
+    const hasFrequencyPatch = frequencyCaps && typeof frequencyCaps === "object";
+    if (!hasCategoryPatch && !hasFrequencyPatch) {
+      const error = new Error("preference patch is empty");
+      error.statusCode = 400;
+      throw error;
+    }
+    const nextCategories = hasCategoryPatch
+      ? normalizeCategorySwitches(categories, current.categories)
+      : current.categories;
+    const nextFrequencyCaps = hasFrequencyPatch
+      ? normalizeFrequencyCaps(frequencyCaps, current.frequencyCaps)
+      : current.frequencyCaps;
+    const persisted = {
+      merchantId: current.merchantId,
+      recipientType: current.recipientType,
+      recipientId: current.recipientId,
+      categories: nextCategories,
+      frequencyCaps: nextFrequencyCaps,
+      updatedAt: new Date(now()).toISOString(),
+      updatedBy: String(operatorId || "").trim() || "system"
+    };
+    state.byRecipientKey[key] = persisted;
+    db.save();
+    return getRecipientPreference(current);
+  }
+
+  function shouldDeliverNotification({
+    merchantId,
+    recipientType,
+    recipientId,
+    category
+  }) {
+    const safeCategory = normalizeCategory(category);
+    const preference = getRecipientPreference({
+      merchantId,
+      recipientType,
+      recipientId
+    });
+    if (preference.categories[safeCategory] === false) {
+      return {
+        allowed: false,
+        reasonCode: "PREFERENCE_DISABLED",
+        preference
+      };
+    }
+    const cap = preference.frequencyCaps[safeCategory];
+    if (!cap) {
+      return {
+        allowed: true,
+        reasonCode: "",
+        preference
+      };
+    }
+    const dispatch = ensureDispatchState();
+    const key = `${buildRecipientKey(preference)}|${safeCategory}`;
+    const nowMs = now();
+    const minMs = nowMs - cap.windowSec * 1000;
+    const previous = Array.isArray(dispatch.byRecipientCategory[key])
+      ? dispatch.byRecipientCategory[key]
+      : [];
+    const retained = previous.filter((item) => Date.parse(String(item || "")) >= minMs);
+    if (retained.length >= cap.maxDeliveries) {
+      dispatch.byRecipientCategory[key] = retained;
+      return {
+        allowed: false,
+        reasonCode: "FREQUENCY_CAP_REACHED",
+        preference
+      };
+    }
+    retained.push(new Date(nowMs).toISOString());
+    dispatch.byRecipientCategory[key] = retained;
+    return {
+      allowed: true,
+      reasonCode: "",
+      preference
+    };
   }
 
   function nextNotificationId(notificationState, merchantId) {
@@ -133,6 +374,39 @@ function createNotificationService(db, { wsHub = null, now = () => Date.now() } 
     const safeMerchantId = assertMerchantExists(merchantId);
     const safeRecipientType = sanitizeRecipientType(recipientType);
     const safeRecipientId = sanitizeRecipientId(recipientId);
+    const safeCategory = normalizeCategory(category);
+    const delivery = shouldDeliverNotification({
+      merchantId: safeMerchantId,
+      recipientType: safeRecipientType,
+      recipientId: safeRecipientId,
+      category: safeCategory
+    });
+    if (!delivery.allowed) {
+      if (typeof db.appendAuditLog === "function") {
+        db.appendAuditLog({
+          merchantId: safeMerchantId,
+          action: "NOTIFICATION_DELIVERY_SUPPRESSED",
+          status: "BLOCKED",
+          role: "SYSTEM",
+          operatorId: "system",
+          details: {
+            recipientType: safeRecipientType,
+            recipientId: safeRecipientId,
+            category: safeCategory,
+            reasonCode: delivery.reasonCode
+          }
+        });
+      }
+      db.save();
+      return {
+        delivered: false,
+        reasonCode: delivery.reasonCode,
+        merchantId: safeMerchantId,
+        recipientType: safeRecipientType,
+        recipientId: safeRecipientId,
+        category: safeCategory
+      };
+    }
     const notificationState = ensureNotificationState();
     const createdAt = new Date(now()).toISOString();
     const defaultExpiresAt = new Date(
@@ -143,7 +417,7 @@ function createNotificationService(db, { wsHub = null, now = () => Date.now() } 
       merchantId: safeMerchantId,
       recipientType: safeRecipientType,
       recipientId: safeRecipientId,
-      category: String(category || "").trim().toUpperCase() || "GENERAL",
+      category: safeCategory,
       title: String(title || "").trim(),
       body: String(body || "").trim(),
       related: related && typeof related === "object" ? related : {},
@@ -167,7 +441,10 @@ function createNotificationService(db, { wsHub = null, now = () => Date.now() } 
         ]
       );
     }
-    return { ...record };
+    return {
+      ...record,
+      delivered: true
+    };
   }
 
   function listRowsForRecipient({ merchantId, recipientType, recipientId }) {
@@ -374,22 +651,23 @@ function createNotificationService(db, { wsHub = null, now = () => Date.now() } 
     const body = `${policyName || policyKey || draftId || "策略草稿"}已提交审批`;
     const created = [];
     for (const recipientId of ownerRecipients) {
-      created.push(
-        createNotification({
-          merchantId,
-          recipientType: "MERCHANT_STAFF",
-          recipientId,
-          category: "APPROVAL_TODO",
-          title,
-          body,
-          related: {
-            draftId: String(draftId || ""),
-            policyKey: String(policyKey || ""),
-            submittedBy: String(submittedBy || ""),
-            submittedAt: String(submittedAt || "")
-          }
-        })
-      );
+      const result = createNotification({
+        merchantId,
+        recipientType: "MERCHANT_STAFF",
+        recipientId,
+        category: "APPROVAL_TODO",
+        title,
+        body,
+        related: {
+          draftId: String(draftId || ""),
+          policyKey: String(policyKey || ""),
+          submittedBy: String(submittedBy || ""),
+          submittedAt: String(submittedAt || "")
+        }
+      });
+      if (result && result.delivered === true) {
+        created.push(result);
+      }
     }
     return {
       merchantId: assertMerchantExists(merchantId),
@@ -421,42 +699,44 @@ function createNotificationService(db, { wsHub = null, now = () => Date.now() } 
       "CLERK"
     ]);
     for (const recipientId of staffRecipientIds) {
-      created.push(
-        createNotification({
-          merchantId: safeMerchantId,
-          recipientType: "MERCHANT_STAFF",
-          recipientId,
-          category: "EXECUTION_RESULT",
-          title,
-          body,
-          related: {
-            decisionId: String(decisionId || ""),
-            event: String(event || ""),
-            outcome: outcomeText,
-            reasonCodes: Array.isArray(reasonCodes) ? reasonCodes : []
-          }
-        })
-      );
+      const result = createNotification({
+        merchantId: safeMerchantId,
+        recipientType: "MERCHANT_STAFF",
+        recipientId,
+        category: "EXECUTION_RESULT",
+        title,
+        body,
+        related: {
+          decisionId: String(decisionId || ""),
+          event: String(event || ""),
+          outcome: outcomeText,
+          reasonCodes: Array.isArray(reasonCodes) ? reasonCodes : []
+        }
+      });
+      if (result && result.delivered === true) {
+        created.push(result);
+      }
     }
 
     const safeUserId = String(userId || "").trim();
     if (safeUserId) {
-      created.push(
-        createNotification({
-          merchantId: safeMerchantId,
-          recipientType: "CUSTOMER_USER",
-          recipientId: safeUserId,
-          category: "EXECUTION_RESULT",
-          title: "权益触达结果",
-          body,
-          related: {
-            decisionId: String(decisionId || ""),
-            event: String(event || ""),
-            outcome: outcomeText,
-            reasonCodes: Array.isArray(reasonCodes) ? reasonCodes : []
-          }
-        })
-      );
+      const result = createNotification({
+        merchantId: safeMerchantId,
+        recipientType: "CUSTOMER_USER",
+        recipientId: safeUserId,
+        category: "EXECUTION_RESULT",
+        title: "权益触达结果",
+        body,
+        related: {
+          decisionId: String(decisionId || ""),
+          event: String(event || ""),
+          outcome: outcomeText,
+          reasonCodes: Array.isArray(reasonCodes) ? reasonCodes : []
+        }
+      });
+      if (result && result.delivered === true) {
+        created.push(result);
+      }
     }
     return {
       merchantId: safeMerchantId,
@@ -469,6 +749,8 @@ function createNotificationService(db, { wsHub = null, now = () => Date.now() } 
     listInbox,
     getUnreadSummary,
     markRead,
+    getRecipientPreference,
+    setRecipientPreference,
     listMerchantStaffRecipientIds,
     emitApprovalTodo,
     emitExecutionResult

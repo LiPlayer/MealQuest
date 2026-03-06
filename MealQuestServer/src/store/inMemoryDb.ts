@@ -47,6 +47,15 @@ function createDefaultState() {
         byId: {},
         sequenceByMerchant: {}
       },
+      notificationPreferences: {
+        byRecipientKey: {}
+      },
+      notificationDispatch: {
+        byRecipientCategory: {}
+      },
+      automation: {
+        configByMerchant: {}
+      },
       feedback: {
         ticketsById: {},
         sequenceByMerchant: {}

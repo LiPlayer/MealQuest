@@ -31,6 +31,11 @@ const TENANT_LIMIT_OPERATIONS = [
   "POLICY_EXECUTE",
   "NOTIFICATION_QUERY",
   "NOTIFICATION_ACK",
+  "NOTIFICATION_PREFERENCE_QUERY",
+  "NOTIFICATION_PREFERENCE_SET",
+  "AUTOMATION_CONFIG_QUERY",
+  "AUTOMATION_CONFIG_SET",
+  "AUTOMATION_EXECUTION_QUERY",
   "CUSTOMER_EXPERIENCE_GUARD_QUERY",
   "KPI_RELEASE_GATE_QUERY",
   "FEEDBACK_CREATE",
@@ -219,6 +224,21 @@ function resolveAuditAction(method, pathname) {
       pathname === "/api/notifications/unread-summary")
   ) {
     return "NOTIFICATION_QUERY";
+  }
+  if (method === "GET" && pathname === "/api/notifications/preferences") {
+    return "NOTIFICATION_PREFERENCE_QUERY";
+  }
+  if (method === "PUT" && pathname === "/api/notifications/preferences") {
+    return "NOTIFICATION_PREFERENCE_SET";
+  }
+  if (method === "GET" && pathname === "/api/policyos/automation/config") {
+    return "AUTOMATION_CONFIG_QUERY";
+  }
+  if (method === "PUT" && pathname === "/api/policyos/automation/config") {
+    return "AUTOMATION_CONFIG_SET";
+  }
+  if (method === "GET" && pathname === "/api/policyos/automation/executions") {
+    return "AUTOMATION_EXECUTION_QUERY";
   }
   if (method === "GET" && pathname === "/api/state/experience-guard") {
     return "CUSTOMER_EXPERIENCE_GUARD_QUERY";
@@ -1123,6 +1143,15 @@ function copyMerchantSlice({ sourceDb, targetDb, merchantId }) {
   targetDb.policyOs.notifications.byId = targetDb.policyOs.notifications.byId || {};
   targetDb.policyOs.notifications.sequenceByMerchant =
     targetDb.policyOs.notifications.sequenceByMerchant || {};
+  targetDb.policyOs.notificationPreferences = targetDb.policyOs.notificationPreferences || {};
+  targetDb.policyOs.notificationPreferences.byRecipientKey =
+    targetDb.policyOs.notificationPreferences.byRecipientKey || {};
+  targetDb.policyOs.notificationDispatch = targetDb.policyOs.notificationDispatch || {};
+  targetDb.policyOs.notificationDispatch.byRecipientCategory =
+    targetDb.policyOs.notificationDispatch.byRecipientCategory || {};
+  targetDb.policyOs.automation = targetDb.policyOs.automation || {};
+  targetDb.policyOs.automation.configByMerchant =
+    targetDb.policyOs.automation.configByMerchant || {};
   targetDb.policyOs.feedback = targetDb.policyOs.feedback || {};
   targetDb.policyOs.feedback.ticketsById = targetDb.policyOs.feedback.ticketsById || {};
   targetDb.policyOs.feedback.sequenceByMerchant =
@@ -1168,6 +1197,27 @@ function copyMerchantSlice({ sourceDb, targetDb, merchantId }) {
   if (Object.prototype.hasOwnProperty.call(sourceNotificationSeq, merchantId)) {
     targetDb.policyOs.notifications.sequenceByMerchant[merchantId] = Number(
       sourceNotificationSeq[merchantId] || 0
+    );
+  }
+  for (const [prefKey, preference] of Object.entries(
+    (sourcePolicyOs.notificationPreferences && sourcePolicyOs.notificationPreferences.byRecipientKey) || {}
+  )) {
+    if (prefKey.startsWith(`${merchantId}|`)) {
+      targetDb.policyOs.notificationPreferences.byRecipientKey[prefKey] = jsonClone(preference);
+    }
+  }
+  for (const [dispatchKey, dispatchItems] of Object.entries(
+    (sourcePolicyOs.notificationDispatch && sourcePolicyOs.notificationDispatch.byRecipientCategory) || {}
+  )) {
+    if (dispatchKey.startsWith(`${merchantId}|`)) {
+      targetDb.policyOs.notificationDispatch.byRecipientCategory[dispatchKey] = jsonClone(dispatchItems);
+    }
+  }
+  const sourceAutomationConfig =
+    (sourcePolicyOs.automation && sourcePolicyOs.automation.configByMerchant) || {};
+  if (Object.prototype.hasOwnProperty.call(sourceAutomationConfig, merchantId)) {
+    targetDb.policyOs.automation.configByMerchant[merchantId] = jsonClone(
+      sourceAutomationConfig[merchantId]
     );
   }
   for (const [ticketId, ticket] of Object.entries(

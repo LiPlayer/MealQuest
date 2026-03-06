@@ -10,6 +10,7 @@ import { mqTheme } from '../../src/theme/tokens';
 const iconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
   dashboard: 'grid-outline',
   agent: 'sparkles-outline',
+  automation: 'flash-outline',
   notifications: 'notifications-outline',
   approvals: 'checkmark-done-outline',
   replay: 'time-outline',
@@ -19,6 +20,7 @@ const iconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
 const titleMap: Record<string, string> = {
   dashboard: 'Dashboard',
   agent: 'Agent',
+  automation: 'Automation',
   notifications: 'Notifications',
   approvals: 'Approvals',
   replay: 'Replay',
@@ -71,6 +73,7 @@ export default function TabsLayout() {
     >
       <Tabs.Screen name="dashboard" options={{ title: '看板' }} />
       <Tabs.Screen name="agent" options={{ title: 'Agent' }} />
+      <Tabs.Screen name="automation" options={{ title: '自动化' }} />
       <Tabs.Screen name="notifications" options={{ title: '提醒' }} />
       <Tabs.Screen name="approvals" options={{ title: '审批' }} />
       <Tabs.Screen name="replay" options={{ title: '回放' }} />

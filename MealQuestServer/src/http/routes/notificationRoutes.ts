@@ -202,6 +202,113 @@ function createNotificationRoutesHandler({
       return true;
     }
 
+    if (method === "GET" && url.pathname === "/api/notifications/preferences") {
+      ensureRole(auth, NOTIFICATION_ROLES);
+      const merchantId = url.searchParams.get("merchantId") || auth.merchantId;
+      if (!merchantId) {
+        sendJson(res, 400, { error: "merchantId is required" });
+        return true;
+      }
+      if (auth.merchantId && auth.merchantId !== merchantId) {
+        sendJson(res, 403, { error: "merchant scope denied" });
+        return true;
+      }
+      if (
+        !enforceTenantPolicyForHttp({
+          tenantPolicyManager,
+          merchantId,
+          operation: "NOTIFICATION_PREFERENCE_QUERY",
+          res,
+          auth,
+          appendAuditLog
+        })
+      ) {
+        return true;
+      }
+      const { notificationService } = getServicesForMerchant(merchantId);
+      const recipient = resolveRecipientFromAuth(auth);
+      if (!recipient.recipientId) {
+        sendJson(res, 400, { error: "recipient identity is required" });
+        return true;
+      }
+      const payload = notificationService.getRecipientPreference({
+        merchantId,
+        recipientType: recipient.recipientType,
+        recipientId: recipient.recipientId
+      });
+      appendAuditLog({
+        merchantId,
+        action: "NOTIFICATION_PREFERENCE_QUERY",
+        status: "SUCCESS",
+        auth,
+        details: {
+          recipientType: recipient.recipientType
+        }
+      });
+      const etag = buildWeakEtag(payload);
+      const cacheHeaders = {
+        ETag: etag,
+        "Cache-Control": "private, max-age=0, must-revalidate"
+      };
+      if (isIfNoneMatchFresh(req, etag)) {
+        sendNotModified(res, cacheHeaders);
+        return true;
+      }
+      sendJson(res, 200, payload, cacheHeaders);
+      return true;
+    }
+
+    if (method === "PUT" && url.pathname === "/api/notifications/preferences") {
+      ensureRole(auth, NOTIFICATION_ROLES);
+      const body = await readJsonBody(req);
+      const merchantId = body.merchantId || auth.merchantId;
+      if (!merchantId) {
+        sendJson(res, 400, { error: "merchantId is required" });
+        return true;
+      }
+      if (auth.merchantId && auth.merchantId !== merchantId) {
+        sendJson(res, 403, { error: "merchant scope denied" });
+        return true;
+      }
+      if (
+        !enforceTenantPolicyForHttp({
+          tenantPolicyManager,
+          merchantId,
+          operation: "NOTIFICATION_PREFERENCE_SET",
+          res,
+          auth,
+          appendAuditLog
+        })
+      ) {
+        return true;
+      }
+      const { notificationService } = getServicesForMerchant(merchantId);
+      const recipient = resolveRecipientFromAuth(auth);
+      if (!recipient.recipientId) {
+        sendJson(res, 400, { error: "recipient identity is required" });
+        return true;
+      }
+      const payload = notificationService.setRecipientPreference({
+        merchantId,
+        recipientType: recipient.recipientType,
+        recipientId: recipient.recipientId,
+        categories: body.categories,
+        frequencyCaps: body.frequencyCaps,
+        operatorId: auth.operatorId || auth.userId || "system"
+      });
+      appendAuditLog({
+        merchantId,
+        action: "NOTIFICATION_PREFERENCE_SET",
+        status: "SUCCESS",
+        auth,
+        details: {
+          recipientType: recipient.recipientType
+        }
+      });
+      sendJson(res, 200, payload);
+      return true;
+    }
+
     return false;
   };
 }

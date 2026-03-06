@@ -30,6 +30,16 @@ function ensurePolicyOsState(db) {
   db.policyOs.notifications.sequenceByMerchant = ensureObject(
     db.policyOs.notifications.sequenceByMerchant
   );
+  db.policyOs.notificationPreferences = ensureObject(db.policyOs.notificationPreferences);
+  db.policyOs.notificationPreferences.byRecipientKey = ensureObject(
+    db.policyOs.notificationPreferences.byRecipientKey
+  );
+  db.policyOs.notificationDispatch = ensureObject(db.policyOs.notificationDispatch);
+  db.policyOs.notificationDispatch.byRecipientCategory = ensureObject(
+    db.policyOs.notificationDispatch.byRecipientCategory
+  );
+  db.policyOs.automation = ensureObject(db.policyOs.automation);
+  db.policyOs.automation.configByMerchant = ensureObject(db.policyOs.automation.configByMerchant);
   db.policyOs.feedback = ensureObject(db.policyOs.feedback);
   db.policyOs.feedback.ticketsById = ensureObject(db.policyOs.feedback.ticketsById);
   db.policyOs.feedback.sequenceByMerchant = ensureObject(db.policyOs.feedback.sequenceByMerchant);

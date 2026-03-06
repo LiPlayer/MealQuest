@@ -21,6 +21,7 @@ const { createAgentRuntimeService } = require("../services/agentRuntimeService")
 const { createPolicyOsService } = require("../policyos/policyOsService");
 const { createPolicyGovernanceService } = require("../services/policyGovernanceService");
 const { createNotificationService } = require("../services/notificationService");
+const { createAutomationService } = require("../services/automationService");
 const { createCustomerExperienceGuardService } = require("../services/customerExperienceGuardService");
 const { createFeedbackService } = require("../services/feedbackService");
 const { createReleaseGateService } = require("../services/releaseGateService");
@@ -131,8 +132,15 @@ function createAppServer({
         onDraftSubmitted: (payload) => notificationService.emitApprovalTodo(payload),
         onDecisionExecuted: (payload) => notificationService.emitExecutionResult(payload)
       });
+      const automationService = createAutomationService(scopedDb, {
+        policyOsService
+      });
       services = {
-        paymentService: createPaymentService(scopedDb, { paymentProvider, policyOsService }),
+        paymentService: createPaymentService(scopedDb, {
+          paymentProvider,
+          policyOsService,
+          automationService
+        }),
         merchantService: createMerchantService(scopedDb, {
           policyOsService,
           wsHub,
@@ -146,6 +154,7 @@ function createAppServer({
         privacyService: createPrivacyService(scopedDb),
         supplierService: createSupplierService(scopedDb),
         policyOsService,
+        automationService,
         policyGovernanceService: createPolicyGovernanceService(scopedDb, { policyOsService }),
         notificationService,
         customerExperienceGuardService: createCustomerExperienceGuardService(scopedDb),
