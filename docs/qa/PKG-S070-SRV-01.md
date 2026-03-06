@@ -40,14 +40,14 @@
 - `MealQuestServer/src/policyos/state.ts`
 - `MealQuestServer/src/http/serverHelpers.ts`
 - `MealQuestServer/src/core/tenantPolicy.ts`
-- `MealQuestServer/test/policyOs.s070.proposal-support.http.test.ts`
+- `MealQuestServer/test/policy-os.s070.proposal-support.http.test.ts`
 
 ## 回归验证
 
-1. `cd MealQuestServer && npm test -- --runInBand test/policyOs.s070.proposal-support.http.test.ts`
-2. `cd MealQuestServer && npm test -- --runInBand test/agentOs.stream.integration.test.ts`
-3. `cd MealQuestServer && npm test -- --runInBand test/policyOs.s060.lifecycle-library.http.test.ts`
-4. `cd MealQuestServer && npm test -- --runInBand test/policyOs.s050.governance.http.test.ts`
+1. `cd MealQuestServer && npm test -- --runInBand test/policy-os.s070.proposal-support.http.test.ts`
+2. `cd MealQuestServer && npm test -- --runInBand test/agent-os.stream.integration.test.ts`
+3. `cd MealQuestServer && npm test -- --runInBand test/policy-os.s060.lifecycle-library.http.test.ts`
+4. `cd MealQuestServer && npm test -- --runInBand test/policy-os.s050.governance.http.test.ts`
 5. `npm run verify`
 
 手工检查：

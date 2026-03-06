@@ -261,6 +261,19 @@
 3. 跨 Step 仅允许需求澄清，不允许先实现后补文档。
 4. 当前推荐推进顺序：`S010 -> S020 -> S030 -> S040 -> ... -> S110`。
 
+### 06.1 测试治理口径（当前生效）
+
+1. 测试命名采用双轨：
+  - 阶段验收测试：`<domain>.s{step}.{topic}[.<scope>].test.(ts|tsx|js)`
+  - 通用回归测试：`<domain>.<topic>[.<scope>].test.(ts|tsx|js)`
+2. `meal-quest-customer/test/e2e` 保持 `*.spec.js` 作为 E2E 命名，不纳入阶段前缀。
+3. 服务端测试脚本口径：
+  - `test:baseline`：仅执行通用回归集
+  - `test:step:s050`：`baseline + S050`
+  - `test:step:s060`：`baseline + S050 + S060`
+  - `test:step:s110`：`baseline + S050 + S060 + S070 + S080 + S090 + S100 + S110`
+4. 当前真源只到 `S110`，`S120+` 测试与脚本不保留在主分支。
+
 ---
 
 ## 07. 排障索引（宏观）

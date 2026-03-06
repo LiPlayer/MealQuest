@@ -36,7 +36,7 @@
 
 ## 回归验证
 
-1. `cd MealQuestServer && node -r ts-node/register/transpile-only test/policyOs.s050.governance.http.test.ts`
+1. `cd MealQuestServer && node -r ts-node/register/transpile-only test/policy-os.s050.governance.http.test.ts`
 2. `cd MealQuestServer && npm run typecheck`
 
 覆盖场景：

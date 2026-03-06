@@ -36,13 +36,13 @@
 - `MealQuestServer/src/http/routes/systemRoutes.ts`
 - `MealQuestServer/src/http/server.ts`
 - `MealQuestServer/src/http/serverHelpers.ts`
-- `MealQuestServer/test/customerExperience.s080.guard.http.test.ts`
+- `MealQuestServer/test/customer-experience.s080.guard.http.test.ts`
 - `docs/specs/mealquest-spec.md`
 - `docs/roadmap.md`
 
 ## 回归验证
 
-1. `cd MealQuestServer && npm test -- --runInBand test/customerExperience.s080.guard.http.test.ts`
+1. `cd MealQuestServer && npm test -- --runInBand test/customer-experience.s080.guard.http.test.ts`
 2. `cd MealQuestServer && npm test -- --runInBand test/http.integration.test.ts`
 3. `npm run verify`
 

@@ -41,8 +41,8 @@
 ## 回归验证
 
 1. `cd MealQuestServer && npm run typecheck`
-2. `cd MealQuestServer && node -r ts-node/register/transpile-only --test --test-reporter=tap --test-concurrency=1 test/policyOs.s110.acquisition.test.ts test/policyOs.s110.visibility.http.test.ts`
-3. `cd MealQuestServer && node -r ts-node/register/transpile-only --test --test-reporter=tap --test-concurrency=1 test/releaseGate.s090.http.test.ts test/automation.s100.http.test.ts`
+2. `cd MealQuestServer && node -r ts-node/register/transpile-only --test --test-reporter=tap --test-concurrency=1 test/policy-os.s110.acquisition.test.ts test/policy-os.s110.visibility.http.test.ts`
+3. `cd MealQuestServer && node -r ts-node/register/transpile-only --test --test-reporter=tap --test-concurrency=1 test/release-gate.s090.http.test.ts test/automation.s100.http.test.ts`
 
 手工检查：
 - `OWNER` 可配置实验并执行回滚，`MANAGER` 仅可查询；

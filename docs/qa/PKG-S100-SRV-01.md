@@ -44,7 +44,7 @@
 
 1. `cd MealQuestServer && npm run typecheck`
 2. `cd MealQuestServer && node -r ts-node/register/transpile-only --test --test-reporter=tap --test-concurrency=1 test/automation.s100.http.test.ts`
-3. `cd MealQuestServer && node -r ts-node/register/transpile-only --test --test-reporter=tap --test-concurrency=1 test/notificationService.test.ts`
+3. `cd MealQuestServer && node -r ts-node/register/transpile-only --test --test-reporter=tap --test-concurrency=1 test/notification-service.test.ts`
 
 手工检查：
 - 老板端账号可查看并更新自动化配置；经理可读不可写；

@@ -40,13 +40,13 @@
 - `MealQuestServer/src/policyos/templates/strategy-templates.v1.json`
 - `MealQuestServer/src/services/merchantService.ts`
 - `MealQuestServer/src/http/routes/merchantRoutes.ts`
-- `MealQuestServer/test/policyOs.s060.lifecycle-library.http.test.ts`
+- `MealQuestServer/test/policy-os.s060.lifecycle-library.http.test.ts`
 
 ## 回归验证
 
-1. `cd MealQuestServer && node -r ts-node/register/transpile-only test/policyOs.s060.lifecycle-library.http.test.ts`
-2. `cd MealQuestServer && node -r ts-node/register/transpile-only test/policyOs.s130.visibility.http.test.ts`
-3. `cd MealQuestServer && node -r ts-node/register/transpile-only test/policyOs.s140.visibility.http.test.ts`
+1. `cd MealQuestServer && node -r ts-node/register/transpile-only test/policy-os.s060.lifecycle-library.http.test.ts`
+2. `cd MealQuestServer && node -r ts-node/register/transpile-only test/policy-os.s050.governance.http.test.ts`
+3. `cd MealQuestServer && node -r ts-node/register/transpile-only test/policy-os.schema.test.ts`
 
 覆盖场景：
 - 五阶段策略库查询完整覆盖且包含活跃阶段；

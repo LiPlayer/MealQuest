@@ -35,13 +35,13 @@
 - `MealQuestServer/src/http/routes/systemRoutes.ts`
 - `MealQuestServer/src/http/server.ts`
 - `MealQuestServer/src/http/serverHelpers.ts`
-- `MealQuestServer/test/releaseGate.s090.http.test.ts`
+- `MealQuestServer/test/release-gate.s090.http.test.ts`
 - `docs/specs/mealquest-spec.md`
 - `docs/roadmap.md`
 
 ## 回归验证
 
-1. `cd MealQuestServer && node --test test/releaseGate.s090.http.test.ts`
+1. `cd MealQuestServer && node --test test/release-gate.s090.http.test.ts`
 2. `cd MealQuestServer && node --test test/http.integration.test.ts`
 3. `npm run verify`
 

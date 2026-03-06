@@ -40,4 +40,4 @@
 2. `policy schema validation normalizes legacy objective and decision signals`
 3. `expected_profit_v1 scorer uses effective probability and exposes model probabilities`
 
-以上场景由 `MealQuestServer/test/http.integration.test.ts`、`MealQuestServer/test/policyOs.schema.test.ts`、`MealQuestServer/test/policyOs.scorer.test.ts` 覆盖。
+以上场景由 `MealQuestServer/test/http.integration.test.ts`、`MealQuestServer/test/policy-os.schema.test.ts`、`MealQuestServer/test/policy-os.scorer.test.ts` 覆盖。
