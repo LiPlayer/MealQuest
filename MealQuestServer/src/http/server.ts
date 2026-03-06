@@ -23,6 +23,7 @@ const { createPolicyGovernanceService } = require("../services/policyGovernanceS
 const { createNotificationService } = require("../services/notificationService");
 const { createCustomerExperienceGuardService } = require("../services/customerExperienceGuardService");
 const { createFeedbackService } = require("../services/feedbackService");
+const { createReleaseGateService } = require("../services/releaseGateService");
 const {
   createSocialAuthService
 } = require("../services/socialAuthService");
@@ -149,6 +150,7 @@ function createAppServer({
         notificationService,
         customerExperienceGuardService: createCustomerExperienceGuardService(scopedDb),
         feedbackService: createFeedbackService(scopedDb),
+        releaseGateService: createReleaseGateService(scopedDb),
       };
       serviceCache.set(scopedDb, services);
     }

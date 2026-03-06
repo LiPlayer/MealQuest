@@ -744,6 +744,58 @@
 - 风控门：预算/风险/毛利硬门生效
 - 合规门：隐私、日志、发票流程满足首发区域要求
 
+### 8.3 KPI 与发布门服务接口（S090-SRV-01）
+
+- 接口：`GET /api/state/release-gate`
+- 角色：`OWNER / MANAGER`
+- 作用域：默认读取登录态商户；可选 `merchantId` 指定同商户查询
+- 鉴权规则：
+  - 若 `merchantId` 与登录态 `auth.merchantId` 不一致，返回 `403 merchant scope denied`
+  - `merchantId` 不存在时返回 `404 merchant not found`
+- 租户策略操作：`KPI_RELEASE_GATE_QUERY`
+- 缓存：支持 `ETag` 与 `If-None-Match`，命中返回 `304`
+
+响应合同（核心字段）：
+- `version`：当前版本 `S090-SRV-01.v1`
+- `windowDays`：默认 30 天（可配置）
+- `trendWindowDays`：默认 7 天（用于趋势判定）
+- `kpis`：输出长期 KPI 快照
+  - `MerchantNetProfit30`
+  - `LongTermValueIndex`
+  - `MerchantProfitUplift30`
+  - `MerchantRevenueUplift30`
+  - `UpliftHitRate30`
+  - `Retention30`
+  - `SubsidyWasteProxy`
+  - `PlatformCost30`（观测项）
+  - `paymentSuccessRate30`
+  - `riskLossProxy30`
+- `gates`：四门判定（`businessGate` / `technicalGate` / `riskGate` / `complianceGate`），每门包含 `status` 与 `reasons`
+  - 门状态枚举：`PASS | FAIL | REVIEW`
+- `dataSufficiency`：样本充分性判定（`ready`、`requirements`、`observed`、`reasons`）
+- `finalDecision`：最终发布建议（`GO | NO_GO | NEEDS_REVIEW`）
+
+默认发布门规则（当前生效）：
+- 业务门：
+  - `LongTermValueIndex >= 1.00`
+  - `近7天利润趋势 - 前7天利润趋势 >= 0`
+- 技术门：
+  - `paymentSuccessRate30 >= 99.5%`
+- 风控门：
+  - `riskLossProxy30 <= 0.3%`
+  - `SubsidyWasteProxy <= 0.6`
+- 合规门：
+  - 发票覆盖率 `>= 98%`
+  - 隐私流程成功率 `>= 98%`
+- 数据不足策略：
+  - 当样本不足时，最终判定为 `NEEDS_REVIEW`，不强制给出 `GO/NO_GO`
+
+`LongTermValueIndex` 默认计算原则：
+- 北极星不变：长期价值最大化
+- 代理指标加权：`MerchantProfitUplift30`、`MerchantRevenueUplift30`、`UpliftHitRate30`、`Retention30`
+- 惩罚项：`SubsidyWasteProxy`
+- 权重支持按租户配置覆盖，默认权重偏向商户收益与 Uplift
+
 ---
 
 ## 9. 安全、隐私与合规

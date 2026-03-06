@@ -116,7 +116,7 @@
 | S060 | 生命周期五阶段策略闭环建立 | S050 done | done |
 | S070 | 老板端 AI 提案与决策闭环 | S060 done | done |
 | S080 | 顾客端体验完整性强化 | S070 done | done |
-| S090 | 长期 KPI 与发布门建立 | S080 done | todo |
+| S090 | 长期 KPI 与发布门建立 | S080 done | doing |
 | S100 | 营销自动化能力建立 | S090 done | todo |
 | S110 | 实验与动态优化能力建立 | S100 done | todo |
 
@@ -225,7 +225,7 @@
 
 | PackageID | Lane | CapabilityID | Macro Requirement | Deliverable | DependsOn | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| PKG-S090-SRV-01 | server | SRV-C09 | 建立长期 KPI 与发布门判定能力 | KPI 与发布门基线 | none | todo |
+| PKG-S090-SRV-01 | server | SRV-C09 | 建立长期 KPI 与发布门判定能力 | KPI 与发布门基线 | none | done |
 | PKG-S090-MER-01 | merchant | MER-C10 | 建立老板端 KPI 与 Go/No-Go 面板 | 发布决策面板能力 | PKG-S090-SRV-01 | todo |
 | PKG-S090-CUS-01 | customer | CUS-C07 | 建立顾客稳定性指标接入发布门规则 | 顾客稳定性口径清单 | PKG-S090-SRV-01 | todo |
 

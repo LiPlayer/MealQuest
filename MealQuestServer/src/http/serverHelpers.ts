@@ -32,6 +32,7 @@ const TENANT_LIMIT_OPERATIONS = [
   "NOTIFICATION_QUERY",
   "NOTIFICATION_ACK",
   "CUSTOMER_EXPERIENCE_GUARD_QUERY",
+  "KPI_RELEASE_GATE_QUERY",
   "FEEDBACK_CREATE",
   "FEEDBACK_QUERY",
   "FEEDBACK_TRANSITION",
@@ -221,6 +222,9 @@ function resolveAuditAction(method, pathname) {
   }
   if (method === "GET" && pathname === "/api/state/experience-guard") {
     return "CUSTOMER_EXPERIENCE_GUARD_QUERY";
+  }
+  if (method === "GET" && pathname === "/api/state/release-gate") {
+    return "KPI_RELEASE_GATE_QUERY";
   }
   if (method === "POST" && pathname === "/api/feedback/tickets") {
     return "FEEDBACK_CREATE";

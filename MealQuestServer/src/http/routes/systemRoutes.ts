@@ -183,6 +183,54 @@ function createSystemRoutesHandler({
       return true;
     }
 
+    if (method === "GET" && url.pathname === "/api/state/release-gate") {
+      ensureRole(auth, ["OWNER", "MANAGER"]);
+      const merchantId = String(url.searchParams.get("merchantId") || auth.merchantId || "").trim();
+      if (!merchantId) {
+        sendJson(res, 400, { error: "merchantId is required" });
+        return true;
+      }
+      if (auth.merchantId && auth.merchantId !== merchantId) {
+        sendJson(res, 403, { error: "merchant scope denied" });
+        return true;
+      }
+      const merchant = await tenantRepository.getMerchant(merchantId);
+      if (!merchant) {
+        sendJson(res, 404, { error: "merchant not found" });
+        return true;
+      }
+      if (
+        !enforceTenantPolicyForHttp({
+          tenantPolicyManager,
+          merchantId,
+          operation: "KPI_RELEASE_GATE_QUERY",
+          res,
+          auth,
+          appendAuditLog,
+        })
+      ) {
+        return true;
+      }
+
+      const scopedDb = tenantRouter.getDbForMerchant(merchantId);
+      const { releaseGateService } = getServicesForDb(scopedDb);
+      const payload = releaseGateService.getReleaseGateSnapshot({
+        merchantId,
+        windowDays: url.searchParams.get("windowDays"),
+      });
+      const etag = buildWeakEtag(payload);
+      const cacheHeaders = {
+        ETag: etag,
+        "Cache-Control": "private, max-age=0, must-revalidate",
+      };
+      if (isIfNoneMatchFresh(req, etag)) {
+        sendNotModified(res, cacheHeaders);
+        return true;
+      }
+      sendJson(res, 200, payload, cacheHeaders);
+      return true;
+    }
+
     if (method === "GET" && url.pathname === "/api/ws/status") {
       ensureRole(auth, MERCHANT_ROLES);
       const merchantId = url.searchParams.get("merchantId") || auth.merchantId;
