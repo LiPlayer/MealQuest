@@ -7,9 +7,13 @@ import SurfaceCard from '../components/ui/SurfaceCard';
 import StatTile from '../components/ui/StatTile';
 import { useMerchant } from '../context/MerchantContext';
 import {
+  ExperimentConfigResponse,
+  ExperimentMetricsResponse,
   ExperienceGuardPath,
   ExperienceGuardResponse,
   ReleaseGateResponse,
+  getExperimentConfig,
+  getExperimentMetrics,
   getCustomerExperienceGuard,
   getReleaseGateSnapshot,
 } from '../services/apiClient';
@@ -77,6 +81,37 @@ function formatReleaseGateStatus(value: string): string {
   return normalized || '-';
 }
 
+function formatExperimentStatus(value: string): string {
+  const normalized = String(value || '').trim().toUpperCase();
+  if (normalized === 'RUNNING') {
+    return '运行中';
+  }
+  if (normalized === 'PAUSED') {
+    return '已暂停';
+  }
+  if (normalized === 'DRAFT') {
+    return '草稿';
+  }
+  if (normalized === 'ROLLED_BACK') {
+    return '已回滚';
+  }
+  return normalized || '-';
+}
+
+function formatExperimentRiskStatus(value: string): string {
+  const normalized = String(value || '').trim().toUpperCase();
+  if (normalized === 'PASS') {
+    return '通过';
+  }
+  if (normalized === 'FAIL') {
+    return '未通过';
+  }
+  if (normalized === 'UNKNOWN') {
+    return '未知';
+  }
+  return normalized || '-';
+}
+
 function formatPercent(value: number, digits = 1): string {
   const safe = Number(value);
   if (!Number.isFinite(safe)) {
@@ -102,6 +137,10 @@ export default function DashboardScreen() {
   const [releaseGate, setReleaseGate] = useState<ReleaseGateResponse | null>(null);
   const [releaseGateLoading, setReleaseGateLoading] = useState(false);
   const [releaseGateError, setReleaseGateError] = useState('');
+  const [experimentConfig, setExperimentConfig] = useState<ExperimentConfigResponse | null>(null);
+  const [experimentMetrics, setExperimentMetrics] = useState<ExperimentMetricsResponse | null>(null);
+  const [experimentLoading, setExperimentLoading] = useState(false);
+  const [experimentError, setExperimentError] = useState('');
   const welcomeTopReason = merchantState.acquisitionWelcomeSummary.topBlockedReasons[0];
   const welcomeLatest = merchantState.acquisitionWelcomeSummary.latestResults[0];
   const activationTopReason = merchantState.activationRecoverySummary.topBlockedReasons[0];
@@ -147,6 +186,10 @@ export default function DashboardScreen() {
     ),
     [releaseGate],
   );
+  const experimentRiskReasons = useMemo(
+    () => (Array.isArray(experimentMetrics?.risk?.reasons) ? experimentMetrics.risk.reasons.slice(0, 4) : []),
+    [experimentMetrics?.risk?.reasons],
+  );
 
   const loadExperienceGuard = useCallback(async () => {
     if (!authSession || !authSession.merchantId || !authSession.token || !canViewGovernanceView) {
@@ -190,6 +233,35 @@ export default function DashboardScreen() {
     }
   }, [authSession, canViewGovernanceView]);
 
+  const loadExperimentSnapshot = useCallback(async () => {
+    if (!authSession || !authSession.merchantId || !authSession.token || !canViewGovernanceView) {
+      return;
+    }
+    setExperimentLoading(true);
+    setExperimentError('');
+    try {
+      const [configResult, metricsResult] = await Promise.all([
+        getExperimentConfig({
+          merchantId: authSession.merchantId,
+          token: authSession.token,
+        }),
+        getExperimentMetrics({
+          merchantId: authSession.merchantId,
+          token: authSession.token,
+        }),
+      ]);
+      setExperimentConfig(configResult);
+      setExperimentMetrics(metricsResult);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '实验数据加载失败';
+      setExperimentError(message);
+      setExperimentConfig(null);
+      setExperimentMetrics(null);
+    } finally {
+      setExperimentLoading(false);
+    }
+  }, [authSession, canViewGovernanceView]);
+
   useEffect(() => {
     void loadExperienceGuard();
   }, [loadExperienceGuard]);
@@ -197,6 +269,10 @@ export default function DashboardScreen() {
   useEffect(() => {
     void loadReleaseGate();
   }, [loadReleaseGate]);
+
+  useEffect(() => {
+    void loadExperimentSnapshot();
+  }, [loadExperimentSnapshot]);
 
   return (
     <AppShell>
@@ -331,6 +407,59 @@ export default function DashboardScreen() {
             <Text style={styles.hintText}>
               最近评估：{releaseGate.evaluatedAt ? new Date(releaseGate.evaluatedAt).toLocaleString() : '暂无'}
             </Text>
+          </>
+        ) : null}
+      </SurfaceCard>
+
+      <SurfaceCard>
+        <View style={styles.contractHeaderRow}>
+          <Text style={styles.sectionTitle}>实验灰度摘要（S110）</Text>
+          <Pressable
+            style={styles.contractRefreshBtn}
+            onPress={() => {
+              void loadExperimentSnapshot();
+            }}
+          >
+            <Text style={styles.contractRefreshBtnText}>刷新实验</Text>
+          </Pressable>
+        </View>
+        {!canViewGovernanceView ? (
+          <Text style={styles.hintText}>当前角色仅可查看概要，实验明细对 OWNER/MANAGER 开放。</Text>
+        ) : null}
+        {canViewGovernanceView && experimentLoading ? <Text style={styles.hintText}>实验数据加载中...</Text> : null}
+        {canViewGovernanceView && experimentError ? (
+          <Text style={styles.contractErrorText}>实验数据暂不可用：{experimentError}</Text>
+        ) : null}
+        {canViewGovernanceView && experimentConfig && experimentMetrics ? (
+          <>
+            <View style={styles.grid}>
+              <StatTile label="实验状态" value={formatExperimentStatus(experimentConfig.status)} />
+              <StatTile label="实验开关" value={experimentConfig.enabled ? '开启' : '关闭'} />
+              <StatTile label="流量占比" value={`${Math.floor(Number(experimentConfig.trafficPercent) || 0)}%`} />
+            </View>
+            <View style={styles.grid}>
+              <StatTile label="收益提升" value={formatPercent(experimentMetrics.uplift.merchantProfitUplift)} />
+              <StatTile label="收入提升" value={formatPercent(experimentMetrics.uplift.merchantRevenueUplift)} />
+              <StatTile label="风险状态" value={formatExperimentRiskStatus(experimentMetrics.risk.status)} />
+            </View>
+            {experimentRiskReasons.length > 0 ? (
+              <Text style={styles.contractWarnText}>
+                风险原因：{experimentRiskReasons.join(' / ')}
+              </Text>
+            ) : null}
+            <Text style={styles.hintText}>
+              最近回滚：{experimentMetrics.rollback.lastRollbackAt
+                ? new Date(experimentMetrics.rollback.lastRollbackAt).toLocaleString()
+                : '暂无'}
+            </Text>
+            <Text style={styles.hintText}>
+              最近评估：{experimentMetrics.evaluatedAt ? new Date(experimentMetrics.evaluatedAt).toLocaleString() : '暂无'}
+            </Text>
+            <View style={styles.row}>
+              <Pressable style={styles.linkBtn} onPress={() => router.push('/(tabs)/risk')}>
+                <Text style={styles.linkBtnText}>前往风控页调整</Text>
+              </Pressable>
+            </View>
           </>
         ) : null}
       </SurfaceCard>

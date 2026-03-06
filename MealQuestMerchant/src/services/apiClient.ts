@@ -366,6 +366,112 @@ export type AutomationExecutionsResponse = {
   lastUpdatedAt: string | null;
 };
 
+export type ExperimentTargetEvent = 'USER_ENTER_SHOP' | 'PAYMENT_VERIFY';
+export type ExperimentOptimizationMode = 'MANUAL';
+export type ExperimentRiskStatus = 'PASS' | 'FAIL' | 'UNKNOWN';
+
+export type ExperimentGuardrails = {
+  minPaymentSuccessRate30: number;
+  maxRiskLossProxy30: number;
+  maxSubsidyWasteProxy: number;
+};
+
+export type ExperimentConfigResponse = {
+  version: string;
+  merchantId: string;
+  experimentId: string;
+  enabled: boolean;
+  trafficPercent: number;
+  targetEvent: ExperimentTargetEvent;
+  optimizationMode: ExperimentOptimizationMode;
+  objective: string;
+  primaryMetrics: string[];
+  ownerControl?: {
+    canAdjustTraffic?: boolean;
+    canPause?: boolean;
+    canRollback?: boolean;
+  };
+  guardrails: ExperimentGuardrails;
+  status: string;
+  updatedAt: string | null;
+  updatedBy: string | null;
+  lastRollbackAt: string | null;
+  lastRollbackBy: string | null;
+  lastRollbackReason: string | null;
+};
+
+export type ExperimentGroupSummary = {
+  decisionCount: number;
+  hitCount: number;
+  blockedCount: number;
+  noPolicyCount: number;
+  hitRate: number;
+  marketingCost: number;
+  paymentAttempts: number;
+  paymentPaidCount: number;
+  paymentFailedCount: number;
+  paymentPendingCount: number;
+  paymentSuccessRate: number;
+  revenue: number;
+  refundAmount: number;
+  netRevenue: number;
+  netProfitProxy: number;
+};
+
+export type ExperimentRollbackRecord = {
+  rollbackId: string;
+  merchantId: string;
+  experimentId: string;
+  reason: string;
+  operatorId: string;
+  rolledBackAt: string;
+  previousStatus: string;
+};
+
+export type ExperimentMetricsResponse = {
+  version: string;
+  merchantId: string;
+  experimentId: string;
+  objective: string;
+  event: ExperimentTargetEvent;
+  evaluatedAt: string;
+  windowDays: number;
+  config: ExperimentConfigResponse;
+  groups: {
+    control: ExperimentGroupSummary;
+    treatment: ExperimentGroupSummary;
+  };
+  uplift: {
+    merchantRevenueUplift: number;
+    merchantProfitUplift: number;
+    upliftHitRateLift: number;
+    paymentSuccessRateLift: number;
+  };
+  risk: {
+    status: ExperimentRiskStatus;
+    reasons: string[];
+    kpis: {
+      paymentSuccessRate30: number;
+      riskLossProxy30: number;
+      subsidyWasteProxy: number;
+    } | null;
+  };
+  rollback: {
+    lastRollbackAt: string | null;
+    lastRollbackBy: string | null;
+    lastRollbackReason: string | null;
+    history: ExperimentRollbackRecord[];
+  };
+};
+
+export type ExperimentRollbackResponse = {
+  version: string;
+  merchantId: string;
+  experimentId: string;
+  rollback: ExperimentRollbackRecord | null;
+  config: ExperimentConfigResponse;
+};
+
 export type AgentProposalStatus = 'ALL' | 'PENDING' | 'APPROVED' | 'PUBLISHED' | 'REJECTED';
 export type AgentProposalDecision = 'APPROVE' | 'REJECT';
 
@@ -1083,6 +1189,89 @@ export async function getPolicyAutomationExecutions(params: {
   return getJson<AutomationExecutionsResponse>(`/api/policyos/automation/executions?${query}`, {
     token: params.token,
   });
+}
+
+export async function getExperimentConfig(params: {
+  merchantId: string;
+  token: string;
+}): Promise<ExperimentConfigResponse> {
+  const merchantId = String(params.merchantId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  return getJson<ExperimentConfigResponse>(
+    `/api/policyos/experiments/config?merchantId=${encodeURIComponent(merchantId)}`,
+    { token: params.token },
+  );
+}
+
+export async function setExperimentConfig(params: {
+  merchantId: string;
+  token: string;
+  enabled?: boolean;
+  trafficPercent?: number;
+}): Promise<ExperimentConfigResponse> {
+  const merchantId = String(params.merchantId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  const payload: Record<string, unknown> = {
+    merchantId,
+  };
+  if (typeof params.enabled === 'boolean') {
+    payload.enabled = params.enabled;
+  }
+  if (Number.isFinite(Number(params.trafficPercent))) {
+    payload.trafficPercent = Math.min(100, Math.max(0, Math.floor(Number(params.trafficPercent))));
+  }
+  return putJson<ExperimentConfigResponse>('/api/policyos/experiments/config', payload, {
+    token: params.token,
+  });
+}
+
+export async function getExperimentMetrics(params: {
+  merchantId: string;
+  token: string;
+  event?: ExperimentTargetEvent;
+  windowDays?: number;
+}): Promise<ExperimentMetricsResponse> {
+  const merchantId = String(params.merchantId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  const event = String(params.event || '').trim().toUpperCase();
+  const windowDays = Number(params.windowDays);
+  const query = [
+    `merchantId=${encodeURIComponent(merchantId)}`,
+    Number.isFinite(windowDays) && windowDays > 0
+      ? `windowDays=${encodeURIComponent(String(Math.floor(windowDays)))}`
+      : '',
+    event ? `event=${encodeURIComponent(event)}` : '',
+  ]
+    .filter(Boolean)
+    .join('&');
+  return getJson<ExperimentMetricsResponse>(`/api/policyos/experiments/metrics?${query}`, {
+    token: params.token,
+  });
+}
+
+export async function rollbackExperiment(params: {
+  merchantId: string;
+  token: string;
+  reason?: string;
+}): Promise<ExperimentRollbackResponse> {
+  const merchantId = String(params.merchantId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  return postJson<ExperimentRollbackResponse>(
+    '/api/policyos/experiments/rollback',
+    {
+      merchantId,
+      reason: String(params.reason || '').trim() || undefined,
+    },
+    { token: params.token },
+  );
 }
 
 export async function generateAgentProposal(params: {

@@ -249,7 +249,7 @@
 | PackageID | Lane | CapabilityID | Macro Requirement | Deliverable | DependsOn | Status |
 | --- | --- | --- | --- | --- | --- | --- |
 | PKG-S110-SRV-01 | server | SRV-C07, SRV-C10 | 建立 A/B、Uplift、动态优化灰度能力 | 优化能力基线 | none | done |
-| PKG-S110-MER-01 | merchant | MER-C10 | 建立老板端实验与灰度监控能力 | 灰度监控流程 | PKG-S110-SRV-01 | todo |
+| PKG-S110-MER-01 | merchant | MER-C10 | 建立老板端实验与灰度监控能力 | 灰度监控流程 | PKG-S110-SRV-01 | done |
 | PKG-S110-CUS-01 | customer | CUS-C07 | 建立顾客端灰度体验守护规则 | 灰度体验守护清单 | PKG-S110-SRV-01 | todo |
 
 ---
@@ -305,4 +305,5 @@
 
 ## 09. 更新日志
 
-1. 2026-03-05：改为“宏观任务版”路线图，移除实现级拆解。
+1. 2026-03-07：完成 `PKG-S110-MER-01`（老板端实验与灰度监控闭环），Risk 主入口 + Dashboard 摘要生效。
+2. 2026-03-05：改为“宏观任务版”路线图，移除实现级拆解。

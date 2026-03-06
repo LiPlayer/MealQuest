@@ -3,19 +3,26 @@ import { ActivityIndicator, StyleSheet, Text, TextInput, View } from 'react-nati
 
 import ActionButton from '../components/ui/ActionButton';
 import AppShell from '../components/ui/AppShell';
+import StatTile from '../components/ui/StatTile';
 import SurfaceCard from '../components/ui/SurfaceCard';
 import { useMerchant } from '../context/MerchantContext';
 import {
+  ExperimentConfigResponse,
+  ExperimentMetricsResponse,
   GovernanceOverviewResponse,
   PolicyRecord,
   RevenueStrategyConfig,
   RevenueStrategyRecommendationResponse,
+  getExperimentConfig,
+  getExperimentMetrics,
   getPolicies,
   getPolicyGovernanceOverview,
   getRevenueStrategyConfig,
   pausePolicy,
   recommendRevenueStrategyConfig,
+  rollbackExperiment,
   resumePolicy,
+  setExperimentConfig,
   setMerchantKillSwitch,
   setRevenueStrategyConfig,
 } from '../services/apiClient';
@@ -78,6 +85,53 @@ function toPayload(draft: RevenueConfigDraft): RevenueStrategyConfig {
   };
 }
 
+function parseTrafficPercent(value: string): number {
+  const num = Number(String(value || '').trim());
+  if (!Number.isFinite(num) || !Number.isInteger(num) || num < 0 || num > 100) {
+    throw new Error('流量比例需为 0-100 的整数');
+  }
+  return num;
+}
+
+function formatPercent(value: number, digits = 1): string {
+  const safe = Number(value);
+  if (!Number.isFinite(safe)) {
+    return '-';
+  }
+  return `${(safe * 100).toFixed(digits)}%`;
+}
+
+function formatExperimentStatus(value: string): string {
+  const normalized = String(value || '').trim().toUpperCase();
+  if (normalized === 'RUNNING') {
+    return '运行中';
+  }
+  if (normalized === 'PAUSED') {
+    return '已暂停';
+  }
+  if (normalized === 'DRAFT') {
+    return '草稿';
+  }
+  if (normalized === 'ROLLED_BACK') {
+    return '已回滚';
+  }
+  return normalized || '-';
+}
+
+function formatExperimentRiskStatus(value: string): string {
+  const normalized = String(value || '').trim().toUpperCase();
+  if (normalized === 'PASS') {
+    return '通过';
+  }
+  if (normalized === 'FAIL') {
+    return '未通过';
+  }
+  if (normalized === 'UNKNOWN') {
+    return '未知';
+  }
+  return normalized || '-';
+}
+
 function Field({
   label,
   value,
@@ -120,6 +174,16 @@ export default function RiskRevenueConfigScreen() {
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [overview, setOverview] = useState<GovernanceOverviewResponse | null>(null);
   const [policyRows, setPolicyRows] = useState<PolicyRecord[]>([]);
+  const [experimentLoading, setExperimentLoading] = useState(false);
+  const [experimentSaving, setExperimentSaving] = useState(false);
+  const [experimentRollingBack, setExperimentRollingBack] = useState(false);
+  const [experimentConfig, setExperimentConfigState] = useState<ExperimentConfigResponse | null>(null);
+  const [experimentMetrics, setExperimentMetrics] = useState<ExperimentMetricsResponse | null>(null);
+  const [experimentEnabledDraft, setExperimentEnabledDraft] = useState(false);
+  const [experimentTrafficDraft, setExperimentTrafficDraft] = useState('0');
+  const [experimentRollbackReason, setExperimentRollbackReason] = useState('');
+  const [experimentError, setExperimentError] = useState('');
+  const [experimentNotice, setExperimentNotice] = useState('');
 
   const loadConfig = useCallback(async () => {
     if (!authSession || !authSession.token || !authSession.merchantId) {
@@ -173,6 +237,38 @@ export default function RiskRevenueConfigScreen() {
     }
   }, [authSession]);
 
+  const loadExperimentSnapshot = useCallback(async () => {
+    if (!authSession || !authSession.token || !authSession.merchantId) {
+      setExperimentLoading(false);
+      return;
+    }
+    setExperimentLoading(true);
+    setExperimentError('');
+    try {
+      const [configResult, metricsResult] = await Promise.all([
+        getExperimentConfig({
+          merchantId: authSession.merchantId,
+          token: authSession.token,
+        }),
+        getExperimentMetrics({
+          merchantId: authSession.merchantId,
+          token: authSession.token,
+        }),
+      ]);
+      setExperimentConfigState(configResult);
+      setExperimentMetrics(metricsResult);
+      setExperimentEnabledDraft(Boolean(configResult.enabled));
+      setExperimentTrafficDraft(String(Math.floor(Number(configResult.trafficPercent) || 0)));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '实验快照加载失败';
+      setExperimentError(message);
+      setExperimentConfigState(null);
+      setExperimentMetrics(null);
+    } finally {
+      setExperimentLoading(false);
+    }
+  }, [authSession]);
+
   useEffect(() => {
     void loadConfig();
   }, [loadConfig]);
@@ -180,6 +276,10 @@ export default function RiskRevenueConfigScreen() {
   useEffect(() => {
     void loadRiskSnapshot();
   }, [loadRiskSnapshot]);
+
+  useEffect(() => {
+    void loadExperimentSnapshot();
+  }, [loadExperimentSnapshot]);
 
   const revenueTopReason = merchantState.revenueUpsellSummary.topBlockedReasons[0];
   const revenueLatest = merchantState.revenueUpsellSummary.latestResults[0];
@@ -197,6 +297,7 @@ export default function RiskRevenueConfigScreen() {
   }, [recommendation]);
 
   const isOwner = String(authSession?.role || '').toUpperCase() === 'OWNER';
+  const latestRollback = experimentMetrics?.rollback?.history?.[0] || null;
 
   const updateDraftField = (key: keyof RevenueConfigDraft, value: string) => {
     setDraft((prev) => ({
@@ -332,6 +433,69 @@ export default function RiskRevenueConfigScreen() {
     }
   };
 
+  const handleSaveExperimentConfig = async () => {
+    if (!authSession || !authSession.token || !authSession.merchantId) {
+      return;
+    }
+    setExperimentSaving(true);
+    setExperimentError('');
+    setExperimentNotice('');
+    try {
+      const trafficPercent = parseTrafficPercent(experimentTrafficDraft);
+      const payload = await setExperimentConfig({
+        merchantId: authSession.merchantId,
+        token: authSession.token,
+        enabled: experimentEnabledDraft,
+        trafficPercent,
+      });
+      setExperimentConfigState(payload);
+      setExperimentEnabledDraft(Boolean(payload.enabled));
+      setExperimentTrafficDraft(String(Math.floor(Number(payload.trafficPercent) || 0)));
+      setExperimentNotice('实验配置已更新。');
+      const latestMetrics = await getExperimentMetrics({
+        merchantId: authSession.merchantId,
+        token: authSession.token,
+      });
+      setExperimentMetrics(latestMetrics);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '实验配置保存失败';
+      setExperimentError(message);
+    } finally {
+      setExperimentSaving(false);
+    }
+  };
+
+  const handleRollbackExperiment = async () => {
+    if (!authSession || !authSession.token || !authSession.merchantId) {
+      return;
+    }
+    setExperimentRollingBack(true);
+    setExperimentError('');
+    setExperimentNotice('');
+    try {
+      const payload = await rollbackExperiment({
+        merchantId: authSession.merchantId,
+        token: authSession.token,
+        reason: experimentRollbackReason,
+      });
+      setExperimentConfigState(payload.config);
+      setExperimentEnabledDraft(Boolean(payload.config.enabled));
+      setExperimentTrafficDraft(String(Math.floor(Number(payload.config.trafficPercent) || 0)));
+      setExperimentRollbackReason('');
+      setExperimentNotice('实验已回滚，当前状态为已回滚。');
+      const latestMetrics = await getExperimentMetrics({
+        merchantId: authSession.merchantId,
+        token: authSession.token,
+      });
+      setExperimentMetrics(latestMetrics);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '实验回滚失败';
+      setExperimentError(message);
+    } finally {
+      setExperimentRollingBack(false);
+    }
+  };
+
   return (
     <AppShell scroll>
       <View style={styles.headerWrap}>
@@ -408,6 +572,128 @@ export default function RiskRevenueConfigScreen() {
             );
           })
         )}
+      </SurfaceCard>
+
+      <SurfaceCard>
+        <Text style={styles.sectionTitle}>实验与灰度监控</Text>
+        {!isOwner ? (
+          <Text style={styles.metaText}>当前角色为只读，可查看实验收益与风险状态。</Text>
+        ) : null}
+        {experimentError ? <Text style={styles.errorText}>{experimentError}</Text> : null}
+        {experimentNotice ? <Text style={styles.noticeText}>{experimentNotice}</Text> : null}
+        {experimentLoading ? <Text style={styles.metaText}>实验数据加载中...</Text> : null}
+        {experimentConfig ? (
+          <>
+            <View style={styles.grid}>
+              <StatTile label="实验状态" value={formatExperimentStatus(experimentConfig.status)} />
+              <StatTile label="实验开关" value={experimentConfig.enabled ? '开启' : '关闭'} />
+              <StatTile label="流量占比" value={`${Math.floor(Number(experimentConfig.trafficPercent) || 0)}%`} />
+            </View>
+            <View style={styles.grid}>
+              <StatTile label="目标事件" value={experimentConfig.targetEvent} />
+              <StatTile label="优化模式" value={experimentConfig.optimizationMode} />
+              <StatTile label="风险状态" value={formatExperimentRiskStatus(experimentMetrics?.risk?.status || 'UNKNOWN')} />
+            </View>
+            <Text style={styles.metaText}>
+              指标口径：{Array.isArray(experimentConfig.primaryMetrics) ? experimentConfig.primaryMetrics.join(' / ') : '-'}
+            </Text>
+            <Text style={styles.metaText}>
+              最近更新：{experimentConfig.updatedAt ? new Date(experimentConfig.updatedAt).toLocaleString() : '暂无'}
+              {experimentConfig.updatedBy ? ` · ${experimentConfig.updatedBy}` : ''}
+            </Text>
+            <Text style={styles.metaText}>
+              最近回滚：{experimentConfig.lastRollbackAt ? new Date(experimentConfig.lastRollbackAt).toLocaleString() : '暂无'}
+              {experimentConfig.lastRollbackBy ? ` · ${experimentConfig.lastRollbackBy}` : ''}
+            </Text>
+
+            {experimentMetrics ? (
+              <>
+                <View style={styles.grid}>
+                  <StatTile label="收入提升" value={formatPercent(experimentMetrics.uplift.merchantRevenueUplift)} />
+                  <StatTile label="收益提升" value={formatPercent(experimentMetrics.uplift.merchantProfitUplift)} />
+                  <StatTile label="命中率差值" value={formatPercent(experimentMetrics.uplift.upliftHitRateLift)} />
+                </View>
+                <View style={styles.grid}>
+                  <StatTile label="Control 净收益" value={experimentMetrics.groups.control.netProfitProxy.toFixed(2)} />
+                  <StatTile label="Treatment 净收益" value={experimentMetrics.groups.treatment.netProfitProxy.toFixed(2)} />
+                  <StatTile label="支付成功率差值" value={formatPercent(experimentMetrics.uplift.paymentSuccessRateLift, 2)} />
+                </View>
+                {Array.isArray(experimentMetrics.risk.reasons) && experimentMetrics.risk.reasons.length > 0 ? (
+                  <Text style={styles.warnText}>
+                    风险原因：{experimentMetrics.risk.reasons.slice(0, 4).join(' / ')}
+                  </Text>
+                ) : null}
+              </>
+            ) : null}
+
+            <View style={styles.fieldWrap}>
+              <Text style={styles.fieldLabel}>trafficPercent（0-100，整数）</Text>
+              <TextInput
+                value={experimentTrafficDraft}
+                onChangeText={setExperimentTrafficDraft}
+                style={styles.input}
+                keyboardType="numeric"
+                editable={isOwner && !experimentSaving && !experimentRollingBack}
+                placeholderTextColor="#8093ab"
+              />
+            </View>
+            <View style={styles.fieldWrap}>
+              <Text style={styles.fieldLabel}>回滚原因（可选）</Text>
+              <TextInput
+                value={experimentRollbackReason}
+                onChangeText={setExperimentRollbackReason}
+                style={styles.input}
+                editable={isOwner && !experimentSaving && !experimentRollingBack}
+                placeholder="manual rollback"
+                placeholderTextColor="#8093ab"
+              />
+            </View>
+            {latestRollback ? (
+              <Text style={styles.metaText}>
+                最近回滚记录：{latestRollback.rollbackId} · {latestRollback.reason}
+              </Text>
+            ) : null}
+            <View style={styles.actionWrap}>
+              <ActionButton
+                label={experimentEnabledDraft ? '切换为暂停态' : '切换为运行态'}
+                icon="tune"
+                variant="secondary"
+                onPress={() => {
+                  setExperimentEnabledDraft((prev) => !prev);
+                }}
+                disabled={!isOwner || experimentSaving || experimentRollingBack}
+              />
+              <ActionButton
+                label={experimentSaving ? '保存中...' : '保存实验配置'}
+                icon={experimentSaving ? 'hourglass-top' : 'save'}
+                onPress={() => {
+                  void handleSaveExperimentConfig();
+                }}
+                disabled={!isOwner || experimentSaving || experimentRollingBack}
+                busy={experimentSaving}
+              />
+              <ActionButton
+                label={experimentRollingBack ? '回滚中...' : '一键回滚实验'}
+                icon={experimentRollingBack ? 'hourglass-top' : 'restore'}
+                variant="danger"
+                onPress={() => {
+                  void handleRollbackExperiment();
+                }}
+                disabled={!isOwner || experimentSaving || experimentRollingBack}
+                busy={experimentRollingBack}
+              />
+              <ActionButton
+                label="刷新实验状态"
+                icon="refresh"
+                variant="secondary"
+                onPress={() => {
+                  void loadExperimentSnapshot();
+                }}
+                disabled={experimentSaving || experimentRollingBack || experimentLoading}
+              />
+            </View>
+          </>
+        ) : null}
       </SurfaceCard>
 
       <SurfaceCard>
@@ -614,6 +900,11 @@ const styles = StyleSheet.create({
   metaText: {
     ...mqTheme.typography.caption,
     color: '#5b6f8f',
+  },
+  warnText: {
+    ...mqTheme.typography.caption,
+    color: '#855e1d',
+    fontWeight: '700',
   },
   policyRow: {
     borderWidth: 1,
