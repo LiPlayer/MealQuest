@@ -24,9 +24,48 @@ function createMerchantService(db, options = {}) {
   const MAX_EXECUTION_DETAIL_VALUE_LEN = 80;
   const MAX_TOTAL_PROPOSAL_CANDIDATES = 12;
   const SALES_WINDOWS_DAYS = [7, 30];
+  const ACQUISITION_TEMPLATE_ID = "acquisition_welcome_gift";
+  const ACTIVATION_TEMPLATE_ID = "activation_checkin_streak_recovery";
+  const ENGAGEMENT_TEMPLATE_ID = "engagement_daily_task_loop";
   const REVENUE_TEMPLATE_ID = "revenue_addon_upsell_slow_item";
+  const RETENTION_TEMPLATE_ID = "retention_dormant_winback_14d";
+  const ACQUISITION_POLICY_KEY = "ACQ_WELCOME_FIRST_BIND_V1";
+  const ACTIVATION_POLICY_KEY = "ACT_CHECKIN_STREAK_RECOVERY_V1";
+  const ENGAGEMENT_POLICY_KEY = "ENG_DAILY_TASK_LOOP_V1";
   const REVENUE_POLICY_KEY = "REV_ADDON_UPSELL_SLOW_ITEM_V1";
   const RETENTION_POLICY_KEY = "RET_DORMANT_WINBACK_14D_V1";
+  const LIFECYCLE_TEMPLATE_BASELINES = [
+    {
+      stage: "ACQUISITION",
+      templateId: ACQUISITION_TEMPLATE_ID,
+      policyKey: ACQUISITION_POLICY_KEY,
+      triggerEvent: "USER_ENTER_SHOP"
+    },
+    {
+      stage: "ACTIVATION",
+      templateId: ACTIVATION_TEMPLATE_ID,
+      policyKey: ACTIVATION_POLICY_KEY,
+      triggerEvent: "USER_ENTER_SHOP"
+    },
+    {
+      stage: "ENGAGEMENT",
+      templateId: ENGAGEMENT_TEMPLATE_ID,
+      policyKey: ENGAGEMENT_POLICY_KEY,
+      triggerEvent: "USER_ENTER_SHOP"
+    },
+    {
+      stage: "EXPANSION",
+      templateId: REVENUE_TEMPLATE_ID,
+      policyKey: REVENUE_POLICY_KEY,
+      triggerEvent: "PAYMENT_VERIFY"
+    },
+    {
+      stage: "RETENTION",
+      templateId: RETENTION_TEMPLATE_ID,
+      policyKey: RETENTION_POLICY_KEY,
+      triggerEvent: "USER_ENTER_SHOP"
+    }
+  ];
   const REVENUE_DEFAULT_CONFIG = {
     minOrderAmount: 30,
     voucherValue: 6,
@@ -472,19 +511,105 @@ function createMerchantService(db, options = {}) {
     return bucket[templateId];
   }
 
-  function resolveRevenueTemplateBranch() {
-    const template = (templateCatalog.templates || []).find(
-      (item) => item && item.templateId === REVENUE_TEMPLATE_ID
+  function getTemplateById(templateId) {
+    const safeTemplateId = String(templateId || "").trim();
+    if (!safeTemplateId) {
+      return null;
+    }
+    return (
+      (templateCatalog.templates || []).find(
+        (item) => item && String(item.templateId || "").trim() === safeTemplateId
+      ) || null
     );
+  }
+
+  function getLifecycleBaseline(templateId) {
+    const safeTemplateId = String(templateId || "").trim();
+    return (
+      LIFECYCLE_TEMPLATE_BASELINES.find((item) => item.templateId === safeTemplateId) || null
+    );
+  }
+
+  function resolveTemplateBranch(templateId, branchId = "") {
+    const template = getTemplateById(templateId);
     if (!template) {
-      throw new Error(`${REVENUE_TEMPLATE_ID} template not found`);
+      throw new Error(`${templateId} template not found`);
     }
-    const branchId = String(template.defaultBranchId || "DEFAULT");
-    const branch = (template.branches || []).find((item) => item && item.branchId === branchId);
+    const expectedBranchId = String(branchId || template.defaultBranchId || "DEFAULT").trim();
+    const branch = (template.branches || []).find(
+      (item) => item && String(item.branchId || "").trim() === expectedBranchId
+    );
     if (!branch || !branch.policySpec) {
-      throw new Error(`${REVENUE_TEMPLATE_ID} default branch not found`);
+      throw new Error(`${templateId} branch not found`);
     }
-    return branch;
+    return {
+      template,
+      branch,
+      branchId: expectedBranchId
+    };
+  }
+
+  function buildPolicySpecFromTemplate({
+    merchantId,
+    templateId,
+    branchId = ""
+  }) {
+    const { template, branch, branchId: resolvedBranchId } = resolveTemplateBranch(
+      templateId,
+      branchId
+    );
+    const baseSpec = cloneJson(branch.policySpec || {});
+    return {
+      template,
+      branch,
+      branchId: resolvedBranchId,
+      policySpec: {
+        ...baseSpec,
+        resource_scope: {
+          merchant_id: merchantId
+        },
+        governance: {
+          approval_required: true,
+          approval_level: "OWNER",
+          approval_token_ttl_sec: 3600,
+          ...cloneJson((baseSpec && baseSpec.governance) || {})
+        }
+      }
+    };
+  }
+
+  function listPoliciesByTemplateId({ merchantId, templateId, includeInactive = true }) {
+    if (!policyOsService || typeof policyOsService.listPolicies !== "function") {
+      return [];
+    }
+    const template = getTemplateById(templateId);
+    const templatePolicyKeys = new Set(
+      (template && Array.isArray(template.branches) ? template.branches : [])
+        .map((item) =>
+          item && item.policySpec && item.policySpec.policy_key
+            ? String(item.policySpec.policy_key).trim()
+            : ""
+        )
+        .filter(Boolean)
+    );
+    return policyOsService
+      .listPolicies({ merchantId, includeInactive })
+      .filter((item) => {
+        if (!item) {
+          return false;
+        }
+        const byTemplateId =
+          String(item.template_id || "").trim() === String(templateId || "").trim();
+        const byPolicyKey = templatePolicyKeys.has(String(item.policy_key || "").trim());
+        return byTemplateId || byPolicyKey;
+      })
+      .sort((left, right) =>
+        String(right.updated_at || "").localeCompare(String(left.updated_at || ""))
+      );
+  }
+
+  function resolveRevenueTemplateBranch() {
+    return resolveTemplateBranch(REVENUE_TEMPLATE_ID, "").branch;
   }
 
   function toPositiveMoney(value, fallback) {
@@ -1853,12 +1978,17 @@ function createMerchantService(db, options = {}) {
       acquisitionWelcomeSummary: buildDecisionSummary({
         merchantId,
         event: "USER_ENTER_SHOP",
-        policyKeyPrefix: "ACQ_WELCOME_FIRST_BIND_V1"
+        policyKeyPrefix: ACQUISITION_POLICY_KEY
       }),
       activationRecoverySummary: buildDecisionSummary({
         merchantId,
         event: "USER_ENTER_SHOP",
-        policyKeyPrefix: "ACT_CHECKIN_STREAK_RECOVERY_V1"
+        policyKeyPrefix: ACTIVATION_POLICY_KEY
+      }),
+      engagementSummary: buildDecisionSummary({
+        merchantId,
+        event: "USER_ENTER_SHOP",
+        policyKeyPrefix: ENGAGEMENT_POLICY_KEY
       }),
       revenueUpsellSummary: buildDecisionSummary({
         merchantId,
@@ -1981,6 +2111,259 @@ function createMerchantService(db, options = {}) {
         "推荐预算与库存上限跟随支付样本规模放大，避免策略过早熔断。",
         "频控保持 24h 内最多命中 1 次，降低补贴过发风险。"
       ]
+    };
+  }
+
+  async function listLifecycleStrategyLibrary({ merchantId }) {
+    const freshResult = await runWithFreshRead("listLifecycleStrategyLibrary", { merchantId });
+    if (freshResult !== FRESH_NOT_USED) {
+      return freshResult;
+    }
+    if (!db.merchants || !db.merchants[merchantId]) {
+      throw new Error("merchant not found");
+    }
+    const strategyBucket = ensureStrategyBucket(merchantId);
+    const items = LIFECYCLE_TEMPLATE_BASELINES.map((baseline) => {
+      const template = getTemplateById(baseline.templateId);
+      const strategyRecord =
+        strategyBucket && strategyBucket[baseline.templateId]
+          ? strategyBucket[baseline.templateId]
+          : null;
+      const policies = listPoliciesByTemplateId({
+        merchantId,
+        templateId: baseline.templateId,
+        includeInactive: true
+      });
+      const activePolicy =
+        policies.find((item) => String(item.status || "").toUpperCase() === "PUBLISHED") || null;
+      const hasPublishedPolicy = Boolean(activePolicy);
+      const defaultBranchId = template
+        ? String(template.defaultBranchId || "DEFAULT")
+        : "DEFAULT";
+      const branchId =
+        strategyRecord && strategyRecord.branchId
+          ? String(strategyRecord.branchId)
+          : defaultBranchId;
+      const statusRaw =
+        strategyRecord && strategyRecord.status
+          ? String(strategyRecord.status)
+          : hasPublishedPolicy
+            ? "ACTIVE"
+            : "DRAFT";
+      const status = String(statusRaw || "DRAFT").toUpperCase();
+      const lastPolicyId =
+        strategyRecord && strategyRecord.lastPolicyId
+          ? String(strategyRecord.lastPolicyId)
+          : activePolicy && activePolicy.policy_id
+            ? String(activePolicy.policy_id)
+            : null;
+      const updatedAt =
+        strategyRecord && strategyRecord.updatedAt
+          ? String(strategyRecord.updatedAt)
+          : activePolicy && activePolicy.updated_at
+            ? String(activePolicy.updated_at)
+            : null;
+      return {
+        stage: baseline.stage,
+        templateId: baseline.templateId,
+        templateName: template ? String(template.name || baseline.templateId) : baseline.templateId,
+        category: template ? String(template.category || baseline.stage) : baseline.stage,
+        triggerEvent: template ? String(template.triggerEvent || baseline.triggerEvent) : baseline.triggerEvent,
+        policyKey: baseline.policyKey,
+        branchId,
+        status,
+        hasPublishedPolicy,
+        lastPolicyId,
+        updatedAt,
+        templateReady: Boolean(template)
+      };
+    });
+    return {
+      merchantId,
+      catalogVersion: String(templateCatalog.catalog_version || "strategy_templates.v1"),
+      catalogUpdatedAt: String(templateCatalog.updated_at || ""),
+      items
+    };
+  }
+
+  async function enableLifecycleStrategy({
+    merchantId,
+    templateId,
+    branchId = "",
+    operatorId = "system"
+  }) {
+    const freshResult = await runWithFreshState("enableLifecycleStrategy", {
+      merchantId,
+      templateId,
+      branchId,
+      operatorId
+    });
+    if (freshResult !== FRESH_NOT_USED) {
+      return freshResult;
+    }
+    if (!db.merchants || !db.merchants[merchantId]) {
+      throw new Error("merchant not found");
+    }
+    const baseline = getLifecycleBaseline(templateId);
+    if (!baseline) {
+      throw new Error("unsupported lifecycle template");
+    }
+
+    if (String(templateId) === REVENUE_TEMPLATE_ID) {
+      const snapshot = getRevenueStrategyConfigSnapshot({ merchantId });
+      if (
+        snapshot &&
+        snapshot.hasPublishedPolicy &&
+        String(snapshot.status || "").toUpperCase() === "ACTIVE"
+      ) {
+        return {
+          merchantId,
+          stage: baseline.stage,
+          templateId: REVENUE_TEMPLATE_ID,
+          branchId: "DEFAULT",
+          policyKey: REVENUE_POLICY_KEY,
+          status: "ACTIVE",
+          hasPublishedPolicy: true,
+          policyId: snapshot.policyId,
+          alreadyEnabled: true,
+          updatedAt: snapshot.updatedAt || new Date().toISOString()
+        };
+      }
+      const enabled = await setRevenueStrategyConfig({
+        merchantId,
+        operatorId,
+        config: snapshot.config
+      });
+      return {
+        merchantId,
+        stage: baseline.stage,
+        templateId: REVENUE_TEMPLATE_ID,
+        branchId: "DEFAULT",
+        policyKey: REVENUE_POLICY_KEY,
+        status: "ACTIVE",
+        hasPublishedPolicy: Boolean(enabled && enabled.hasPublishedPolicy),
+        policyId: enabled && enabled.policyId ? String(enabled.policyId) : null,
+        alreadyEnabled: false,
+        updatedAt: enabled && enabled.updatedAt ? String(enabled.updatedAt) : new Date().toISOString()
+      };
+    }
+
+    if (!policyOsService) {
+      throw new Error("policy os service is not configured");
+    }
+    const { template, branch, branchId: resolvedBranchId, policySpec } = buildPolicySpecFromTemplate({
+      merchantId,
+      templateId,
+      branchId
+    });
+    const strategyBucket = ensureStrategyBucket(merchantId);
+    const strategyRecord =
+      strategyBucket && strategyBucket[templateId] ? strategyBucket[templateId] : null;
+    const publishedPolicies = listPoliciesByTemplateId({
+      merchantId,
+      templateId,
+      includeInactive: true
+    });
+    const activePolicy =
+      publishedPolicies.find((item) => String(item.status || "").toUpperCase() === "PUBLISHED") ||
+      null;
+    const inferredBranchId =
+      strategyRecord && strategyRecord.branchId
+        ? String(strategyRecord.branchId)
+        : String(template.defaultBranchId || "DEFAULT");
+
+    if (
+      activePolicy &&
+      inferredBranchId === resolvedBranchId &&
+      String((strategyRecord && strategyRecord.status) || "ACTIVE").toUpperCase() === "ACTIVE"
+    ) {
+      const refreshedRecord = setStrategyConfig(merchantId, templateId, {
+        branchId: resolvedBranchId,
+        status: "ACTIVE",
+        lastPolicyId: String(activePolicy.policy_id || ""),
+        triggerEvent: String(template.triggerEvent || baseline.triggerEvent || "USER_ENTER_SHOP")
+      });
+      return {
+        merchantId,
+        stage: baseline.stage,
+        templateId,
+        branchId: resolvedBranchId,
+        policyKey: String(policySpec.policy_key || baseline.policyKey || ""),
+        status: "ACTIVE",
+        hasPublishedPolicy: true,
+        policyId: String(activePolicy.policy_id || ""),
+        alreadyEnabled: true,
+        updatedAt: refreshedRecord.updatedAt
+      };
+    }
+
+    const draft = policyOsService.createDraft({
+      merchantId,
+      operatorId,
+      templateId,
+      spec: policySpec
+    });
+    policyOsService.submitDraft({
+      merchantId,
+      draftId: draft.draft_id,
+      operatorId
+    });
+    const approval = policyOsService.approveDraft({
+      merchantId,
+      draftId: draft.draft_id,
+      operatorId,
+      approvalLevel: "OWNER"
+    });
+    const published = policyOsService.publishDraft({
+      merchantId,
+      draftId: draft.draft_id,
+      operatorId,
+      approvalId: approval.approvalId
+    });
+    const publishedPolicyId =
+      published && published.policy && published.policy.policy_id
+        ? String(published.policy.policy_id)
+        : "";
+    const stalePublished = listPoliciesByTemplateId({
+      merchantId,
+      templateId,
+      includeInactive: true
+    }).filter(
+      (item) =>
+        String(item.status || "").toUpperCase() === "PUBLISHED" &&
+        String(item.policy_id || "") !== publishedPolicyId
+    );
+    const pausedPolicyIds = [];
+    for (const item of stalePublished) {
+      policyOsService.pausePolicy({
+        merchantId,
+        policyId: String(item.policy_id || ""),
+        operatorId,
+        reason: "superseded_by_lifecycle_enable"
+      });
+      pausedPolicyIds.push(String(item.policy_id || ""));
+    }
+
+    const savedConfig = setStrategyConfig(merchantId, templateId, {
+      branchId: resolvedBranchId,
+      status: "ACTIVE",
+      lastPolicyId: publishedPolicyId || null,
+      triggerEvent: String(template.triggerEvent || baseline.triggerEvent || "USER_ENTER_SHOP")
+    });
+    return {
+      merchantId,
+      stage: baseline.stage,
+      templateId,
+      branchId: resolvedBranchId,
+      policyKey: String(policySpec.policy_key || baseline.policyKey || ""),
+      status: "ACTIVE",
+      hasPublishedPolicy: Boolean(publishedPolicyId),
+      policyId: publishedPolicyId || null,
+      alreadyEnabled: false,
+      pausedPolicyIds,
+      updatedAt: savedConfig.updatedAt,
+      draftId: draft.draft_id,
+      approvalId: approval.approvalId
     };
   }
 
@@ -2839,6 +3222,8 @@ function createMerchantService(db, options = {}) {
     getRevenueStrategyConfig,
     setRevenueStrategyConfig,
     recommendRevenueStrategyConfig,
+    listLifecycleStrategyLibrary,
+    enableLifecycleStrategy,
     setKillSwitch,
     createAgentSession,
     getAgentSession,

@@ -1,6 +1,6 @@
 {
   "catalog_version": "strategy_templates.v1",
-  "updated_at": "2026-03-05T12:18:23.602Z",
+  "updated_at": "2026-03-06T08:30:00.000Z",
   "templates": [
     {
       "templateId": "acquisition_welcome_gift",
@@ -391,6 +391,131 @@
         }
       ],
       "lifecycleStage": "ACTIVATION"
+    },
+    {
+      "templateId": "engagement_daily_task_loop",
+      "category": "ENGAGEMENT",
+      "phase": "P1",
+      "name": "Daily Task Loop",
+      "description": "Keep active customers engaged with lightweight daily task rewards.",
+      "triggerEvent": "USER_ENTER_SHOP",
+      "defaultBranchId": "DEFAULT",
+      "branches": [
+        {
+          "branchId": "DEFAULT",
+          "name": "Daily Visit Reward",
+          "description": "Default profile: existing customers receive daily task fragments.",
+          "policySpec": {
+            "policy_key": "ENG_DAILY_TASK_LOOP_V1",
+            "name": "Daily Task Loop - Visit Reward",
+            "lane": "NORMAL",
+            "tie_breaker": "UTILITY_DESC",
+            "goal": {
+              "type": "ENGAGEMENT",
+              "kpi": "daily_active_rate"
+            },
+            "segment": {
+              "plugin": "condition_segment_v1",
+              "params": {
+                "logic": "AND",
+                "conditions": [
+                  {
+                    "field": "isNewUser",
+                    "op": "eq",
+                    "value": false
+                  }
+                ]
+              }
+            },
+            "triggers": [
+              {
+                "plugin": "event_trigger_v1",
+                "event": "USER_ENTER_SHOP",
+                "params": {}
+              }
+            ],
+            "program": {
+              "ttl_sec": 86400,
+              "max_instances": 1,
+              "pacing": {
+                "max_cost_per_minute": 10
+              }
+            },
+            "actions": [
+              {
+                "plugin": "fragment_grant_v1",
+                "channel": "default",
+                "params": {
+                  "type": "common",
+                  "amount": 1,
+                  "cost": 1
+                }
+              }
+            ],
+            "constraints": [
+              {
+                "plugin": "kill_switch_v1",
+                "params": {}
+              },
+              {
+                "plugin": "budget_guard_v1",
+                "params": {
+                  "cap": 90,
+                  "cost_per_hit": 1
+                }
+              },
+              {
+                "plugin": "frequency_cap_v1",
+                "params": {
+                  "daily": 1,
+                  "window_sec": 86400
+                }
+              },
+              {
+                "plugin": "anti_fraud_hook_v1",
+                "params": {
+                  "max_risk_score": 0.75
+                }
+              }
+            ],
+            "scoring": {
+              "plugin": "expected_profit_v1",
+              "params": {}
+            },
+            "overlap_policy": {
+              "mode": "SOFT_EXCLUSIVE",
+              "conflict_set": "engagement_daily_task_loop",
+              "max_winners": 1,
+              "cooldown_sec": 0
+            },
+            "governance": {
+              "approval_required": true,
+              "approval_level": "OWNER",
+              "approval_token_ttl_sec": 3600
+            },
+            "stage": "ENGAGEMENT",
+            "objective": {
+              "targetMetric": "MERCHANT_LONG_TERM_VALUE_30D",
+              "windowDays": 30
+            },
+            "decisionSignals": {
+              "upliftProbability": 0.57,
+              "churnProbability": 0.12,
+              "responseProbability": 0.52,
+              "expectedMerchantProfitLift30d": 9,
+              "expectedMerchantRevenueLift30d": 9,
+              "fatigueScore": 0.09,
+              "riskScore": 0.1,
+              "uncertainty": 0.15
+            },
+            "gameSupport": {
+              "enabled": true,
+              "touchpoint": "ACCOUNT_TASK_CENTER"
+            }
+          }
+        }
+      ],
+      "lifecycleStage": "ENGAGEMENT"
     },
     {
       "templateId": "revenue_addon_upsell_slow_item",

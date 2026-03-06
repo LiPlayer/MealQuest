@@ -9,7 +9,7 @@ Keep `createHttpRequestHandler` as a thin dispatcher and move business routes in
 - `paymentRoutes.ts`: payment quote/verify/refund/ledger endpoints.
 - `invoiceRoutes.ts`: invoice issue and list endpoints.
 - `privacyRoutes.ts`: privacy export/delete/cancel endpoints.
-- `merchantRoutes.ts`: merchant dashboard, policy lifecycle, contract, supplier, kill-switch endpoints.
+- `merchantRoutes.ts`: merchant dashboard, lifecycle strategy library, policy lifecycle, contract, supplier, kill-switch endpoints.
 - `agentOsRoutes.ts`: AI Digital Operations Officer session/task streaming endpoints.
 - `policyOsRoutes.ts`: policy draft lifecycle, decision evaluate/execute, governance query endpoints.
 - `notificationRoutes.ts`: inbox query, unread summary, and read acknowledgment endpoints.

@@ -1,11 +1,11 @@
-# MealQuest 商业化落地规范（V15.4）
+# MealQuest 商业化落地规范（V15.5）
 
 > 文档定位：MealQuest 产品与商业规范真源（唯一真源）。
 > 适用范围：`MealQuestServer`、`MealQuestMerchant`、`meal-quest-customer` 三端协同建设。
 
 ## 0. 版本与治理
 
-- 版本：V15.4（新项目基线：长期价值最大化 + 生命周期五阶段）
+- 版本：V15.5（新项目基线：长期价值最大化 + 生命周期五阶段）
 - 首发区域：中国大陆
 - 目标客群：单店与小连锁餐饮商户
 - 商业主轴：支付抽佣为主，订阅与增值服务为辅
@@ -371,8 +371,41 @@
   - 自动已读后需刷新未读统计与列表状态，保持展示一致
 
 - 降级要求
-  - 消息接口异常时，仅消息区降级并提示“提醒暂不可用，可稍后刷新”
-  - 降级不得阻断支付核销、账票查询、账户注销等主链路功能
+- 消息接口异常时，仅消息区降级并提示“提醒暂不可用，可稍后刷新”
+- 降级不得阻断支付核销、账票查询、账户注销等主链路功能
+
+#### 4.4.5 五阶段策略库基线接口（S060-SRV-01）
+
+为支撑老板端生命周期运营与顾客端连续触达，服务端在 S060 阶段新增“五阶段策略库”读写基线能力。
+
+- 接口：`GET /api/merchant/strategy-library`
+  - 角色：`OWNER / MANAGER / CLERK`
+  - 作用：查询商户五阶段策略库状态（获客/激活/活跃/扩收/留存）
+  - 输出核心字段：
+    - `catalogVersion`、`catalogUpdatedAt`
+    - `items[]`：`stage`、`templateId`、`templateName`、`triggerEvent`、`policyKey`、`branchId`、`status`、`hasPublishedPolicy`、`lastPolicyId`、`updatedAt`
+  - 缓存：支持 `ETag` 与 `If-None-Match`，命中返回 `304`
+
+- 接口：`POST /api/merchant/strategy-library/{templateId}/enable`
+  - 角色：`OWNER`
+  - 作用：启用指定生命周期模板（可选 `branchId`，默认模板默认分支）
+  - 响应核心字段：
+    - `stage`、`templateId`、`branchId`、`policyKey`
+    - `status`、`hasPublishedPolicy`、`policyId`、`alreadyEnabled`、`updatedAt`
+  - 约束：
+    - 同模板同分支重复启用应幂等返回（`alreadyEnabled=true`）
+    - 启用新版本后，旧的同模板已发布策略自动暂停
+    - `revenue_addon_upsell_slow_item` 通过既有扩收配置链路启用，保持与扩收配置口径一致
+
+当前五阶段模板基线：
+- 获客：`acquisition_welcome_gift`
+- 激活：`activation_checkin_streak_recovery`
+- 活跃：`engagement_daily_task_loop`（S060 新增）
+- 扩收：`revenue_addon_upsell_slow_item`
+- 留存：`retention_dormant_winback_14d`
+
+老板端看板补充：
+- `GET /api/merchant/dashboard` 新增 `engagementSummary` 汇总字段，用于活跃阶段命中/拦截可见化。
 
 ---
 

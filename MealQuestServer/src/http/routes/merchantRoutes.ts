@@ -1,6 +1,9 @@
 const {
   readJsonBody,
   sendJson,
+  sendNotModified,
+  buildWeakEtag,
+  isIfNoneMatchFresh,
   ensureRole,
   buildContractApplication,
   listMerchantIdsByOwnerPhone,
@@ -120,6 +123,83 @@ function createMerchantRoutesHandler({
         details: {
           templateId: result.templateId,
           strategyId: result.strategyId
+        }
+      });
+      sendJson(res, 200, result);
+      return true;
+    }
+
+    if (method === "GET" && url.pathname === "/api/merchant/strategy-library") {
+      ensureRole(auth, MERCHANT_ROLES);
+      const merchantId = url.searchParams.get("merchantId") || auth.merchantId;
+      if (!merchantId) {
+        sendJson(res, 400, { error: "merchantId is required" });
+        return true;
+      }
+      if (auth.merchantId && auth.merchantId !== merchantId) {
+        sendJson(res, 403, { error: "merchant scope denied" });
+        return true;
+      }
+      if (!(await tenantRepository.getMerchant(merchantId))) {
+        sendJson(res, 404, { error: "merchant not found" });
+        return true;
+      }
+      const { merchantService } = getServicesForMerchant(merchantId);
+      const payload = await merchantService.listLifecycleStrategyLibrary({ merchantId });
+      const etag = buildWeakEtag(payload);
+      const cacheHeaders = {
+        ETag: etag,
+        "Cache-Control": "private, max-age=0, must-revalidate"
+      };
+      if (isIfNoneMatchFresh(req, etag)) {
+        sendNotModified(res, cacheHeaders);
+        return true;
+      }
+      sendJson(res, 200, payload, cacheHeaders);
+      return true;
+    }
+
+    const lifecycleEnableMatch = url.pathname.match(
+      /^\/api\/merchant\/strategy-library\/([^/]+)\/enable$/
+    );
+    if (method === "POST" && lifecycleEnableMatch) {
+      ensureRole(auth, ["OWNER"]);
+      const body = await readJsonBody(req);
+      const merchantId = auth.merchantId || body.merchantId;
+      if (!merchantId) {
+        sendJson(res, 400, { error: "merchantId is required" });
+        return true;
+      }
+      if (auth.merchantId && auth.merchantId !== merchantId) {
+        sendJson(res, 403, { error: "merchant scope denied" });
+        return true;
+      }
+      if (!(await tenantRepository.getMerchant(merchantId))) {
+        sendJson(res, 404, { error: "merchant not found" });
+        return true;
+      }
+      const templateId = decodeURIComponent(lifecycleEnableMatch[1]);
+      const branchId =
+        body && (body.branchId || body.branch_id)
+          ? String(body.branchId || body.branch_id)
+          : "";
+      const { merchantService } = getServicesForMerchant(merchantId);
+      const result = await merchantService.enableLifecycleStrategy({
+        merchantId,
+        templateId,
+        branchId,
+        operatorId: auth && (auth.operatorId || auth.userId) ? auth.operatorId || auth.userId : "owner"
+      });
+      appendAuditLog({
+        merchantId,
+        action: "STRATEGY_LIBRARY_ENABLE",
+        status: "SUCCESS",
+        auth,
+        details: {
+          templateId: result.templateId,
+          stage: result.stage,
+          policyId: result.policyId,
+          alreadyEnabled: Boolean(result.alreadyEnabled)
         }
       });
       sendJson(res, 200, result);
