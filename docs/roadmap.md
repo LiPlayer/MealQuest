@@ -213,7 +213,7 @@
 
 | PackageID | Lane | CapabilityID | Macro Requirement | Deliverable | DependsOn | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| PKG-S080-SRV-01 | server | SRV-C02, SRV-C03, SRV-C04 | 建立顾客关键路径体验质量守卫 | 顾客体验守卫规则 | none | todo |
+| PKG-S080-SRV-01 | server | SRV-C02, SRV-C03, SRV-C04 | 建立顾客关键路径体验质量守卫 | 顾客体验守卫规则 | none | done |
 | PKG-S080-SRV-02 | server | SRV-C12 | 建立顾客问题反馈与处理流转能力 | 反馈治理规则 | PKG-S080-SRV-01 | todo |
 | PKG-S080-CUS-01 | customer | CUS-C02, CUS-C07, CUS-C09, CUS-C11 | 完成小程序关键页面体验、隐私与反馈能力完善 | 顾客端体验完整性清单 | PKG-S080-SRV-02 | todo |
 | PKG-S080-MER-01 | merchant | MER-C03, MER-C12 | 建立老板端顾客体验健康度与反馈汇总可见能力 | 顾客体验与反馈可见规则 | PKG-S080-CUS-01 | todo |

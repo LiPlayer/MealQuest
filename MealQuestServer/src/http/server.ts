@@ -21,6 +21,7 @@ const { createAgentRuntimeService } = require("../services/agentRuntimeService")
 const { createPolicyOsService } = require("../policyos/policyOsService");
 const { createPolicyGovernanceService } = require("../services/policyGovernanceService");
 const { createNotificationService } = require("../services/notificationService");
+const { createCustomerExperienceGuardService } = require("../services/customerExperienceGuardService");
 const {
   createSocialAuthService
 } = require("../services/socialAuthService");
@@ -144,7 +145,8 @@ function createAppServer({
         supplierService: createSupplierService(scopedDb),
         policyOsService,
         policyGovernanceService: createPolicyGovernanceService(scopedDb, { policyOsService }),
-        notificationService
+        notificationService,
+        customerExperienceGuardService: createCustomerExperienceGuardService(scopedDb),
       };
       serviceCache.set(scopedDb, services);
     }

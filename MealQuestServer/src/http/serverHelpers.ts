@@ -31,6 +31,7 @@ const TENANT_LIMIT_OPERATIONS = [
   "POLICY_EXECUTE",
   "NOTIFICATION_QUERY",
   "NOTIFICATION_ACK",
+  "CUSTOMER_EXPERIENCE_GUARD_QUERY",
   "WS_CONNECT",
   "WS_STATUS_QUERY"
 ];
@@ -213,6 +214,9 @@ function resolveAuditAction(method, pathname) {
       pathname === "/api/notifications/unread-summary")
   ) {
     return "NOTIFICATION_QUERY";
+  }
+  if (method === "GET" && pathname === "/api/state/experience-guard") {
+    return "CUSTOMER_EXPERIENCE_GUARD_QUERY";
   }
   if (method === "POST" && pathname === "/api/notifications/read") {
     return "NOTIFICATION_ACK";
