@@ -465,9 +465,11 @@ function createNotificationService(db, { wsHub = null, now = () => Date.now() } 
   }
 
   return {
+    createNotification,
     listInbox,
     getUnreadSummary,
     markRead,
+    listMerchantStaffRecipientIds,
     emitApprovalTodo,
     emitExecutionResult
   };

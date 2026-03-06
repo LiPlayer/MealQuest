@@ -491,6 +491,10 @@ function createEmptyState() {
         byId: {},
         sequenceByMerchant: {},
       },
+      feedback: {
+        ticketsById: {},
+        sequenceByMerchant: {},
+      },
       compliance: {
         behaviorLogs: [],
         deletionQueue: [],

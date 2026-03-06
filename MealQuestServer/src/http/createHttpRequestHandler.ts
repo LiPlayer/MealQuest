@@ -15,6 +15,7 @@ const { createAllianceRoutesHandler } = require("./routes/allianceRoutes");
 const { createTenantRoutesHandler } = require("./routes/tenantRoutes");
 const { createPolicyOsRoutesHandler } = require("./routes/policyOsRoutes");
 const { createNotificationRoutesHandler } = require("./routes/notificationRoutes");
+const { createFeedbackRoutesHandler } = require("./routes/feedbackRoutes");
 
 function createHttpRequestHandler(deps) {
   const {
@@ -101,6 +102,12 @@ function createHttpRequestHandler(deps) {
     }),
     createNotificationRoutesHandler({
       tenantPolicyManager,
+      getServicesForMerchant,
+      appendAuditLog,
+    }),
+    createFeedbackRoutesHandler({
+      tenantPolicyManager,
+      tenantRepository,
       getServicesForMerchant,
       appendAuditLog,
     }),

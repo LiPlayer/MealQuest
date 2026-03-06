@@ -30,6 +30,9 @@ function ensurePolicyOsState(db) {
   db.policyOs.notifications.sequenceByMerchant = ensureObject(
     db.policyOs.notifications.sequenceByMerchant
   );
+  db.policyOs.feedback = ensureObject(db.policyOs.feedback);
+  db.policyOs.feedback.ticketsById = ensureObject(db.policyOs.feedback.ticketsById);
+  db.policyOs.feedback.sequenceByMerchant = ensureObject(db.policyOs.feedback.sequenceByMerchant);
   db.policyOs.compliance = ensureObject(db.policyOs.compliance);
   if (!Array.isArray(db.policyOs.compliance.behaviorLogs)) {
     db.policyOs.compliance.behaviorLogs = [];

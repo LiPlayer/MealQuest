@@ -22,6 +22,7 @@ const { createPolicyOsService } = require("../policyos/policyOsService");
 const { createPolicyGovernanceService } = require("../services/policyGovernanceService");
 const { createNotificationService } = require("../services/notificationService");
 const { createCustomerExperienceGuardService } = require("../services/customerExperienceGuardService");
+const { createFeedbackService } = require("../services/feedbackService");
 const {
   createSocialAuthService
 } = require("../services/socialAuthService");
@@ -147,6 +148,7 @@ function createAppServer({
         policyGovernanceService: createPolicyGovernanceService(scopedDb, { policyOsService }),
         notificationService,
         customerExperienceGuardService: createCustomerExperienceGuardService(scopedDb),
+        feedbackService: createFeedbackService(scopedDb),
       };
       serviceCache.set(scopedDb, services);
     }

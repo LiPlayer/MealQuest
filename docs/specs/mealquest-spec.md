@@ -569,6 +569,46 @@
   - 守卫接口支持 `ETag` 与 `If-None-Match`，命中返回 `304`。
   - 接口受租户策略限制能力约束，操作标识：`CUSTOMER_EXPERIENCE_GUARD_QUERY`。
 
+#### 4.4.12 顾客问题反馈与处理流转（S080-SRV-02）
+
+服务端在 S080 阶段需建立“顾客反馈工单 + 老板处理流转 + 顾客进展可见”能力，作为顾客端反馈入口与老板端反馈汇总的统一后端基线。
+
+- 反馈接口（当前生效）
+  - 顾客提单：`POST /api/feedback/tickets`
+  - 工单列表：`GET /api/feedback/tickets`
+  - 工单详情：`GET /api/feedback/tickets/{ticketId}`
+  - 状态流转：`POST /api/feedback/tickets/{ticketId}/transition`
+  - 汇总看板：`GET /api/feedback/summary`
+
+- 状态机与流转规则（当前生效）
+  - 工单状态：`OPEN`、`IN_PROGRESS`、`RESOLVED`、`CLOSED`。
+  - 合法流转：
+    - `OPEN -> IN_PROGRESS`
+    - `IN_PROGRESS -> RESOLVED`
+    - `RESOLVED -> IN_PROGRESS | CLOSED`
+    - `CLOSED -> IN_PROGRESS`（重开）
+  - 非法状态跳转返回冲突错误（`409`）。
+
+- 权限与作用域（当前生效）
+  - `CUSTOMER`：可提交反馈、查询本人反馈列表与详情。
+  - `OWNER / MANAGER`：可查询商户反馈列表/详情、处理状态流转、查看汇总。
+  - `CLERK`：不可访问反馈治理接口。
+  - 跨商户访问返回 `403 merchant scope denied`。
+
+- 通知联动（当前生效）
+  - 顾客提单后，向商户 `OWNER / MANAGER` 发送反馈提醒通知。
+  - 老板端更新工单状态后，向对应顾客发送进展通知。
+  - 反馈通知分类使用 `FEEDBACK_TICKET`，支持后续三端统一筛选。
+
+- 审计与租户治理（当前生效）
+  - 审计动作：`FEEDBACK_CREATE`、`FEEDBACK_QUERY`、`FEEDBACK_TRANSITION`、`FEEDBACK_SUMMARY_QUERY`。
+  - 租户策略操作标识：
+    - `FEEDBACK_CREATE`
+    - `FEEDBACK_QUERY`
+    - `FEEDBACK_TRANSITION`
+    - `FEEDBACK_SUMMARY_QUERY`
+  - 反馈查询类接口支持 `ETag` 与 `If-None-Match` 缓存协商。
+
 ---
 
 ## 5. 补贴效率与长期最优

@@ -32,6 +32,10 @@ const TENANT_LIMIT_OPERATIONS = [
   "NOTIFICATION_QUERY",
   "NOTIFICATION_ACK",
   "CUSTOMER_EXPERIENCE_GUARD_QUERY",
+  "FEEDBACK_CREATE",
+  "FEEDBACK_QUERY",
+  "FEEDBACK_TRANSITION",
+  "FEEDBACK_SUMMARY_QUERY",
   "WS_CONNECT",
   "WS_STATUS_QUERY"
 ];
@@ -217,6 +221,21 @@ function resolveAuditAction(method, pathname) {
   }
   if (method === "GET" && pathname === "/api/state/experience-guard") {
     return "CUSTOMER_EXPERIENCE_GUARD_QUERY";
+  }
+  if (method === "POST" && pathname === "/api/feedback/tickets") {
+    return "FEEDBACK_CREATE";
+  }
+  if (method === "GET" && pathname === "/api/feedback/tickets") {
+    return "FEEDBACK_QUERY";
+  }
+  if (method === "GET" && /^\/api\/feedback\/tickets\/[^/]+$/.test(pathname)) {
+    return "FEEDBACK_QUERY";
+  }
+  if (method === "POST" && /^\/api\/feedback\/tickets\/[^/]+\/transition$/.test(pathname)) {
+    return "FEEDBACK_TRANSITION";
+  }
+  if (method === "GET" && pathname === "/api/feedback/summary") {
+    return "FEEDBACK_SUMMARY_QUERY";
   }
   if (method === "POST" && pathname === "/api/notifications/read") {
     return "NOTIFICATION_ACK";
@@ -412,6 +431,9 @@ function buildMerchantSnapshotSummary(db, merchantId) {
   const decisionCount = Object.values(policyOs.decisions || {}).filter(
     (item) => item && item.merchant_id === merchantId
   ).length;
+  const feedbackTicketCount = Object.values(
+    (policyOs.feedback && policyOs.feedback.ticketsById) || {}
+  ).filter((item) => item && item.merchantId === merchantId).length;
 
   const walletChecksum = JSON.stringify(
     Object.entries(users)
@@ -437,6 +459,7 @@ function buildMerchantSnapshotSummary(db, merchantId) {
     policyDraftCount,
     policyCount,
     decisionCount,
+    feedbackTicketCount,
     walletChecksum
   };
 }
@@ -1093,6 +1116,10 @@ function copyMerchantSlice({ sourceDb, targetDb, merchantId }) {
   targetDb.policyOs.notifications.byId = targetDb.policyOs.notifications.byId || {};
   targetDb.policyOs.notifications.sequenceByMerchant =
     targetDb.policyOs.notifications.sequenceByMerchant || {};
+  targetDb.policyOs.feedback = targetDb.policyOs.feedback || {};
+  targetDb.policyOs.feedback.ticketsById = targetDb.policyOs.feedback.ticketsById || {};
+  targetDb.policyOs.feedback.sequenceByMerchant =
+    targetDb.policyOs.feedback.sequenceByMerchant || {};
   targetDb.policyOs.compliance = targetDb.policyOs.compliance || {};
   targetDb.policyOs.compliance.behaviorLogs = targetDb.policyOs.compliance.behaviorLogs || [];
   targetDb.policyOs.compliance.deletionQueue = targetDb.policyOs.compliance.deletionQueue || [];
@@ -1134,6 +1161,20 @@ function copyMerchantSlice({ sourceDb, targetDb, merchantId }) {
   if (Object.prototype.hasOwnProperty.call(sourceNotificationSeq, merchantId)) {
     targetDb.policyOs.notifications.sequenceByMerchant[merchantId] = Number(
       sourceNotificationSeq[merchantId] || 0
+    );
+  }
+  for (const [ticketId, ticket] of Object.entries(
+    (sourcePolicyOs.feedback && sourcePolicyOs.feedback.ticketsById) || {}
+  )) {
+    if (ticket && ticket.merchantId === merchantId) {
+      targetDb.policyOs.feedback.ticketsById[ticketId] = jsonClone(ticket);
+    }
+  }
+  const sourceFeedbackSeq =
+    (sourcePolicyOs.feedback && sourcePolicyOs.feedback.sequenceByMerchant) || {};
+  if (Object.prototype.hasOwnProperty.call(sourceFeedbackSeq, merchantId)) {
+    targetDb.policyOs.feedback.sequenceByMerchant[merchantId] = Number(
+      sourceFeedbackSeq[merchantId] || 0
     );
   }
   targetDb.policyOs.publishedByMerchant[merchantId] = jsonClone(

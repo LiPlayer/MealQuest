@@ -47,6 +47,10 @@ function createDefaultState() {
         byId: {},
         sequenceByMerchant: {}
       },
+      feedback: {
+        ticketsById: {},
+        sequenceByMerchant: {}
+      },
       compliance: {
         behaviorLogs: [],
         deletionQueue: []
