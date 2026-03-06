@@ -5,6 +5,7 @@ import Taro from '@tarojs/taro';
 import { DataService } from '@/services/DataService';
 import {
   CustomerNotificationItem,
+  CustomerNotificationPreference,
   CustomerNotificationSummary,
   CustomerStabilitySnapshot,
   FeedbackTicket,
@@ -24,6 +25,15 @@ import './index.scss';
 const DEFAULT_STORE_ID =
   (typeof process !== 'undefined' && process.env && process.env.TARO_APP_DEFAULT_STORE_ID) || '';
 const LIFECYCLE_STAGE_ORDER = ['获客', '激活', '活跃', '扩收', '留存'];
+const EXECUTION_RESULT_STANDARD_CAP = {
+  windowSec: 24 * 60 * 60,
+  maxDeliveries: 3,
+};
+const EXECUTION_RESULT_LOW_DISTURBANCE_CAP = {
+  windowSec: 24 * 60 * 60,
+  maxDeliveries: 1,
+};
+type NotificationFrequencyPreset = 'STANDARD' | 'LOW_DISTURBANCE';
 const FEEDBACK_CATEGORY_OPTIONS: { value: FeedbackTicketCategory; label: string }[] = [
   { value: 'PAYMENT', label: '支付问题' },
   { value: 'BENEFIT', label: '权益问题' },
@@ -54,6 +64,23 @@ function resolveNotificationCategoryLabel(category: string): string {
     return '系统提醒';
   }
   return normalized || '提醒';
+}
+
+function resolveNotificationFrequencyPresetLabel(preset: NotificationFrequencyPreset): string {
+  if (preset === 'LOW_DISTURBANCE') {
+    return '低打扰（24小时最多1条）';
+  }
+  return '标准（24小时最多3条）';
+}
+
+function resolveNotificationFrequencyPresetByCap(
+  preference: CustomerNotificationPreference | null,
+): NotificationFrequencyPreset {
+  const maxDeliveries = Number(preference?.frequencyCaps?.EXECUTION_RESULT?.maxDeliveries || 0);
+  if (maxDeliveries > 0 && maxDeliveries <= 1) {
+    return 'LOW_DISTURBANCE';
+  }
+  return 'STANDARD';
 }
 
 function resolveFeedbackCategoryLabel(category: FeedbackTicket['category']): string {
@@ -129,6 +156,11 @@ export default function AccountPage() {
   const [notificationSummary, setNotificationSummary] = useState<CustomerNotificationSummary>(
     EMPTY_NOTIFICATION_SUMMARY,
   );
+  const [notificationPreference, setNotificationPreference] =
+    useState<CustomerNotificationPreference | null>(null);
+  const [executionResultSubscribed, setExecutionResultSubscribed] = useState(true);
+  const [notificationFrequencyPreset, setNotificationFrequencyPreset] =
+    useState<NotificationFrequencyPreset>('STANDARD');
   const [customerStability, setCustomerStability] = useState<CustomerStabilitySnapshot | null>(null);
   const [feedbackTickets, setFeedbackTickets] = useState<FeedbackTicket[]>([]);
   const [feedbackCategory, setFeedbackCategory] = useState<FeedbackTicketCategory>('OTHER');
@@ -143,8 +175,12 @@ export default function AccountPage() {
 
   const [loading, setLoading] = useState(true);
   const [notificationLoading, setNotificationLoading] = useState(false);
+  const [notificationPreferenceLoading, setNotificationPreferenceLoading] = useState(false);
+  const [notificationPreferenceSaving, setNotificationPreferenceSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [notificationErrorMessage, setNotificationErrorMessage] = useState('');
+  const [notificationPreferenceErrorMessage, setNotificationPreferenceErrorMessage] = useState('');
+  const [notificationPreferenceNoticeMessage, setNotificationPreferenceNoticeMessage] = useState('');
   const [stabilityErrorMessage, setStabilityErrorMessage] = useState('');
   const [privacyMessage, setPrivacyMessage] = useState('');
   const [cancelArmed, setCancelArmed] = useState(false);
@@ -272,6 +308,26 @@ export default function AccountPage() {
     [resolveUserId, storeId],
   );
 
+  const loadNotificationPreferences = useCallback(async () => {
+    if (!storeId) {
+      return;
+    }
+    setNotificationPreferenceLoading(true);
+    setNotificationPreferenceErrorMessage('');
+    try {
+      const result = await DataService.getNotificationPreferences(storeId, resolveUserId());
+      setNotificationPreference(result);
+      setExecutionResultSubscribed(result.categories.EXECUTION_RESULT !== false);
+      setNotificationFrequencyPreset(resolveNotificationFrequencyPresetByCap(result));
+    } catch (error) {
+      console.error('[Account] load notification preferences failed', error);
+      setNotificationPreference(null);
+      setNotificationPreferenceErrorMessage('提醒偏好暂不可用，可稍后刷新');
+    } finally {
+      setNotificationPreferenceLoading(false);
+    }
+  }, [resolveUserId, storeId]);
+
   const loadFeedbackTickets = useCallback(async () => {
     if (!storeId) {
       return;
@@ -332,6 +388,7 @@ export default function AccountPage() {
       setCustomerUserId(resolveUserId());
       await Promise.all([
         loadNotifications({ autoMarkRead: true }),
+        loadNotificationPreferences(),
         loadFeedbackTickets(),
         loadCustomerStability(),
       ]);
@@ -342,11 +399,58 @@ export default function AccountPage() {
     } finally {
       setLoading(false);
     }
-  }, [loadCustomerStability, loadFeedbackTickets, loadNotifications, resolveUserId, storeId]);
+  }, [
+    loadCustomerStability,
+    loadFeedbackTickets,
+    loadNotificationPreferences,
+    loadNotifications,
+    resolveUserId,
+    storeId,
+  ]);
 
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  const handleSaveNotificationPreferences = useCallback(async () => {
+    if (!storeId || notificationPreferenceSaving) {
+      return;
+    }
+    setNotificationPreferenceSaving(true);
+    setNotificationPreferenceErrorMessage('');
+    setNotificationPreferenceNoticeMessage('');
+    try {
+      const frequencyCap =
+        notificationFrequencyPreset === 'LOW_DISTURBANCE'
+          ? EXECUTION_RESULT_LOW_DISTURBANCE_CAP
+          : EXECUTION_RESULT_STANDARD_CAP;
+      const result = await DataService.setNotificationPreferences(storeId, resolveUserId(), {
+        categories: {
+          EXECUTION_RESULT: executionResultSubscribed,
+        },
+        frequencyCaps: {
+          EXECUTION_RESULT: frequencyCap,
+        },
+      });
+      setNotificationPreference(result);
+      setExecutionResultSubscribed(result.categories.EXECUTION_RESULT !== false);
+      setNotificationFrequencyPreset(resolveNotificationFrequencyPresetByCap(result));
+      setNotificationPreferenceNoticeMessage('提醒偏好已更新');
+      await loadNotifications();
+    } catch (error) {
+      console.error('[Account] set notification preferences failed', error);
+      setNotificationPreferenceErrorMessage('提醒偏好更新失败，请稍后重试');
+    } finally {
+      setNotificationPreferenceSaving(false);
+    }
+  }, [
+    executionResultSubscribed,
+    loadNotifications,
+    notificationFrequencyPreset,
+    notificationPreferenceSaving,
+    resolveUserId,
+    storeId,
+  ]);
 
   const handleSubmitFeedback = useCallback(async () => {
     if (!storeId || feedbackSubmitting) {
@@ -609,10 +713,91 @@ export default function AccountPage() {
         >
           刷新提醒
         </View>
+        <View className='account-notification-preference'>
+          <Text id='account-notification-preference-title' className='account-card__subtitle'>
+            提醒订阅与降打扰
+          </Text>
+          <Text className='account-touchpoint-item__desc'>
+            仅管理“执行结果”提醒，可按偏好减少消息打扰。
+          </Text>
+          <View className='account-notification-preference-actions'>
+            <View
+              id='account-notification-toggle-button'
+              className={`account-notification-pref-chip ${
+                executionResultSubscribed ? 'account-notification-pref-chip--active' : ''
+              }`}
+              onClick={() => {
+                setExecutionResultSubscribed((prev) => !prev);
+              }}
+            >
+              执行结果提醒：{executionResultSubscribed ? '已开启' : '已关闭'}
+            </View>
+            <View
+              id='account-notification-frequency-standard'
+              className={`account-notification-pref-chip ${
+                notificationFrequencyPreset === 'STANDARD' ? 'account-notification-pref-chip--active' : ''
+              }`}
+              onClick={() => {
+                setNotificationFrequencyPreset('STANDARD');
+              }}
+            >
+              标准（24小时最多3条）
+            </View>
+            <View
+              id='account-notification-frequency-low'
+              className={`account-notification-pref-chip ${
+                notificationFrequencyPreset === 'LOW_DISTURBANCE' ? 'account-notification-pref-chip--active' : ''
+              }`}
+              onClick={() => {
+                setNotificationFrequencyPreset('LOW_DISTURBANCE');
+              }}
+            >
+              低打扰（24小时最多1条）
+            </View>
+          </View>
+          <Text className='account-touchpoint-item__reason'>
+            当前档位：{resolveNotificationFrequencyPresetLabel(notificationFrequencyPreset)}
+          </Text>
+          <View
+            id='account-notification-preference-refresh-button'
+            className='account-btn account-btn--ghost account-btn--notification'
+            onClick={() => {
+              void loadNotificationPreferences();
+            }}
+          >
+            刷新偏好
+          </View>
+          <View
+            id='account-notification-preference-save-button'
+            className='account-btn account-btn--ghost account-btn--notification'
+            onClick={() => {
+              void handleSaveNotificationPreferences();
+            }}
+          >
+            {notificationPreferenceSaving ? '保存中...' : '保存偏好'}
+          </View>
+          {notificationPreferenceLoading ? <Text className='account-loading'>偏好加载中...</Text> : null}
+          {notificationPreferenceErrorMessage ? (
+            <Text className='account-error'>{notificationPreferenceErrorMessage}</Text>
+          ) : null}
+          {notificationPreferenceNoticeMessage ? (
+            <Text className='account-notification-preference-notice'>{notificationPreferenceNoticeMessage}</Text>
+          ) : null}
+          {notificationPreference ? (
+            <Text className='account-touchpoint-item__reason'>
+              最近更新：
+              {notificationPreference.updatedAt
+                ? new Date(notificationPreference.updatedAt).toLocaleString()
+                : '暂无'}
+            </Text>
+          ) : null}
+        </View>
         {notificationLoading ? <Text className='account-loading'>提醒刷新中...</Text> : null}
         {notificationErrorMessage ? <Text className='account-error'>{notificationErrorMessage}</Text> : null}
         {!notificationLoading && notifications.length === 0 ? (
-          <Text className='account-empty'>暂无提醒</Text>
+          <Text className='account-empty'>
+            {!executionResultSubscribed ? '你已关闭执行结果提醒，可在上方重新开启。' : '暂无提醒'}
+          </Text>
         ) : null}
         {notifications.slice(0, 6).map((item) => (
           <View className='account-touchpoint-item' key={item.notificationId}>

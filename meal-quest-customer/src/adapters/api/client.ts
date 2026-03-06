@@ -3,7 +3,7 @@ import Taro from '@tarojs/taro';
 import { getServerBaseUrl } from '@/services/apiDataService/env';
 
 export type ApiRequestOptions = {
-  method: 'GET' | 'POST';
+  method: 'GET' | 'POST' | 'PUT';
   path: string;
   data?: Record<string, unknown>;
   token?: string;

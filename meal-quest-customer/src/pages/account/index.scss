@@ -181,6 +181,43 @@
   line-height: 1.5;
 }
 
+.account-notification-preference {
+  margin: 10rpx 0 14rpx;
+  padding: 12rpx;
+  border-radius: 16rpx;
+  background: #f7faff;
+  border: 1rpx solid #d5e0f1;
+}
+
+.account-notification-preference-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx;
+  margin-top: 10rpx;
+}
+
+.account-notification-pref-chip {
+  padding: 8rpx 14rpx;
+  border-radius: 999rpx;
+  border: 1rpx solid #cad9f3;
+  background: #edf3ff;
+  color: #2a528f;
+  font-size: 20rpx;
+}
+
+.account-notification-pref-chip--active {
+  background: #2a528f;
+  border-color: #2a528f;
+  color: #ffffff;
+}
+
+.account-notification-preference-notice {
+  display: block;
+  margin: 6rpx 2rpx;
+  font-size: 22rpx;
+  color: #1b6f3a;
+}
+
 .account-touchpoint-signals {
   margin-top: 14rpx;
   display: flex;

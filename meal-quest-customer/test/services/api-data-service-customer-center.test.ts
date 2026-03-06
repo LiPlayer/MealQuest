@@ -226,6 +226,97 @@ describe('ApiDataService customer center', () => {
         );
     });
 
+    it('loads notification preferences', async () => {
+        requestMock.mockResolvedValueOnce({
+            statusCode: 200,
+            data: {
+                version: 'S100-SRV-01.v1',
+                merchantId: 'm_store_001',
+                recipientType: 'CUSTOMER_USER',
+                recipientId: 'u_fixture_001',
+                categories: {
+                    APPROVAL_TODO: true,
+                    EXECUTION_RESULT: true,
+                    FEEDBACK_TICKET: true,
+                    GENERAL: true
+                },
+                frequencyCaps: {
+                    EXECUTION_RESULT: {
+                        windowSec: 86400,
+                        maxDeliveries: 3
+                    }
+                },
+                updatedAt: '2026-03-06T10:00:00.000Z',
+                updatedBy: 'u_fixture_001'
+            }
+        });
+
+        const { ApiDataService } = require('@/services/ApiDataService');
+        const result = await ApiDataService.getNotificationPreferences('m_store_001', 'u_fixture_001');
+
+        expect(result.categories.EXECUTION_RESULT).toBe(true);
+        expect(result.frequencyCaps.EXECUTION_RESULT.maxDeliveries).toBe(3);
+        expect(requestMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                method: 'GET',
+                url: expect.stringContaining('/api/notifications/preferences?merchantId=m_store_001')
+            })
+        );
+    });
+
+    it('updates notification preferences', async () => {
+        requestMock.mockResolvedValueOnce({
+            statusCode: 200,
+            data: {
+                version: 'S100-SRV-01.v1',
+                merchantId: 'm_store_001',
+                recipientType: 'CUSTOMER_USER',
+                recipientId: 'u_fixture_001',
+                categories: {
+                    APPROVAL_TODO: true,
+                    EXECUTION_RESULT: false,
+                    FEEDBACK_TICKET: true,
+                    GENERAL: true
+                },
+                frequencyCaps: {
+                    EXECUTION_RESULT: {
+                        windowSec: 86400,
+                        maxDeliveries: 1
+                    }
+                },
+                updatedAt: '2026-03-06T11:00:00.000Z',
+                updatedBy: 'u_fixture_001'
+            }
+        });
+
+        const { ApiDataService } = require('@/services/ApiDataService');
+        const result = await ApiDataService.setNotificationPreferences('m_store_001', 'u_fixture_001', {
+            categories: {
+                EXECUTION_RESULT: false
+            },
+            frequencyCaps: {
+                EXECUTION_RESULT: {
+                    windowSec: 86400,
+                    maxDeliveries: 1
+                }
+            }
+        });
+
+        expect(result.categories.EXECUTION_RESULT).toBe(false);
+        expect(requestMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                method: 'PUT',
+                url: 'http://127.0.0.1:3030/api/notifications/preferences',
+                data: expect.objectContaining({
+                    merchantId: 'm_store_001',
+                    categories: {
+                        EXECUTION_RESULT: false
+                    }
+                })
+            })
+        );
+    });
+
     it('loads customer stability snapshot', async () => {
         requestMock.mockResolvedValueOnce({
             statusCode: 200,

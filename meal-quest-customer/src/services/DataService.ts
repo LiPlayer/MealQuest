@@ -7,6 +7,9 @@ import {
     FeedbackTicketCategory,
     FeedbackTicketListResult,
     FeedbackTicketStatus,
+    CustomerNotificationPreference,
+    CustomerNotificationPreferenceCategory,
+    CustomerNotificationPreferenceFrequencyCap,
     CustomerNotificationItem,
     CustomerNotificationSummary,
     CustomerStabilitySnapshot,
@@ -120,6 +123,34 @@ export const DataService = {
         return runRemote(
             'getNotificationUnreadSummary',
             () => ApiDataService.getNotificationUnreadSummary(storeId, userId),
+            { clearSessionOnError: false },
+        );
+    },
+
+    getNotificationPreferences: async (
+        storeId: string,
+        userId = '',
+    ): Promise<CustomerNotificationPreference> => {
+        return runRemote(
+            'getNotificationPreferences',
+            () => ApiDataService.getNotificationPreferences(storeId, userId),
+            { clearSessionOnError: false },
+        );
+    },
+
+    setNotificationPreferences: async (
+        storeId: string,
+        userId = '',
+        params: {
+            categories?: Partial<Record<CustomerNotificationPreferenceCategory, boolean>>;
+            frequencyCaps?: Partial<
+                Record<CustomerNotificationPreferenceCategory, CustomerNotificationPreferenceFrequencyCap>
+            >;
+        } = {},
+    ): Promise<CustomerNotificationPreference> => {
+        return runRemote(
+            'setNotificationPreferences',
+            () => ApiDataService.setNotificationPreferences(storeId, userId, params),
             { clearSessionOnError: false },
         );
     },

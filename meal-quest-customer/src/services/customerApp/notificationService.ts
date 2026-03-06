@@ -1,5 +1,11 @@
 import { apiRequestJson } from '@/adapters/api/client';
-import { CustomerNotificationItem, CustomerNotificationSummary } from '@/services/dataTypes';
+import {
+  CustomerNotificationItem,
+  CustomerNotificationPreference,
+  CustomerNotificationPreferenceCategory,
+  CustomerNotificationPreferenceFrequencyCap,
+  CustomerNotificationSummary,
+} from '@/services/dataTypes';
 
 import { ensureCustomerSession } from './sessionService';
 
@@ -16,6 +22,24 @@ type SummaryResponse = {
   byCategory?: unknown[];
 };
 
+type PreferenceResponse = {
+  version?: unknown;
+  merchantId?: unknown;
+  recipientType?: unknown;
+  recipientId?: unknown;
+  categories?: unknown;
+  frequencyCaps?: unknown;
+  updatedAt?: unknown;
+  updatedBy?: unknown;
+};
+
+const PREFERENCE_CATEGORIES: CustomerNotificationPreferenceCategory[] = [
+  'APPROVAL_TODO',
+  'EXECUTION_RESULT',
+  'FEEDBACK_TICKET',
+  'GENERAL',
+];
+
 function toString(value: unknown, fallback = ''): string {
   const text = String(value ?? '').trim();
   return text || fallback;
@@ -24,6 +48,20 @@ function toString(value: unknown, fallback = ''): string {
 function toNumber(value: unknown, fallback = 0): number {
   const num = Number(value);
   return Number.isFinite(num) ? num : fallback;
+}
+
+function toBoolean(value: unknown, fallback = false): boolean {
+  if (value === true || value === false) {
+    return value;
+  }
+  const normalized = toString(value).toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) {
+    return true;
+  }
+  if (['0', 'false', 'no', 'off'].includes(normalized)) {
+    return false;
+  }
+  return fallback;
 }
 
 function toRelated(raw: unknown): CustomerNotificationItem['related'] {
@@ -78,6 +116,61 @@ function toSummary(response: SummaryResponse): CustomerNotificationSummary {
         unreadCount: toNumber(row.unreadCount, 0),
       };
     }),
+  };
+}
+
+function toPreferenceCategories(raw: unknown): CustomerNotificationPreference['categories'] {
+  const row = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const next: Record<CustomerNotificationPreferenceCategory, boolean> = {
+    APPROVAL_TODO: true,
+    EXECUTION_RESULT: true,
+    FEEDBACK_TICKET: true,
+    GENERAL: true,
+  };
+  for (const category of PREFERENCE_CATEGORIES) {
+    if (Object.prototype.hasOwnProperty.call(row, category)) {
+      next[category] = toBoolean(row[category], next[category]);
+    }
+  }
+  return next;
+}
+
+function toFrequencyCaps(
+  raw: unknown,
+): CustomerNotificationPreference['frequencyCaps'] {
+  const row = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const next: CustomerNotificationPreference['frequencyCaps'] = {};
+  for (const category of PREFERENCE_CATEGORIES) {
+    const capRaw = row[category];
+    if (!capRaw || typeof capRaw !== 'object') {
+      continue;
+    }
+    const capRow = capRaw as Record<string, unknown>;
+    const windowSec = Math.max(0, Math.floor(toNumber(capRow.windowSec, 0)));
+    const maxDeliveries = Math.max(0, Math.floor(toNumber(capRow.maxDeliveries, 0)));
+    if (windowSec > 0 && maxDeliveries > 0) {
+      next[category] = {
+        windowSec,
+        maxDeliveries,
+      };
+    }
+  }
+  return next;
+}
+
+function toPreference(response: PreferenceResponse): CustomerNotificationPreference {
+  return {
+    version: toString(response.version, 'S100-SRV-01.v1'),
+    merchantId: toString(response.merchantId),
+    recipientType:
+      toString(response.recipientType, 'CUSTOMER_USER').toUpperCase() === 'MERCHANT_STAFF'
+        ? 'MERCHANT_STAFF'
+        : 'CUSTOMER_USER',
+    recipientId: toString(response.recipientId),
+    categories: toPreferenceCategories(response.categories),
+    frequencyCaps: toFrequencyCaps(response.frequencyCaps),
+    updatedAt: toString(response.updatedAt) || null,
+    updatedBy: toString(response.updatedBy) || null,
   };
 }
 
@@ -165,4 +258,50 @@ export async function markNotificationsRead(params: {
   return {
     updatedCount: toNumber(response.updatedCount, 0),
   };
+}
+
+export async function getNotificationPreferences(params: {
+  merchantId: string;
+}): Promise<CustomerNotificationPreference> {
+  const merchantId = toString(params.merchantId);
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  const session = await ensureCustomerSession(merchantId);
+  const response = await apiRequestJson<PreferenceResponse>({
+    method: 'GET',
+    path: `/api/notifications/preferences?merchantId=${encodeURIComponent(merchantId)}`,
+    token: session.token,
+  });
+  return toPreference(response);
+}
+
+export async function setNotificationPreferences(params: {
+  merchantId: string;
+  categories?: Partial<Record<CustomerNotificationPreferenceCategory, boolean>>;
+  frequencyCaps?: Partial<
+    Record<CustomerNotificationPreferenceCategory, CustomerNotificationPreferenceFrequencyCap>
+  >;
+}): Promise<CustomerNotificationPreference> {
+  const merchantId = toString(params.merchantId);
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  const hasCategoriesPatch = Boolean(params.categories && typeof params.categories === 'object');
+  const hasFrequencyPatch = Boolean(params.frequencyCaps && typeof params.frequencyCaps === 'object');
+  if (!hasCategoriesPatch && !hasFrequencyPatch) {
+    throw new Error('notification preference patch is empty');
+  }
+  const session = await ensureCustomerSession(merchantId);
+  const response = await apiRequestJson<PreferenceResponse>({
+    method: 'PUT',
+    path: '/api/notifications/preferences',
+    token: session.token,
+    data: {
+      merchantId,
+      ...(hasCategoriesPatch ? { categories: params.categories } : {}),
+      ...(hasFrequencyPatch ? { frequencyCaps: params.frequencyCaps } : {}),
+    },
+  });
+  return toPreference(response);
 }

@@ -143,6 +143,30 @@ export interface CustomerNotificationSummary {
   }[];
 }
 
+export type CustomerNotificationPreferenceCategory =
+  | 'APPROVAL_TODO'
+  | 'EXECUTION_RESULT'
+  | 'FEEDBACK_TICKET'
+  | 'GENERAL';
+
+export interface CustomerNotificationPreferenceFrequencyCap {
+  windowSec: number;
+  maxDeliveries: number;
+}
+
+export interface CustomerNotificationPreference {
+  version: string;
+  merchantId: string;
+  recipientType: 'CUSTOMER_USER' | 'MERCHANT_STAFF';
+  recipientId: string;
+  categories: Record<CustomerNotificationPreferenceCategory, boolean>;
+  frequencyCaps: Partial<
+    Record<CustomerNotificationPreferenceCategory, CustomerNotificationPreferenceFrequencyCap>
+  >;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
 export interface CustomerStabilityDriver {
   code: 'TECHNICAL_GATE' | 'COMPLIANCE_GATE' | string;
   label: string;

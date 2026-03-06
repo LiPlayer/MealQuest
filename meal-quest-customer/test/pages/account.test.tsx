@@ -12,6 +12,8 @@ jest.mock('@/services/DataService', () => ({
     getInvoices: jest.fn(),
     getNotificationInbox: jest.fn(),
     getNotificationUnreadSummary: jest.fn(),
+    getNotificationPreferences: jest.fn(),
+    setNotificationPreferences: jest.fn(),
     getCustomerStabilitySnapshot: jest.fn(),
     markNotificationsRead: jest.fn(),
     createFeedbackTicket: jest.fn(),
@@ -138,6 +140,46 @@ describe('Account page', () => {
     } as any);
     dataServiceMock.markNotificationsRead.mockResolvedValue({
       updatedCount: 1,
+    } as any);
+    dataServiceMock.getNotificationPreferences.mockResolvedValue({
+      version: 'S100-SRV-01.v1',
+      merchantId: 'm_store_001',
+      recipientType: 'CUSTOMER_USER',
+      recipientId: 'u_fixture_001',
+      categories: {
+        APPROVAL_TODO: true,
+        EXECUTION_RESULT: true,
+        FEEDBACK_TICKET: true,
+        GENERAL: true,
+      },
+      frequencyCaps: {
+        EXECUTION_RESULT: {
+          windowSec: 86400,
+          maxDeliveries: 3,
+        },
+      },
+      updatedAt: '2026-03-06T10:00:00.000Z',
+      updatedBy: 'u_fixture_001',
+    } as any);
+    dataServiceMock.setNotificationPreferences.mockResolvedValue({
+      version: 'S100-SRV-01.v1',
+      merchantId: 'm_store_001',
+      recipientType: 'CUSTOMER_USER',
+      recipientId: 'u_fixture_001',
+      categories: {
+        APPROVAL_TODO: true,
+        EXECUTION_RESULT: false,
+        FEEDBACK_TICKET: true,
+        GENERAL: true,
+      },
+      frequencyCaps: {
+        EXECUTION_RESULT: {
+          windowSec: 86400,
+          maxDeliveries: 1,
+        },
+      },
+      updatedAt: '2026-03-06T11:00:00.000Z',
+      updatedBy: 'u_fixture_001',
     } as any);
     dataServiceMock.getCustomerStabilitySnapshot.mockResolvedValue({
       version: 'S090-SRV-02.v1',
@@ -269,6 +311,7 @@ describe('Account page', () => {
     expect(document.getElementById('account-stability-title')).toBeInTheDocument();
     expect(document.getElementById('account-touchpoint-title')).toBeInTheDocument();
     expect(document.getElementById('account-notification-title')).toBeInTheDocument();
+    expect(document.getElementById('account-notification-preference-title')).toBeInTheDocument();
     expect(document.getElementById('account-feedback-title')).toBeInTheDocument();
     expect(document.body.textContent).toContain('权益触达结果');
     expect(document.body.textContent).toContain('提案执行一致性记录');
@@ -365,6 +408,34 @@ describe('Account page', () => {
     expect(document.body.textContent).toContain('小游戏联动反馈');
   });
 
+  it('updates notification preference from account page', async () => {
+    render(<AccountPage />);
+    await waitFor(() =>
+      expect(document.getElementById('account-notification-preference-save-button')).toBeInTheDocument(),
+    );
+
+    fireEvent.click(document.getElementById('account-notification-toggle-button') as Element);
+    fireEvent.click(document.getElementById('account-notification-frequency-low') as Element);
+    fireEvent.click(document.getElementById('account-notification-preference-save-button') as Element);
+
+    await waitFor(() => {
+      expect(dataServiceMock.setNotificationPreferences).toHaveBeenCalledWith('m_store_001', 'u_fixture_001', {
+        categories: {
+          EXECUTION_RESULT: false,
+        },
+        frequencyCaps: {
+          EXECUTION_RESULT: {
+            windowSec: 86400,
+            maxDeliveries: 1,
+          },
+        },
+      });
+    });
+    await waitFor(() => {
+      expect(document.body.textContent).toContain('提醒偏好已更新');
+    });
+  });
+
   it('degrades stability module when stability api fails', async () => {
     dataServiceMock.getCustomerStabilitySnapshot.mockRejectedValue(new Error('stability service down'));
 
@@ -372,6 +443,18 @@ describe('Account page', () => {
     await waitFor(() => expect(document.getElementById('account-stability-title')).toBeInTheDocument());
     await waitFor(() => {
       expect(document.body.textContent).toContain('稳定性暂不可用，可稍后刷新');
+    });
+    expect(document.getElementById('account-ledger-title')).toBeInTheDocument();
+    expect(document.getElementById('account-feedback-title')).toBeInTheDocument();
+  });
+
+  it('degrades notification preference module when preference api fails', async () => {
+    dataServiceMock.getNotificationPreferences.mockRejectedValue(new Error('preference service down'));
+
+    render(<AccountPage />);
+    await waitFor(() => expect(document.getElementById('account-notification-preference-title')).toBeInTheDocument());
+    await waitFor(() => {
+      expect(document.body.textContent).toContain('提醒偏好暂不可用，可稍后刷新');
     });
     expect(document.getElementById('account-ledger-title')).toBeInTheDocument();
     expect(document.getElementById('account-feedback-title')).toBeInTheDocument();

@@ -13,6 +13,8 @@ jest.mock('@/services/ApiDataService', () => ({
         cancelAccount: jest.fn(),
         getNotificationInbox: jest.fn(),
         getNotificationUnreadSummary: jest.fn(),
+        getNotificationPreferences: jest.fn(),
+        setNotificationPreferences: jest.fn(),
         getCustomerStabilitySnapshot: jest.fn(),
         markNotificationsRead: jest.fn(),
         createFeedbackTicket: jest.fn(),
@@ -119,6 +121,66 @@ describe('DataService remote only', () => {
         expect(storageMock.setApiToken).not.toHaveBeenCalled();
         expect(storageMock.setApiTokenMerchantId).not.toHaveBeenCalled();
         expect(storageMock.setCustomerUserId).not.toHaveBeenCalled();
+    });
+
+    it('does not clear session when notification preference query fails', async () => {
+        api.getNotificationPreferences.mockRejectedValue(new Error('preference failed'));
+
+        await expect(DataService.getNotificationPreferences('store_a', 'u_fixture_001')).rejects.toThrow(
+            'preference failed',
+        );
+
+        expect(storageMock.setApiToken).not.toHaveBeenCalled();
+        expect(storageMock.setApiTokenMerchantId).not.toHaveBeenCalled();
+        expect(storageMock.setCustomerUserId).not.toHaveBeenCalled();
+    });
+
+    it('delegates notification preference update to api service', async () => {
+        api.setNotificationPreferences.mockResolvedValue({
+            version: 'S100-SRV-01.v1',
+            merchantId: 'store_a',
+            recipientType: 'CUSTOMER_USER',
+            recipientId: 'u_fixture_001',
+            categories: {
+                APPROVAL_TODO: true,
+                EXECUTION_RESULT: false,
+                FEEDBACK_TICKET: true,
+                GENERAL: true,
+            },
+            frequencyCaps: {
+                EXECUTION_RESULT: {
+                    windowSec: 86400,
+                    maxDeliveries: 1,
+                },
+            },
+            updatedAt: '2026-03-06T00:00:00.000Z',
+            updatedBy: 'u_fixture_001',
+        } as any);
+
+        const result = await DataService.setNotificationPreferences('store_a', 'u_fixture_001', {
+            categories: {
+                EXECUTION_RESULT: false,
+            },
+            frequencyCaps: {
+                EXECUTION_RESULT: {
+                    windowSec: 86400,
+                    maxDeliveries: 1,
+                },
+            },
+        });
+
+        expect(result.categories.EXECUTION_RESULT).toBe(false);
+        expect(api.setNotificationPreferences).toHaveBeenCalledWith('store_a', 'u_fixture_001', {
+            categories: {
+                EXECUTION_RESULT: false,
+            },
+            frequencyCaps: {
+                EXECUTION_RESULT: {
+                    windowSec: 86400,
+                    maxDeliveries: 1,
+                },
+            },
+        });
     });
 
     it('delegates feedback list query to api service', async () => {

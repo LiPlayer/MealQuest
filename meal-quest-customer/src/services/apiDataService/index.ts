@@ -4,6 +4,9 @@ import {
   FeedbackTicketCategory,
   FeedbackTicketListResult,
   FeedbackTicketStatus,
+  CustomerNotificationPreference,
+  CustomerNotificationPreferenceCategory,
+  CustomerNotificationPreferenceFrequencyCap,
   CustomerNotificationItem,
   CustomerNotificationSummary,
   CustomerStabilitySnapshot,
@@ -22,8 +25,10 @@ import {
 } from '@/services/customerApp/feedbackService';
 import {
   getNotificationInbox,
+  getNotificationPreferences,
   getNotificationUnreadSummary,
   markNotificationsRead,
+  setNotificationPreferences,
 } from '@/services/customerApp/notificationService';
 import { getHomeSnapshot, isMerchantAvailable } from '@/services/customerApp/stateService';
 import { getCustomerStabilitySnapshot } from '@/services/customerApp/stabilityService';
@@ -90,6 +95,32 @@ export const ApiDataService = {
     _userId = '',
   ): Promise<CustomerNotificationSummary> => {
     return getNotificationUnreadSummary(storeId);
+  },
+
+  getNotificationPreferences: async (
+    storeId: string,
+    _userId = '',
+  ): Promise<CustomerNotificationPreference> => {
+    return getNotificationPreferences({
+      merchantId: storeId,
+    });
+  },
+
+  setNotificationPreferences: async (
+    storeId: string,
+    _userId = '',
+    params: {
+      categories?: Partial<Record<CustomerNotificationPreferenceCategory, boolean>>;
+      frequencyCaps?: Partial<
+        Record<CustomerNotificationPreferenceCategory, CustomerNotificationPreferenceFrequencyCap>
+      >;
+    } = {},
+  ): Promise<CustomerNotificationPreference> => {
+    return setNotificationPreferences({
+      merchantId: storeId,
+      categories: params.categories,
+      frequencyCaps: params.frequencyCaps,
+    });
   },
 
   getCustomerStabilitySnapshot: async (
