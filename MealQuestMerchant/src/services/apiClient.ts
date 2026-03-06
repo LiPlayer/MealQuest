@@ -60,6 +60,7 @@ export type MerchantDashboardResponse = {
   };
   acquisitionWelcomeSummary?: DecisionSummaryResponse;
   activationRecoverySummary?: DecisionSummaryResponse;
+  engagementSummary?: DecisionSummaryResponse;
   revenueUpsellSummary?: DecisionSummaryResponse;
   retentionWinbackSummary?: DecisionSummaryResponse;
   gameMarketingSummary?: DecisionSummaryResponse;
@@ -121,6 +122,48 @@ export type RevenueStrategyRecommendationResponse = {
     netRevenue: number;
   };
   rationale: string[];
+};
+
+export type LifecycleStrategyStage =
+  | 'ACQUISITION'
+  | 'ACTIVATION'
+  | 'ENGAGEMENT'
+  | 'EXPANSION'
+  | 'RETENTION';
+
+export type LifecycleStrategyItem = {
+  stage: LifecycleStrategyStage;
+  templateId: string;
+  templateName: string;
+  category: string;
+  triggerEvent: string;
+  policyKey: string;
+  branchId: string;
+  status: string;
+  hasPublishedPolicy: boolean;
+  lastPolicyId: string | null;
+  updatedAt: string | null;
+  templateReady?: boolean;
+};
+
+export type LifecycleStrategyLibraryResponse = {
+  merchantId: string;
+  catalogVersion: string;
+  catalogUpdatedAt: string;
+  items: LifecycleStrategyItem[];
+};
+
+export type LifecycleStrategyEnableResponse = {
+  merchantId: string;
+  stage: LifecycleStrategyStage;
+  templateId: string;
+  branchId: string;
+  policyKey: string;
+  status: string;
+  hasPublishedPolicy: boolean;
+  policyId: string | null;
+  alreadyEnabled: boolean;
+  updatedAt: string;
 };
 
 export type DecisionSummaryResponse = {
@@ -554,6 +597,45 @@ export async function recommendRevenueStrategyConfig(params: {
   return postJson<RevenueStrategyRecommendationResponse>(
     '/api/merchant/strategy-config/revenue/recommend',
     { merchantId },
+    { token: params.token },
+  );
+}
+
+export async function getLifecycleStrategyLibrary(params: {
+  merchantId: string;
+  token: string;
+}): Promise<LifecycleStrategyLibraryResponse> {
+  const merchantId = String(params.merchantId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  return getJson<LifecycleStrategyLibraryResponse>(
+    `/api/merchant/strategy-library?merchantId=${encodeURIComponent(merchantId)}`,
+    { token: params.token },
+  );
+}
+
+export async function enableLifecycleStrategy(params: {
+  merchantId: string;
+  templateId: string;
+  token: string;
+  branchId?: string;
+}): Promise<LifecycleStrategyEnableResponse> {
+  const merchantId = String(params.merchantId || '').trim();
+  const templateId = String(params.templateId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  if (!templateId) {
+    throw new Error('templateId is required');
+  }
+  const branchId = String(params.branchId || '').trim();
+  return postJson<LifecycleStrategyEnableResponse>(
+    `/api/merchant/strategy-library/${encodeURIComponent(templateId)}/enable`,
+    {
+      merchantId,
+      branchId: branchId || undefined,
+    },
     { token: params.token },
   );
 }

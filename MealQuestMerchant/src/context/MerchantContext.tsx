@@ -448,6 +448,7 @@ export function MerchantProvider({ children }: { children: React.ReactNode }) {
           customerEntry: normalizeCustomerEntry(dashboard.customerEntry),
           acquisitionWelcomeSummary: normalizeDecisionSummary(dashboard.acquisitionWelcomeSummary),
           activationRecoverySummary: normalizeDecisionSummary(dashboard.activationRecoverySummary),
+          engagementSummary: normalizeDecisionSummary(dashboard.engagementSummary),
           revenueUpsellSummary: normalizeDecisionSummary(dashboard.revenueUpsellSummary),
           retentionWinbackSummary: normalizeDecisionSummary(dashboard.retentionWinbackSummary),
           gameMarketingSummary: normalizeDecisionSummary(dashboard.gameMarketingSummary),

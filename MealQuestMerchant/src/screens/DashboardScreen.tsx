@@ -15,6 +15,8 @@ export default function DashboardScreen() {
   const welcomeLatest = merchantState.acquisitionWelcomeSummary.latestResults[0];
   const activationTopReason = merchantState.activationRecoverySummary.topBlockedReasons[0];
   const activationLatest = merchantState.activationRecoverySummary.latestResults[0];
+  const engagementTopReason = merchantState.engagementSummary.topBlockedReasons[0];
+  const engagementLatest = merchantState.engagementSummary.latestResults[0];
   const revenueTopReason = merchantState.revenueUpsellSummary.topBlockedReasons[0];
   const revenueLatest = merchantState.revenueUpsellSummary.latestResults[0];
   const retentionTopReason = merchantState.retentionWinbackSummary.topBlockedReasons[0];
@@ -77,6 +79,24 @@ export default function DashboardScreen() {
         <Text style={styles.hintText}>
           {activationLatest && activationLatest.outcome
             ? `最近结果：${activationLatest.outcome}${activationLatest.reasonCode ? ` · ${activationLatest.reasonCode}` : ''}`
+            : '最近结果：暂无'}
+        </Text>
+      </SurfaceCard>
+
+      <SurfaceCard>
+        <Text style={styles.sectionTitle}>Engagement 活跃运营摘要（24h）</Text>
+        <View style={styles.grid}>
+          <StatTile label="命中" value={merchantState.engagementSummary.hitCount24h} />
+          <StatTile label="拦截" value={merchantState.engagementSummary.blockedCount24h} />
+        </View>
+        <Text style={styles.hintText}>
+          {engagementTopReason && engagementTopReason.reason
+            ? `Top 拦截原因：${engagementTopReason.reason}（${engagementTopReason.count}）`
+            : '当前无拦截记录。'}
+        </Text>
+        <Text style={styles.hintText}>
+          {engagementLatest && engagementLatest.outcome
+            ? `最近结果：${engagementLatest.outcome}${engagementLatest.reasonCode ? ` · ${engagementLatest.reasonCode}` : ''}`
             : '最近结果：暂无'}
         </Text>
       </SurfaceCard>
@@ -191,6 +211,11 @@ export default function DashboardScreen() {
           </Pressable>
           <Pressable style={styles.linkBtn} onPress={() => router.push('/entry-qrcode')}>
             <Text style={styles.linkBtnText}>门店 Entry QR</Text>
+          </Pressable>
+        </View>
+        <View style={styles.row}>
+          <Pressable style={styles.linkBtn} onPress={() => router.push('/(tabs)/replay')}>
+            <Text style={styles.linkBtnText}>生命周期运营</Text>
           </Pressable>
         </View>
       </SurfaceCard>

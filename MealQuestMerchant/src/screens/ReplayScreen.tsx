@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import ActionButton from '../components/ui/ActionButton';
@@ -10,12 +10,53 @@ import {
   GovernanceReplayItem,
   GovernanceReplayMode,
   GovernanceReplayOutcome,
+  LifecycleStrategyItem,
+  LifecycleStrategyStage,
+  enableLifecycleStrategy,
+  getLifecycleStrategyLibrary,
   getPolicyGovernanceReplays,
 } from '../services/apiClient';
 import { mqTheme } from '../theme/tokens';
 
 const MODE_OPTIONS: GovernanceReplayMode[] = ['EXECUTE', 'EVALUATE'];
 const OUTCOME_OPTIONS: GovernanceReplayOutcome[] = ['ALL', 'HIT', 'BLOCKED', 'NO_POLICY'];
+const LIFECYCLE_STAGE_ORDER: LifecycleStrategyStage[] = [
+  'ACQUISITION',
+  'ACTIVATION',
+  'ENGAGEMENT',
+  'EXPANSION',
+  'RETENTION',
+];
+
+function toStageText(value: LifecycleStrategyStage): string {
+  if (value === 'ACQUISITION') {
+    return '获客';
+  }
+  if (value === 'ACTIVATION') {
+    return '激活';
+  }
+  if (value === 'ENGAGEMENT') {
+    return '活跃';
+  }
+  if (value === 'EXPANSION') {
+    return '扩收';
+  }
+  return '留存';
+}
+
+function toStrategyStatusText(value: string): string {
+  const normalized = String(value || '').trim().toUpperCase();
+  if (normalized === 'ACTIVE') {
+    return '已启用';
+  }
+  if (normalized === 'PENDING_APPROVAL') {
+    return '待审批';
+  }
+  if (normalized === 'PAUSED') {
+    return '已暂停';
+  }
+  return '草稿';
+}
 
 function formatTimestamp(value: string): string {
   const ts = Date.parse(String(value || ''));
@@ -40,12 +81,23 @@ function toOutcomeText(value: GovernanceReplayOutcome | GovernanceReplayItem['ou
 
 export default function ReplayScreen() {
   const { authSession } = useMerchant();
+  const canOperate = useMemo(
+    () => String(authSession?.role || '').toUpperCase() === 'OWNER',
+    [authSession?.role],
+  );
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [eventFilter, setEventFilter] = useState('');
   const [modeFilter, setModeFilter] = useState<GovernanceReplayMode>('EXECUTE');
   const [outcomeFilter, setOutcomeFilter] = useState<GovernanceReplayOutcome>('ALL');
   const [items, setItems] = useState<GovernanceReplayItem[]>([]);
+  const [lifecycleLoading, setLifecycleLoading] = useState(true);
+  const [lifecycleError, setLifecycleError] = useState('');
+  const [lifecycleNotice, setLifecycleNotice] = useState('');
+  const [catalogVersion, setCatalogVersion] = useState('');
+  const [catalogUpdatedAt, setCatalogUpdatedAt] = useState('');
+  const [lifecycleItems, setLifecycleItems] = useState<LifecycleStrategyItem[]>([]);
+  const [actingTemplateId, setActingTemplateId] = useState('');
 
   const loadReplays = useCallback(async () => {
     if (!authSession || !authSession.token || !authSession.merchantId) {
@@ -72,20 +124,143 @@ export default function ReplayScreen() {
     }
   }, [authSession, eventFilter, modeFilter, outcomeFilter]);
 
+  const loadLifecycleLibrary = useCallback(async () => {
+    if (!authSession || !authSession.token || !authSession.merchantId) {
+      setLifecycleLoading(false);
+      return;
+    }
+    setLifecycleLoading(true);
+    setLifecycleError('');
+    try {
+      const result = await getLifecycleStrategyLibrary({
+        merchantId: authSession.merchantId,
+        token: authSession.token,
+      });
+      const rows = Array.isArray(result.items) ? result.items : [];
+      rows.sort((left, right) => {
+        const leftIndex = LIFECYCLE_STAGE_ORDER.indexOf(left.stage);
+        const rightIndex = LIFECYCLE_STAGE_ORDER.indexOf(right.stage);
+        return leftIndex - rightIndex;
+      });
+      setCatalogVersion(String(result.catalogVersion || ''));
+      setCatalogUpdatedAt(String(result.catalogUpdatedAt || ''));
+      setLifecycleItems(rows);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '生命周期策略加载失败';
+      setLifecycleError(message);
+    } finally {
+      setLifecycleLoading(false);
+    }
+  }, [authSession]);
+
   useEffect(() => {
     void loadReplays();
   }, [loadReplays]);
 
+  useEffect(() => {
+    void loadLifecycleLibrary();
+  }, [loadLifecycleLibrary]);
+
+  const handleEnableLifecycle = useCallback(
+    async (templateId: string) => {
+      if (!authSession || !authSession.token || !authSession.merchantId) {
+        return;
+      }
+      if (!canOperate) {
+        return;
+      }
+      setLifecycleError('');
+      setLifecycleNotice('');
+      setActingTemplateId(templateId);
+      try {
+        const result = await enableLifecycleStrategy({
+          merchantId: authSession.merchantId,
+          templateId,
+          token: authSession.token,
+        });
+        setLifecycleNotice(
+          result.alreadyEnabled
+            ? `${toStageText(result.stage)}阶段已处于启用状态。`
+            : `${toStageText(result.stage)}阶段启用成功。`,
+        );
+        await loadLifecycleLibrary();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '生命周期策略启用失败';
+        setLifecycleError(message);
+      } finally {
+        setActingTemplateId('');
+      }
+    },
+    [authSession, canOperate, loadLifecycleLibrary],
+  );
+
   const hitCount = items.filter((item) => item.outcome === 'HIT').length;
   const blockedCount = items.filter((item) => item.outcome === 'BLOCKED').length;
   const noPolicyCount = items.filter((item) => item.outcome === 'NO_POLICY').length;
+  const lifecycleActiveCount = lifecycleItems.filter(
+    (item) => String(item.status || '').trim().toUpperCase() === 'ACTIVE',
+  ).length;
+  const lifecycleDraftCount = lifecycleItems.length - lifecycleActiveCount;
 
   return (
     <AppShell scroll>
       <View style={styles.headerWrap}>
         <Text style={styles.title}>执行回放</Text>
-        <Text style={styles.subtitle}>查看策略命中、拦截和未命中原因，支持按事件与结果回放追踪。</Text>
+        <Text style={styles.subtitle}>支持生命周期策略运营与回放联动，覆盖启用、追踪、解释三步闭环。</Text>
       </View>
+
+      <SurfaceCard>
+        <Text style={styles.sectionTitle}>生命周期策略运营</Text>
+        <View style={styles.grid}>
+          <StatTile label="阶段总数" value={lifecycleItems.length} />
+          <StatTile label="已启用" value={lifecycleActiveCount} />
+          <StatTile label="待启用" value={lifecycleDraftCount} />
+        </View>
+        <Text style={styles.metaText}>策略库版本：{catalogVersion || '-'}</Text>
+        <Text style={styles.metaText}>模板更新时间：{catalogUpdatedAt ? formatTimestamp(catalogUpdatedAt) : '暂无'}</Text>
+        {!canOperate ? (
+          <Text style={styles.metaText}>当前角色仅可查看，阶段启用需 OWNER 权限。</Text>
+        ) : null}
+        <ActionButton
+          label="刷新策略库"
+          icon="refresh"
+          variant="secondary"
+          onPress={() => {
+            void loadLifecycleLibrary();
+          }}
+          disabled={lifecycleLoading || Boolean(actingTemplateId)}
+        />
+        {lifecycleError ? <Text style={styles.errorText}>{lifecycleError}</Text> : null}
+        {lifecycleNotice ? <Text style={styles.noticeText}>{lifecycleNotice}</Text> : null}
+        {lifecycleLoading ? <Text style={styles.metaText}>生命周期策略加载中...</Text> : null}
+        {lifecycleItems.map((item) => {
+          const busy = actingTemplateId === item.templateId;
+          const statusText = toStrategyStatusText(item.status);
+          return (
+            <View key={item.templateId} style={styles.rowCard}>
+              <Text style={styles.rowTitle}>{toStageText(item.stage)} · {item.templateName || item.templateId}</Text>
+              <Text style={styles.metaText}>状态：{statusText}</Text>
+              <Text style={styles.metaText}>触发事件：{item.triggerEvent || '-'}</Text>
+              <Text style={styles.metaText}>策略键：{item.policyKey || '-'}</Text>
+              <Text style={styles.metaText}>最近策略：{item.lastPolicyId || '暂无'}</Text>
+              <Text style={styles.metaText}>
+                更新时间：{item.updatedAt ? formatTimestamp(item.updatedAt) : '暂无'}
+              </Text>
+              {canOperate ? (
+                <ActionButton
+                  label={busy ? '启用中...' : '启用阶段'}
+                  icon={busy ? 'hourglass-top' : 'play-circle'}
+                  onPress={() => {
+                    void handleEnableLifecycle(item.templateId);
+                  }}
+                  disabled={busy || Boolean(actingTemplateId && !busy) || lifecycleLoading}
+                  busy={busy}
+                />
+              ) : null}
+            </View>
+          );
+        })}
+      </SurfaceCard>
 
       <SurfaceCard>
         <Text style={styles.sectionTitle}>回放摘要</Text>
@@ -261,5 +436,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: mqTheme.colors.danger,
+  },
+  noticeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1b6f3a',
   },
 });

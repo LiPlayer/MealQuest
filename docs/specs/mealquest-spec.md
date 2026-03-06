@@ -1,11 +1,11 @@
-# MealQuest 商业化落地规范（V15.5）
+# MealQuest 商业化落地规范（V15.6）
 
 > 文档定位：MealQuest 产品与商业规范真源（唯一真源）。
 > 适用范围：`MealQuestServer`、`MealQuestMerchant`、`meal-quest-customer` 三端协同建设。
 
 ## 0. 版本与治理
 
-- 版本：V15.5（新项目基线：长期价值最大化 + 生命周期五阶段）
+- 版本：V15.6（新项目基线：长期价值最大化 + 生命周期五阶段）
 - 首发区域：中国大陆
 - 目标客群：单店与小连锁餐饮商户
 - 商业主轴：支付抽佣为主，订阅与增值服务为辅
@@ -406,6 +406,36 @@
 
 老板端看板补充：
 - `GET /api/merchant/dashboard` 新增 `engagementSummary` 汇总字段，用于活跃阶段命中/拦截可见化。
+
+#### 4.4.6 老板端生命周期策略运营（S060-MER-01）
+
+老板端在 S060 阶段需建立“生命周期策略运营 + 回放联动”能力，形成可观察、可启用、可追踪闭环。
+
+- 入口与信息架构（当前生效）
+  - 复用老板端 `Replay` 页面承载生命周期运营区域，不新增独立 Tab
+  - `Dashboard` 提供生命周期运营入口，支持跳转到回放页
+  - 生命周期运营区与执行回放区并存，互不阻断
+
+- 接口接入（当前生效）
+  - 策略库查询：`GET /api/merchant/strategy-library`
+  - 阶段启用：`POST /api/merchant/strategy-library/{templateId}/enable`
+  - 回放查询：`GET /api/policyos/governance/replays`
+  - 看板摘要：`GET /api/merchant/dashboard`（含 `engagementSummary`）
+
+- 角色与权限（当前生效）
+  - `OWNER`：可逐阶段启用策略模板
+  - `MANAGER / CLERK`：只读查看策略状态与回放，不可执行启用
+  - 非 OWNER 在页面需看到明确权限提示（不可静默失败）
+
+- 生命周期运营展示要求（当前生效）
+  - 五阶段必须完整可见：获客/激活/活跃/扩收/留存
+  - 每阶段至少展示：`stage`、`templateName/templateId`、`status`、`triggerEvent`、`lastPolicyId`、`updatedAt`
+  - 支持手动刷新策略库与状态回读，便于老板校验启用结果
+
+- 降级要求
+  - 生命周期策略接口异常时，仅生命周期区域降级并可重试
+  - 回放筛选与列表能力不得被生命周期区域异常阻断
+  - 异常不得影响老板端审批、风控、提醒等既有治理流程
 
 ---
 
