@@ -1,5 +1,9 @@
 import { CheckoutQuote } from '@/domain/smartCheckout';
 import {
+  FeedbackTicket,
+  FeedbackTicketCategory,
+  FeedbackTicketListResult,
+  FeedbackTicketStatus,
   CustomerNotificationItem,
   CustomerNotificationSummary,
   HomeSnapshot,
@@ -10,6 +14,11 @@ import { getServerBaseUrl } from '@/services/apiDataService/env';
 
 import { cancelAccount, getInvoices, getPaymentLedger } from '@/services/customerApp/billingService';
 import { executeCheckout, getCheckoutQuote } from '@/services/customerApp/checkoutService';
+import {
+  createFeedbackTicket,
+  getFeedbackTicketDetail,
+  getFeedbackTickets,
+} from '@/services/customerApp/feedbackService';
 import {
   getNotificationInbox,
   getNotificationUnreadSummary,
@@ -60,7 +69,7 @@ export const ApiDataService = {
     _userId = '',
     params: {
       status?: 'ALL' | 'UNREAD' | 'READ';
-      category?: 'ALL' | 'APPROVAL_TODO' | 'EXECUTION_RESULT' | 'GENERAL';
+      category?: 'ALL' | 'APPROVAL_TODO' | 'EXECUTION_RESULT' | 'FEEDBACK_TICKET' | 'GENERAL';
       limit?: number;
       cursor?: string;
     } = {},
@@ -90,6 +99,55 @@ export const ApiDataService = {
       merchantId: storeId,
       markAll: params.markAll,
       notificationIds: params.notificationIds,
+    });
+  },
+
+  createFeedbackTicket: async (
+    storeId: string,
+    _userId = '',
+    params: {
+      category: FeedbackTicketCategory;
+      title: string;
+      description: string;
+      contact?: string;
+    },
+  ): Promise<FeedbackTicket> => {
+    return createFeedbackTicket({
+      merchantId: storeId,
+      category: params.category,
+      title: params.title,
+      description: params.description,
+      contact: params.contact,
+    });
+  },
+
+  getFeedbackTickets: async (
+    storeId: string,
+    _userId = '',
+    params: {
+      status?: 'ALL' | FeedbackTicketStatus;
+      category?: 'ALL' | FeedbackTicketCategory;
+      limit?: number;
+      cursor?: string;
+    } = {},
+  ): Promise<FeedbackTicketListResult> => {
+    return getFeedbackTickets({
+      merchantId: storeId,
+      status: params.status,
+      category: params.category,
+      limit: params.limit,
+      cursor: params.cursor,
+    });
+  },
+
+  getFeedbackTicketDetail: async (
+    storeId: string,
+    _userId = '',
+    ticketId = '',
+  ): Promise<FeedbackTicket> => {
+    return getFeedbackTicketDetail({
+      merchantId: storeId,
+      ticketId,
     });
   },
 };

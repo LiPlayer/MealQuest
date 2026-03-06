@@ -267,3 +267,74 @@
   flex-direction: column;
   gap: 10rpx;
 }
+
+.account-feedback-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx;
+  margin-top: 12rpx;
+}
+
+.account-feedback-category-chip {
+  padding: 8rpx 16rpx;
+  border-radius: 999rpx;
+  background: #edf3ff;
+  border: 1rpx solid #cad9f3;
+  color: #2a528f;
+  font-size: 21rpx;
+}
+
+.account-feedback-category-chip--active {
+  background: #2a528f;
+  border-color: #2a528f;
+  color: #ffffff;
+}
+
+.account-feedback-input,
+.account-feedback-textarea {
+  width: 100%;
+  margin-top: 12rpx;
+  padding: 14rpx 16rpx;
+  border-radius: 14rpx;
+  border: 1rpx solid var(--mq-border);
+  background: #f8fbff;
+  box-sizing: border-box;
+  font-size: 22rpx;
+  color: #203553;
+}
+
+.account-feedback-textarea {
+  min-height: 156rpx;
+}
+
+.account-btn--feedback-submit {
+  margin-top: 14rpx;
+}
+
+.account-btn--feedback-refresh {
+  margin-top: 10rpx;
+}
+
+.account-feedback-detail-toggle {
+  display: inline-flex;
+  margin-top: 8rpx;
+  padding: 4rpx 10rpx;
+  border-radius: 999rpx;
+  border: 1rpx solid #c7d6ee;
+  color: #315684;
+  font-size: 20rpx;
+}
+
+.account-feedback-timeline {
+  margin-top: 10rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.account-feedback-timeline-item {
+  padding: 10rpx;
+  border-radius: 12rpx;
+  background: #f7faff;
+  border: 1rpx dashed #d1ddf0;
+}

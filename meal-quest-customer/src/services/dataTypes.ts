@@ -107,6 +107,12 @@ export interface InvoiceItem {
 }
 
 export type CustomerNotificationStatus = 'UNREAD' | 'READ';
+export type CustomerNotificationCategory =
+  | 'APPROVAL_TODO'
+  | 'EXECUTION_RESULT'
+  | 'FEEDBACK_TICKET'
+  | 'GENERAL'
+  | string;
 
 export interface CustomerNotificationRelated {
   decisionId?: string;
@@ -120,7 +126,7 @@ export interface CustomerNotificationItem {
   merchantId: string;
   recipientType: 'CUSTOMER_USER' | 'MERCHANT_STAFF';
   recipientId: string;
-  category: string;
+  category: CustomerNotificationCategory;
   title: string;
   body: string;
   status: CustomerNotificationStatus;
@@ -132,7 +138,43 @@ export interface CustomerNotificationItem {
 export interface CustomerNotificationSummary {
   totalUnread: number;
   byCategory: {
-    category: string;
+    category: CustomerNotificationCategory;
     unreadCount: number;
   }[];
+}
+
+export type FeedbackTicketStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+export type FeedbackTicketCategory = 'PAYMENT' | 'BENEFIT' | 'PRIVACY' | 'ACCOUNT' | 'OTHER';
+
+export interface FeedbackTicketTimelineEvent {
+  eventId: string;
+  fromStatus: FeedbackTicketStatus | null;
+  toStatus: FeedbackTicketStatus;
+  note: string;
+  actorRole: string;
+  actorId: string;
+  createdAt: string;
+}
+
+export interface FeedbackTicket {
+  ticketId: string;
+  merchantId: string;
+  userId: string;
+  category: FeedbackTicketCategory;
+  title: string;
+  description: string;
+  contact: string;
+  status: FeedbackTicketStatus;
+  createdAt: string;
+  updatedAt: string;
+  latestEvent: FeedbackTicketTimelineEvent | null;
+  timeline?: FeedbackTicketTimelineEvent[];
+}
+
+export interface FeedbackTicketListResult {
+  items: FeedbackTicket[];
+  hasMore: boolean;
+  nextCursor: string | null;
+  status: 'ALL' | FeedbackTicketStatus;
+  category: 'ALL' | FeedbackTicketCategory;
 }

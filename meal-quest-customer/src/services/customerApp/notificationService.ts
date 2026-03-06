@@ -84,7 +84,7 @@ function toSummary(response: SummaryResponse): CustomerNotificationSummary {
 export async function getNotificationInbox(params: {
   merchantId: string;
   status?: 'ALL' | 'UNREAD' | 'READ';
-  category?: 'ALL' | 'APPROVAL_TODO' | 'EXECUTION_RESULT' | 'GENERAL';
+  category?: 'ALL' | 'APPROVAL_TODO' | 'EXECUTION_RESULT' | 'FEEDBACK_TICKET' | 'GENERAL';
   limit?: number;
   cursor?: string;
 }): Promise<{ items: CustomerNotificationItem[]; hasMore: boolean; nextCursor: string | null }> {

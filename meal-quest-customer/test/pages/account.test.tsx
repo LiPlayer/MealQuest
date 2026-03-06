@@ -13,6 +13,9 @@ jest.mock('@/services/DataService', () => ({
     getNotificationInbox: jest.fn(),
     getNotificationUnreadSummary: jest.fn(),
     markNotificationsRead: jest.fn(),
+    createFeedbackTicket: jest.fn(),
+    getFeedbackTickets: jest.fn(),
+    getFeedbackTicketDetail: jest.fn(),
     cancelAccount: jest.fn(),
   },
 }));
@@ -135,6 +138,88 @@ describe('Account page', () => {
     dataServiceMock.markNotificationsRead.mockResolvedValue({
       updatedCount: 1,
     } as any);
+    dataServiceMock.getFeedbackTickets.mockResolvedValue({
+      items: [
+        {
+          ticketId: 'ticket_001',
+          merchantId: 'm_store_001',
+          userId: 'u_fixture_001',
+          category: 'BENEFIT',
+          title: '权益未到账',
+          description: '活动奖励未到账',
+          contact: '',
+          status: 'IN_PROGRESS',
+          createdAt: '2026-03-06T08:00:00.000Z',
+          updatedAt: '2026-03-06T09:00:00.000Z',
+          latestEvent: {
+            eventId: 'ticket_001_event_0002',
+            fromStatus: 'OPEN',
+            toStatus: 'IN_PROGRESS',
+            note: '老板已接单处理',
+            actorRole: 'OWNER',
+            actorId: 'owner_001',
+            createdAt: '2026-03-06T09:00:00.000Z',
+          },
+        },
+      ],
+      hasMore: false,
+      nextCursor: null,
+      status: 'ALL',
+      category: 'ALL',
+    } as any);
+    dataServiceMock.getFeedbackTicketDetail.mockResolvedValue({
+      ticketId: 'ticket_001',
+      merchantId: 'm_store_001',
+      userId: 'u_fixture_001',
+      category: 'BENEFIT',
+      title: '权益未到账',
+      description: '活动奖励未到账',
+      contact: '',
+      status: 'IN_PROGRESS',
+      createdAt: '2026-03-06T08:00:00.000Z',
+      updatedAt: '2026-03-06T09:00:00.000Z',
+      latestEvent: {
+        eventId: 'ticket_001_event_0002',
+        fromStatus: 'OPEN',
+        toStatus: 'IN_PROGRESS',
+        note: '老板已接单处理',
+        actorRole: 'OWNER',
+        actorId: 'owner_001',
+        createdAt: '2026-03-06T09:00:00.000Z',
+      },
+      timeline: [
+        {
+          eventId: 'ticket_001_event_0001',
+          fromStatus: null,
+          toStatus: 'OPEN',
+          note: '顾客提交问题反馈',
+          actorRole: 'CUSTOMER',
+          actorId: 'u_fixture_001',
+          createdAt: '2026-03-06T08:00:00.000Z',
+        },
+      ],
+    } as any);
+    dataServiceMock.createFeedbackTicket.mockResolvedValue({
+      ticketId: 'ticket_002',
+      merchantId: 'm_store_001',
+      userId: 'u_fixture_001',
+      category: 'OTHER',
+      title: '希望支持更多提醒方式',
+      description: '希望支持短信提醒',
+      contact: '13800000000',
+      status: 'OPEN',
+      createdAt: '2026-03-06T10:00:00.000Z',
+      updatedAt: '2026-03-06T10:00:00.000Z',
+      latestEvent: {
+        eventId: 'ticket_002_event_0001',
+        fromStatus: null,
+        toStatus: 'OPEN',
+        note: '顾客提交问题反馈',
+        actorRole: 'CUSTOMER',
+        actorId: 'u_fixture_001',
+        createdAt: '2026-03-06T10:00:00.000Z',
+      },
+    } as any);
   });
 
   afterEach(() => {
@@ -154,10 +239,13 @@ describe('Account page', () => {
     expect(document.getElementById('account-invoice-title')).toBeInTheDocument();
     expect(document.getElementById('account-touchpoint-title')).toBeInTheDocument();
     expect(document.getElementById('account-notification-title')).toBeInTheDocument();
+    expect(document.getElementById('account-feedback-title')).toBeInTheDocument();
     expect(document.body.textContent).toContain('权益触达结果');
     expect(document.body.textContent).toContain('提案执行一致性记录');
     expect(document.body.textContent).toContain('扩收 · 未执行');
     expect(document.body.textContent).toContain('今日触达次数已达上限');
+    expect(document.body.textContent).toContain('反馈进展');
+    expect(document.body.textContent).toContain('权益未到账');
     expect(document.body.textContent).not.toContain('PAYMENT_VERIFY');
     expect(document.body.textContent).toContain('当前条件未满足');
     expect(document.body.textContent).toContain('生命周期阶段记录');
@@ -194,6 +282,32 @@ describe('Account page', () => {
     });
     expect(storageMock.clearCustomerSession).toHaveBeenCalledWith('m_store_001', 'u_fixture_001');
     expect(Taro.reLaunch).toHaveBeenCalledWith({ url: '/pages/startup/index' });
+  });
+
+  it('submits feedback ticket from account page', async () => {
+    render(<AccountPage />);
+    await waitFor(() => expect(document.getElementById('account-feedback-title-input')).toBeInTheDocument());
+
+    fireEvent.input(document.getElementById('account-feedback-title-input') as Element, {
+      target: { value: '希望支持更多提醒方式' },
+    });
+    fireEvent.input(document.getElementById('account-feedback-description-textarea') as Element, {
+      target: { value: '希望支持短信提醒' },
+    });
+    fireEvent.input(document.getElementById('account-feedback-contact-input') as Element, {
+      target: { value: '13800000000' },
+    });
+    fireEvent.click(document.getElementById('account-feedback-submit-button') as Element);
+
+    await waitFor(() => {
+      expect(dataServiceMock.createFeedbackTicket).toHaveBeenCalledWith('m_store_001', 'u_fixture_001', {
+        category: 'OTHER',
+        title: '希望支持更多提醒方式',
+        description: '希望支持短信提醒',
+        contact: '13800000000',
+      });
+    });
+    expect(Taro.showToast).toHaveBeenCalledWith({ title: '反馈已提交', icon: 'none' });
   });
 
   it('degrades notification section when notification api fails', async () => {

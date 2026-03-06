@@ -3,6 +3,10 @@ import { storage } from '@/utils/storage';
 
 import { ApiDataService } from './ApiDataService';
 import {
+    FeedbackTicket,
+    FeedbackTicketCategory,
+    FeedbackTicketListResult,
+    FeedbackTicketStatus,
     CustomerNotificationItem,
     CustomerNotificationSummary,
     HomeSnapshot,
@@ -96,7 +100,7 @@ export const DataService = {
         userId = '',
         params: {
             status?: 'ALL' | 'UNREAD' | 'READ';
-            category?: 'ALL' | 'APPROVAL_TODO' | 'EXECUTION_RESULT' | 'GENERAL';
+            category?: 'ALL' | 'APPROVAL_TODO' | 'EXECUTION_RESULT' | 'FEEDBACK_TICKET' | 'GENERAL';
             limit?: number;
             cursor?: string;
         } = {}
@@ -127,6 +131,52 @@ export const DataService = {
         return runRemote(
             'markNotificationsRead',
             () => ApiDataService.markNotificationsRead(storeId, userId, params),
+            { clearSessionOnError: false },
+        );
+    },
+
+    createFeedbackTicket: async (
+        storeId: string,
+        userId = '',
+        params: {
+            category: FeedbackTicketCategory;
+            title: string;
+            description: string;
+            contact?: string;
+        },
+    ): Promise<FeedbackTicket> => {
+        return runRemote(
+            'createFeedbackTicket',
+            () => ApiDataService.createFeedbackTicket(storeId, userId, params),
+            { clearSessionOnError: false },
+        );
+    },
+
+    getFeedbackTickets: async (
+        storeId: string,
+        userId = '',
+        params: {
+            status?: 'ALL' | FeedbackTicketStatus;
+            category?: 'ALL' | FeedbackTicketCategory;
+            limit?: number;
+            cursor?: string;
+        } = {},
+    ): Promise<FeedbackTicketListResult> => {
+        return runRemote(
+            'getFeedbackTickets',
+            () => ApiDataService.getFeedbackTickets(storeId, userId, params),
+            { clearSessionOnError: false },
+        );
+    },
+
+    getFeedbackTicketDetail: async (
+        storeId: string,
+        userId = '',
+        ticketId = '',
+    ): Promise<FeedbackTicket> => {
+        return runRemote(
+            'getFeedbackTicketDetail',
+            () => ApiDataService.getFeedbackTicketDetail(storeId, userId, ticketId),
             { clearSessionOnError: false },
         );
     },

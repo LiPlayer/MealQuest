@@ -14,6 +14,9 @@ jest.mock('@/services/ApiDataService', () => ({
         getNotificationInbox: jest.fn(),
         getNotificationUnreadSummary: jest.fn(),
         markNotificationsRead: jest.fn(),
+        createFeedbackTicket: jest.fn(),
+        getFeedbackTickets: jest.fn(),
+        getFeedbackTicketDetail: jest.fn(),
     }
 }));
 
@@ -103,5 +106,28 @@ describe('DataService remote only', () => {
         expect(storageMock.setApiToken).not.toHaveBeenCalled();
         expect(storageMock.setApiTokenMerchantId).not.toHaveBeenCalled();
         expect(storageMock.setCustomerUserId).not.toHaveBeenCalled();
+    });
+
+    it('delegates feedback list query to api service', async () => {
+        api.getFeedbackTickets.mockResolvedValue({
+            items: [],
+            hasMore: false,
+            nextCursor: null,
+            status: 'ALL',
+            category: 'ALL',
+        } as any);
+
+        const result = await DataService.getFeedbackTickets('store_a', 'u_fixture_001', {
+            status: 'ALL',
+            category: 'ALL',
+            limit: 10,
+        });
+
+        expect(result.hasMore).toBe(false);
+        expect(api.getFeedbackTickets).toHaveBeenCalledWith('store_a', 'u_fixture_001', {
+            status: 'ALL',
+            category: 'ALL',
+            limit: 10,
+        });
     });
 });

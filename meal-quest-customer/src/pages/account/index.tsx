@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Text, View } from '@tarojs/components';
+import { Input, Text, Textarea, View } from '@tarojs/components';
 import Taro from '@tarojs/taro';
 
 import { DataService } from '@/services/DataService';
 import {
   CustomerNotificationItem,
   CustomerNotificationSummary,
+  FeedbackTicket,
+  FeedbackTicketCategory,
   HomeSnapshot,
   InvoiceItem,
   PaymentLedgerItem,
@@ -21,6 +23,13 @@ import './index.scss';
 const DEFAULT_STORE_ID =
   (typeof process !== 'undefined' && process.env && process.env.TARO_APP_DEFAULT_STORE_ID) || '';
 const LIFECYCLE_STAGE_ORDER = ['获客', '激活', '活跃', '扩收', '留存'];
+const FEEDBACK_CATEGORY_OPTIONS: { value: FeedbackTicketCategory; label: string }[] = [
+  { value: 'PAYMENT', label: '支付问题' },
+  { value: 'BENEFIT', label: '权益问题' },
+  { value: 'PRIVACY', label: '隐私问题' },
+  { value: 'ACCOUNT', label: '账号问题' },
+  { value: 'OTHER', label: '其他问题' },
+];
 
 const toMoney = (value: number) => `¥${Number(value || 0).toFixed(2)}`;
 
@@ -37,10 +46,64 @@ function resolveNotificationCategoryLabel(category: string): string {
   if (normalized === 'EXECUTION_RESULT') {
     return '执行结果';
   }
+  if (normalized === 'FEEDBACK_TICKET') {
+    return '反馈进展';
+  }
   if (normalized === 'GENERAL') {
     return '系统提醒';
   }
   return normalized || '提醒';
+}
+
+function resolveFeedbackCategoryLabel(category: FeedbackTicket['category']): string {
+  const normalized = String(category || '').toUpperCase();
+  const matched = FEEDBACK_CATEGORY_OPTIONS.find((item) => item.value === normalized);
+  return matched?.label || '其他问题';
+}
+
+function resolveFeedbackStatusLabel(status: FeedbackTicket['status']): string {
+  const normalized = String(status || '').toUpperCase();
+  if (normalized === 'OPEN') {
+    return '待处理';
+  }
+  if (normalized === 'IN_PROGRESS') {
+    return '处理中';
+  }
+  if (normalized === 'RESOLVED') {
+    return '已解决';
+  }
+  if (normalized === 'CLOSED') {
+    return '已关闭';
+  }
+  return normalized || '处理中';
+}
+
+function toInputValue(event: unknown): string {
+  const record = (event || {}) as {
+    detail?: { value?: unknown };
+    target?: { value?: unknown };
+    currentTarget?: { value?: unknown };
+  };
+  return String(record.detail?.value ?? record.target?.value ?? record.currentTarget?.value ?? '');
+}
+
+function resolveCancelAccountErrorMessage(error: unknown): string {
+  const message = String((error as { message?: string })?.message || '')
+    .trim()
+    .toLowerCase();
+  if (!message) {
+    return '注销失败，请稍后重试';
+  }
+  if (message.includes('not found')) {
+    return '账号不存在或已注销，请刷新后重试';
+  }
+  if (message.includes('limit') || message.includes('rate')) {
+    return '操作过于频繁，请稍后重试';
+  }
+  if (message.includes('denied') || message.includes('forbidden')) {
+    return '当前账号暂无注销权限，请联系门店';
+  }
+  return '注销失败，请稍后重试';
 }
 
 export default function AccountPage() {
@@ -51,10 +114,22 @@ export default function AccountPage() {
   const [notificationSummary, setNotificationSummary] = useState<CustomerNotificationSummary>(
     EMPTY_NOTIFICATION_SUMMARY,
   );
+  const [feedbackTickets, setFeedbackTickets] = useState<FeedbackTicket[]>([]);
+  const [feedbackCategory, setFeedbackCategory] = useState<FeedbackTicketCategory>('OTHER');
+  const [feedbackTitle, setFeedbackTitle] = useState('');
+  const [feedbackDescription, setFeedbackDescription] = useState('');
+  const [feedbackContact, setFeedbackContact] = useState('');
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [feedbackErrorMessage, setFeedbackErrorMessage] = useState('');
+  const [expandedFeedbackTicketId, setExpandedFeedbackTicketId] = useState('');
+  const [feedbackDetailLoadingTicketId, setFeedbackDetailLoadingTicketId] = useState('');
+
   const [loading, setLoading] = useState(true);
   const [notificationLoading, setNotificationLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [notificationErrorMessage, setNotificationErrorMessage] = useState('');
+  const [privacyMessage, setPrivacyMessage] = useState('');
   const [cancelArmed, setCancelArmed] = useState(false);
   const [canceling, setCanceling] = useState(false);
   const [customerUserId, setCustomerUserId] = useState('');
@@ -117,6 +192,17 @@ export default function AccountPage() {
     [notificationSummary.byCategory],
   );
 
+  const updateFeedbackTicketInList = useCallback((ticket: FeedbackTicket) => {
+    setFeedbackTickets((prev) => {
+      const rows = Array.isArray(prev) ? prev : [];
+      const exists = rows.some((item) => item.ticketId === ticket.ticketId);
+      if (exists) {
+        return rows.map((item) => (item.ticketId === ticket.ticketId ? ticket : item));
+      }
+      return [ticket, ...rows];
+    });
+  }, []);
+
   const loadNotifications = useCallback(
     async ({ autoMarkRead = false }: { autoMarkRead?: boolean } = {}) => {
       if (!storeId) {
@@ -169,6 +255,28 @@ export default function AccountPage() {
     [resolveUserId, storeId],
   );
 
+  const loadFeedbackTickets = useCallback(async () => {
+    if (!storeId) {
+      return;
+    }
+    setFeedbackLoading(true);
+    setFeedbackErrorMessage('');
+    try {
+      const result = await DataService.getFeedbackTickets(storeId, resolveUserId(), {
+        status: 'ALL',
+        category: 'ALL',
+        limit: 10,
+      });
+      setFeedbackTickets(result.items || []);
+    } catch (error) {
+      console.error('[Account] load feedback tickets failed', error);
+      setFeedbackErrorMessage('反馈记录暂不可用，可稍后刷新');
+      setFeedbackTickets([]);
+    } finally {
+      setFeedbackLoading(false);
+    }
+  }, [resolveUserId, storeId]);
+
   const loadData = useCallback(async () => {
     if (!storeId) {
       setLoading(false);
@@ -189,7 +297,7 @@ export default function AccountPage() {
       setLedger(nextLedger);
       setInvoices(nextInvoices);
       setCustomerUserId(resolveUserId());
-      await loadNotifications({ autoMarkRead: true });
+      await Promise.all([loadNotifications({ autoMarkRead: true }), loadFeedbackTickets()]);
     } catch (error) {
       console.error('[Account] load data failed', error);
       setErrorMessage('加载失败，请重试');
@@ -197,32 +305,114 @@ export default function AccountPage() {
     } finally {
       setLoading(false);
     }
-  }, [loadNotifications, resolveUserId, storeId]);
+  }, [loadFeedbackTickets, loadNotifications, resolveUserId, storeId]);
 
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  const handleSubmitFeedback = useCallback(async () => {
+    if (!storeId || feedbackSubmitting) {
+      return;
+    }
+    const safeTitle = feedbackTitle.trim();
+    const safeDescription = feedbackDescription.trim();
+    if (!safeTitle) {
+      Taro.showToast({ title: '请填写问题标题', icon: 'none' });
+      return;
+    }
+    if (!safeDescription) {
+      Taro.showToast({ title: '请填写问题描述', icon: 'none' });
+      return;
+    }
+    setFeedbackSubmitting(true);
+    setFeedbackErrorMessage('');
+    try {
+      const ticket = await DataService.createFeedbackTicket(storeId, resolveUserId(), {
+        category: feedbackCategory,
+        title: safeTitle,
+        description: safeDescription,
+        contact: feedbackContact.trim(),
+      });
+      updateFeedbackTicketInList(ticket);
+      setExpandedFeedbackTicketId(ticket.ticketId);
+      setFeedbackTitle('');
+      setFeedbackDescription('');
+      Taro.showToast({ title: '反馈已提交', icon: 'none' });
+      await loadFeedbackTickets();
+    } catch (error) {
+      console.error('[Account] submit feedback failed', error);
+      setFeedbackErrorMessage('提交失败，请稍后重试');
+      Taro.showToast({ title: '提交失败，请稍后重试', icon: 'none' });
+    } finally {
+      setFeedbackSubmitting(false);
+    }
+  }, [
+    feedbackCategory,
+    feedbackContact,
+    feedbackDescription,
+    feedbackSubmitting,
+    feedbackTitle,
+    loadFeedbackTickets,
+    resolveUserId,
+    storeId,
+    updateFeedbackTicketInList,
+  ]);
+
+  const handleToggleFeedbackDetail = useCallback(
+    async (ticket: FeedbackTicket) => {
+      if (!storeId) {
+        return;
+      }
+      if (expandedFeedbackTicketId === ticket.ticketId) {
+        setExpandedFeedbackTicketId('');
+        return;
+      }
+      setExpandedFeedbackTicketId(ticket.ticketId);
+      if (Array.isArray(ticket.timeline) && ticket.timeline.length > 0) {
+        return;
+      }
+      setFeedbackDetailLoadingTicketId(ticket.ticketId);
+      try {
+        const detail = await DataService.getFeedbackTicketDetail(storeId, resolveUserId(), ticket.ticketId);
+        updateFeedbackTicketInList(detail);
+      } catch (error) {
+        console.error('[Account] load feedback detail failed', error);
+        Taro.showToast({ title: '进展加载失败，请稍后重试', icon: 'none' });
+      } finally {
+        setFeedbackDetailLoadingTicketId('');
+      }
+    },
+    [expandedFeedbackTicketId, resolveUserId, storeId, updateFeedbackTicketInList],
+  );
 
   const handleCancelAccount = useCallback(async () => {
     if (!storeId || canceling) {
       return;
     }
     if (!cancelArmed) {
+      setPrivacyMessage('请确认已完成账票查询与资产核对，再执行注销。');
       setCancelArmed(true);
       Taro.showToast({ title: '再次点击确认注销', icon: 'none' });
       return;
     }
 
     setCanceling(true);
+    setPrivacyMessage('');
     try {
       const resolvedUserId = customerUserId || resolveUserId();
+      if (!resolvedUserId) {
+        throw new Error('user not found');
+      }
       await DataService.cancelAccount(storeId, resolvedUserId);
       storage.clearCustomerSession(storeId, resolvedUserId);
       Taro.showToast({ title: '账号已注销', icon: 'none' });
       Taro.reLaunch({ url: '/pages/startup/index' });
     } catch (error) {
       console.error('[Account] cancel account failed', error);
-      Taro.showToast({ title: '注销失败，请稍后重试', icon: 'none' });
+      const message = resolveCancelAccountErrorMessage(error);
+      setPrivacyMessage(message);
+      Taro.showToast({ title: message, icon: 'none' });
     } finally {
       setCanceling(false);
       setCancelArmed(false);
@@ -318,7 +508,8 @@ export default function AccountPage() {
         <Text className='account-notification-summary'>
           未读总数：{Number(notificationSummary.totalUnread || 0)} · 审批待办：
           {getUnreadCountByCategory('APPROVAL_TODO')} · 执行结果：
-          {getUnreadCountByCategory('EXECUTION_RESULT')}
+          {getUnreadCountByCategory('EXECUTION_RESULT')} · 反馈进展：
+          {getUnreadCountByCategory('FEEDBACK_TICKET')}
         </Text>
         <View
           id='account-notification-refresh-button'
@@ -396,6 +587,142 @@ export default function AccountPage() {
             ))
           )}
         </View>
+      </View>
+
+      <View className='account-card'>
+        <Text id='account-feedback-title' className='account-card__title'>
+          问题反馈
+        </Text>
+        <Text className='account-touchpoint-objective'>
+          仅支持文本反馈。提交后可在下方查看处理状态与时间线进展。
+        </Text>
+        <View className='account-feedback-categories'>
+          {FEEDBACK_CATEGORY_OPTIONS.map((item) => (
+            <View
+              key={item.value}
+              id={`account-feedback-category-${item.value}`}
+              className={`account-feedback-category-chip ${
+                feedbackCategory === item.value ? 'account-feedback-category-chip--active' : ''
+              }`}
+              onClick={() => {
+                setFeedbackCategory(item.value);
+              }}
+            >
+              {item.label}
+            </View>
+          ))}
+        </View>
+        <Input
+          id='account-feedback-title-input'
+          className='account-feedback-input'
+          value={feedbackTitle}
+          placeholder='请输入问题标题（必填）'
+          maxlength={120}
+          onInput={(event) => {
+            setFeedbackTitle(toInputValue(event));
+          }}
+        />
+        <Textarea
+          id='account-feedback-description-textarea'
+          className='account-feedback-textarea'
+          value={feedbackDescription}
+          maxlength={1000}
+          placeholder='请描述问题细节与出现步骤（必填）'
+          onInput={(event) => {
+            setFeedbackDescription(toInputValue(event));
+          }}
+        />
+        <Input
+          id='account-feedback-contact-input'
+          className='account-feedback-input'
+          value={feedbackContact}
+          placeholder='联系方式（选填）'
+          maxlength={120}
+          onInput={(event) => {
+            setFeedbackContact(toInputValue(event));
+          }}
+        />
+        <View
+          id='account-feedback-submit-button'
+          className='account-btn account-btn--ghost account-btn--feedback-submit'
+          onClick={() => {
+            void handleSubmitFeedback();
+          }}
+        >
+          {feedbackSubmitting ? '提交中...' : '提交反馈'}
+        </View>
+        <View
+          id='account-feedback-refresh-button'
+          className='account-btn account-btn--ghost account-btn--feedback-refresh'
+          onClick={() => {
+            void loadFeedbackTickets();
+          }}
+        >
+          刷新反馈进展
+        </View>
+        {feedbackLoading ? <Text className='account-loading'>反馈记录加载中...</Text> : null}
+        {feedbackErrorMessage ? <Text className='account-error'>{feedbackErrorMessage}</Text> : null}
+        {!feedbackLoading && feedbackTickets.length === 0 ? (
+          <Text className='account-empty'>暂无反馈记录</Text>
+        ) : null}
+        {feedbackTickets.map((ticket) => {
+          const isExpanded = expandedFeedbackTicketId === ticket.ticketId;
+          const detailLoading = feedbackDetailLoadingTicketId === ticket.ticketId;
+          const timeline = Array.isArray(ticket.timeline) ? ticket.timeline : [];
+          return (
+            <View key={ticket.ticketId} className='account-touchpoint-item'>
+              <Text className='account-touchpoint-item__title'>
+                {resolveFeedbackCategoryLabel(ticket.category)} · {resolveFeedbackStatusLabel(ticket.status)}
+              </Text>
+              <Text className='account-touchpoint-item__desc'>{ticket.title}</Text>
+              <Text className='account-touchpoint-item__reason'>
+                更新时间：{new Date(ticket.updatedAt || ticket.createdAt).toLocaleString()}
+              </Text>
+              <View
+                className='account-feedback-detail-toggle'
+                onClick={() => {
+                  void handleToggleFeedbackDetail(ticket);
+                }}
+              >
+                {isExpanded ? '收起进展' : '查看进展'}
+              </View>
+              {isExpanded ? (
+                <View className='account-feedback-timeline'>
+                  {detailLoading ? <Text className='account-loading'>进展加载中...</Text> : null}
+                  {!detailLoading && timeline.length === 0 ? (
+                    <Text className='account-empty'>暂无进展记录</Text>
+                  ) : null}
+                  {!detailLoading
+                    ? timeline.map((event) => (
+                        <View key={event.eventId} className='account-feedback-timeline-item'>
+                          <Text className='account-touchpoint-item__title'>
+                            {resolveFeedbackStatusLabel(event.toStatus)}
+                          </Text>
+                          <Text className='account-touchpoint-item__desc'>
+                            {event.note || '状态已更新'}
+                          </Text>
+                          <Text className='account-touchpoint-item__reason'>
+                            时间：{new Date(event.createdAt).toLocaleString()}
+                          </Text>
+                        </View>
+                      ))
+                    : null}
+                </View>
+              ) : null}
+            </View>
+          );
+        })}
+      </View>
+
+      <View className='account-card'>
+        <Text className='account-card__title'>隐私与账号管理</Text>
+        <Text className='account-touchpoint-objective'>
+          注销后将删除非交易型个人信息；交易与发票数据会按法规与对账要求保留。
+        </Text>
+        <Text className='account-touchpoint-item__reason'>
+          建议先完成账票查询与争议反馈，再执行注销操作。
+        </Text>
+        {privacyMessage ? <Text className='account-error'>{privacyMessage}</Text> : null}
       </View>
 
       <View className='account-actions'>

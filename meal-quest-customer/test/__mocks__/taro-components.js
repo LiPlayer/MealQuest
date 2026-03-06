@@ -21,6 +21,8 @@ const taroComponentsMock = {
     Button: createComponent('button'),
     Image: createComponent('img'),
     ScrollView: createComponent('div'),
+    Input: createComponent('input'),
+    Textarea: createComponent('textarea'),
 };
 
 module.exports = taroComponentsMock;
@@ -30,3 +32,5 @@ module.exports.Text = taroComponentsMock.Text;
 module.exports.Button = taroComponentsMock.Button;
 module.exports.Image = taroComponentsMock.Image;
 module.exports.ScrollView = taroComponentsMock.ScrollView;
+module.exports.Input = taroComponentsMock.Input;
+module.exports.Textarea = taroComponentsMock.Textarea;

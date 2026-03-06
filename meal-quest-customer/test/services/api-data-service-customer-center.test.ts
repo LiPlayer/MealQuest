@@ -225,4 +225,149 @@ describe('ApiDataService customer center', () => {
             })
         );
     });
+
+    it('creates feedback ticket', async () => {
+        requestMock.mockResolvedValueOnce({
+            statusCode: 200,
+            data: {
+                ticket: {
+                    ticketId: 'ticket_m_store_001_00000001',
+                    merchantId: 'm_store_001',
+                    userId: 'u_fixture_001',
+                    category: 'PAYMENT',
+                    title: '支付后余额未刷新',
+                    description: '点击支付后资产未更新',
+                    contact: '13800000000',
+                    status: 'OPEN',
+                    createdAt: '2026-03-06T08:00:00.000Z',
+                    updatedAt: '2026-03-06T08:00:00.000Z',
+                    latestEvent: {
+                        eventId: 'ticket_m_store_001_00000001_event_0001',
+                        fromStatus: null,
+                        toStatus: 'OPEN',
+                        note: '顾客提交问题反馈',
+                        actorRole: 'CUSTOMER',
+                        actorId: 'u_fixture_001',
+                        createdAt: '2026-03-06T08:00:00.000Z'
+                    }
+                }
+            }
+        });
+
+        const { ApiDataService } = require('@/services/ApiDataService');
+        const ticket = await ApiDataService.createFeedbackTicket('m_store_001', 'u_fixture_001', {
+            category: 'PAYMENT',
+            title: '支付后余额未刷新',
+            description: '点击支付后资产未更新',
+            contact: '13800000000'
+        });
+
+        expect(ticket.ticketId).toBe('ticket_m_store_001_00000001');
+        expect(ticket.status).toBe('OPEN');
+        expect(requestMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                method: 'POST',
+                url: 'http://127.0.0.1:3030/api/feedback/tickets',
+                data: expect.objectContaining({
+                    merchantId: 'm_store_001',
+                    category: 'PAYMENT'
+                })
+            })
+        );
+    });
+
+    it('loads feedback ticket list and detail timeline', async () => {
+        requestMock.mockResolvedValueOnce({
+            statusCode: 200,
+            data: {
+                status: 'ALL',
+                category: 'ALL',
+                items: [
+                    {
+                        ticketId: 'ticket_m_store_001_00000001',
+                        merchantId: 'm_store_001',
+                        userId: 'u_fixture_001',
+                        category: 'BENEFIT',
+                        title: '权益未到账',
+                        description: '活动奖励未到账',
+                        contact: '',
+                        status: 'IN_PROGRESS',
+                        createdAt: '2026-03-06T08:00:00.000Z',
+                        updatedAt: '2026-03-06T09:00:00.000Z'
+                    }
+                ],
+                pageInfo: {
+                    hasMore: false,
+                    nextCursor: null
+                }
+            }
+        });
+        requestMock.mockResolvedValueOnce({
+            statusCode: 200,
+            data: {
+                ticket: {
+                    ticketId: 'ticket_m_store_001_00000001',
+                    merchantId: 'm_store_001',
+                    userId: 'u_fixture_001',
+                    category: 'BENEFIT',
+                    title: '权益未到账',
+                    description: '活动奖励未到账',
+                    contact: '',
+                    status: 'IN_PROGRESS',
+                    createdAt: '2026-03-06T08:00:00.000Z',
+                    updatedAt: '2026-03-06T09:00:00.000Z',
+                    timeline: [
+                        {
+                            eventId: 'ticket_m_store_001_00000001_event_0001',
+                            fromStatus: null,
+                            toStatus: 'OPEN',
+                            note: '顾客提交问题反馈',
+                            actorRole: 'CUSTOMER',
+                            actorId: 'u_fixture_001',
+                            createdAt: '2026-03-06T08:00:00.000Z'
+                        },
+                        {
+                            eventId: 'ticket_m_store_001_00000001_event_0002',
+                            fromStatus: 'OPEN',
+                            toStatus: 'IN_PROGRESS',
+                            note: '老板已接单处理',
+                            actorRole: 'OWNER',
+                            actorId: 'owner_001',
+                            createdAt: '2026-03-06T09:00:00.000Z'
+                        }
+                    ]
+                }
+            }
+        });
+
+        const { ApiDataService } = require('@/services/ApiDataService');
+        const listResult = await ApiDataService.getFeedbackTickets('m_store_001', 'u_fixture_001', {
+            status: 'ALL',
+            category: 'ALL',
+            limit: 10
+        });
+        const detail = await ApiDataService.getFeedbackTicketDetail(
+            'm_store_001',
+            'u_fixture_001',
+            'ticket_m_store_001_00000001'
+        );
+
+        expect(listResult.items.length).toBe(1);
+        expect(listResult.items[0].status).toBe('IN_PROGRESS');
+        expect(detail.timeline?.length).toBe(2);
+        expect(requestMock).toHaveBeenNthCalledWith(
+            1,
+            expect.objectContaining({
+                method: 'GET',
+                url: expect.stringContaining('/api/feedback/tickets?merchantId=m_store_001')
+            })
+        );
+        expect(requestMock).toHaveBeenNthCalledWith(
+            2,
+            expect.objectContaining({
+                method: 'GET',
+                url: expect.stringContaining('/api/feedback/tickets/ticket_m_store_001_00000001?merchantId=m_store_001')
+            })
+        );
+    });
 });
