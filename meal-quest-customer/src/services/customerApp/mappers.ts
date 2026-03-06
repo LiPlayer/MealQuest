@@ -1,5 +1,6 @@
 import {
   ActivityItem,
+  GameTouchpointItem,
   HomeSnapshot,
   InvoiceItem,
   PaymentLedgerItem,
@@ -32,6 +33,43 @@ const REASON_FRIENDLY_MAP: Record<string, string> = {
   'constraint:anti_fraud_blocked': '账户状态需进一步校验',
   'constraint:kill_switch': '活动暂时关闭',
 };
+
+const LIFECYCLE_STAGE_ALIASES: Record<string, string> = {
+  WELCOME: '获客',
+  NEW: '获客',
+  ACQUISITION: '获客',
+  '获客': '获客',
+  ACTIVATION: '激活',
+  HOT: '激活',
+  '激活': '激活',
+  ENGAGEMENT: '活跃',
+  PLAY: '活跃',
+  '活跃': '活跃',
+  REVENUE: '扩收',
+  EXPANSION: '扩收',
+  PAY: '扩收',
+  '扩展收入': '扩收',
+  '扩收': '扩收',
+  RETENTION: '留存',
+  CARE: '留存',
+  '留存': '留存',
+};
+
+function inferLifecycleStage(value: string): string {
+  const normalized = toString(value).toUpperCase();
+  if (!normalized) {
+    return '触达';
+  }
+  const exact = LIFECYCLE_STAGE_ALIASES[normalized];
+  if (exact) {
+    return exact;
+  }
+  const raw = toString(value);
+  if (raw && LIFECYCLE_STAGE_ALIASES[raw]) {
+    return LIFECYCLE_STAGE_ALIASES[raw];
+  }
+  return '触达';
+}
 
 function inferStageByTag(tag: string): string {
   const normalized = toString(tag).toUpperCase();
@@ -99,7 +137,8 @@ function toActivityItem(raw: Record<string, unknown>): ActivityItem {
   const desc = toString(raw.desc, '欢迎使用 MealQuest');
   const reasonCode = extractReasonCode(desc);
   const outcome = inferOutcomeByTitle(title);
-  const stage = inferStageByTag(toString(raw.tag, 'AI'));
+  const stageSource = toString(raw.stage) || toString(raw.tag, 'AI');
+  const stage = inferLifecycleStage(stageSource || inferStageByTag(toString(raw.tag, 'AI')));
   return {
     id: toString(raw.id),
     title,
@@ -135,6 +174,30 @@ function toTouchpointContract(activities: ActivityItem[]): TouchpointContract {
   };
 }
 
+function mapGameTouchpoint(raw: Record<string, unknown>, index: number): GameTouchpointItem {
+  const rewardRaw =
+    raw.reward && typeof raw.reward === 'object'
+      ? (raw.reward as Record<string, unknown>)
+      : {};
+  const rewardLabel =
+    toString(raw.rewardLabel) ||
+    toString(rewardRaw.name) ||
+    toString(rewardRaw.title) ||
+    toString(rewardRaw.type);
+  const stage = inferLifecycleStage(toString(raw.stage) || toString(raw.tag));
+  const outcome =
+    inferOutcomeByTitle(toString(raw.title) || toString(raw.desc)) || 'INFO';
+  return {
+    touchpointId: toString(raw.id || raw.touchpointId || `game_touchpoint_${index + 1}`),
+    title: toString(raw.title, '小游戏互动'),
+    desc: toString(raw.desc || raw.explanation, '完成互动后可查看奖励到账情况。'),
+    stage: stage === '触达' ? undefined : stage,
+    outcome,
+    rewardLabel: rewardLabel || undefined,
+    updatedAt: toString(raw.updatedAt || raw.createdAt || raw.timestamp) || undefined,
+  };
+}
+
 export function toStoreData(merchant: Record<string, unknown>): StoreData {
   return {
     id: toString(merchant.merchantId),
@@ -167,6 +230,22 @@ export function toHomeSnapshot(stateData: Record<string, unknown>): HomeSnapshot
   const rawVouchers = Array.isArray(user.vouchers) ? user.vouchers : [];
   const rawActivities = Array.isArray(stateData.activities) ? stateData.activities : [];
   const activities = rawActivities.map((item) => toActivityItem((item || {}) as Record<string, unknown>));
+  const rawGameAssets =
+    stateData.gameAssets && typeof stateData.gameAssets === 'object'
+      ? (stateData.gameAssets as Record<string, unknown>)
+      : {};
+  const rawCollectibles = Array.isArray(rawGameAssets.collectibles) ? rawGameAssets.collectibles : [];
+  const rawUnlockedGames = Array.isArray(rawGameAssets.unlockedGames) ? rawGameAssets.unlockedGames : [];
+  const rawGameSummary =
+    rawGameAssets.summary && typeof rawGameAssets.summary === 'object'
+      ? (rawGameAssets.summary as Record<string, unknown>)
+      : {};
+  const rawGameTouchpoints = Array.isArray(stateData.gameTouchpoints) ? stateData.gameTouchpoints : [];
+  const gameTouchpoints = rawGameTouchpoints.map((item, index) =>
+    mapGameTouchpoint((item || {}) as Record<string, unknown>, index),
+  );
+  const collectibleCount = Number(rawGameSummary.collectibleCount) || rawCollectibles.length;
+  const unlockedGameCount = Number(rawGameSummary.unlockedGameCount) || rawUnlockedGames.length;
 
   return {
     store: toStoreData(merchant),
@@ -182,6 +261,12 @@ export function toHomeSnapshot(stateData: Record<string, unknown>): HomeSnapshot
     vouchers: rawVouchers.map((item) => toVoucher((item || {}) as Record<string, unknown>)),
     activities,
     touchpointContract: toTouchpointContract(activities),
+    gameSummary: {
+      collectibleCount: Number.isFinite(collectibleCount) ? collectibleCount : 0,
+      unlockedGameCount: Number.isFinite(unlockedGameCount) ? unlockedGameCount : 0,
+      touchpointCount: gameTouchpoints.length,
+    },
+    gameTouchpoints,
   };
 }
 

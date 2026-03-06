@@ -48,6 +48,15 @@
   color: var(--mq-text);
 }
 
+.account-card__subtitle {
+  display: block;
+  margin-top: 12rpx;
+  margin-bottom: 8rpx;
+  font-size: 24rpx;
+  color: #26496e;
+  font-weight: 700;
+}
+
 .account-wallet {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -195,6 +204,20 @@
   gap: 10rpx;
 }
 
+.account-lifecycle-stage-list {
+  margin-top: 12rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+}
+
+.account-lifecycle-stage-item {
+  padding: 12rpx;
+  border-radius: 16rpx;
+  background: #f8fbff;
+  border: 1rpx dashed #d1deef;
+}
+
 .account-touchpoint-item {
   padding: 12rpx;
   border-radius: 16rpx;
@@ -221,4 +244,11 @@
   margin-top: 2rpx;
   font-size: 19rpx;
   color: #7b90ac;
+}
+
+.account-game-feedback {
+  margin-top: 14rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
 }

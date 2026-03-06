@@ -114,7 +114,7 @@ export default function StartupPage() {
       <View className='startup-panel'>
         <Text className='startup-panel__badge'>MEALQUEST ENTRY</Text>
         <Text className='startup-panel__title'>扫码入店</Text>
-        <Text className='startup-panel__desc'>进入后可直接支付、参与活动并查看资产沉淀。</Text>
+        <Text className='startup-panel__desc'>进入后可直接支付、查看生命周期触达进度，并接收小游戏互动反馈。</Text>
 
         <View id='startup-scan-button' className='startup-panel__button' onClick={handleScan}>
           <Text className='startup-panel__button-text'>开始扫码</Text>

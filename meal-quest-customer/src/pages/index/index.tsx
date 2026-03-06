@@ -16,6 +16,13 @@ import './index.scss';
 const DEFAULT_STORE_ID =
   (typeof process !== 'undefined' && process.env && process.env.TARO_APP_DEFAULT_STORE_ID) || '';
 const DEFAULT_ORDER_AMOUNT = 52;
+const LIFECYCLE_STAGE_ORDER = ['获客', '激活', '活跃', '扩收', '留存'];
+
+type LifecycleStageStatus = {
+  stage: string;
+  outcome: 'HIT' | 'BLOCKED' | 'INFO';
+  explanation: string;
+};
 
 function toOrderAmount(raw: unknown): number {
   const parsed = Number(raw);
@@ -32,6 +39,34 @@ function toAutoPay(raw: unknown): boolean {
 
 function toMoney(value: number): string {
   return `¥${Number(value || 0).toFixed(2)}`;
+}
+
+function toOutcomeText(value: LifecycleStageStatus['outcome']): string {
+  if (value === 'HIT') {
+    return '已命中';
+  }
+  if (value === 'BLOCKED') {
+    return '未命中';
+  }
+  return '进行中';
+}
+
+function buildLifecycleStages(snapshot: HomeSnapshot | null): LifecycleStageStatus[] {
+  const recentTouchpoints =
+    snapshot &&
+    snapshot.touchpointContract &&
+    Array.isArray(snapshot.touchpointContract.recentTouchpoints)
+      ? snapshot.touchpointContract.recentTouchpoints
+      : [];
+
+  return LIFECYCLE_STAGE_ORDER.map((stage) => {
+    const matched = recentTouchpoints.find((item) => String(item.stage || '').trim() === stage);
+    return {
+      stage,
+      outcome: matched?.outcome || 'INFO',
+      explanation: matched?.explanation || '暂无触达记录，系统会在满足条件后推送阶段权益。',
+    };
+  });
 }
 
 export default function IndexPage() {
@@ -63,6 +98,28 @@ export default function IndexPage() {
     }
     return buildSmartCheckoutQuote(orderAmount, snapshot.wallet, snapshot.vouchers);
   }, [orderAmount, snapshot]);
+
+  const lifecycleStages = useMemo(() => buildLifecycleStages(snapshot), [snapshot]);
+
+  const gameSummary = useMemo(() => {
+    if (!snapshot || !snapshot.gameSummary) {
+      return {
+        collectibleCount: 0,
+        unlockedGameCount: 0,
+        touchpointCount: 0,
+      };
+    }
+    return {
+      collectibleCount: Number(snapshot.gameSummary.collectibleCount || 0),
+      unlockedGameCount: Number(snapshot.gameSummary.unlockedGameCount || 0),
+      touchpointCount: Number(snapshot.gameSummary.touchpointCount || 0),
+    };
+  }, [snapshot]);
+
+  const gameTouchpoints = useMemo(() => {
+    const rows = snapshot && Array.isArray(snapshot.gameTouchpoints) ? snapshot.gameTouchpoints : [];
+    return rows.slice(0, 3);
+  }, [snapshot]);
 
   const loadSnapshot = useCallback(async () => {
     if (!storeId) {
@@ -162,6 +219,47 @@ export default function IndexPage() {
                   vouchers={snapshot.vouchers}
                   fragments={snapshot.fragments}
                 />
+              </View>
+
+              <View className='index-section'>
+                <Text id='index-lifecycle-title' className='index-section__title'>
+                  生命周期进度
+                </Text>
+                <View className='index-lifecycle-grid'>
+                  {lifecycleStages.map((item) => (
+                    <View key={item.stage} className='index-lifecycle-item'>
+                      <Text className='index-lifecycle-item__stage'>{item.stage}</Text>
+                      <Text className='index-lifecycle-item__status'>{toOutcomeText(item.outcome)}</Text>
+                      <Text className='index-lifecycle-item__desc'>{item.explanation}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+
+              <View className='index-section'>
+                <Text id='index-game-linkage-title' className='index-section__title'>
+                  小游戏联动反馈
+                </Text>
+                <View className='index-game-card'>
+                  <View className='index-game-summary-row'>
+                    <Text className='index-game-summary-item'>可收集奖励：{gameSummary.collectibleCount}</Text>
+                    <Text className='index-game-summary-item'>已解锁互动：{gameSummary.unlockedGameCount}</Text>
+                  </View>
+                  <Text className='index-game-summary-item'>最近互动：{gameSummary.touchpointCount}</Text>
+                  {gameTouchpoints.length === 0 ? (
+                    <Text className='index-game-empty'>暂未解锁小游戏互动，完成阶段触达后可获得联动反馈。</Text>
+                  ) : (
+                    gameTouchpoints.map((item) => (
+                      <View key={item.touchpointId} className='index-game-touchpoint'>
+                        <Text className='index-game-touchpoint__title'>{item.title}</Text>
+                        <Text className='index-game-touchpoint__desc'>{item.desc}</Text>
+                        {item.rewardLabel ? (
+                          <Text className='index-game-touchpoint__meta'>奖励：{item.rewardLabel}</Text>
+                        ) : null}
+                      </View>
+                    ))
+                  )}
+                </View>
               </View>
 
               <ActivityArea activities={snapshot.activities} />

@@ -66,6 +66,19 @@ describe('Account page', () => {
           },
         ],
       },
+      gameSummary: {
+        collectibleCount: 2,
+        unlockedGameCount: 1,
+        touchpointCount: 1,
+      },
+      gameTouchpoints: [
+        {
+          touchpointId: 'game_touchpoint_1',
+          title: '签到小游戏',
+          desc: '完成签到获得碎片奖励。',
+          rewardLabel: '碎片 x1',
+        },
+      ],
     } as any);
     dataServiceMock.getPaymentLedger.mockResolvedValue([
       {
@@ -138,6 +151,9 @@ describe('Account page', () => {
     expect(document.getElementById('account-notification-title')).toBeInTheDocument();
     expect(document.body.textContent).toContain('权益触达结果');
     expect(document.body.textContent).toContain('当前条件未满足');
+    expect(document.body.textContent).toContain('生命周期阶段记录');
+    expect(document.body.textContent).toContain('小游戏联动反馈');
+    expect(document.body.textContent).toContain('签到小游戏');
     expect(dataServiceMock.markNotificationsRead).toHaveBeenCalledWith(
       'm_store_001',
       'u_fixture_001',
@@ -185,5 +201,6 @@ describe('Account page', () => {
     });
     expect(document.getElementById('account-ledger-title')).toBeInTheDocument();
     expect(document.getElementById('account-invoice-title')).toBeInTheDocument();
+    expect(document.body.textContent).toContain('小游戏联动反馈');
   });
 });

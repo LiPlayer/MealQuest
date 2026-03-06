@@ -16,6 +16,7 @@ import './index.scss';
 
 const DEFAULT_STORE_ID =
   (typeof process !== 'undefined' && process.env && process.env.TARO_APP_DEFAULT_STORE_ID) || '';
+const LIFECYCLE_STAGE_ORDER = ['获客', '激活', '活跃', '扩收', '留存'];
 
 const toMoney = (value: number) => `¥${Number(value || 0).toFixed(2)}`;
 
@@ -54,6 +55,33 @@ export default function AccountPage() {
   const [canceling, setCanceling] = useState(false);
   const [customerUserId, setCustomerUserId] = useState('');
   const touchpointContract = snapshot?.touchpointContract || null;
+
+  const lifecycleTouchpoints = useMemo(() => {
+    const rows = touchpointContract?.recentTouchpoints || [];
+    return LIFECYCLE_STAGE_ORDER.map((stage) => {
+      const matched = rows.find((item) => String(item.stage || '').trim() === stage);
+      return {
+        stage,
+        outcome: matched?.outcome || 'INFO',
+        explanation: matched?.explanation || '暂无触达记录，系统会在满足条件后推送权益。',
+        reasonCode: matched?.reasonCode,
+      };
+    });
+  }, [touchpointContract]);
+
+  const gameSummary = useMemo(() => {
+    const summary = snapshot?.gameSummary;
+    return {
+      collectibleCount: Number(summary?.collectibleCount || 0),
+      unlockedGameCount: Number(summary?.unlockedGameCount || 0),
+      touchpointCount: Number(summary?.touchpointCount || 0),
+    };
+  }, [snapshot?.gameSummary]);
+
+  const gameTouchpoints = useMemo(() => {
+    const rows = Array.isArray(snapshot?.gameTouchpoints) ? snapshot?.gameTouchpoints : [];
+    return rows.slice(0, 3);
+  }, [snapshot?.gameTouchpoints]);
 
   const storeId = useMemo(() => {
     return String(storage.getLastStoreId() || DEFAULT_STORE_ID || '').trim();
@@ -249,6 +277,20 @@ export default function AccountPage() {
                 ))
               )}
             </View>
+            <View className='account-lifecycle-stage-list'>
+              <Text className='account-card__subtitle'>生命周期阶段记录</Text>
+              {lifecycleTouchpoints.map((item) => (
+                <View key={item.stage} className='account-lifecycle-stage-item'>
+                  <Text className='account-touchpoint-item__title'>
+                    {item.stage} · {item.outcome === 'HIT' ? '已命中' : item.outcome === 'BLOCKED' ? '未命中' : '进行中'}
+                  </Text>
+                  <Text className='account-touchpoint-item__desc'>{item.explanation}</Text>
+                  {item.reasonCode ? (
+                    <Text className='account-touchpoint-item__reason'>原因码：{item.reasonCode}</Text>
+                  ) : null}
+                </View>
+              ))}
+            </View>
           </>
         ) : null}
       </View>
@@ -289,6 +331,26 @@ export default function AccountPage() {
             </Text>
           </View>
         ))}
+        <View className='account-game-feedback'>
+          <Text className='account-card__subtitle'>小游戏联动反馈</Text>
+          <Text className='account-touchpoint-item__desc'>
+            可收集奖励：{gameSummary.collectibleCount} · 已解锁互动：{gameSummary.unlockedGameCount} · 最近互动：
+            {gameSummary.touchpointCount}
+          </Text>
+          {gameTouchpoints.length === 0 ? (
+            <Text className='account-empty'>暂无小游戏反馈，完成阶段触达后可查看互动奖励。</Text>
+          ) : (
+            gameTouchpoints.map((item) => (
+              <View className='account-touchpoint-item' key={item.touchpointId}>
+                <Text className='account-touchpoint-item__title'>{item.title}</Text>
+                <Text className='account-touchpoint-item__desc'>{item.desc}</Text>
+                {item.rewardLabel ? (
+                  <Text className='account-touchpoint-item__reason'>奖励：{item.rewardLabel}</Text>
+                ) : null}
+              </View>
+            ))
+          )}
+        </View>
       </View>
 
       <View className='account-actions'>

@@ -154,6 +154,21 @@ describe('ApiDataService activities mapping', () => {
                         textColor: 'text-amber-700',
                         tag: 'WELCOME'
                     }
+                ],
+                gameAssets: {
+                    summary: {
+                        collectibleCount: 2,
+                        unlockedGameCount: 1
+                    }
+                },
+                gameTouchpoints: [
+                    {
+                        id: 'game_touchpoint_1',
+                        title: '签到小游戏',
+                        desc: '完成签到获得碎片奖励。',
+                        rewardLabel: '碎片 x1',
+                        stage: 'PLAY'
+                    }
                 ]
             }
         });
@@ -166,5 +181,48 @@ describe('ApiDataService activities mapping', () => {
         expect(snapshot.activities[0].explanation).toBe('当前条件未满足');
         expect(snapshot.touchpointContract.recentTouchpoints[0].stage).toBe('获客');
         expect(snapshot.touchpointContract.recentTouchpoints[0].outcome).toBe('BLOCKED');
+        expect(snapshot.gameSummary.collectibleCount).toBe(2);
+        expect(snapshot.gameSummary.unlockedGameCount).toBe(1);
+        expect(snapshot.gameSummary.touchpointCount).toBe(1);
+        expect(snapshot.gameTouchpoints[0].title).toBe('签到小游戏');
+        expect(snapshot.gameTouchpoints[0].rewardLabel).toBe('碎片 x1');
+        expect(snapshot.gameTouchpoints[0].stage).toBe('活跃');
+    });
+
+    it('maps PLAY tag to engagement lifecycle stage alias', async () => {
+        requestMock.mockResolvedValueOnce({
+            statusCode: 200,
+            data: { token: 'token_fixture', profile: { userId: 'u_fixture_001', phone: '+8613900000001' } }
+        });
+        requestMock.mockResolvedValueOnce({
+            statusCode: 200,
+            data: {
+                merchant: { merchantId: 'm_store_001', name: 'Fixture Merchant' },
+                user: {
+                    wallet: { principal: 120, bonus: 30, silver: 66 },
+                    fragments: { noodle: 3, spicy: 1 },
+                    vouchers: []
+                },
+                activities: [
+                    {
+                        id: 'engagement_hit_1',
+                        title: '活跃互动已命中',
+                        desc: '已命中活跃互动规则。',
+                        icon: '*',
+                        color: 'bg-cyan-50',
+                        textColor: 'text-cyan-600',
+                        tag: 'PLAY'
+                    }
+                ]
+            }
+        });
+
+        const { ApiDataService } = require('@/services/ApiDataService');
+        const snapshot = await ApiDataService.getHomeSnapshot('m_store_001', 'u_fixture_001');
+
+        expect(snapshot.activities.length).toBe(1);
+        expect(snapshot.activities[0].stage).toBe('活跃');
+        expect(snapshot.touchpointContract.recentTouchpoints[0].stage).toBe('活跃');
+        expect(snapshot.touchpointContract.recentTouchpoints[0].outcome).toBe('HIT');
     });
 });

@@ -65,6 +65,95 @@
   padding: 0 4rpx;
 }
 
+.index-lifecycle-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+}
+
+.index-lifecycle-item {
+  border-radius: 16rpx;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1rpx solid var(--mq-border);
+  padding: 14rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.index-lifecycle-item__stage {
+  font-size: 24rpx;
+  font-weight: 700;
+  color: #244a89;
+}
+
+.index-lifecycle-item__status {
+  font-size: 22rpx;
+  color: #2f4669;
+  font-weight: 700;
+}
+
+.index-lifecycle-item__desc {
+  font-size: 21rpx;
+  color: #5e7493;
+  line-height: 1.45;
+}
+
+.index-game-card {
+  border-radius: 16rpx;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1rpx solid var(--mq-border);
+  padding: 14rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.index-game-summary-row {
+  display: flex;
+  gap: 12rpx;
+  flex-wrap: wrap;
+}
+
+.index-game-summary-item {
+  font-size: 22rpx;
+  color: #365273;
+  font-weight: 600;
+}
+
+.index-game-empty {
+  font-size: 21rpx;
+  color: #6d829f;
+  line-height: 1.45;
+}
+
+.index-game-touchpoint {
+  border-radius: 14rpx;
+  border: 1rpx solid #d7e4f8;
+  background: #f7fbff;
+  padding: 10rpx 12rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.index-game-touchpoint__title {
+  font-size: 22rpx;
+  color: #203553;
+  font-weight: 700;
+}
+
+.index-game-touchpoint__desc {
+  font-size: 20rpx;
+  color: #5f7694;
+  line-height: 1.45;
+}
+
+.index-game-touchpoint__meta {
+  font-size: 19rpx;
+  color: #778da9;
+}
+
 .index-receipt {
   border-radius: 16rpx;
   border: 1rpx solid #c6d9ff;

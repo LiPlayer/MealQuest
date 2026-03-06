@@ -44,6 +44,31 @@ function createSnapshot(activities: Array<{ id: string; title: string; desc: str
       textColor: 'text-emerald-600',
       tag: item.tag,
     })),
+    touchpointContract: {
+      objectiveLabel: '触达以长期价值为导向，系统会根据行为与规则反馈是否命中权益。',
+      behaviorSignals: ['扫码入店', '活动触达', '支付核销', '账票查询'],
+      recentTouchpoints: [
+        {
+          activityId: 'activation_hit_1',
+          stage: '激活',
+          outcome: 'HIT',
+          explanation: '已命中促活连签规则。',
+        },
+      ],
+    },
+    gameSummary: {
+      collectibleCount: 2,
+      unlockedGameCount: 1,
+      touchpointCount: 1,
+    },
+    gameTouchpoints: [
+      {
+        touchpointId: 'game_touchpoint_1',
+        title: '签到小游戏',
+        desc: '完成签到获得碎片奖励。',
+        rewardLabel: '碎片 x1',
+      },
+    ],
   };
 }
 
@@ -248,6 +273,33 @@ describe('Index page welcome activity visibility', () => {
       expect(document.body.textContent).toContain('欢迎权益未发放');
       expect(document.body.textContent).toContain('当前条件未满足');
       expect(document.body.textContent).toContain('原因码：segment_mismatch');
+    });
+  });
+
+  it('renders lifecycle progress and game linkage summary', async () => {
+    dataServiceMock.getHomeSnapshot.mockResolvedValue(
+      createSnapshot([
+        {
+          id: 'engagement_hit_1',
+          title: '活跃互动已命中',
+          desc: '已命中活跃互动规则。',
+          tag: 'PLAY',
+        },
+      ]) as any,
+    );
+
+    render(<IndexPage />);
+
+    await waitFor(() => {
+      expect(document.getElementById('index-lifecycle-title')).toBeInTheDocument();
+      expect(document.getElementById('index-game-linkage-title')).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(document.body.textContent).toContain('生命周期进度');
+      expect(document.body.textContent).toContain('小游戏联动反馈');
+      expect(document.body.textContent).toContain('可收集奖励：2');
+      expect(document.body.textContent).toContain('签到小游戏');
+      expect(document.body.textContent).toContain('激活');
     });
   });
 });

@@ -54,6 +54,22 @@ export interface TouchpointContract {
   recentTouchpoints: TouchpointItem[];
 }
 
+export interface GameLinkageSummary {
+  collectibleCount: number;
+  unlockedGameCount: number;
+  touchpointCount: number;
+}
+
+export interface GameTouchpointItem {
+  touchpointId: string;
+  title: string;
+  desc: string;
+  stage?: string;
+  outcome?: 'HIT' | 'BLOCKED' | 'INFO';
+  rewardLabel?: string;
+  updatedAt?: string;
+}
+
 export interface HomeSnapshot {
   store: StoreData;
   wallet: CustomerWallet;
@@ -64,6 +80,8 @@ export interface HomeSnapshot {
   vouchers: Voucher[];
   activities: ActivityItem[];
   touchpointContract?: TouchpointContract;
+  gameSummary?: GameLinkageSummary;
+  gameTouchpoints?: GameTouchpointItem[];
   lastPaymentId?: string;
 }
 
