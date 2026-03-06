@@ -10,7 +10,8 @@
     "dev:ios": "expo start --dev-client --ios",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test:contract:baseline": "npm run lint && npm run typecheck"
+    "test": "tsc --pretty false --module commonjs --target ES2020 --outDir .tmp-tests src/services/riskConfigGuards.ts && node test/risk-config-guards.test.js",
+    "test:contract:baseline": "npm run lint && npm run typecheck && npm test"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

@@ -6,6 +6,17 @@ const mapProps = (props = {}) => {
         mapped.onClick = mapped.onTap;
         delete mapped.onTap;
     }
+    delete mapped.scrollY;
+    delete mapped.scrollX;
+    delete mapped.enhanced;
+    delete mapped.showScrollbar;
+    delete mapped.pagingEnabled;
+    delete mapped.scrollWithAnimation;
+    delete mapped.enableBackToTop;
+    delete mapped.lowerThreshold;
+    delete mapped.upperThreshold;
+    delete mapped.onScrollToUpper;
+    delete mapped.onScrollToLower;
     return mapped;
 };
 

@@ -56,15 +56,6 @@ $env:WECHAT_CLI_PATH="C:/Program Files (x86)/Tencent/WeChatDevTools/cli.bat"
 npm run test:e2e:weapp
 ```
 
-Before running, clear legacy connect env vars:
-
-```powershell
-Remove-Item Env:WECHAT_WS_ENDPOINT -ErrorAction SilentlyContinue
-Remove-Item Env:WECHAT_SERVICE_PORT -ErrorAction SilentlyContinue
-```
-
-`WECHAT_WS_ENDPOINT` and `WECHAT_SERVICE_PORT` are no longer supported.
-
 Optional auto-launch port override:
 
 ```powershell

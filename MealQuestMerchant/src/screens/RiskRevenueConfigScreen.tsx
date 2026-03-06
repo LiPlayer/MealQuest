@@ -26,18 +26,12 @@ import {
   setMerchantKillSwitch,
   setRevenueStrategyConfig,
 } from '../services/apiClient';
+import {
+  RevenueConfigDraft,
+  parseTrafficPercent,
+  toRevenueConfigPayload,
+} from '../services/riskConfigGuards';
 import { mqTheme } from '../theme/tokens';
-
-type RevenueConfigDraft = {
-  minOrderAmount: string;
-  voucherValue: string;
-  voucherCost: string;
-  budgetCap: string;
-  frequencyWindowSec: string;
-  frequencyMaxHits: string;
-  inventorySku: string;
-  inventoryMaxUnits: string;
-};
 
 function toDraft(config: RevenueStrategyConfig): RevenueConfigDraft {
   return {
@@ -50,47 +44,6 @@ function toDraft(config: RevenueStrategyConfig): RevenueConfigDraft {
     inventorySku: String(config.inventorySku || ''),
     inventoryMaxUnits: String(config.inventoryMaxUnits),
   };
-}
-
-function parsePositiveNumber(value: string, label: string): number {
-  const num = Number(String(value || '').trim());
-  if (!Number.isFinite(num) || num <= 0) {
-    throw new Error(`${label} must be a positive number`);
-  }
-  return Math.round(num * 100) / 100;
-}
-
-function parsePositiveInt(value: string, label: string): number {
-  const num = Number(String(value || '').trim());
-  if (!Number.isFinite(num) || num <= 0 || !Number.isInteger(num)) {
-    throw new Error(`${label} must be a positive integer`);
-  }
-  return num;
-}
-
-function toPayload(draft: RevenueConfigDraft): RevenueStrategyConfig {
-  const inventorySku = String(draft.inventorySku || '').trim();
-  if (!inventorySku) {
-    throw new Error('inventorySku is required');
-  }
-  return {
-    minOrderAmount: parsePositiveNumber(draft.minOrderAmount, 'minOrderAmount'),
-    voucherValue: parsePositiveNumber(draft.voucherValue, 'voucherValue'),
-    voucherCost: parsePositiveNumber(draft.voucherCost, 'voucherCost'),
-    budgetCap: parsePositiveNumber(draft.budgetCap, 'budgetCap'),
-    frequencyWindowSec: parsePositiveInt(draft.frequencyWindowSec, 'frequencyWindowSec'),
-    frequencyMaxHits: parsePositiveInt(draft.frequencyMaxHits, 'frequencyMaxHits'),
-    inventorySku,
-    inventoryMaxUnits: parsePositiveInt(draft.inventoryMaxUnits, 'inventoryMaxUnits'),
-  };
-}
-
-function parseTrafficPercent(value: string): number {
-  const num = Number(String(value || '').trim());
-  if (!Number.isFinite(num) || !Number.isInteger(num) || num < 0 || num > 100) {
-    throw new Error('流量比例需为 0-100 的整数');
-  }
-  return num;
 }
 
 function formatPercent(value: number, digits = 1): string {
@@ -323,7 +276,7 @@ export default function RiskRevenueConfigScreen() {
     setConfigNotice('');
     setSaving(true);
     try {
-      const payload = toPayload(draft);
+      const payload = toRevenueConfigPayload(draft);
       const result = await setRevenueStrategyConfig({
         merchantId: authSession.merchantId,
         token: authSession.token,

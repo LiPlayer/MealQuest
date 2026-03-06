@@ -3,29 +3,6 @@ const path = require('path');
 const session = require('./utils/mini-program-session');
 
 describe('mini-program-session context resolver', () => {
-    it('detects legacy connect env as unsupported', () => {
-        expect(session.hasLegacyConnectEnv({
-            WECHAT_WS_ENDPOINT: 'ws://127.0.0.1:9420',
-        })).toBe(true);
-        expect(session.hasLegacyConnectEnv({
-            WECHAT_SERVICE_PORT: '33358',
-        })).toBe(true);
-        expect(session.hasLegacyConnectEnv({
-            WECHAT_WS_ENDPOINT: '',
-            WECHAT_SERVICE_PORT: '',
-        })).toBe(false);
-    });
-
-    it('returns blocked context when legacy connect env exists', () => {
-        const context = session.resolveE2EContext({
-            WECHAT_WS_ENDPOINT: 'ws://127.0.0.1:9420',
-        });
-
-        expect(context.runnable).toBe(false);
-        expect(context.mode).toBe('none');
-        expect(context.reason).toContain('legacy connect env');
-    });
-
     it('uses WECHAT_AUTO_PORT when valid', () => {
         const autoPort = session.resolveAutoPort({
             WECHAT_AUTO_PORT: '9527',

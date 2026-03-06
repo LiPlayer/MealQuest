@@ -28,6 +28,7 @@ const projects = {
       bootstrap: ["ci"],
       lint: ["run", "lint"],
       typecheck: ["run", "typecheck"],
+      test: ["test"],
     },
   },
   customer: {

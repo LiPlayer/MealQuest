@@ -77,9 +77,11 @@ function createSnapshot(activities: Array<{ id: string; title: string; desc: str
 describe('Index page welcome activity visibility', () => {
   const dataServiceMock = DataService as jest.Mocked<typeof DataService>;
   const storageMock = storage as jest.Mocked<typeof storage>;
+  let consoleErrorSpy: jest.SpyInstance;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     storageMock.getLastStoreId.mockReturnValue('m_store_001');
     dataServiceMock.getNotificationInbox.mockResolvedValue({
       items: [
@@ -122,6 +124,10 @@ describe('Index page welcome activity visibility', () => {
       ],
       reasons: [],
     } as any);
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
   });
 
   it('renders welcome hit activity card', async () => {
@@ -398,6 +404,10 @@ describe('Index page welcome activity visibility', () => {
     await waitFor(() => {
       expect(document.body.textContent).toContain('守护状态暂不可用，可稍后刷新。');
     });
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      '[Index] load stability guard failed',
+      expect.any(Error),
+    );
     expect(document.getElementById('index-pay-button')).toBeInTheDocument();
     expect(document.getElementById('index-execution-consistency-title')).toBeInTheDocument();
   });

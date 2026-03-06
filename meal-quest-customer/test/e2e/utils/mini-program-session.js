@@ -14,10 +14,6 @@ const DEFAULT_PROJECT_PATH = path.resolve(__dirname, '../../../dist');
 const normalize = (value) => String(value || '').trim();
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const hasLegacyConnectEnv = (env = process.env) => {
-  return Boolean(normalize(env.WECHAT_WS_ENDPOINT) || normalize(env.WECHAT_SERVICE_PORT));
-};
-
 const resolveProjectPath = (env = process.env) => {
   const custom = normalize(env.WECHAT_PROJECT_PATH);
   if (custom) {
@@ -43,14 +39,6 @@ const resolveE2EContext = (env = process.env, options = {}) => {
   const existsSyncFn = options.existsSync || fs.existsSync;
   const cliPathResolver = options.resolveCliPath || resolveCliPath;
   const projectPath = resolveProjectPath(env);
-
-  if (hasLegacyConnectEnv(env)) {
-    return {
-      runnable: false,
-      mode: 'none',
-      reason: 'legacy connect env is no longer supported (remove WECHAT_WS_ENDPOINT/WECHAT_SERVICE_PORT)'
-    };
-  }
 
   if (platform !== WINDOWS_PLATFORM) {
     return {
@@ -205,7 +193,6 @@ const waitForSelector = async (page, selector, timeoutMs = 5000) => {
 };
 
 module.exports = {
-  hasLegacyConnectEnv,
   resolveProjectPath,
   resolveAutoPort,
   resolveE2EContext,

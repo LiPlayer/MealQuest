@@ -8,8 +8,8 @@
     "repo:lint": "node repo-task.js lint",
     "repo:typecheck": "node repo-task.js typecheck",
     "repo:test": "node repo-task.js test",
-    "repo:verify": "npm run check:encoding && node repo-task.js verify",
-    "repo:verify:ci": "npm run check:encoding && node repo-task.js ci",
+    "repo:verify": "npm run check:encoding && npm run qa:coverage && node repo-task.js verify",
+    "repo:verify:ci": "npm run check:encoding && npm run qa:coverage && node repo-task.js ci",
     "bootstrap": "npm run repo:bootstrap",
     "lint": "npm run repo:lint",
     "typecheck": "npm run repo:typecheck",
@@ -17,6 +17,7 @@
     "test:contract:baseline": "npm run test:contract:baseline --prefix MealQuestServer && npm run test:contract:baseline --prefix MealQuestMerchant && npm run test:contract:baseline --prefix meal-quest-customer",
     "verify": "npm run repo:verify",
     "verify:ci": "npm run repo:verify:ci",
+    "qa:coverage": "node check-qa-coverage.js",
     "check:encoding": "node check-encoding.js",
     "check:encoding:staged": "node check-encoding.js --staged",
     "hooks:install": "git config core.hooksPath .githooks"
