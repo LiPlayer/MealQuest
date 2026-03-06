@@ -8,6 +8,7 @@ jest.mock('@/services/DataService', () => ({
   DataService: {
     getHomeSnapshot: jest.fn(),
     executeCheckout: jest.fn(),
+    getNotificationInbox: jest.fn(),
   },
 }));
 
@@ -79,6 +80,29 @@ describe('Index page welcome activity visibility', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     storageMock.getLastStoreId.mockReturnValue('m_store_001');
+    dataServiceMock.getNotificationInbox.mockResolvedValue({
+      items: [
+        {
+          notificationId: 'notification_exec_001',
+          merchantId: 'm_store_001',
+          recipientType: 'CUSTOMER_USER',
+          recipientId: 'u_fixture_001',
+          category: 'EXECUTION_RESULT',
+          title: '权益触达结果',
+          body: '事件 PAYMENT_VERIFY 已命中策略',
+          status: 'READ',
+          createdAt: '2026-03-06T00:00:00.000Z',
+          readAt: '2026-03-06T00:10:00.000Z',
+          related: {
+            outcome: 'HIT',
+            event: 'PAYMENT_VERIFY',
+            reasonCodes: [],
+          },
+        },
+      ],
+      hasMore: false,
+      nextCursor: null,
+    } as any);
   });
 
   it('renders welcome hit activity card', async () => {
@@ -292,10 +316,13 @@ describe('Index page welcome activity visibility', () => {
 
     await waitFor(() => {
       expect(document.getElementById('index-lifecycle-title')).toBeInTheDocument();
+      expect(document.getElementById('index-execution-consistency-title')).toBeInTheDocument();
       expect(document.getElementById('index-game-linkage-title')).toBeInTheDocument();
     });
     await waitFor(() => {
       expect(document.body.textContent).toContain('生命周期进度');
+      expect(document.body.textContent).toContain('最新权益变更说明');
+      expect(document.body.textContent).toContain('扩收 · 已命中');
       expect(document.body.textContent).toContain('小游戏联动反馈');
       expect(document.body.textContent).toContain('可收集奖励：2');
       expect(document.body.textContent).toContain('签到小游戏');

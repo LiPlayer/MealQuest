@@ -26,6 +26,30 @@ function toNumber(value: unknown, fallback = 0): number {
   return Number.isFinite(num) ? num : fallback;
 }
 
+function toRelated(raw: unknown): CustomerNotificationItem['related'] {
+  if (!raw || typeof raw !== 'object') {
+    return undefined;
+  }
+  const row = raw as Record<string, unknown>;
+  const outcomeRaw = toString(row.outcome).toUpperCase();
+  const outcome = ['HIT', 'BLOCKED', 'NO_POLICY', 'INFO'].includes(outcomeRaw)
+    ? (outcomeRaw as NonNullable<CustomerNotificationItem['related']>['outcome'])
+    : undefined;
+  const reasonCodes = Array.isArray(row.reasonCodes)
+    ? row.reasonCodes.map((item) => toString(item)).filter(Boolean)
+    : [];
+  const related: NonNullable<CustomerNotificationItem['related']> = {
+    decisionId: toString(row.decisionId) || undefined,
+    event: toString(row.event) || undefined,
+    outcome,
+    reasonCodes: reasonCodes.length > 0 ? reasonCodes : undefined,
+  };
+  if (!related.decisionId && !related.event && !related.outcome && !related.reasonCodes) {
+    return undefined;
+  }
+  return related;
+}
+
 function toNotificationItem(raw: Record<string, unknown>): CustomerNotificationItem {
   const status = toString(raw.status, 'UNREAD').toUpperCase() === 'READ' ? 'READ' : 'UNREAD';
   return {
@@ -39,6 +63,7 @@ function toNotificationItem(raw: Record<string, unknown>): CustomerNotificationI
     status,
     createdAt: toString(raw.createdAt, new Date().toISOString()),
     readAt: toString(raw.readAt) || null,
+    related: toRelated(raw.related),
   };
 }
 

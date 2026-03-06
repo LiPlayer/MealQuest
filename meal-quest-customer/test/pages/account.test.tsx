@@ -122,6 +122,11 @@ describe('Account page', () => {
           status: 'UNREAD',
           createdAt: '2026-02-21T00:00:00.000Z',
           readAt: null,
+          related: {
+            event: 'PAYMENT_VERIFY',
+            outcome: 'BLOCKED',
+            reasonCodes: ['constraint:frequency_exceeded'],
+          },
         },
       ],
       hasMore: false,
@@ -150,6 +155,10 @@ describe('Account page', () => {
     expect(document.getElementById('account-touchpoint-title')).toBeInTheDocument();
     expect(document.getElementById('account-notification-title')).toBeInTheDocument();
     expect(document.body.textContent).toContain('权益触达结果');
+    expect(document.body.textContent).toContain('提案执行一致性记录');
+    expect(document.body.textContent).toContain('扩收 · 未执行');
+    expect(document.body.textContent).toContain('今日触达次数已达上限');
+    expect(document.body.textContent).not.toContain('PAYMENT_VERIFY');
     expect(document.body.textContent).toContain('当前条件未满足');
     expect(document.body.textContent).toContain('生命周期阶段记录');
     expect(document.body.textContent).toContain('小游戏联动反馈');

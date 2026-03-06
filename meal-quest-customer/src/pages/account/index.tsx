@@ -10,6 +10,10 @@ import {
   InvoiceItem,
   PaymentLedgerItem,
 } from '@/services/dataTypes';
+import {
+  buildExecutionConsistencyRecords,
+  hasTouchpointConsistencyConflict,
+} from '@/services/customerApp/executionConsistency';
 import { storage } from '@/utils/storage';
 
 import './index.scss';
@@ -82,6 +86,18 @@ export default function AccountPage() {
     const rows = Array.isArray(snapshot?.gameTouchpoints) ? snapshot?.gameTouchpoints : [];
     return rows.slice(0, 3);
   }, [snapshot?.gameTouchpoints]);
+  const executionConsistencyRecords = useMemo(
+    () => buildExecutionConsistencyRecords(notifications, 6),
+    [notifications],
+  );
+  const hasConsistencyConflict = useMemo(
+    () =>
+      hasTouchpointConsistencyConflict(
+        touchpointContract?.recentTouchpoints || [],
+        executionConsistencyRecords,
+      ),
+    [executionConsistencyRecords, touchpointContract?.recentTouchpoints],
+  );
 
   const storeId = useMemo(() => {
     return String(storage.getLastStoreId() || DEFAULT_STORE_ID || '').trim();
@@ -325,12 +341,41 @@ export default function AccountPage() {
               {String(item.status || '').toUpperCase() === 'UNREAD' ? '未读' : '已读'}
             </Text>
             <Text className='account-touchpoint-item__desc'>{item.title}</Text>
-            <Text className='account-touchpoint-item__desc'>{item.body || '系统提醒'}</Text>
+            <Text className='account-touchpoint-item__desc'>
+              {String(item.category || '').toUpperCase() === 'EXECUTION_RESULT'
+                ? '权益结果已更新，可查看下方一致性记录。'
+                : item.body || '系统提醒'}
+            </Text>
             <Text className='account-touchpoint-item__reason'>
               时间：{new Date(item.createdAt).toLocaleString()}
             </Text>
           </View>
         ))}
+
+        <View className='account-consistency-block'>
+          <Text className='account-card__subtitle'>提案执行一致性记录</Text>
+          {executionConsistencyRecords.length === 0 ? (
+            <Text className='account-empty'>暂无执行记录，后续权益变化会在此展示。</Text>
+          ) : (
+            executionConsistencyRecords.map((item) => (
+              <View className='account-touchpoint-item' key={item.notificationId}>
+                <Text className='account-touchpoint-item__title'>
+                  {item.stage} · {item.outcomeLabel}
+                </Text>
+                <Text className='account-touchpoint-item__desc'>{item.explanation}</Text>
+                <Text className='account-touchpoint-item__reason'>
+                  时间：{new Date(item.createdAt).toLocaleString()}
+                </Text>
+              </View>
+            ))
+          )}
+          {hasConsistencyConflict ? (
+            <Text className='account-consistency-note'>
+              口径说明：若与触达摘要不一致，以最新执行结果为准。
+            </Text>
+          ) : null}
+        </View>
+
         <View className='account-game-feedback'>
           <Text className='account-card__subtitle'>小游戏联动反馈</Text>
           <Text className='account-touchpoint-item__desc'>

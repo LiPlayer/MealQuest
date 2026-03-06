@@ -99,6 +99,56 @@
   line-height: 1.45;
 }
 
+.index-execution-card {
+  border-radius: 16rpx;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1rpx solid var(--mq-border);
+  padding: 14rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.index-execution-loading,
+.index-execution-empty {
+  font-size: 21rpx;
+  color: #6d829f;
+  line-height: 1.45;
+}
+
+.index-execution-error {
+  font-size: 21rpx;
+  color: var(--mq-danger);
+  line-height: 1.45;
+}
+
+.index-execution-item {
+  border-radius: 14rpx;
+  border: 1rpx solid #d7e4f8;
+  background: #f7fbff;
+  padding: 10rpx 12rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.index-execution-item__title {
+  font-size: 22rpx;
+  color: #203553;
+  font-weight: 700;
+}
+
+.index-execution-item__desc {
+  font-size: 20rpx;
+  color: #5f7694;
+  line-height: 1.45;
+}
+
+.index-execution-item__meta {
+  font-size: 19rpx;
+  color: #778da9;
+}
+
 .index-game-card {
   border-radius: 16rpx;
   background: rgba(255, 255, 255, 0.92);

@@ -108,6 +108,13 @@ export interface InvoiceItem {
 
 export type CustomerNotificationStatus = 'UNREAD' | 'READ';
 
+export interface CustomerNotificationRelated {
+  decisionId?: string;
+  event?: string;
+  outcome?: 'HIT' | 'BLOCKED' | 'NO_POLICY' | 'INFO';
+  reasonCodes?: string[];
+}
+
 export interface CustomerNotificationItem {
   notificationId: string;
   merchantId: string;
@@ -119,6 +126,7 @@ export interface CustomerNotificationItem {
   status: CustomerNotificationStatus;
   createdAt: string;
   readAt: string | null;
+  related?: CustomerNotificationRelated;
 }
 
 export interface CustomerNotificationSummary {

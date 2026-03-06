@@ -34,6 +34,14 @@ const REASON_FRIENDLY_MAP: Record<string, string> = {
   'constraint:kill_switch': '活动暂时关闭',
 };
 
+export function toFriendlyReasonLabel(reasonCode: string): string {
+  const normalized = toString(reasonCode).trim();
+  if (!normalized) {
+    return '';
+  }
+  return REASON_FRIENDLY_MAP[normalized] || '暂未命中当前活动条件';
+}
+
 const LIFECYCLE_STAGE_ALIASES: Record<string, string> = {
   WELCOME: '获客',
   NEW: '获客',
@@ -121,7 +129,7 @@ function toFriendlyExplanation({
   outcome: 'HIT' | 'BLOCKED' | 'INFO';
 }): string {
   if (reasonCode) {
-    return REASON_FRIENDLY_MAP[reasonCode] || '暂未命中当前活动条件';
+    return toFriendlyReasonLabel(reasonCode);
   }
   if (outcome === 'HIT') {
     return desc || '本次触达已命中，可在资产与账单查看变更。';

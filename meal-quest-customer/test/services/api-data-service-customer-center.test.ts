@@ -165,7 +165,12 @@ describe('ApiDataService customer center', () => {
                         body: '事件 PAYMENT_VERIFY 已命中策略',
                         status: 'UNREAD',
                         createdAt: '2026-02-21T00:00:00.000Z',
-                        readAt: null
+                        readAt: null,
+                        related: {
+                            event: 'PAYMENT_VERIFY',
+                            outcome: 'HIT',
+                            reasonCodes: ['segment_mismatch']
+                        }
                     }
                 ],
                 pageInfo: {
@@ -184,6 +189,9 @@ describe('ApiDataService customer center', () => {
 
         expect(result.items.length).toBe(1);
         expect(result.items[0].notificationId).toBe('notification_001');
+        expect(result.items[0].related?.event).toBe('PAYMENT_VERIFY');
+        expect(result.items[0].related?.outcome).toBe('HIT');
+        expect(result.items[0].related?.reasonCodes).toEqual(['segment_mismatch']);
         expect(requestMock).toHaveBeenCalledWith(
             expect.objectContaining({
                 method: 'GET',

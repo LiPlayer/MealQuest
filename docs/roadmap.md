@@ -114,8 +114,8 @@
 | S040 | 数据与模型基础口径建立 | S030 done | done |
 | S050 | 决策与执行治理闭环建立 | S040 done | done |
 | S060 | 生命周期五阶段策略闭环建立 | S050 done | done |
-| S070 | 老板端 AI 提案与决策闭环 | S060 done | doing |
-| S080 | 顾客端体验完整性强化 | S070 done | todo |
+| S070 | 老板端 AI 提案与决策闭环 | S060 done | done |
+| S080 | 顾客端体验完整性强化 | S070 done | doing |
 | S090 | 长期 KPI 与发布门建立 | S080 done | todo |
 | S100 | 营销自动化能力建立 | S090 done | todo |
 | S110 | 实验与动态优化能力建立 | S100 done | todo |
@@ -204,7 +204,7 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | PKG-S070-SRV-01 | server | SRV-C05, SRV-C06 | 建立提案可解释与决策支持能力 | 提案解释能力 | none | done |
 | PKG-S070-MER-01 | merchant | MER-C04, MER-C05 | 完成老板端 AI 对话、提案同意/驳回闭环 | AI 提案决策流程 | PKG-S070-SRV-01 | done |
-| PKG-S070-CUS-01 | customer | CUS-C03 | 建立顾客权益与提案执行一致性规则 | 一致性规则清单 | PKG-S070-SRV-01 | todo |
+| PKG-S070-CUS-01 | customer | CUS-C03 | 建立顾客权益与提案执行一致性规则 | 一致性规则清单 | PKG-S070-SRV-01 | done |
 
 ### S080 - 顾客端体验完整性
 

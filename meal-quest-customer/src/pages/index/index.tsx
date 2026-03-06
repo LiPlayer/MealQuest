@@ -7,7 +7,8 @@ import CustomerBottomDock from '@/components/CustomerBottomDock';
 import CustomerCardStack from '@/components/CustomerCardStack';
 import ShopBrand from '@/components/ShopBrand';
 import { buildSmartCheckoutQuote } from '@/domain/smartCheckout';
-import { HomeSnapshot } from '@/services/dataTypes';
+import { CustomerNotificationItem, HomeSnapshot } from '@/services/dataTypes';
+import { buildExecutionConsistencyRecords } from '@/services/customerApp/executionConsistency';
 import { DataService } from '@/services/DataService';
 import { storage } from '@/utils/storage';
 
@@ -76,6 +77,9 @@ export default function IndexPage() {
   const [paying, setPaying] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [lastReceipt, setLastReceipt] = useState('');
+  const [executionNotifications, setExecutionNotifications] = useState<CustomerNotificationItem[]>([]);
+  const [executionLoading, setExecutionLoading] = useState(false);
+  const [executionErrorMessage, setExecutionErrorMessage] = useState('');
   const autoPayHintShownRef = useRef(false);
 
   const storeId = useMemo(() => {
@@ -100,6 +104,10 @@ export default function IndexPage() {
   }, [orderAmount, snapshot]);
 
   const lifecycleStages = useMemo(() => buildLifecycleStages(snapshot), [snapshot]);
+  const executionRecords = useMemo(
+    () => buildExecutionConsistencyRecords(executionNotifications, 2),
+    [executionNotifications],
+  );
 
   const gameSummary = useMemo(() => {
     if (!snapshot || !snapshot.gameSummary) {
@@ -121,6 +129,28 @@ export default function IndexPage() {
     return rows.slice(0, 3);
   }, [snapshot]);
 
+  const loadExecutionConsistency = useCallback(async () => {
+    if (!storeId) {
+      return;
+    }
+    setExecutionLoading(true);
+    setExecutionErrorMessage('');
+    try {
+      const result = await DataService.getNotificationInbox(storeId, '', {
+        status: 'ALL',
+        category: 'EXECUTION_RESULT',
+        limit: 6,
+      });
+      setExecutionNotifications(Array.isArray(result.items) ? result.items : []);
+    } catch (error) {
+      console.error('[Index] load execution consistency failed', error);
+      setExecutionErrorMessage('权益变更说明暂不可用，可稍后刷新。');
+      setExecutionNotifications([]);
+    } finally {
+      setExecutionLoading(false);
+    }
+  }, [storeId]);
+
   const loadSnapshot = useCallback(async () => {
     if (!storeId) {
       Taro.reLaunch({ url: '/pages/startup/index' });
@@ -132,6 +162,7 @@ export default function IndexPage() {
     try {
       const nextSnapshot = await DataService.getHomeSnapshot(storeId);
       setSnapshot(nextSnapshot);
+      void loadExecutionConsistency();
     } catch (error) {
       console.error('[Index] load snapshot failed', error);
       setErrorMessage('加载失败，请稍后重试');
@@ -139,7 +170,7 @@ export default function IndexPage() {
     } finally {
       setLoading(false);
     }
-  }, [storeId]);
+  }, [loadExecutionConsistency, storeId]);
 
   useEffect(() => {
     void loadSnapshot();
@@ -233,6 +264,34 @@ export default function IndexPage() {
                       <Text className='index-lifecycle-item__desc'>{item.explanation}</Text>
                     </View>
                   ))}
+                </View>
+              </View>
+
+              <View className='index-section'>
+                <Text id='index-execution-consistency-title' className='index-section__title'>
+                  最新权益变更说明
+                </Text>
+                <View className='index-execution-card'>
+                  {executionLoading ? <Text className='index-execution-loading'>权益结果加载中...</Text> : null}
+                  {!executionLoading && executionErrorMessage ? (
+                    <Text className='index-execution-error'>{executionErrorMessage}</Text>
+                  ) : null}
+                  {!executionLoading && !executionErrorMessage && executionRecords.length === 0 ? (
+                    <Text className='index-execution-empty'>暂无执行记录，后续命中权益后会在此展示。</Text>
+                  ) : null}
+                  {!executionLoading && !executionErrorMessage
+                    ? executionRecords.map((item) => (
+                        <View key={item.notificationId} className='index-execution-item'>
+                          <Text className='index-execution-item__title'>
+                            {item.stage} · {item.outcomeLabel}
+                          </Text>
+                          <Text className='index-execution-item__desc'>{item.explanation}</Text>
+                          <Text className='index-execution-item__meta'>
+                            时间：{new Date(item.createdAt).toLocaleString()}
+                          </Text>
+                        </View>
+                      ))
+                    : null}
                 </View>
               </View>
 

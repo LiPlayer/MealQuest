@@ -246,6 +246,21 @@
   color: #7b90ac;
 }
 
+.account-consistency-block {
+  margin-top: 14rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+}
+
+.account-consistency-note {
+  display: block;
+  margin-top: 4rpx;
+  font-size: 20rpx;
+  color: #3d5e89;
+  line-height: 1.5;
+}
+
 .account-game-feedback {
   margin-top: 14rpx;
   display: flex;
