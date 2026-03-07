@@ -222,12 +222,7 @@ export default function AutomationScreen() {
   }, [executions]);
 
   return (
-    <AppShell scroll>
-      <View style={styles.headerWrap}>
-        <Text style={styles.title}>自动化运营</Text>
-        <Text style={styles.subtitle}>配置触发规则并追踪执行结果，确保自动化可控、可审计、可解释。</Text>
-      </View>
-
+    <AppShell scroll edges={['bottom']}>
       <SurfaceCard>
         <Text style={styles.sectionTitle}>自动化配置</Text>
         {!canView ? <Text style={styles.metaText}>当前角色无自动化查看权限（仅 OWNER/MANAGER 可访问）。</Text> : null}
@@ -395,18 +390,6 @@ export default function AutomationScreen() {
 }
 
 const styles = StyleSheet.create({
-  headerWrap: {
-    paddingTop: mqTheme.spacing.sm,
-    gap: 4,
-  },
-  title: {
-    ...mqTheme.typography.title,
-    fontSize: 22,
-  },
-  subtitle: {
-    ...mqTheme.typography.body,
-    color: '#435571',
-  },
   sectionTitle: {
     ...mqTheme.typography.sectionTitle,
   },

@@ -275,12 +275,7 @@ export default function DashboardScreen() {
   }, [loadExperimentSnapshot]);
 
   return (
-    <AppShell>
-      <View style={styles.header}>
-        <Text style={styles.title}>经营看板（基线）</Text>
-        <Text style={styles.subtitle}>围绕长期价值最大化，持续追踪商户收益与 Uplift 变化。</Text>
-      </View>
-
+    <AppShell edges={['bottom']}>
       <SurfaceCard>
         <Text style={styles.sectionTitle}>当前门店</Text>
         <Text style={styles.storeName}>{merchantState.merchantName || merchantState.merchantId || 'My Store'}</Text>
@@ -641,14 +636,6 @@ export default function DashboardScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: {
-    paddingTop: mqTheme.spacing.sm,
-    gap: 4,
-  },
-  title: {
-    ...mqTheme.typography.title,
-    fontSize: 22,
-  },
   subtitle: {
     ...mqTheme.typography.body,
     color: '#435571',

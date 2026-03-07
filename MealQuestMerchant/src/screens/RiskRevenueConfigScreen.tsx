@@ -450,12 +450,7 @@ export default function RiskRevenueConfigScreen() {
   };
 
   return (
-    <AppShell scroll>
-      <View style={styles.headerWrap}>
-        <Text style={styles.title}>Revenue 风控配置</Text>
-        <Text style={styles.subtitle}>手动配置慢销加购策略，或先获取 Agent 建议再应用。</Text>
-      </View>
-
+    <AppShell scroll edges={['bottom']}>
       <SurfaceCard>
         <Text style={styles.sectionTitle}>风险治理与紧急停机</Text>
         <Text style={styles.summaryLine}>
@@ -791,18 +786,6 @@ export default function RiskRevenueConfigScreen() {
 }
 
 const styles = StyleSheet.create({
-  headerWrap: {
-    paddingTop: mqTheme.spacing.sm,
-    gap: 4,
-  },
-  title: {
-    ...mqTheme.typography.title,
-    fontSize: 22,
-  },
-  subtitle: {
-    ...mqTheme.typography.body,
-    color: '#435571',
-  },
   sectionTitle: {
     ...mqTheme.typography.sectionTitle,
   },

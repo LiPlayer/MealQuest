@@ -203,12 +203,7 @@ export default function ReplayScreen() {
   const lifecycleDraftCount = lifecycleItems.length - lifecycleActiveCount;
 
   return (
-    <AppShell scroll>
-      <View style={styles.headerWrap}>
-        <Text style={styles.title}>执行回放</Text>
-        <Text style={styles.subtitle}>支持生命周期策略运营与回放联动，覆盖启用、追踪、解释三步闭环。</Text>
-      </View>
-
+    <AppShell scroll edges={['bottom']}>
       <SurfaceCard>
         <Text style={styles.sectionTitle}>生命周期策略运营</Text>
         <View style={styles.grid}>
@@ -360,18 +355,6 @@ export default function ReplayScreen() {
 }
 
 const styles = StyleSheet.create({
-  headerWrap: {
-    paddingTop: mqTheme.spacing.sm,
-    gap: 4,
-  },
-  title: {
-    ...mqTheme.typography.title,
-    fontSize: 22,
-  },
-  subtitle: {
-    ...mqTheme.typography.body,
-    color: '#435571',
-  },
   sectionTitle: {
     ...mqTheme.typography.sectionTitle,
   },

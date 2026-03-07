@@ -247,12 +247,7 @@ export default function NotificationsScreen() {
   }, [loadInbox, merchantId, token, totalUnread]);
 
   return (
-    <AppShell scroll>
-      <View style={styles.headerWrap}>
-        <Text style={styles.title}>提醒中心</Text>
-        <Text style={styles.subtitle}>查看审批待办、执行结果与反馈进展提醒，支持按状态筛选和批量已读。</Text>
-      </View>
-
+    <AppShell scroll edges={['bottom']}>
       <SurfaceCard>
         <Text style={styles.sectionTitle}>未读摘要</Text>
         <View style={styles.grid}>
@@ -413,18 +408,6 @@ export default function NotificationsScreen() {
 }
 
 const styles = StyleSheet.create({
-  headerWrap: {
-    paddingTop: mqTheme.spacing.sm,
-    gap: 4,
-  },
-  title: {
-    ...mqTheme.typography.title,
-    fontSize: 22,
-  },
-  subtitle: {
-    ...mqTheme.typography.body,
-    color: '#435571',
-  },
   sectionTitle: {
     ...mqTheme.typography.sectionTitle,
   },

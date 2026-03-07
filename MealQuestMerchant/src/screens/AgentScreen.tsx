@@ -300,10 +300,6 @@ export default function AgentScreen() {
       >
         <SurfaceCard style={styles.heroCard}>
           <View style={styles.heroTopRow}>
-            <View style={styles.heroTitleWrap}>
-              <Text style={styles.heroTitle}>AI 经营协作中心</Text>
-              <Text style={styles.heroSubtitle}>围绕长期价值最大化，按商户收益与 Uplift 给出下一步建议。</Text>
-            </View>
             <ActionButton
               testID="ai-proactive-scan"
               label="巡检"
@@ -597,20 +593,7 @@ const styles = StyleSheet.create({
     marginTop: mqTheme.spacing.sm,
   },
   heroTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: mqTheme.spacing.sm,
-  },
-  heroTitleWrap: {
-    flex: 1,
-    gap: 2,
-  },
-  heroTitle: {
-    ...mqTheme.typography.sectionTitle,
-    fontSize: 18,
-  },
-  heroSubtitle: {
-    ...mqTheme.typography.caption,
+    alignItems: 'flex-end',
   },
   customerEntryCard: {
     gap: mqTheme.spacing.sm,

@@ -1,7 +1,8 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text } from 'react-native';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Redirect, Tabs } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import BootSplash from '../../src/components/BootSplash';
 import { useMerchant } from '../../src/context/MerchantContext';
@@ -17,18 +18,9 @@ const iconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
   risk: 'shield-checkmark-outline',
 };
 
-const titleMap: Record<string, string> = {
-  dashboard: 'Dashboard',
-  agent: 'Agent',
-  automation: 'Automation',
-  notifications: 'Notifications',
-  approvals: 'Approvals',
-  replay: 'Replay',
-  risk: 'Risk',
-};
-
 export default function TabsLayout() {
-  const { authHydrating, isAuthenticated, pendingOnboardingSession, logout } = useMerchant();
+  const { authHydrating, isAuthenticated, pendingOnboardingSession } = useMerchant();
+  const insets = useSafeAreaInsets();
 
   if (authHydrating) {
     return <BootSplash />;
@@ -41,24 +33,15 @@ export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={({ route }) => ({
-        headerShown: true,
-        headerTitle: titleMap[route.name] || 'MealQuest',
-        headerStyle: {
-          backgroundColor: mqTheme.colors.surface,
-        },
-        headerTitleStyle: {
-          color: mqTheme.colors.ink,
-          fontSize: 16,
-          fontWeight: '800',
-        },
-        headerShadowVisible: false,
-        headerRight: () => (
-          <Pressable style={styles.logoutBtn} onPress={logout}>
-            <MaterialIcons name="logout" size={14} color="#223654" />
-            <Text style={styles.logoutText}>Logout</Text>
-          </Pressable>
-        ),
-        tabBarStyle: styles.tabBar,
+        headerShown: false,
+        tabBarStyle: [
+          styles.tabBar,
+          {
+            height: 56 + Math.max(insets.bottom, 8),
+            paddingBottom: Math.max(insets.bottom, 8),
+          },
+        ],
+        tabBarHideOnKeyboard: true,
         tabBarActiveTintColor: mqTheme.colors.primary,
         tabBarInactiveTintColor: '#7489a6',
         tabBarLabelStyle: styles.tabLabel,
@@ -72,7 +55,7 @@ export default function TabsLayout() {
       })}
     >
       <Tabs.Screen name="dashboard" options={{ title: '看板' }} />
-      <Tabs.Screen name="agent" options={{ title: 'Agent' }} />
+      <Tabs.Screen name="agent" options={{ title: '策略' }} />
       <Tabs.Screen name="automation" options={{ title: '自动化' }} />
       <Tabs.Screen name="notifications" options={{ title: '提醒' }} />
       <Tabs.Screen name="approvals" options={{ title: '审批' }} />
@@ -87,29 +70,10 @@ const styles = StyleSheet.create({
     backgroundColor: mqTheme.colors.surface,
     borderTopWidth: 1,
     borderTopColor: mqTheme.colors.border,
-    height: 64,
     paddingTop: 4,
-    paddingBottom: 7,
   },
   tabLabel: {
     fontSize: 11,
     fontWeight: '700',
-  },
-  logoutBtn: {
-    marginRight: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-    backgroundColor: mqTheme.colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: mqTheme.colors.border,
-    flexDirection: 'row',
-    gap: 4,
-    alignItems: 'center',
-  },
-  logoutText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#223654',
   },
 });

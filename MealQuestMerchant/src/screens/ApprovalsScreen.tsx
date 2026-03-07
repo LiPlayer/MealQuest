@@ -146,12 +146,7 @@ export default function ApprovalsScreen() {
   );
 
   return (
-    <AppShell scroll>
-      <View style={styles.headerWrap}>
-        <Text style={styles.title}>审批中心</Text>
-        <Text style={styles.subtitle}>覆盖待审批、待发布、已发布全链路，确保策略执行前有人审、可追溯。</Text>
-      </View>
-
+    <AppShell scroll edges={['bottom']}>
       <SurfaceCard>
         <Text style={styles.sectionTitle}>治理概览</Text>
         <View style={styles.grid}>
@@ -251,18 +246,6 @@ export default function ApprovalsScreen() {
 }
 
 const styles = StyleSheet.create({
-  headerWrap: {
-    paddingTop: mqTheme.spacing.sm,
-    gap: 4,
-  },
-  title: {
-    ...mqTheme.typography.title,
-    fontSize: 22,
-  },
-  subtitle: {
-    ...mqTheme.typography.body,
-    color: '#435571',
-  },
   sectionTitle: {
     ...mqTheme.typography.sectionTitle,
   },

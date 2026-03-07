@@ -210,6 +210,7 @@
 
 - 老板视角完成标准：老板可看到顾客体验健康度与反馈汇总。
 - 顾客视角完成标准：主路径稳定、反馈明确、隐私流程可达，问题可提交可追踪。
+- 老板端界面口径：安卓端底部区域完成安全区适配，Tab 页面隐藏系统顶部栏并以全屏内容区展示。
 
 | PackageID | Lane | CapabilityID | Macro Requirement | Deliverable | DependsOn | Status |
 | --- | --- | --- | --- | --- | --- | --- |
