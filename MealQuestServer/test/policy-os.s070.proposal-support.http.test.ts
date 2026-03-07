@@ -177,6 +177,15 @@ test("S070 proposal support: generate/list/detail/evaluate/approve-publish flow 
     assert.ok(String(evaluate.data.draftId || "").startsWith("draft_"));
     assert.ok(evaluate.data.evaluation);
 
+    const listPublishedBeforeApprove = await getJson(
+      baseUrl,
+      `/api/agent-os/proposals?merchantId=${encodeURIComponent(merchantId)}&status=PUBLISHED`,
+      ownerToken
+    );
+    assert.equal(listPublishedBeforeApprove.status, 200);
+    assert.ok(Array.isArray(listPublishedBeforeApprove.data.items));
+    assert.ok(!listPublishedBeforeApprove.data.items.some((item) => String(item.proposalId) === proposalId));
+
     const decideApprove = await postJson(
       baseUrl,
       `/api/agent-os/proposals/${encodeURIComponent(proposalId)}/decide`,

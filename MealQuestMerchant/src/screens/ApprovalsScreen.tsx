@@ -164,6 +164,7 @@ export default function ApprovalsScreen() {
 
       <SurfaceCard>
         <Text style={styles.sectionTitle}>审批队列</Text>
+        <Text style={styles.metaText}>说明：AI 提案需在策略助手中由 OWNER 确认后才进入执行；本页用于策略草稿审批与发布治理。</Text>
         <View style={styles.filterWrap}>
           {STATUS_FILTERS.map((item) => {
             const active = item === statusFilter;

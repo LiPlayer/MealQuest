@@ -275,7 +275,7 @@ export default function AgentScreen() {
           event: String(selectedProposal?.triggerEvent || '').trim() || undefined,
         });
         if (decision === 'APPROVE') {
-          setProposalNotice('提案已同意并发布。');
+          setProposalNotice('提案已确认，已进入 Policy OS 执行。');
         } else {
           setProposalNotice('提案已驳回并记录原因。');
           setRejectReason('');
@@ -346,7 +346,7 @@ export default function AgentScreen() {
           <View style={styles.proposalHeader}>
             <View style={styles.proposalTitleWrap}>
               <Text style={styles.proposalTitle}>提案决策区</Text>
-              <Text style={styles.proposalSubtitle}>围绕长期价值目标，完成提案生成、评估与同意/驳回闭环。</Text>
+              <Text style={styles.proposalSubtitle}>围绕长期价值目标，完成提案生成、评估与确认/驳回闭环。</Text>
             </View>
             <ActionButton
               label="刷新"
@@ -392,6 +392,7 @@ export default function AgentScreen() {
           {proposalError ? <Text style={styles.proposalErrorText}>{proposalError}</Text> : null}
           {proposalNotice ? <Text style={styles.proposalNoticeText}>{proposalNotice}</Text> : null}
           {!canEvaluate ? <Text style={styles.proposalMetaText}>当前角色仅可对话，不可评估或决策提案。</Text> : null}
+          <Text style={styles.proposalMetaText}>未确认前仅为提案，不会进入 Policy OS 执行。</Text>
           {proposalLoading ? <Text style={styles.proposalMetaText}>提案加载中...</Text> : null}
           {!proposalLoading && proposalItems.length === 0 ? (
             <Text style={styles.proposalMetaText}>当前筛选下暂无提案，可先发起意图并生成提案。</Text>
@@ -467,7 +468,7 @@ export default function AgentScreen() {
                   <>
                     <ActionButton
                       testID="agent-proposal-approve"
-                      label={proposalActionKey === `approve_${selectedProposalId}` ? '发布中...' : '同意并发布'}
+                      label={proposalActionKey === `approve_${selectedProposalId}` ? '确认中...' : '确认提案并执行'}
                       icon={proposalActionKey === `approve_${selectedProposalId}` ? 'hourglass-top' : 'check-circle'}
                       onPress={() => {
                         void handleDecideProposal('APPROVE');

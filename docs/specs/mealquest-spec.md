@@ -39,7 +39,7 @@
 ### 1.2 不变原则
 
 - 无请求不决策：系统不替商户做未授权决策
-- 无确认不执行：营销与资金相关动作必须人工确认后执行
+- 无确认不执行：营销与资金相关动作必须人工确认后执行；AI 提案需由 `OWNER` 确认后才可进入 Policy OS 执行链路
 - 利润优先于活跃：先保护毛利与风险边界，再追求增长
 - 支付主链路优先：营销异常不得阻断支付、核销、账务、发票
 - 先闭环后扩张：先交付可回归闭环，再扩展算法复杂度
@@ -478,9 +478,10 @@
   - 提案决策：`POST /api/agent-os/proposals/{proposalId}/decide`
 
 - 决策语义（当前生效）
-  - `decision=APPROVE`：默认执行“同意即发布”（审批+发布）
+  - `decision=APPROVE`：`OWNER` 确认提案后发布策略并进入 Policy OS 执行链路（单次确认模式）
   - `decision=REJECT`：提案进入驳回状态并记录原因
   - 同意前自动执行评估，写入可解释结果（命中、拦截、原因码、风险标记、预算相关信息）
+  - 提案在 `PENDING` 状态时不得进入 Policy OS 执行链路
 
 - 权限与作用域（当前生效）
   - `OWNER / MANAGER`：可读提案、可发起评估
@@ -503,7 +504,7 @@
 - 决策动作（当前生效）
   - 提案列表状态：`ALL`、`PENDING`、`APPROVED`、`PUBLISHED`、`REJECTED`。
   - 评估动作：接入 `POST /api/agent-os/proposals/{proposalId}/evaluate`，回填可解释结果（原因码、风险标记、评估时间等）。
-  - 同意动作：接入 `POST /api/agent-os/proposals/{proposalId}/decide` 且 `decision=APPROVE`，语义为“同意即发布”。
+  - 同意动作：接入 `POST /api/agent-os/proposals/{proposalId}/decide` 且 `decision=APPROVE`，语义为“确认后进入执行”。
   - 驳回动作：接入 `POST /api/agent-os/proposals/{proposalId}/decide` 且 `decision=REJECT`，驳回原因需可填写并回显。
 
 - 角色与权限（当前生效）
