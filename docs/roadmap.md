@@ -279,6 +279,10 @@
   - `Status=done` 的任务包必须绑定自动化测试文件（`*.test.*` 或 `*.spec.*`）。
   - 测试文件必须按责任端归属映射，且不存在未映射的孤儿测试文件。
 7. `S120+` 任务包与阶段测试文件不得进入主分支。
+8. `meal-quest-customer` 依赖安全执行“可修尽修 + 风险封账”双轨治理：
+  - `npm run audit:customer`：输出当前漏洞摘要（统计与可修复性分类）。
+  - `npm run audit:customer:gate`：校验 `docs/security/customer-vulnerability-ledger.json` 与当前漏洞集完全一致（不能多、不能少），并校验每条记录的决策完整性。
+  - 根校验门 `npm run verify` 与 `npm run verify:ci` 必须包含 `audit:customer:gate`。
 
 ---
 
