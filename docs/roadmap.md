@@ -273,6 +273,12 @@
   - `test:step:s060`：`baseline + S050 + S060`
   - `test:step:s110`：`baseline + S050 + S060 + S070 + S080 + S090 + S100 + S110`
 4. 当前真源只到 `S110`，`S120+` 测试与脚本不保留在主分支。
+5. `docs/qa/traceability-map.json` 为任务包与自动化测试映射清单（仅映射 `docs/roadmap.md` 已定义任务包）。
+6. 根校验门 `npm run roadmap:sync` 必须同时满足：
+  - `roadmap`、`docs/qa`、`traceability-map` 三方任务包集合一致（不能多、不能少）。
+  - `Status=done` 的任务包必须绑定自动化测试文件（`*.test.*` 或 `*.spec.*`）。
+  - 测试文件必须按责任端归属映射，且不存在未映射的孤儿测试文件。
+7. `S120+` 任务包与阶段测试文件不得进入主分支。
 
 ---
 

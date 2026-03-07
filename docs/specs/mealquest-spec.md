@@ -1089,6 +1089,8 @@ S110 阶段服务端需建立“实验配置 + 灰度评估 + 风险护栏 + 回
 - 接口字段、错误码、测试命令、排障入口在 `docs/roadmap.md`
 - 当前执行指针、验收门、证据账本统一以 `docs/roadmap.md` 为准
 - `docs/roadmap.md` 必须保持三端任务完整性与老板/顾客双视角验收点
+- `docs/qa/traceability-map.json` 仅作为 `roadmap` 任务包的自动化测试映射索引，不得新增或减少任务包范围
+- 工程校验以 `npm run roadmap:sync` 执行“不能多、不能少”的一致性检查
 
 ---
 

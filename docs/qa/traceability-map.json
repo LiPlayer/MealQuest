@@ -1,0 +1,528 @@
+{
+  "version": "2026-03-07",
+  "sourceOfTruth": {
+    "spec": "docs/specs/mealquest-spec.md",
+    "roadmap": "docs/roadmap.md"
+  },
+  "packages": [
+    {
+      "packageId": "PKG-S010-CUS-01",
+      "lane": "customer",
+      "status": "done",
+      "codeRefs": [
+        "meal-quest-customer/src"
+      ],
+      "testRefs": [
+        "meal-quest-customer/test/services/execution-consistency.test.ts",
+        "meal-quest-customer/test/pages/index.test.tsx"
+      ],
+      "verifyCommand": "npm run test --prefix meal-quest-customer -- --runInBand"
+    },
+    {
+      "packageId": "PKG-S010-MER-01",
+      "lane": "merchant",
+      "status": "done",
+      "codeRefs": [
+        "MealQuestMerchant/src"
+      ],
+      "testRefs": [
+        "MealQuestMerchant/test/risk-config-guards.test.js"
+      ],
+      "verifyCommand": "npm run test --prefix MealQuestMerchant"
+    },
+    {
+      "packageId": "PKG-S010-SRV-01",
+      "lane": "server",
+      "status": "done",
+      "codeRefs": [
+        "MealQuestServer/src"
+      ],
+      "testRefs": [
+        "MealQuestServer/test/policy-os.schema.test.ts",
+        "MealQuestServer/test/policy-os.scorer.test.ts",
+        "MealQuestServer/test/runtime-env.test.ts"
+      ],
+      "verifyCommand": "npm run test --prefix MealQuestServer"
+    },
+    {
+      "packageId": "PKG-S020-CUS-01",
+      "lane": "customer",
+      "status": "done",
+      "codeRefs": [
+        "meal-quest-customer/src"
+      ],
+      "testRefs": [
+        "meal-quest-customer/test/pages/startup.test.tsx",
+        "meal-quest-customer/test/e2e/customer-core-flow.spec.js",
+        "meal-quest-customer/test/e2e/wechat-cli-resolver.spec.js"
+      ],
+      "verifyCommand": "npm run test --prefix meal-quest-customer -- --runInBand"
+    },
+    {
+      "packageId": "PKG-S020-MER-01",
+      "lane": "merchant",
+      "status": "done",
+      "codeRefs": [
+        "MealQuestMerchant/src"
+      ],
+      "testRefs": [
+        "MealQuestMerchant/test/risk-config-guards.test.js"
+      ],
+      "verifyCommand": "npm run test --prefix MealQuestMerchant"
+    },
+    {
+      "packageId": "PKG-S020-MER-02",
+      "lane": "merchant",
+      "status": "done",
+      "codeRefs": [
+        "MealQuestMerchant/src"
+      ],
+      "testRefs": [
+        "MealQuestMerchant/test/risk-config-guards.test.js"
+      ],
+      "verifyCommand": "npm run test --prefix MealQuestMerchant"
+    },
+    {
+      "packageId": "PKG-S020-SRV-01",
+      "lane": "server",
+      "status": "done",
+      "codeRefs": [
+        "MealQuestServer/src"
+      ],
+      "testRefs": [
+        "MealQuestServer/test/http.integration.test.ts",
+        "MealQuestServer/test/merchant-service.chat-memory.test.ts"
+      ],
+      "verifyCommand": "npm run test --prefix MealQuestServer"
+    },
+    {
+      "packageId": "PKG-S020-SRV-02",
+      "lane": "server",
+      "status": "done",
+      "codeRefs": [
+        "MealQuestServer/src"
+      ],
+      "testRefs": [
+        "MealQuestServer/test/http.integration.test.ts",
+        "MealQuestServer/test/merchant-service.chat-memory.test.ts"
+      ],
+      "verifyCommand": "npm run test --prefix MealQuestServer"
+    },
+    {
+      "packageId": "PKG-S030-CUS-01",
+      "lane": "customer",
+      "status": "done",
+      "codeRefs": [
+        "meal-quest-customer/src"
+      ],
+      "testRefs": [
+        "meal-quest-customer/test/domain/smart-checkout.test.ts",
+        "meal-quest-customer/test/services/api-data-service.test.ts",
+        "meal-quest-customer/test/pages/startup.test.tsx"
+      ],
+      "verifyCommand": "npm run test --prefix meal-quest-customer -- --runInBand"
+    },
+    {
+      "packageId": "PKG-S030-MER-01",
+      "lane": "merchant",
+      "status": "done",
+      "codeRefs": [
+        "MealQuestMerchant/src"
+      ],
+      "testRefs": [
+        "MealQuestMerchant/test/risk-config-guards.test.js"
+      ],
+      "verifyCommand": "npm run test --prefix MealQuestMerchant"
+    },
+    {
+      "packageId": "PKG-S030-SRV-01",
+      "lane": "server",
+      "status": "done",
+      "codeRefs": [
+        "MealQuestServer/src"
+      ],
+      "testRefs": [
+        "MealQuestServer/test/smart-checkout.test.ts",
+        "MealQuestServer/test/clawback.test.ts",
+        "MealQuestServer/test/merchant-service.sales-snapshot.test.ts"
+      ],
+      "verifyCommand": "npm run test --prefix MealQuestServer"
+    },
+    {
+      "packageId": "PKG-S040-CUS-01",
+      "lane": "customer",
+      "status": "done",
+      "codeRefs": [
+        "meal-quest-customer/src"
+      ],
+      "testRefs": [
+        "meal-quest-customer/test/services/api-data-service.test.ts",
+        "meal-quest-customer/test/services/api-data-service-customer-center.test.ts"
+      ],
+      "verifyCommand": "npm run test --prefix meal-quest-customer -- --runInBand"
+    },
+    {
+      "packageId": "PKG-S040-MER-01",
+      "lane": "merchant",
+      "status": "done",
+      "codeRefs": [
+        "MealQuestMerchant/src"
+      ],
+      "testRefs": [
+        "MealQuestMerchant/test/risk-config-guards.test.js"
+      ],
+      "verifyCommand": "npm run test --prefix MealQuestMerchant"
+    },
+    {
+      "packageId": "PKG-S040-SRV-01",
+      "lane": "server",
+      "status": "done",
+      "codeRefs": [
+        "MealQuestServer/src"
+      ],
+      "testRefs": [
+        "MealQuestServer/test/policy-os.ai-bridge.integration.test.ts",
+        "MealQuestServer/test/policy-os.schema.test.ts",
+        "MealQuestServer/test/policy-os.scorer.test.ts"
+      ],
+      "verifyCommand": "npm run test --prefix MealQuestServer"
+    },
+    {
+      "packageId": "PKG-S040-SRV-02",
+      "lane": "server",
+      "status": "done",
+      "codeRefs": [
+        "MealQuestServer/src"
+      ],
+      "testRefs": [
+        "MealQuestServer/test/policy-os.ai-bridge.integration.test.ts",
+        "MealQuestServer/test/policy-os.schema.test.ts",
+        "MealQuestServer/test/policy-os.scorer.test.ts"
+      ],
+      "verifyCommand": "npm run test --prefix MealQuestServer"
+    },
+    {
+      "packageId": "PKG-S050-CUS-01",
+      "lane": "customer",
+      "status": "done",
+      "codeRefs": [
+        "meal-quest-customer/src"
+      ],
+      "testRefs": [
+        "meal-quest-customer/test/pages/index.test.tsx",
+        "meal-quest-customer/test/pages/account.test.tsx",
+        "meal-quest-customer/test/services/data-service.test.ts"
+      ],
+      "verifyCommand": "npm run test --prefix meal-quest-customer -- --runInBand"
+    },
+    {
+      "packageId": "PKG-S050-MER-01",
+      "lane": "merchant",
+      "status": "done",
+      "codeRefs": [
+        "MealQuestMerchant/src"
+      ],
+      "testRefs": [
+        "MealQuestMerchant/test/risk-config-guards.test.js"
+      ],
+      "verifyCommand": "npm run test --prefix MealQuestMerchant"
+    },
+    {
+      "packageId": "PKG-S050-MER-02",
+      "lane": "merchant",
+      "status": "done",
+      "codeRefs": [
+        "MealQuestMerchant/src"
+      ],
+      "testRefs": [
+        "MealQuestMerchant/test/risk-config-guards.test.js"
+      ],
+      "verifyCommand": "npm run test --prefix MealQuestMerchant"
+    },
+    {
+      "packageId": "PKG-S050-SRV-01",
+      "lane": "server",
+      "status": "done",
+      "codeRefs": [
+        "MealQuestServer/src"
+      ],
+      "testRefs": [
+        "MealQuestServer/test/policy-os.s050.governance.http.test.ts",
+        "MealQuestServer/test/notification.s050.delivery.http.test.ts",
+        "MealQuestServer/test/notification-service.test.ts",
+        "MealQuestServer/test/policy-os.http.integration.test.ts",
+        "MealQuestServer/test/policy-os.constraints.test.ts",
+        "MealQuestServer/test/policy-os.ledger.test.ts"
+      ],
+      "verifyCommand": "npm run test --prefix MealQuestServer"
+    },
+    {
+      "packageId": "PKG-S050-SRV-02",
+      "lane": "server",
+      "status": "done",
+      "codeRefs": [
+        "MealQuestServer/src"
+      ],
+      "testRefs": [
+        "MealQuestServer/test/policy-os.s050.governance.http.test.ts",
+        "MealQuestServer/test/notification.s050.delivery.http.test.ts",
+        "MealQuestServer/test/notification-service.test.ts",
+        "MealQuestServer/test/policy-os.http.integration.test.ts",
+        "MealQuestServer/test/policy-os.constraints.test.ts",
+        "MealQuestServer/test/policy-os.ledger.test.ts"
+      ],
+      "verifyCommand": "npm run test --prefix MealQuestServer"
+    },
+    {
+      "packageId": "PKG-S060-CUS-01",
+      "lane": "customer",
+      "status": "done",
+      "codeRefs": [
+        "meal-quest-customer/src"
+      ],
+      "testRefs": [
+        "meal-quest-customer/test/components/customer-card-stack.test.tsx",
+        "meal-quest-customer/test/components/p03-red-packet-card.test.tsx",
+        "meal-quest-customer/test/pages/index.test.tsx"
+      ],
+      "verifyCommand": "npm run test --prefix meal-quest-customer -- --runInBand"
+    },
+    {
+      "packageId": "PKG-S060-MER-01",
+      "lane": "merchant",
+      "status": "done",
+      "codeRefs": [
+        "MealQuestMerchant/src"
+      ],
+      "testRefs": [
+        "MealQuestMerchant/test/risk-config-guards.test.js"
+      ],
+      "verifyCommand": "npm run test --prefix MealQuestMerchant"
+    },
+    {
+      "packageId": "PKG-S060-SRV-01",
+      "lane": "server",
+      "status": "done",
+      "codeRefs": [
+        "MealQuestServer/src"
+      ],
+      "testRefs": [
+        "MealQuestServer/test/policy-os.s060.lifecycle-library.http.test.ts"
+      ],
+      "verifyCommand": "npm run test --prefix MealQuestServer"
+    },
+    {
+      "packageId": "PKG-S070-CUS-01",
+      "lane": "customer",
+      "status": "done",
+      "codeRefs": [
+        "meal-quest-customer/src"
+      ],
+      "testRefs": [
+        "meal-quest-customer/test/services/execution-consistency.test.ts"
+      ],
+      "verifyCommand": "npm run test --prefix meal-quest-customer -- --runInBand"
+    },
+    {
+      "packageId": "PKG-S070-MER-01",
+      "lane": "merchant",
+      "status": "done",
+      "codeRefs": [
+        "MealQuestMerchant/src"
+      ],
+      "testRefs": [
+        "MealQuestMerchant/test/risk-config-guards.test.js"
+      ],
+      "verifyCommand": "npm run test --prefix MealQuestMerchant"
+    },
+    {
+      "packageId": "PKG-S070-SRV-01",
+      "lane": "server",
+      "status": "done",
+      "codeRefs": [
+        "MealQuestServer/src"
+      ],
+      "testRefs": [
+        "MealQuestServer/test/policy-os.s070.proposal-support.http.test.ts",
+        "MealQuestServer/test/agent-os.stream.integration.test.ts",
+        "MealQuestServer/test/omni-agent-service.stream.test.ts"
+      ],
+      "verifyCommand": "npm run test --prefix MealQuestServer"
+    },
+    {
+      "packageId": "PKG-S080-CUS-01",
+      "lane": "customer",
+      "status": "done",
+      "codeRefs": [
+        "meal-quest-customer/src"
+      ],
+      "testRefs": [
+        "meal-quest-customer/test/pages/account.test.tsx",
+        "meal-quest-customer/test/utils/storage.test.ts"
+      ],
+      "verifyCommand": "npm run test --prefix meal-quest-customer -- --runInBand"
+    },
+    {
+      "packageId": "PKG-S080-MER-01",
+      "lane": "merchant",
+      "status": "done",
+      "codeRefs": [
+        "MealQuestMerchant/src"
+      ],
+      "testRefs": [
+        "MealQuestMerchant/test/risk-config-guards.test.js"
+      ],
+      "verifyCommand": "npm run test --prefix MealQuestMerchant"
+    },
+    {
+      "packageId": "PKG-S080-SRV-01",
+      "lane": "server",
+      "status": "done",
+      "codeRefs": [
+        "MealQuestServer/src"
+      ],
+      "testRefs": [
+        "MealQuestServer/test/customer-experience.s080.guard.http.test.ts",
+        "MealQuestServer/test/feedback.s080.governance.http.test.ts"
+      ],
+      "verifyCommand": "npm run test --prefix MealQuestServer"
+    },
+    {
+      "packageId": "PKG-S080-SRV-02",
+      "lane": "server",
+      "status": "done",
+      "codeRefs": [
+        "MealQuestServer/src"
+      ],
+      "testRefs": [
+        "MealQuestServer/test/customer-experience.s080.guard.http.test.ts",
+        "MealQuestServer/test/feedback.s080.governance.http.test.ts"
+      ],
+      "verifyCommand": "npm run test --prefix MealQuestServer"
+    },
+    {
+      "packageId": "PKG-S090-CUS-01",
+      "lane": "customer",
+      "status": "done",
+      "codeRefs": [
+        "meal-quest-customer/src"
+      ],
+      "testRefs": [
+        "meal-quest-customer/test/pages/account.test.tsx"
+      ],
+      "verifyCommand": "npm run test --prefix meal-quest-customer -- --runInBand"
+    },
+    {
+      "packageId": "PKG-S090-MER-01",
+      "lane": "merchant",
+      "status": "done",
+      "codeRefs": [
+        "MealQuestMerchant/src"
+      ],
+      "testRefs": [
+        "MealQuestMerchant/test/risk-config-guards.test.js"
+      ],
+      "verifyCommand": "npm run test --prefix MealQuestMerchant"
+    },
+    {
+      "packageId": "PKG-S090-SRV-01",
+      "lane": "server",
+      "status": "done",
+      "codeRefs": [
+        "MealQuestServer/src"
+      ],
+      "testRefs": [
+        "MealQuestServer/test/release-gate.s090.http.test.ts"
+      ],
+      "verifyCommand": "npm run test --prefix MealQuestServer"
+    },
+    {
+      "packageId": "PKG-S090-SRV-02",
+      "lane": "server",
+      "status": "done",
+      "codeRefs": [
+        "MealQuestServer/src"
+      ],
+      "testRefs": [
+        "MealQuestServer/test/release-gate.s090.http.test.ts"
+      ],
+      "verifyCommand": "npm run test --prefix MealQuestServer"
+    },
+    {
+      "packageId": "PKG-S100-CUS-01",
+      "lane": "customer",
+      "status": "done",
+      "codeRefs": [
+        "meal-quest-customer/src"
+      ],
+      "testRefs": [
+        "meal-quest-customer/test/services/api-data-service-customer-center.test.ts",
+        "meal-quest-customer/test/services/data-service.test.ts",
+        "meal-quest-customer/test/pages/account.test.tsx"
+      ],
+      "verifyCommand": "npm run test --prefix meal-quest-customer -- --runInBand"
+    },
+    {
+      "packageId": "PKG-S100-MER-01",
+      "lane": "merchant",
+      "status": "done",
+      "codeRefs": [
+        "MealQuestMerchant/src"
+      ],
+      "testRefs": [
+        "MealQuestMerchant/test/risk-config-guards.test.js"
+      ],
+      "verifyCommand": "npm run test --prefix MealQuestMerchant"
+    },
+    {
+      "packageId": "PKG-S100-SRV-01",
+      "lane": "server",
+      "status": "done",
+      "codeRefs": [
+        "MealQuestServer/src"
+      ],
+      "testRefs": [
+        "MealQuestServer/test/automation.s100.http.test.ts"
+      ],
+      "verifyCommand": "npm run test --prefix MealQuestServer"
+    },
+    {
+      "packageId": "PKG-S110-CUS-01",
+      "lane": "customer",
+      "status": "done",
+      "codeRefs": [
+        "meal-quest-customer/src"
+      ],
+      "testRefs": [
+        "meal-quest-customer/test/pages/index.test.tsx",
+        "meal-quest-customer/test/e2e/mini-program-session.spec.js"
+      ],
+      "verifyCommand": "npm run test --prefix meal-quest-customer -- --runInBand"
+    },
+    {
+      "packageId": "PKG-S110-MER-01",
+      "lane": "merchant",
+      "status": "done",
+      "codeRefs": [
+        "MealQuestMerchant/src"
+      ],
+      "testRefs": [
+        "MealQuestMerchant/test/risk-config-guards.test.js"
+      ],
+      "verifyCommand": "npm run test --prefix MealQuestMerchant"
+    },
+    {
+      "packageId": "PKG-S110-SRV-01",
+      "lane": "server",
+      "status": "done",
+      "codeRefs": [
+        "MealQuestServer/src"
+      ],
+      "testRefs": [
+        "MealQuestServer/test/policy-os.s110.acquisition.test.ts",
+        "MealQuestServer/test/policy-os.s110.visibility.http.test.ts"
+      ],
+      "verifyCommand": "npm run test --prefix MealQuestServer"
+    }
+  ]
+}
