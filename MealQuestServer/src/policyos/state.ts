@@ -38,8 +38,6 @@ function ensurePolicyOsState(db) {
   db.policyOs.notificationDispatch.byRecipientCategory = ensureObject(
     db.policyOs.notificationDispatch.byRecipientCategory
   );
-  db.policyOs.automation = ensureObject(db.policyOs.automation);
-  db.policyOs.automation.configByMerchant = ensureObject(db.policyOs.automation.configByMerchant);
   db.policyOs.experiments = ensureObject(db.policyOs.experiments);
   db.policyOs.experiments.configByMerchant = ensureObject(db.policyOs.experiments.configByMerchant);
   db.policyOs.experiments.rollbackHistoryByMerchant = ensureObject(

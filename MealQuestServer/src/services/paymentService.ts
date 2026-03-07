@@ -31,7 +31,6 @@ function createDefaultPaymentProvider() {
 function createPaymentService(db, options = {}) {
   const paymentProvider = options.paymentProvider || createDefaultPaymentProvider();
   const policyOsService = options.policyOsService || null;
-  const automationService = options.automationService || null;
   const fromFreshState = Boolean(options.__fromFreshState);
   const keyLocks = new Map();
 
@@ -164,15 +163,6 @@ function createPaymentService(db, options = {}) {
     if (!policyOsService || typeof policyOsService.executeDecision !== "function") {
       return null;
     }
-    if (automationService && typeof automationService.isEventEnabled === "function") {
-      const guard = automationService.isEventEnabled({
-        merchantId,
-        event: "PAYMENT_VERIFY"
-      });
-      if (!guard.allowed) {
-        return null;
-      }
-    }
     try {
       return await policyOsService.executeDecision({
         merchantId,
@@ -203,7 +193,6 @@ function createPaymentService(db, options = {}) {
         const scopedService = createPaymentService(workingDb, {
           paymentProvider,
           policyOsService,
-          automationService,
           __fromFreshState: true,
         });
         return scopedService.verifyPayment({

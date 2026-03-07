@@ -1,3 +1,4 @@
+const crypto = require("node:crypto");
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
@@ -5,6 +6,8 @@ const { createAppServer } = require("../src/http/server");
 const { issueToken } = require("../src/core/auth");
 
 const TEST_JWT_SECRET = process.env.MQ_JWT_SECRET || "mealquest-dev-secret";
+const TEST_PAYMENT_CALLBACK_SECRET =
+  process.env.MQ_PAYMENT_CALLBACK_SECRET || "mealquest-payment-callback-secret";
 
 function createFakeSocialAuthService() {
   return {
@@ -71,8 +74,15 @@ async function fetchJson({ baseUrl, path, method = "GET", token = "", body = nul
   };
 }
 
-test("S100 automation config: supports query, update and ETag", async () => {
-  const merchantId = "m_s100_cfg_001";
+function signPayload(payload, secret) {
+  return crypto
+    .createHmac("sha256", secret)
+    .update(JSON.stringify(payload))
+    .digest("hex");
+}
+
+test("S100 automation executions: config endpoint removed, logs support ETag", async () => {
+  const merchantId = "m_s100_cfg_removed_001";
   const app = createAppServer({
     jwtSecret: TEST_JWT_SECRET,
     socialAuthService: createFakeSocialAuthService()
@@ -106,21 +116,38 @@ test("S100 automation config: supports query, update and ETag", async () => {
   const baseUrl = `http://127.0.0.1:${port}`;
 
   try {
-    const first = await fetchJson({
+    const configRemoved = await fetchJson({
       baseUrl,
       path: `/api/policyos/automation/config?merchantId=${encodeURIComponent(merchantId)}`,
       token: managerToken
     });
+    assert.equal(configRemoved.status, 404);
+
+    const login = await fetchJson({
+      baseUrl,
+      path: "/api/auth/customer/wechat-login",
+      method: "POST",
+      body: {
+        merchantId,
+        code: "wx_code_s100_cfg_removed"
+      }
+    });
+    assert.equal(login.status, 200);
+
+    const first = await fetchJson({
+      baseUrl,
+      path: `/api/policyos/automation/executions?merchantId=${encodeURIComponent(merchantId)}&event=USER_ENTER_SHOP&outcome=ALL`,
+      token: ownerToken
+    });
     assert.equal(first.status, 200);
-    assert.equal(first.data.enabled, true);
-    assert.ok(Array.isArray(first.data.rules));
-    assert.ok(first.data.rules.some((item) => item.event === "USER_ENTER_SHOP"));
+    assert.ok(Array.isArray(first.data.items));
+    assert.ok(first.data.items.length >= 1);
     const etag = first.headers.get("etag");
     assert.ok(etag);
 
     const second = await fetchJson({
       baseUrl,
-      path: `/api/policyos/automation/config?merchantId=${encodeURIComponent(merchantId)}`,
+      path: `/api/policyos/automation/executions?merchantId=${encodeURIComponent(merchantId)}&event=USER_ENTER_SHOP&outcome=ALL`,
       token: managerToken,
       headers: {
         "If-None-Match": etag
@@ -128,51 +155,18 @@ test("S100 automation config: supports query, update and ETag", async () => {
     });
     assert.equal(second.status, 304);
 
-    const managerDenied = await fetchJson({
-      baseUrl,
-      path: "/api/policyos/automation/config",
-      method: "PUT",
-      token: managerToken,
-      body: {
-        merchantId,
-        enabled: false
-      }
-    });
-    assert.equal(managerDenied.status, 403);
-
     const customerDenied = await fetchJson({
       baseUrl,
-      path: `/api/policyos/automation/config?merchantId=${encodeURIComponent(merchantId)}`,
+      path: `/api/policyos/automation/executions?merchantId=${encodeURIComponent(merchantId)}`,
       token: customerToken
     });
     assert.equal(customerDenied.status, 403);
-
-    const updated = await fetchJson({
-      baseUrl,
-      path: "/api/policyos/automation/config",
-      method: "PUT",
-      token: ownerToken,
-      body: {
-        merchantId,
-        enabled: true,
-        rules: [
-          { ruleId: "AUTO_USER_ENTER_SHOP", event: "USER_ENTER_SHOP", enabled: false },
-          { ruleId: "AUTO_PAYMENT_VERIFY", event: "PAYMENT_VERIFY", enabled: true }
-        ]
-      }
-    });
-    assert.equal(updated.status, 200);
-    assert.equal(updated.data.enabled, true);
-    assert.equal(
-      updated.data.rules.find((item) => item.event === "USER_ENTER_SHOP").enabled,
-      false
-    );
   } finally {
     await app.stop();
   }
 });
 
-test("S100 automation execution: entry and payment chain obey automation switch", async () => {
+test("S100 automation execution: entry and payment are always event-driven", async () => {
   const merchantId = "m_s100_exec_001";
   const app = createAppServer({
     jwtSecret: TEST_JWT_SECRET,
@@ -215,22 +209,6 @@ test("S100 automation execution: entry and payment chain obey automation switch"
     const beforeEntryCount = firstEntryLogs.data.items.length;
     assert.ok(beforeEntryCount >= 1);
 
-    const disableEntry = await fetchJson({
-      baseUrl,
-      path: "/api/policyos/automation/config",
-      method: "PUT",
-      token: ownerToken,
-      body: {
-        merchantId,
-        enabled: true,
-        rules: [
-          { ruleId: "AUTO_USER_ENTER_SHOP", event: "USER_ENTER_SHOP", enabled: false },
-          { ruleId: "AUTO_PAYMENT_VERIFY", event: "PAYMENT_VERIFY", enabled: false }
-        ]
-      }
-    });
-    assert.equal(disableEntry.status, 200);
-
     const secondLogin = await fetchJson({
       baseUrl,
       path: "/api/auth/customer/wechat-login",
@@ -250,7 +228,7 @@ test("S100 automation execution: entry and payment chain obey automation switch"
       token: ownerToken
     });
     assert.equal(secondEntryLogs.status, 200);
-    assert.equal(secondEntryLogs.data.items.length, beforeEntryCount);
+    assert.ok(secondEntryLogs.data.items.length > beforeEntryCount);
 
     const pay = await fetchJson({
       baseUrl,
@@ -267,6 +245,29 @@ test("S100 automation execution: entry and payment chain obey automation switch"
     });
     assert.equal(pay.status, 200);
     assert.ok(pay.data.paymentTxnId);
+    if (String(pay.data.status || "").toUpperCase() === "PENDING_EXTERNAL") {
+      const callbackBody = {
+        merchantId,
+        paymentTxnId: pay.data.paymentTxnId,
+        externalTxnId: "ext_s100_payment_verify_001",
+        status: "SUCCESS",
+        paidAmount: Number(
+          pay.data.externalPayment && Number(pay.data.externalPayment.payableAmount || 0)
+        ),
+        callbackId: "cb_s100_payment_verify_001"
+      };
+      const callback = await fetchJson({
+        baseUrl,
+        path: "/api/payment/callback",
+        method: "POST",
+        headers: {
+          "x-payment-signature": signPayload(callbackBody, TEST_PAYMENT_CALLBACK_SECRET)
+        },
+        body: callbackBody
+      });
+      assert.equal(callback.status, 200);
+      assert.equal(String(callback.data.status || "").toUpperCase(), "PAID");
+    }
 
     const paymentLogs = await fetchJson({
       baseUrl,
@@ -276,7 +277,7 @@ test("S100 automation execution: entry and payment chain obey automation switch"
       token: ownerToken
     });
     assert.equal(paymentLogs.status, 200);
-    assert.equal(paymentLogs.data.items.length, 0);
+    assert.ok(paymentLogs.data.items.length >= 1);
   } finally {
     await app.stop();
   }

@@ -143,8 +143,7 @@ function createAppServer({
       services = {
         paymentService: createPaymentService(scopedDb, {
           paymentProvider,
-          policyOsService,
-          automationService
+          policyOsService
         }),
         merchantService: createMerchantService(scopedDb, {
           policyOsService,

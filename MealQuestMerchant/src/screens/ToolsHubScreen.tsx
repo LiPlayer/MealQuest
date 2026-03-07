@@ -46,12 +46,6 @@ const TOOL_ITEMS: ToolItem[] = [
     icon: 'shield',
   },
   {
-    title: '自动化运营',
-    description: '查看自动化开关、规则和执行日志。',
-    route: '/(tabs)/automation',
-    icon: 'bolt',
-  },
-  {
     title: '提醒中心',
     description: '查看待办提醒、执行结果与反馈消息。',
     route: '/(tabs)/notifications',

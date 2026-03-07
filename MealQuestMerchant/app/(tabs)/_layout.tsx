@@ -56,7 +56,6 @@ export default function TabsLayout() {
 
       <Tabs.Screen name="dashboard" options={{ href: null }} />
       <Tabs.Screen name="agent" options={{ href: null }} />
-      <Tabs.Screen name="automation" options={{ href: null }} />
       <Tabs.Screen name="notifications" options={{ href: null }} />
       <Tabs.Screen name="approvals" options={{ href: null }} />
       <Tabs.Screen name="replay" options={{ href: null }} />

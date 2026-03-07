@@ -497,9 +497,6 @@ function createEmptyState() {
       notificationDispatch: {
         byRecipientCategory: {},
       },
-      automation: {
-        configByMerchant: {},
-      },
       experiments: {
         configByMerchant: {},
         rollbackHistoryByMerchant: {},

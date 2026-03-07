@@ -53,9 +53,6 @@ function createDefaultState() {
       notificationDispatch: {
         byRecipientCategory: {}
       },
-      automation: {
-        configByMerchant: {}
-      },
       experiments: {
         configByMerchant: {},
         rollbackHistoryByMerchant: {}

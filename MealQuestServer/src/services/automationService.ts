@@ -2,38 +2,10 @@ const { ensurePolicyOsState } = require("../policyos/state");
 
 const AUTOMATION_VERSION = "S100-SRV-01.v1";
 const SUPPORTED_EVENTS = new Set(["USER_ENTER_SHOP", "PAYMENT_VERIFY"]);
-const DEFAULT_RULES = [
-  {
-    ruleId: "AUTO_USER_ENTER_SHOP",
-    event: "USER_ENTER_SHOP",
-    enabled: true,
-    description: "顾客入店时自动触发策略执行"
-  },
-  {
-    ruleId: "AUTO_PAYMENT_VERIFY",
-    event: "PAYMENT_VERIFY",
-    enabled: true,
-    description: "支付核销后自动触发策略执行"
-  }
-];
 
 function toString(value, fallback = "") {
   const text = String(value || "").trim();
   return text || fallback;
-}
-
-function toBoolean(value, fallback = false) {
-  if (value === true || value === false) {
-    return value;
-  }
-  const normalized = String(value || "").trim().toLowerCase();
-  if (["1", "true", "yes", "on"].includes(normalized)) {
-    return true;
-  }
-  if (["0", "false", "no", "off"].includes(normalized)) {
-    return false;
-  }
-  return fallback;
 }
 
 function toPositiveInt(value, fallback) {
@@ -68,31 +40,7 @@ function isAutomationDecision(decision = {}) {
   return false;
 }
 
-function normalizeRule(item, index = 0) {
-  const event = toString(item && item.event).toUpperCase();
-  if (!SUPPORTED_EVENTS.has(event)) {
-    throw new Error(`unsupported automation event: ${event || "UNKNOWN"}`);
-  }
-  return {
-    ruleId: toString(item && item.ruleId, `AUTO_${event}_${index + 1}`),
-    event,
-    enabled: toBoolean(item && item.enabled, true),
-    description: toString(item && item.description, "")
-  };
-}
-
-function buildDefaultConfig(merchantId) {
-  return {
-    version: AUTOMATION_VERSION,
-    merchantId,
-    enabled: true,
-    rules: DEFAULT_RULES.map((item) => ({ ...item })),
-    updatedAt: null,
-    updatedBy: null
-  };
-}
-
-function createAutomationService(db, { policyOsService = null, now = () => Date.now() } = {}) {
+function createAutomationService(db, { policyOsService = null } = {}) {
   if (!db) {
     throw new Error("db is required");
   }
@@ -100,99 +48,16 @@ function createAutomationService(db, { policyOsService = null, now = () => Date.
     throw new Error("policyOsService is required");
   }
 
-  function ensureAutomationState() {
-    const policyOs = ensurePolicyOsState(db);
-    policyOs.automation = policyOs.automation && typeof policyOs.automation === "object" ? policyOs.automation : {};
-    policyOs.automation.configByMerchant =
-      policyOs.automation.configByMerchant && typeof policyOs.automation.configByMerchant === "object"
-        ? policyOs.automation.configByMerchant
-        : {};
-    return policyOs.automation;
-  }
-
   function assertMerchant(merchantId) {
     const safeMerchantId = toString(merchantId);
     if (!safeMerchantId) {
       throw new Error("merchantId is required");
     }
+    ensurePolicyOsState(db);
     if (!db.merchants || !db.merchants[safeMerchantId]) {
       throw new Error("merchant not found");
     }
     return safeMerchantId;
-  }
-
-  function getAutomationConfig({ merchantId }) {
-    const safeMerchantId = assertMerchant(merchantId);
-    const state = ensureAutomationState();
-    const saved = state.configByMerchant[safeMerchantId];
-    if (!saved || typeof saved !== "object") {
-      return buildDefaultConfig(safeMerchantId);
-    }
-    const rulesRaw = Array.isArray(saved.rules) ? saved.rules : [];
-    const rules = rulesRaw.map((item, index) => normalizeRule(item, index));
-    return {
-      version: AUTOMATION_VERSION,
-      merchantId: safeMerchantId,
-      enabled: toBoolean(saved.enabled, true),
-      rules,
-      updatedAt: toString(saved.updatedAt) || null,
-      updatedBy: toString(saved.updatedBy) || null
-    };
-  }
-
-  function setAutomationConfig({ merchantId, operatorId = "", config = {} }) {
-    const safeMerchantId = assertMerchant(merchantId);
-    const state = ensureAutomationState();
-    const previous = getAutomationConfig({ merchantId: safeMerchantId });
-    const patch = config && typeof config === "object" ? config : {};
-    const nextEnabled = Object.prototype.hasOwnProperty.call(patch, "enabled")
-      ? toBoolean(patch.enabled, previous.enabled)
-      : previous.enabled;
-    const nextRules = Object.prototype.hasOwnProperty.call(patch, "rules")
-      ? (Array.isArray(patch.rules) ? patch.rules : []).map((item, index) => normalizeRule(item, index))
-      : previous.rules;
-    if (nextRules.length === 0) {
-      throw new Error("automation rules cannot be empty");
-    }
-    const persisted = {
-      version: AUTOMATION_VERSION,
-      merchantId: safeMerchantId,
-      enabled: nextEnabled,
-      rules: nextRules,
-      updatedAt: new Date(now()).toISOString(),
-      updatedBy: toString(operatorId, "system")
-    };
-    state.configByMerchant[safeMerchantId] = persisted;
-    db.save();
-    return persisted;
-  }
-
-  function isEventEnabled({ merchantId, event }) {
-    const config = getAutomationConfig({ merchantId });
-    const safeEvent = toString(event).toUpperCase();
-    if (!config.enabled) {
-      return {
-        allowed: false,
-        reasonCode: "AUTOMATION_DISABLED"
-      };
-    }
-    const relatedRules = config.rules.filter((item) => item.event === safeEvent);
-    if (relatedRules.length === 0) {
-      return {
-        allowed: false,
-        reasonCode: "AUTOMATION_RULE_NOT_FOUND"
-      };
-    }
-    if (relatedRules.every((item) => item.enabled === false)) {
-      return {
-        allowed: false,
-        reasonCode: "AUTOMATION_RULE_DISABLED"
-      };
-    }
-    return {
-      allowed: true,
-      reasonCode: ""
-    };
   }
 
   function listExecutions({ merchantId, event = "", outcome = "ALL", limit = 20 }) {
@@ -252,9 +117,6 @@ function createAutomationService(db, { policyOsService = null, now = () => Date.
   }
 
   return {
-    getAutomationConfig,
-    setAutomationConfig,
-    isEventEnabled,
     listExecutions
   };
 }

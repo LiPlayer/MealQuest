@@ -131,7 +131,7 @@ export default function HomeScreen() {
       <SurfaceCard>
         <Text style={styles.sectionTitle}>找不到功能？</Text>
         <Text style={styles.hintText}>
-          所有高级能力（完整看板、策略、审批、风控、自动化、提醒）都在“高级工具”里。
+          所有高级能力（完整看板、策略、审批、回放、风控、提醒）都在“高级工具”里。
         </Text>
         <ActionButton
           label="打开高级工具"

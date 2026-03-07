@@ -33,8 +33,6 @@ const TENANT_LIMIT_OPERATIONS = [
   "NOTIFICATION_ACK",
   "NOTIFICATION_PREFERENCE_QUERY",
   "NOTIFICATION_PREFERENCE_SET",
-  "AUTOMATION_CONFIG_QUERY",
-  "AUTOMATION_CONFIG_SET",
   "AUTOMATION_EXECUTION_QUERY",
   "EXPERIMENT_CONFIG_QUERY",
   "EXPERIMENT_CONFIG_SET",
@@ -234,12 +232,6 @@ function resolveAuditAction(method, pathname) {
   }
   if (method === "PUT" && pathname === "/api/notifications/preferences") {
     return "NOTIFICATION_PREFERENCE_SET";
-  }
-  if (method === "GET" && pathname === "/api/policyos/automation/config") {
-    return "AUTOMATION_CONFIG_QUERY";
-  }
-  if (method === "PUT" && pathname === "/api/policyos/automation/config") {
-    return "AUTOMATION_CONFIG_SET";
   }
   if (method === "GET" && pathname === "/api/policyos/automation/executions") {
     return "AUTOMATION_EXECUTION_QUERY";
@@ -1165,9 +1157,6 @@ function copyMerchantSlice({ sourceDb, targetDb, merchantId }) {
   targetDb.policyOs.notificationDispatch = targetDb.policyOs.notificationDispatch || {};
   targetDb.policyOs.notificationDispatch.byRecipientCategory =
     targetDb.policyOs.notificationDispatch.byRecipientCategory || {};
-  targetDb.policyOs.automation = targetDb.policyOs.automation || {};
-  targetDb.policyOs.automation.configByMerchant =
-    targetDb.policyOs.automation.configByMerchant || {};
   targetDb.policyOs.experiments = targetDb.policyOs.experiments || {};
   targetDb.policyOs.experiments.configByMerchant =
     targetDb.policyOs.experiments.configByMerchant || {};
@@ -1233,13 +1222,6 @@ function copyMerchantSlice({ sourceDb, targetDb, merchantId }) {
     if (dispatchKey.startsWith(`${merchantId}|`)) {
       targetDb.policyOs.notificationDispatch.byRecipientCategory[dispatchKey] = jsonClone(dispatchItems);
     }
-  }
-  const sourceAutomationConfig =
-    (sourcePolicyOs.automation && sourcePolicyOs.automation.configByMerchant) || {};
-  if (Object.prototype.hasOwnProperty.call(sourceAutomationConfig, merchantId)) {
-    targetDb.policyOs.automation.configByMerchant[merchantId] = jsonClone(
-      sourceAutomationConfig[merchantId]
-    );
   }
   const sourceExperimentConfig =
     (sourcePolicyOs.experiments && sourcePolicyOs.experiments.configByMerchant) || {};

@@ -322,50 +322,6 @@ export type GovernanceReplaysResponse = {
   };
 };
 
-export type AutomationEvent = 'USER_ENTER_SHOP' | 'PAYMENT_VERIFY';
-export type AutomationExecutionOutcome = 'ALL' | 'HIT' | 'BLOCKED' | 'NO_POLICY';
-
-export type AutomationRule = {
-  ruleId: string;
-  event: AutomationEvent;
-  enabled: boolean;
-  description?: string;
-};
-
-export type AutomationConfigResponse = {
-  version: string;
-  merchantId: string;
-  enabled: boolean;
-  rules: AutomationRule[];
-  updatedAt: string | null;
-  updatedBy: string | null;
-};
-
-export type AutomationExecutionItem = {
-  decisionId: string;
-  traceId: string;
-  event: AutomationEvent;
-  outcome: Exclude<AutomationExecutionOutcome, 'ALL'>;
-  reasonCodes: string[];
-  executedCount: number;
-  createdAt: string;
-  userId: string | null;
-};
-
-export type AutomationExecutionsResponse = {
-  version: string;
-  merchantId: string;
-  event: AutomationEvent | 'ALL';
-  outcome: AutomationExecutionOutcome;
-  items: AutomationExecutionItem[];
-  pageInfo: {
-    limit: number;
-    returned: number;
-    total: number;
-  };
-  lastUpdatedAt: string | null;
-};
-
 export type ExperimentTargetEvent = 'USER_ENTER_SHOP' | 'PAYMENT_VERIFY';
 export type ExperimentOptimizationMode = 'MANUAL';
 export type ExperimentRiskStatus = 'PASS' | 'FAIL' | 'UNKNOWN';
@@ -1117,76 +1073,6 @@ export async function getPolicyGovernanceReplays(params: {
     .filter(Boolean)
     .join('&');
   return getJson<GovernanceReplaysResponse>(`/api/policyos/governance/replays?${query}`, {
-    token: params.token,
-  });
-}
-
-export async function getPolicyAutomationConfig(params: {
-  merchantId: string;
-  token: string;
-}): Promise<AutomationConfigResponse> {
-  const merchantId = String(params.merchantId || '').trim();
-  if (!merchantId) {
-    throw new Error('merchantId is required');
-  }
-  return getJson<AutomationConfigResponse>(
-    `/api/policyos/automation/config?merchantId=${encodeURIComponent(merchantId)}`,
-    { token: params.token },
-  );
-}
-
-export async function setPolicyAutomationConfig(params: {
-  merchantId: string;
-  token: string;
-  enabled?: boolean;
-  rules?: AutomationRule[];
-}): Promise<AutomationConfigResponse> {
-  const merchantId = String(params.merchantId || '').trim();
-  if (!merchantId) {
-    throw new Error('merchantId is required');
-  }
-  const payload: Record<string, unknown> = {
-    merchantId,
-  };
-  if (typeof params.enabled === 'boolean') {
-    payload.enabled = params.enabled;
-  }
-  if (Array.isArray(params.rules)) {
-    payload.rules = params.rules.map((item) => ({
-      ruleId: String(item.ruleId || '').trim(),
-      event: String(item.event || '').trim().toUpperCase(),
-      enabled: Boolean(item.enabled),
-      description: String(item.description || '').trim() || undefined,
-    }));
-  }
-  return putJson<AutomationConfigResponse>('/api/policyos/automation/config', payload, {
-    token: params.token,
-  });
-}
-
-export async function getPolicyAutomationExecutions(params: {
-  merchantId: string;
-  token: string;
-  event?: AutomationEvent | 'ALL';
-  outcome?: AutomationExecutionOutcome;
-  limit?: number;
-}): Promise<AutomationExecutionsResponse> {
-  const merchantId = String(params.merchantId || '').trim();
-  if (!merchantId) {
-    throw new Error('merchantId is required');
-  }
-  const event = String(params.event || 'ALL').trim().toUpperCase();
-  const outcome = String(params.outcome || 'ALL').trim().toUpperCase();
-  const limit = Math.min(Math.max(Math.floor(Number(params.limit) || 20), 1), 100);
-  const query = [
-    `merchantId=${encodeURIComponent(merchantId)}`,
-    `outcome=${encodeURIComponent(outcome)}`,
-    `limit=${limit}`,
-    event && event !== 'ALL' ? `event=${encodeURIComponent(event)}` : '',
-  ]
-    .filter(Boolean)
-    .join('&');
-  return getJson<AutomationExecutionsResponse>(`/api/policyos/automation/executions?${query}`, {
     token: params.token,
   });
 }
