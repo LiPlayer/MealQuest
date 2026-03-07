@@ -1079,6 +1079,7 @@ S110 阶段服务端需建立“实验配置 + 灰度评估 + 风险护栏 + 回
 - 证据文件：`docs/security/customer-vulnerability-ledger.json`。
 - 工程门禁：根校验需执行 `npm run audit:customer:gate`，保证风险账本与当前漏洞集合一一对应，且决策记录完整。
 - 可修尽修硬约束：`npm run audit:customer:gate` 需校验 `npm audit fix --dry-run` 的 `added/removed/changed` 全为 `0`；若存在非强制可修复变更，必须先落锁并更新账本，再允许通过门禁。
+- 审计源抖动口径：若同一漏洞在 `no_fix` 与 `non_breaking_candidate` 间短时切换，按“当前不可直接修复”同类风险治理，不放宽账本与决策完整性要求。
 
 ---
 

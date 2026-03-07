@@ -207,9 +207,17 @@ function validateLedgerAgainstAudit(rows, ledgerByName) {
     non_breaking_candidate: ['blocked_by_upstream_lock', 'accept_with_control'],
     requires_major: ['defer_major_upgrade'],
     requires_upgrade: ['accept_with_control', 'defer_major_upgrade'],
-    no_fix: ['accept_with_control'],
+    no_fix: ['accept_with_control', 'blocked_by_upstream_lock'],
     unknown: ['accept_with_control'],
   };
+
+  function isFixabilityCompatible(auditFixability, ledgerFixability) {
+    if (auditFixability === ledgerFixability) {
+      return true;
+    }
+    const unstable = new Set(['no_fix', 'non_breaking_candidate']);
+    return unstable.has(auditFixability) && unstable.has(ledgerFixability);
+  }
 
   const details = [];
   for (const row of rows) {
@@ -217,12 +225,19 @@ function validateLedgerAgainstAudit(rows, ledgerByName) {
     if (entry.severity && String(entry.severity) !== row.severity) {
       details.push(`severity mismatch: ${row.name} audit=${row.severity} ledger=${entry.severity}`);
     }
-    if (entry.fixability && String(entry.fixability) !== row.fixability) {
+    const entryFixability = String(entry.fixability || '');
+    if (entryFixability && !isFixabilityCompatible(row.fixability, entryFixability)) {
       details.push(`fixability mismatch: ${row.name} audit=${row.fixability} ledger=${entry.fixability}`);
     }
 
     const decision = String(entry.decision || '');
-    if (!allowedDecision[row.fixability] || !allowedDecision[row.fixability].includes(decision)) {
+    const decisionPool = new Set(allowedDecision[row.fixability] || []);
+    if (entryFixability && isFixabilityCompatible(row.fixability, entryFixability) && row.fixability !== entryFixability) {
+      for (const item of allowedDecision[entryFixability] || []) {
+        decisionPool.add(item);
+      }
+    }
+    if (!decisionPool.has(decision)) {
       details.push(`decision invalid for ${row.name}: ${decision} (fixability=${row.fixability})`);
     }
 

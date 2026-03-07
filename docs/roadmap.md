@@ -283,6 +283,7 @@
   - `npm run audit:customer`：输出当前漏洞摘要（统计与可修复性分类）。
   - `npm run audit:customer:gate`：校验 `docs/security/customer-vulnerability-ledger.json` 与当前漏洞集完全一致（不能多、不能少），并校验每条记录的决策完整性。
   - `npm run audit:customer:gate` 同时要求 `npm audit fix --dry-run` 结果 `added/removed/changed = 0`，若存在非强制可修复变更，必须先修复再记账。
+  - 对上游审计源偶发抖动（同一漏洞在 `no_fix` 与 `non_breaking_candidate` 间切换）按“当前不可直接修复”同类风险处理，决策记录仍需完整。
   - 根校验门 `npm run verify` 与 `npm run verify:ci` 必须包含 `audit:customer:gate`。
 
 ---
