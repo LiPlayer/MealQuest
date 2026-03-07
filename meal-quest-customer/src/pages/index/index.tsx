@@ -14,8 +14,6 @@ import { storage } from '@/utils/storage';
 
 import './index.scss';
 
-const DEFAULT_STORE_ID =
-  (typeof process !== 'undefined' && process.env && process.env.TARO_APP_DEFAULT_STORE_ID) || '';
 const DEFAULT_ORDER_AMOUNT = 52;
 const LIFECYCLE_STAGE_ORDER = ['获客', '激活', '活跃', '扩收', '留存'];
 
@@ -97,7 +95,7 @@ export default function IndexPage() {
   const autoPayHintShownRef = useRef(false);
 
   const storeId = useMemo(() => {
-    return String(storage.getLastStoreId() || DEFAULT_STORE_ID || '').trim();
+    return String(storage.getLastStoreId() || '').trim();
   }, []);
 
   const orderAmount = useMemo(() => {

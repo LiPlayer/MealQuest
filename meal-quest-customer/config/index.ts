@@ -1,7 +1,88 @@
 import { defineConfig, type UserConfigExport } from '@tarojs/cli'
+import fs from 'node:fs'
+import path from 'node:path'
 import TsconfigPathsPlugin from 'tsconfig-paths-webpack-plugin'
 import devConfig from './dev'
 import prodConfig from './prod'
+
+const ENV_FILE_NAME = '.env'
+const LEGACY_ENV_FILES = ['.env.development', '.env.production', '.env.test']
+
+const projectRoot = path.resolve(__dirname, '..')
+const envPath = path.join(projectRoot, ENV_FILE_NAME)
+
+const stripQuotedValue = (value: string): string => {
+  const trimmed = value.trim()
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1)
+  }
+  return trimmed
+}
+
+const parseEnvFile = (raw: string): Record<string, string> => {
+  const result: Record<string, string> = {}
+  const lines = raw.split(/\r?\n/)
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) {
+      continue
+    }
+    const normalized = trimmed.startsWith('export ') ? trimmed.slice(7).trim() : trimmed
+    const eqIndex = normalized.indexOf('=')
+    if (eqIndex <= 0) {
+      continue
+    }
+    const key = normalized.slice(0, eqIndex).trim()
+    const value = stripQuotedValue(normalized.slice(eqIndex + 1))
+    if (key) {
+      result[key] = value
+    }
+  }
+  return result
+}
+
+const loadCustomerEnv = (): { serverUrl: string } => {
+  const legacyFiles = LEGACY_ENV_FILES.filter((fileName) =>
+    fs.existsSync(path.join(projectRoot, fileName))
+  )
+  if (legacyFiles.length > 0) {
+    throw new Error(
+      `[env] 已废弃环境文件：${legacyFiles.join(', ')}。请改用 ${ENV_FILE_NAME} 单文件配置。`
+    )
+  }
+
+  if (!fs.existsSync(envPath)) {
+    throw new Error(
+      `[env] 缺少 ${ENV_FILE_NAME}。请基于 .env.example 创建，并至少配置 TARO_APP_SERVER_URL。`
+    )
+  }
+
+  const parsed = parseEnvFile(fs.readFileSync(envPath, 'utf8'))
+  for (const [key, value] of Object.entries(parsed)) {
+    if (process.env[key] === undefined) {
+      process.env[key] = value
+    }
+  }
+
+  const serverUrl = String(process.env.TARO_APP_SERVER_URL || '').trim()
+  if (!serverUrl) {
+    throw new Error('[env] TARO_APP_SERVER_URL 不能为空。')
+  }
+  try {
+    // Validate URL format at build startup so failures are immediate.
+    // eslint-disable-next-line no-new
+    new URL(serverUrl)
+  } catch {
+    throw new Error(`[env] TARO_APP_SERVER_URL 非法：${serverUrl}`)
+  }
+
+  return { serverUrl }
+}
+
+const customerBuildEnv = loadCustomerEnv()
 
 // https://taro-docs.jd.com/docs/next/config#defineconfig-辅助函数
 export default defineConfig<'webpack5'>(async (merge, { command: _command, mode: _mode }) => {
@@ -27,8 +108,7 @@ export default defineConfig<'webpack5'>(async (merge, { command: _command, mode:
       "taro-plugin-tailwind"
     ],
     defineConstants: {
-      TARO_APP_SERVER_URL: JSON.stringify(process.env.TARO_APP_SERVER_URL || ''),
-      TARO_APP_DEFAULT_STORE_ID: JSON.stringify(process.env.TARO_APP_DEFAULT_STORE_ID || 'm_store_001')
+      TARO_APP_SERVER_URL: JSON.stringify(customerBuildEnv.serverUrl)
     },
     copy: {
       patterns: [

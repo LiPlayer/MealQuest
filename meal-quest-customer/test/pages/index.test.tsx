@@ -1,4 +1,5 @@
 import { render, waitFor } from '@testing-library/react';
+import Taro from '@tarojs/taro';
 
 import IndexPage from '@/pages/index/index';
 import { DataService } from '@/services/DataService';
@@ -410,5 +411,16 @@ describe('Index page welcome activity visibility', () => {
     );
     expect(document.getElementById('index-pay-button')).toBeInTheDocument();
     expect(document.getElementById('index-execution-consistency-title')).toBeInTheDocument();
+  });
+
+  it('relaunches to startup when last store is missing', async () => {
+    storageMock.getLastStoreId.mockReturnValue('');
+
+    render(<IndexPage />);
+
+    await waitFor(() => {
+      expect(Taro.reLaunch).toHaveBeenCalledWith({ url: '/pages/startup/index' });
+    });
+    expect(dataServiceMock.getHomeSnapshot).not.toHaveBeenCalled();
   });
 });

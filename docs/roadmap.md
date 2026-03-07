@@ -285,6 +285,12 @@
   - `npm run audit:customer:gate` 同时要求 `npm audit fix --dry-run` 结果 `added/removed/changed = 0`，若存在非强制可修复变更，必须先修复再记账。
   - 对上游审计源偶发抖动（同一漏洞在 `no_fix` 与 `non_breaking_candidate` 间切换）按“当前不可直接修复”同类风险处理，决策记录仍需完整。
   - 根校验门 `npm run verify` 与 `npm run verify:ci` 必须包含 `audit:customer:gate`。
+9. 顾客端环境配置统一为 `.env` 单文件：
+  - 构建前必须加载 `meal-quest-customer/.env`，并校验 `TARO_APP_SERVER_URL` 非空且格式合法。
+  - 命令行环境变量优先于 `.env`（便于联调与 CI 覆盖）。
+  - `TARO_APP_DEFAULT_STORE_ID` 不再支持，禁止通过环境变量默认入店。
+  - 入店仅允许扫码参数或 `lastStore` 回访；两者缺失时必须跳转 `startup`。
+  - `.env.development/.env.production/.env.test` 不再支持，检测到即构建失败并提示迁移。
 
 ---
 

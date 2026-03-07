@@ -1081,6 +1081,15 @@ S110 阶段服务端需建立“实验配置 + 灰度评估 + 风险护栏 + 回
 - 可修尽修硬约束：`npm run audit:customer:gate` 需校验 `npm audit fix --dry-run` 的 `added/removed/changed` 全为 `0`；若存在非强制可修复变更，必须先落锁并更新账本，再允许通过门禁。
 - 审计源抖动口径：若同一漏洞在 `no_fix` 与 `non_breaking_candidate` 间短时切换，按“当前不可直接修复”同类风险治理，不放宽账本与决策完整性要求。
 
+### 9.5 顾客端环境配置治理
+
+- 顾客端构建配置统一使用 `meal-quest-customer/.env` 单文件，不再使用多套模式环境文件。
+- 构建前必须完成环境校验：`TARO_APP_SERVER_URL` 必填且 URL 格式合法。
+- 环境变量优先级：命令行/系统环境变量优先于 `.env` 文件值。
+- `TARO_APP_DEFAULT_STORE_ID` 已废弃且不再支持；顾客端不得通过环境变量默认入店。
+- 入店规则：仅允许“扫码参数入店”或“最近一次有效入店（lastStore）自动回访”；两者都缺失时必须回到扫码页。
+- `.env.development`、`.env.production`、`.env.test` 属于废弃配置；检测到即构建失败并给出迁移提示。
+
 ---
 
 ## 10. 风险清单与应对
@@ -1102,6 +1111,7 @@ S110 阶段服务端需建立“实验配置 + 灰度评估 + 风险护栏 + 回
 - `docs/qa/traceability-map.json` 仅作为 `roadmap` 任务包的自动化测试映射索引，不得新增或减少任务包范围
 - 工程校验以 `npm run roadmap:sync` 执行“不能多、不能少”的一致性检查
 - 依赖安全校验以 `npm run audit:customer:gate` 执行“不能多、不能少”的风险账本一致性检查
+- 顾客端构建环境校验以 `meal-quest-customer/config/index.ts` 的 `.env` 单文件规则为准
 
 ---
 

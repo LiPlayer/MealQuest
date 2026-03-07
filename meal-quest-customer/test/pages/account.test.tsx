@@ -460,4 +460,15 @@ describe('Account page', () => {
     expect(document.getElementById('account-ledger-title')).toBeInTheDocument();
     expect(document.getElementById('account-feedback-title')).toBeInTheDocument();
   });
+
+  it('relaunches to startup when last store is missing', async () => {
+    storageMock.getLastStoreId.mockReturnValue('');
+
+    render(<AccountPage />);
+
+    await waitFor(() => {
+      expect(Taro.reLaunch).toHaveBeenCalledWith({ url: '/pages/startup/index' });
+    });
+    expect(dataServiceMock.getHomeSnapshot).not.toHaveBeenCalled();
+  });
 });

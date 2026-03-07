@@ -38,7 +38,7 @@ describe('ApiDataService customer center', () => {
         if (typeof envServerBase === 'string') {
             process.env.TARO_APP_SERVER_URL = envServerBase;
         } else {
-            process.env.TARO_APP_SERVER_URL = undefined;
+            Reflect.deleteProperty(process.env, 'TARO_APP_SERVER_URL');
         }
     });
 

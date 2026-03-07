@@ -44,7 +44,7 @@ describe('ApiDataService activities mapping', () => {
         if (typeof envServerBase === 'string') {
             process.env.TARO_APP_SERVER_URL = envServerBase;
         } else {
-            process.env.TARO_APP_SERVER_URL = undefined;
+            Reflect.deleteProperty(process.env, 'TARO_APP_SERVER_URL');
         }
         if (typeof envBuildPlatform === 'string') {
             process.env.TARO_ENV = envBuildPlatform;
