@@ -9,13 +9,9 @@ import { useMerchant } from '../../src/context/MerchantContext';
 import { mqTheme } from '../../src/theme/tokens';
 
 const iconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
-  dashboard: 'grid-outline',
-  agent: 'sparkles-outline',
-  automation: 'flash-outline',
-  notifications: 'notifications-outline',
-  approvals: 'checkmark-done-outline',
-  replay: 'time-outline',
-  risk: 'shield-checkmark-outline',
+  home: 'home-outline',
+  entry: 'qr-code-outline',
+  tools: 'construct-outline',
 };
 
 export default function TabsLayout() {
@@ -54,13 +50,17 @@ export default function TabsLayout() {
         },
       })}
     >
-      <Tabs.Screen name="dashboard" options={{ title: '看板' }} />
-      <Tabs.Screen name="agent" options={{ title: '策略' }} />
-      <Tabs.Screen name="automation" options={{ title: '自动化' }} />
-      <Tabs.Screen name="notifications" options={{ title: '提醒' }} />
-      <Tabs.Screen name="approvals" options={{ title: '审批' }} />
-      <Tabs.Screen name="replay" options={{ title: '回放' }} />
-      <Tabs.Screen name="risk" options={{ title: '风控' }} />
+      <Tabs.Screen name="home" options={{ title: '首页' }} />
+      <Tabs.Screen name="entry" options={{ title: '收款码' }} />
+      <Tabs.Screen name="tools" options={{ title: '高级工具' }} />
+
+      <Tabs.Screen name="dashboard" options={{ href: null }} />
+      <Tabs.Screen name="agent" options={{ href: null }} />
+      <Tabs.Screen name="automation" options={{ href: null }} />
+      <Tabs.Screen name="notifications" options={{ href: null }} />
+      <Tabs.Screen name="approvals" options={{ href: null }} />
+      <Tabs.Screen name="replay" options={{ href: null }} />
+      <Tabs.Screen name="risk" options={{ href: null }} />
     </Tabs>
   );
 }

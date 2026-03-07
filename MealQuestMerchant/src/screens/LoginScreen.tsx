@@ -18,7 +18,7 @@ export default function LoginScreen() {
     try {
       await requestLoginCode(phone);
     } catch (error) {
-      setLocalError(error instanceof Error ? error.message : 'request code failed');
+      setLocalError(error instanceof Error ? error.message : '验证码发送失败');
     }
   };
 
@@ -27,7 +27,7 @@ export default function LoginScreen() {
     try {
       await loginWithPhone({ phone, code });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'login failed';
+      const message = error instanceof Error ? error.message : '登录失败';
       setLocalError(message);
     }
   };
@@ -37,13 +37,13 @@ export default function LoginScreen() {
   return (
     <AppShell contentContainerStyle={styles.shellContent}>
       <SurfaceCard style={styles.card}>
-        <Text style={styles.title}>Merchant Workspace</Text>
-        <Text style={styles.subtitle}>手机号登录后进入经营中枢与 Agent 协作区。</Text>
+        <Text style={styles.title}>老板端登录</Text>
+        <Text style={styles.subtitle}>输入手机号和验证码，即可进入今日经营首页。</Text>
 
         <TextInput
           testID="login-phone-input"
           style={styles.input}
-          placeholder="Phone, e.g. +8613900000001"
+          placeholder="手机号，例如 13900000001"
           placeholderTextColor="#7f90a6"
           value={phone}
           onChangeText={setPhone}
@@ -54,7 +54,7 @@ export default function LoginScreen() {
           <TextInput
             testID="login-code-input"
             style={[styles.input, styles.codeInput]}
-            placeholder="6-digit code"
+            placeholder="6位验证码"
             placeholderTextColor="#7f90a6"
             value={code}
             onChangeText={setCode}
@@ -63,7 +63,7 @@ export default function LoginScreen() {
           <View style={styles.requestBtnWrap}>
             <ActionButton
               testID="login-request-code-btn"
-              label={authSubmitting ? 'Requesting...' : 'Request Code'}
+              label={authSubmitting ? '发送中...' : '发送验证码'}
               onPress={handleRequestCode}
               disabled={authSubmitting}
               variant="secondary"
@@ -73,7 +73,7 @@ export default function LoginScreen() {
 
         <ActionButton
           testID="login-submit-btn"
-          label={authSubmitting ? 'Logging in...' : 'Login'}
+          label={authSubmitting ? '登录中...' : '登录'}
           onPress={handleLogin}
           disabled={authSubmitting}
           icon="login"
@@ -82,7 +82,7 @@ export default function LoginScreen() {
         {authSubmitting ? (
           <View style={styles.loadingRow}>
             <ActivityIndicator color={mqTheme.colors.primary} size="small" />
-            <Text style={styles.loadingText}>Validating session...</Text>
+            <Text style={styles.loadingText}>正在校验登录状态...</Text>
           </View>
         ) : null}
 

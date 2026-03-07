@@ -22,7 +22,7 @@ export default function QuickOnboardScreen(props: QuickOnboardScreenProps) {
     const ownerPhone = String(phone || '').trim();
     const merchantName = String(name || '').trim();
     if (!ownerPhone || !merchantName) {
-      setError('phone and store name are required');
+      setError('请填写门店名称后再继续。');
       return;
     }
     setError('');
@@ -31,20 +31,20 @@ export default function QuickOnboardScreen(props: QuickOnboardScreenProps) {
         name: merchantName,
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'onboarding failed');
+      setError(e instanceof Error ? e.message : '开店初始化失败');
     }
   };
 
   return (
     <AppShell contentContainerStyle={styles.shellContent}>
       <SurfaceCard style={styles.card}>
-        <Text style={styles.title}>Create Your Store</Text>
-        <Text style={styles.subtitle}>首登只需填写门店名即可完成开店初始化。</Text>
+        <Text style={styles.title}>快速开店</Text>
+        <Text style={styles.subtitle}>首次登录仅需填写门店名称，1 步完成初始化。</Text>
 
         <TextInput
           testID="quick-onboard-phone-input"
           style={styles.input}
-          placeholder="Owner phone"
+          placeholder="老板手机号"
           placeholderTextColor="#7f90a6"
           value={phone}
           autoCapitalize="none"
@@ -53,7 +53,7 @@ export default function QuickOnboardScreen(props: QuickOnboardScreenProps) {
         <TextInput
           testID="quick-onboard-name-input"
           style={styles.input}
-          placeholder="Store name"
+          placeholder="请输入门店名称"
           placeholderTextColor="#7f90a6"
           value={name}
           onChangeText={setName}
@@ -61,7 +61,7 @@ export default function QuickOnboardScreen(props: QuickOnboardScreenProps) {
 
         <ActionButton
           testID="quick-onboard-submit-btn"
-          label={props.submitting ? 'Creating...' : 'Create Store'}
+          label={props.submitting ? '创建中...' : '创建门店'}
           busy={Boolean(props.submitting)}
           onPress={handleCreate}
           disabled={Boolean(props.submitting)}
@@ -70,7 +70,7 @@ export default function QuickOnboardScreen(props: QuickOnboardScreenProps) {
 
         <ActionButton
           testID="quick-onboard-back-btn"
-          label="Back to Login"
+          label="返回登录"
           onPress={props.onBack}
           disabled={Boolean(props.submitting)}
           variant="secondary"

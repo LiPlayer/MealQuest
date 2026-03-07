@@ -79,7 +79,7 @@ export default function ActionButton({
 
 const styles = StyleSheet.create({
   btn: {
-    height: 44,
+    minHeight: 48,
     borderRadius: 12,
     borderWidth: 1,
     alignItems: 'center',
@@ -89,7 +89,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   text: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
   },
 });

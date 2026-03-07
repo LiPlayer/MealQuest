@@ -1,13 +1,12 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
-import { Redirect, useRouter } from 'expo-router';
+import { Redirect } from 'expo-router';
 import QRCode from 'react-native-qrcode-svg';
 
 import BootSplash from '../components/BootSplash';
 import ActionButton from '../components/ui/ActionButton';
 import AppShell from '../components/ui/AppShell';
 import SurfaceCard from '../components/ui/SurfaceCard';
-import TopBar from '../components/ui/TopBar';
 import { useMerchant } from '../context/MerchantContext';
 import {
   saveEntryQrToLibrary,
@@ -39,7 +38,6 @@ function toQrBase64(qrRef: QrCodeHandle | null): Promise<string> {
 }
 
 export default function EntryQrScreen() {
-  const router = useRouter();
   const { authHydrating, isAuthenticated, pendingOnboardingSession, merchantState } = useMerchant();
   const qrRef = useRef<QrCodeHandle | null>(null);
   const [actionState, setActionState] = useState<ActionState>('idle');
@@ -49,17 +47,9 @@ export default function EntryQrScreen() {
     [merchantState.merchantId],
   );
   const merchantName = useMemo(
-    () => String(merchantState.merchantName || '').trim() || merchantId || 'Current Store',
+    () => String(merchantState.merchantName || '').trim() || merchantId || '当前门店',
     [merchantState.merchantName, merchantId],
   );
-
-  const handleBack = useCallback(() => {
-    if (typeof router.canGoBack === 'function' && router.canGoBack()) {
-      router.back();
-      return;
-    }
-    router.replace('/(tabs)/dashboard');
-  }, [router]);
 
   const buildQrImageFile = useCallback(async (): Promise<string> => {
     if (!merchantId) {
@@ -77,10 +67,10 @@ export default function EntryQrScreen() {
       setActionState('saving');
       const fileUri = await buildQrImageFile();
       await saveEntryQrToLibrary(fileUri);
-      Alert.alert('Saved', 'Entry QR image has been saved to your gallery.');
+      Alert.alert('已保存', '入店二维码已保存到系统相册。');
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'failed to save entry QR image';
-      Alert.alert('Save failed', message);
+      const message = error instanceof Error ? error.message : '保存二维码失败';
+      Alert.alert('保存失败', message);
     } finally {
       setActionState('idle');
     }
@@ -92,8 +82,8 @@ export default function EntryQrScreen() {
       const fileUri = await buildQrImageFile();
       await shareEntryQrImage(fileUri);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'failed to share entry QR image';
-      Alert.alert('Share failed', message);
+      const message = error instanceof Error ? error.message : '分享二维码失败';
+      Alert.alert('分享失败', message);
     } finally {
       setActionState('idle');
     }
@@ -113,16 +103,11 @@ export default function EntryQrScreen() {
   const canOperate = !busy && Boolean(merchantId);
 
   return (
-    <AppShell>
-      <TopBar
-        title="Store Entry QR"
-        subtitle="固定门店二维码，用于顾客扫码入店"
-        onBack={handleBack}
-      />
-
+    <AppShell edges={['bottom']}>
       <SurfaceCard style={styles.card}>
+        <Text style={styles.pageTitle}>入店收款码</Text>
         <Text style={styles.storeName}>{merchantName}</Text>
-        <Text style={styles.storeId}>merchantId: {merchantId || '-'}</Text>
+        <Text style={styles.storeId}>门店标识：{merchantId || '-'}</Text>
         <View style={styles.qrWrap}>
           {merchantId ? (
             <QRCode
@@ -133,18 +118,18 @@ export default function EntryQrScreen() {
               }}
             />
           ) : (
-            <Text style={styles.errorText}>merchantId is unavailable. Please re-login.</Text>
+            <Text style={styles.errorText}>门店标识不可用，请重新登录后重试。</Text>
           )}
         </View>
         <Text style={styles.hintText}>
-          Print, save, or share this QR code for customers to scan and enter your store.
+          顾客扫码后可直接入店。可将二维码保存到相册或分享给店员打印。
         </Text>
       </SurfaceCard>
 
       <View style={styles.actions}>
         <ActionButton
           testID="merchant-entry-qr-save"
-          label="Save Image"
+          label="保存图片"
           onPress={handleSave}
           disabled={!canOperate}
           busy={saving}
@@ -152,7 +137,7 @@ export default function EntryQrScreen() {
         />
         <ActionButton
           testID="merchant-entry-qr-share"
-          label="Share Image"
+          label="分享图片"
           onPress={handleShare}
           disabled={!canOperate}
           busy={sharing}
@@ -170,6 +155,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: mqTheme.spacing.lg,
+  },
+  pageTitle: {
+    ...mqTheme.typography.sectionTitle,
+    fontSize: 20,
   },
   storeName: {
     fontSize: 17,

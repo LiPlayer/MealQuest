@@ -12,7 +12,7 @@ export default function IndexRoute() {
   }
 
   if (isAuthenticated) {
-    return <Redirect href="/(tabs)/dashboard" />;
+    return <Redirect href="/(tabs)/home" />;
   }
 
   if (pendingOnboardingSession) {
