@@ -168,6 +168,27 @@ function printSummary(rows) {
   console.log(`[audit:customer:gate] fixability=${JSON.stringify(byFixability)}`);
 }
 
+function printInstallSummary(report) {
+  const install = report && typeof report.install === 'object' ? report.install : {};
+  const added = Number(install.added || 0);
+  const removed = Number(install.removed || 0);
+  const changed = Number(install.changed || 0);
+  console.log(`[audit:customer:gate] dryRunInstall=${JSON.stringify({ added, removed, changed })}`);
+}
+
+function validateNoPendingAutoFix(report) {
+  const install = report && typeof report.install === 'object' ? report.install : {};
+  const added = Number(install.added || 0);
+  const removed = Number(install.removed || 0);
+  const changed = Number(install.changed || 0);
+  if (added > 0 || removed > 0 || changed > 0) {
+    fail('pending non-force audit fixes detected', [
+      `dry-run install delta: added=${added}, removed=${removed}, changed=${changed}`,
+      'run npm audit fix in meal-quest-customer, then refresh ledger and re-run gate',
+    ]);
+  }
+}
+
 function validateLedgerAgainstAudit(rows, ledgerByName) {
   const rowNames = new Set(rows.map((row) => row.name));
   const ledgerNames = new Set(ledgerByName.keys());
@@ -242,11 +263,13 @@ function main() {
 
   const rows = toVulnRows(report.audit && report.audit.vulnerabilities ? report.audit.vulnerabilities : {});
   printSummary(rows);
+  printInstallSummary(report);
 
   if (mode !== 'gate') {
     return;
   }
 
+  validateNoPendingAutoFix(report);
   const { byName } = readLedger();
   validateLedgerAgainstAudit(rows, byName);
   console.log('[audit:customer:gate] OK (ledger fully matches current vulnerability set and controls).');

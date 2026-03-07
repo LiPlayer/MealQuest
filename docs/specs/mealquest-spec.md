@@ -1078,6 +1078,7 @@ S110 阶段服务端需建立“实验配置 + 灰度评估 + 风险护栏 + 回
 - 风险封账：当前无法安全修复的漏洞必须纳入风险账本并定义补偿控制、责任人、复审日期与退出条件。
 - 证据文件：`docs/security/customer-vulnerability-ledger.json`。
 - 工程门禁：根校验需执行 `npm run audit:customer:gate`，保证风险账本与当前漏洞集合一一对应，且决策记录完整。
+- 可修尽修硬约束：`npm run audit:customer:gate` 需校验 `npm audit fix --dry-run` 的 `added/removed/changed` 全为 `0`；若存在非强制可修复变更，必须先落锁并更新账本，再允许通过门禁。
 
 ---
 
