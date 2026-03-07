@@ -450,7 +450,7 @@ export default function RiskRevenueConfigScreen() {
   };
 
   return (
-    <AppShell scroll edges={['bottom']}>
+    <AppShell scroll>
       <SurfaceCard>
         <Text style={styles.sectionTitle}>风险治理与紧急停机</Text>
         <Text style={styles.summaryLine}>

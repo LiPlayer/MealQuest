@@ -203,7 +203,7 @@ export default function ReplayScreen() {
   const lifecycleDraftCount = lifecycleItems.length - lifecycleActiveCount;
 
   return (
-    <AppShell scroll edges={['bottom']}>
+    <AppShell scroll>
       <SurfaceCard>
         <Text style={styles.sectionTitle}>生命周期策略运营</Text>
         <View style={styles.grid}>

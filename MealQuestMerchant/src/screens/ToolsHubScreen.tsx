@@ -63,7 +63,7 @@ export default function ToolsHubScreen() {
   const router = useRouter();
 
   return (
-    <AppShell scroll edges={['bottom']}>
+    <AppShell scroll>
       <SurfaceCard>
         <Text style={styles.title}>高级工具</Text>
         <Text style={styles.subtitle}>

@@ -275,7 +275,7 @@ export default function DashboardScreen() {
   }, [loadExperimentSnapshot]);
 
   return (
-    <AppShell edges={['bottom']}>
+    <AppShell>
       <SurfaceCard>
         <Text style={styles.sectionTitle}>当前门店</Text>
         <Text style={styles.storeName}>{merchantState.merchantName || merchantState.merchantId || 'My Store'}</Text>

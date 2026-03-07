@@ -103,7 +103,7 @@ export default function EntryQrScreen() {
   const canOperate = !busy && Boolean(merchantId);
 
   return (
-    <AppShell edges={['bottom']}>
+    <AppShell>
       <SurfaceCard style={styles.card}>
         <Text style={styles.pageTitle}>入店收款码</Text>
         <Text style={styles.storeName}>{merchantName}</Text>

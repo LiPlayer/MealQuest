@@ -222,7 +222,7 @@ export default function AutomationScreen() {
   }, [executions]);
 
   return (
-    <AppShell scroll edges={['bottom']}>
+    <AppShell scroll>
       <SurfaceCard>
         <Text style={styles.sectionTitle}>自动化配置</Text>
         {!canView ? <Text style={styles.metaText}>当前角色无自动化查看权限（仅 OWNER/MANAGER 可访问）。</Text> : null}

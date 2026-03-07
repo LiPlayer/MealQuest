@@ -75,7 +75,7 @@ export default function HomeScreen() {
   };
 
   return (
-    <AppShell scroll edges={['bottom']}>
+    <AppShell scroll>
       <SurfaceCard style={styles.heroCard}>
         <Text style={styles.heroTitle}>今天要做什么</Text>
         <Text style={styles.heroSubtitle}>{merchantName}，按下面 3 步完成今日经营。</Text>

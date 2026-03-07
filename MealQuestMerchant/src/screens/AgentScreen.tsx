@@ -292,7 +292,7 @@ export default function AgentScreen() {
   );
 
   return (
-    <AppShell edges={['bottom']}>
+    <AppShell>
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}

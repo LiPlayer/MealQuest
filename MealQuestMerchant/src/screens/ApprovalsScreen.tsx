@@ -146,7 +146,7 @@ export default function ApprovalsScreen() {
   );
 
   return (
-    <AppShell scroll edges={['bottom']}>
+    <AppShell scroll>
       <SurfaceCard>
         <Text style={styles.sectionTitle}>治理概览</Text>
         <View style={styles.grid}>

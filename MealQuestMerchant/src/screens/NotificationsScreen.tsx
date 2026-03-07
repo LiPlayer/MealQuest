@@ -247,7 +247,7 @@ export default function NotificationsScreen() {
   }, [loadInbox, merchantId, token, totalUnread]);
 
   return (
-    <AppShell scroll edges={['bottom']}>
+    <AppShell scroll>
       <SurfaceCard>
         <Text style={styles.sectionTitle}>未读摘要</Text>
         <View style={styles.grid}>
