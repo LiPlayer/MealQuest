@@ -11,13 +11,12 @@ export default function RootLayout() {
       <StatusBar barStyle="dark-content" />
       <MerchantProvider>
         <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="index" />
-          <Stack.Screen name="login" />
-          <Stack.Screen name="quick-onboard" />
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="entry-qrcode" />
-        </Stack>
-      </MerchantProvider>
-    </SafeAreaProvider>
+        <Stack.Screen name="index" />
+        <Stack.Screen name="login" />
+        <Stack.Screen name="quick-onboard" />
+        <Stack.Screen name="(tabs)" />
+      </Stack>
+    </MerchantProvider>
+  </SafeAreaProvider>
   );
 }

@@ -21,7 +21,7 @@ export default function QuickOnboardRoute() {
   }
 
   if (isAuthenticated) {
-    return <Redirect href="/(tabs)/home" />;
+    return <Redirect href="/(tabs)/dashboard" />;
   }
 
   if (!pendingOnboardingSession) {

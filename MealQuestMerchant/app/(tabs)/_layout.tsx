@@ -6,17 +6,21 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import BootSplash from '../../src/components/BootSplash';
 import { useMerchant } from '../../src/context/MerchantContext';
+import useNotificationDots from '../../src/hooks/useNotificationDots';
 import { mqTheme } from '../../src/theme/tokens';
 
 const iconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
-  home: 'home-outline',
-  entry: 'qr-code-outline',
-  tools: 'construct-outline',
+  dashboard: 'stats-chart-outline',
+  marketing: 'sparkles-outline',
+  cashier: 'qr-code-outline',
+  audit: 'document-text-outline',
+  risk: 'shield-checkmark-outline',
 };
 
 export default function TabsLayout() {
-  const { authHydrating, isAuthenticated, pendingOnboardingSession } = useMerchant();
+  const { authHydrating, isAuthenticated, pendingOnboardingSession, authSession } = useMerchant();
   const insets = useSafeAreaInsets();
+  const { dots } = useNotificationDots(authSession);
 
   if (authHydrating) {
     return <BootSplash />;
@@ -25,6 +29,15 @@ export default function TabsLayout() {
   if (!isAuthenticated) {
     return <Redirect href={pendingOnboardingSession ? '/quick-onboard' : '/login'} />;
   }
+
+  const withDot = (unreadCount: number) => (
+    unreadCount > 0
+      ? {
+          tabBarBadge: ' ',
+          tabBarBadgeStyle: styles.dotBadge,
+        }
+      : {}
+  );
 
   return (
     <Tabs
@@ -50,16 +63,29 @@ export default function TabsLayout() {
         },
       })}
     >
-      <Tabs.Screen name="home" options={{ title: '首页' }} />
-      <Tabs.Screen name="entry" options={{ title: '收款码' }} />
-      <Tabs.Screen name="tools" options={{ title: '高级工具' }} />
-
-      <Tabs.Screen name="dashboard" options={{ href: null }} />
-      <Tabs.Screen name="agent" options={{ href: null }} />
-      <Tabs.Screen name="notifications" options={{ href: null }} />
-      <Tabs.Screen name="approvals" options={{ href: null }} />
-      <Tabs.Screen name="replay" options={{ href: null }} />
-      <Tabs.Screen name="risk" options={{ href: null }} />
+      <Tabs.Screen name="dashboard" options={{ title: '看板' }} />
+      <Tabs.Screen
+        name="marketing"
+        options={{
+          title: '营销',
+          ...withDot(dots.marketingUnread),
+        }}
+      />
+      <Tabs.Screen name="cashier" options={{ title: '收银' }} />
+      <Tabs.Screen
+        name="audit"
+        options={{
+          title: '审计',
+          ...withDot(dots.auditUnread),
+        }}
+      />
+      <Tabs.Screen
+        name="risk"
+        options={{
+          title: '风险',
+          ...withDot(dots.riskUnread),
+        }}
+      />
     </Tabs>
   );
 }
@@ -74,5 +100,15 @@ const styles = StyleSheet.create({
   tabLabel: {
     fontSize: 11,
     fontWeight: '700',
+  },
+  dotBadge: {
+    minWidth: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#ff4d4f',
+    color: 'transparent',
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    marginTop: 4,
   },
 });

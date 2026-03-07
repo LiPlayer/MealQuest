@@ -615,19 +615,30 @@ export default function DashboardScreen() {
       </SurfaceCard>
 
       <SurfaceCard>
-        <Text style={styles.sectionTitle}>导航预留</Text>
-        <Text style={styles.subtitle}>审批、回放、风控页已提前建好入口，减少后续频繁改版。</Text>
-        <View style={styles.row}>
-          <Pressable style={styles.linkBtn} onPress={() => router.push('/(tabs)/agent')}>
-            <Text style={styles.linkBtnText}>进入 Agent</Text>
-          </Pressable>
-          <Pressable style={styles.linkBtn} onPress={() => router.push('/entry-qrcode')}>
-            <Text style={styles.linkBtnText}>门店 Entry QR</Text>
-          </Pressable>
+        <Text style={styles.sectionTitle}>激活策略概要</Text>
+        <Text style={styles.subtitle}>快速查看五阶段营销动作的启用和执行情况。</Text>
+        <View style={styles.grid}>
+          <StatTile label="获客" value={merchantState.acquisitionWelcomeSummary.hitCount24h > 0 ? '运行中' : '待观察'} />
+          <StatTile label="激活" value={merchantState.activationRecoverySummary.hitCount24h > 0 ? '运行中' : '待观察'} />
+          <StatTile label="活跃" value={merchantState.engagementSummary.hitCount24h > 0 ? '运行中' : '待观察'} />
+        </View>
+        <View style={styles.grid}>
+          <StatTile label="扩收" value={merchantState.revenueUpsellSummary.hitCount24h > 0 ? '运行中' : '待观察'} />
+          <StatTile label="留存" value={merchantState.retentionWinbackSummary.hitCount24h > 0 ? '运行中' : '待观察'} />
+          <StatTile label="24h执行" value={
+            merchantState.acquisitionWelcomeSummary.hitCount24h
+            + merchantState.activationRecoverySummary.hitCount24h
+            + merchantState.engagementSummary.hitCount24h
+            + merchantState.revenueUpsellSummary.hitCount24h
+            + merchantState.retentionWinbackSummary.hitCount24h
+          } />
         </View>
         <View style={styles.row}>
-          <Pressable style={styles.linkBtn} onPress={() => router.push('/(tabs)/replay')}>
-            <Text style={styles.linkBtnText}>生命周期运营</Text>
+          <Pressable style={styles.linkBtn} onPress={() => router.push('/(tabs)/marketing')}>
+            <Text style={styles.linkBtnText}>前往营销助手</Text>
+          </Pressable>
+          <Pressable style={styles.linkBtn} onPress={() => router.push('/(tabs)/audit')}>
+            <Text style={styles.linkBtnText}>查看审计中心</Text>
           </Pressable>
         </View>
       </SurfaceCard>

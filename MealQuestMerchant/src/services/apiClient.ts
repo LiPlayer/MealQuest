@@ -552,6 +552,26 @@ export type PolicyListResponse = {
   items: PolicyRecord[];
 };
 
+export type PaymentLedgerRow = {
+  txnId: string;
+  type: string;
+  amount: number;
+  status: string;
+  timestamp: string;
+  createdAt: string;
+  merchantId: string;
+  userId: string;
+  paymentTxnId?: string;
+  invoiceNo?: string;
+  note?: string;
+};
+
+export type PaymentLedgerResponse = {
+  merchantId: string;
+  userId: string | null;
+  items: PaymentLedgerRow[];
+};
+
 export type KillSwitchResponse = {
   merchantId: string;
   killSwitchEnabled: boolean;
@@ -1073,6 +1093,30 @@ export async function getPolicyGovernanceReplays(params: {
     .filter(Boolean)
     .join('&');
   return getJson<GovernanceReplaysResponse>(`/api/policyos/governance/replays?${query}`, {
+    token: params.token,
+  });
+}
+
+export async function getPaymentLedger(params: {
+  merchantId: string;
+  token: string;
+  userId?: string;
+  limit?: number;
+}): Promise<PaymentLedgerResponse> {
+  const merchantId = String(params.merchantId || '').trim();
+  if (!merchantId) {
+    throw new Error('merchantId is required');
+  }
+  const limit = Math.min(Math.max(Math.floor(Number(params.limit) || 20), 1), 100);
+  const userId = String(params.userId || '').trim();
+  const query = [
+    `merchantId=${encodeURIComponent(merchantId)}`,
+    `limit=${limit}`,
+    userId ? `userId=${encodeURIComponent(userId)}` : '',
+  ]
+    .filter(Boolean)
+    .join('&');
+  return getJson<PaymentLedgerResponse>(`/api/payment/ledger?${query}`, {
     token: params.token,
   });
 }

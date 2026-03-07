@@ -6,6 +6,7 @@ import AppShell from '../components/ui/AppShell';
 import StatTile from '../components/ui/StatTile';
 import SurfaceCard from '../components/ui/SurfaceCard';
 import { useMerchant } from '../context/MerchantContext';
+import useNotificationDots from '../hooks/useNotificationDots';
 import {
   ExperimentConfigResponse,
   ExperimentMetricsResponse,
@@ -112,6 +113,7 @@ function Field({
 
 export default function RiskRevenueConfigScreen() {
   const { authSession, merchantState } = useMerchant();
+  const { dots } = useNotificationDots(authSession);
   const [loading, setLoading] = useState(true);
   const [riskLoading, setRiskLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -452,7 +454,10 @@ export default function RiskRevenueConfigScreen() {
   return (
     <AppShell scroll>
       <SurfaceCard>
-        <Text style={styles.sectionTitle}>风险治理与紧急停机</Text>
+        <View style={styles.headerRow}>
+          <Text style={styles.sectionTitle}>风险治理与紧急停机</Text>
+          {dots.riskUnread > 0 ? <View style={styles.dot} /> : null}
+        </View>
         <Text style={styles.summaryLine}>
           紧急停机：{overview?.killSwitchEnabled ? '已开启（执行拦截）' : '未开启（正常执行）'}
         </Text>
@@ -789,6 +794,11 @@ const styles = StyleSheet.create({
   sectionTitle: {
     ...mqTheme.typography.sectionTitle,
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   sectionSubTitle: {
     ...mqTheme.typography.caption,
     color: '#3c5373',
@@ -864,5 +874,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#20624b',
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#ff4d4f',
   },
 });
